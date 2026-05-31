@@ -31,17 +31,6 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
-#[derive(Clone)]
-struct SearchPreviewLabels {
-    title: String,
-    summary_template: String,
-    preset_template: String,
-    none_label: String,
-    no_snippet: String,
-    no_target_url: String,
-    open_result: String,
-}
-
 #[component]
 pub fn SearchAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -834,7 +823,7 @@ fn playground_view(
     );
     let auto_label_for_presets = auto_label.clone();
     let auto_label_for_ranking = auto_label.clone();
-    let preview_labels = StoredValue::new(SearchPreviewLabels {
+    let preview_labels = StoredValue::new(core::SearchPreviewLabels {
         title: t(locale_ref, "search.preview.title", "Preview Results"),
         summary_template: t(
             locale_ref,
@@ -1002,22 +991,22 @@ fn analytics_view(
 
 fn analytics_panel(analytics: SearchAnalyticsPayload, ui_locale: Option<String>) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let summary = analytics.summary.clone();
+    let summary = core::build_search_analytics_summary_view_model(&analytics.summary);
     view! {
         <div class="space-y-6">
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <InfoCard title=t(locale, "search.analytics.summary.window.title", "Window") value=core::format_days(summary.window_days) detail=t(locale, "search.analytics.summary.window.detail", "Rolling analytics lookback window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.queries.title", "Queries") value=summary.total_queries.to_string() detail=t(locale, "search.analytics.summary.queries.detail", "All logged search queries in the current window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.ctr.title", "CTR") value=core::format_percent_fraction(summary.click_through_rate) detail=t(locale, "search.analytics.summary.ctr.detail", "Share of eligible successful queries that received at least one click.") />
-                <InfoCard title=t(locale, "search.analytics.summary.abandonment.title", "Abandonment") value=core::format_percent_fraction(summary.abandonment_rate) detail=t(locale, "search.analytics.summary.abandonment.detail", "Eligible successful queries that ended without any tracked click.") />
-                <InfoCard title=t(locale, "search.analytics.summary.zeroResultRate.title", "Zero-result rate") value=core::format_percent_fraction(summary.zero_result_rate) detail=t(locale, "search.analytics.summary.zeroResultRate.detail", "Share of successful queries that returned no results.") />
+                <InfoCard title=t(locale, "search.analytics.summary.window.title", "Window") value=summary.window detail=t(locale, "search.analytics.summary.window.detail", "Rolling analytics lookback window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.queries.title", "Queries") value=summary.total_queries detail=t(locale, "search.analytics.summary.queries.detail", "All logged search queries in the current window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.ctr.title", "CTR") value=summary.click_through_rate detail=t(locale, "search.analytics.summary.ctr.detail", "Share of eligible successful queries that received at least one click.") />
+                <InfoCard title=t(locale, "search.analytics.summary.abandonment.title", "Abandonment") value=summary.abandonment_rate detail=t(locale, "search.analytics.summary.abandonment.detail", "Eligible successful queries that ended without any tracked click.") />
+                <InfoCard title=t(locale, "search.analytics.summary.zeroResultRate.title", "Zero-result rate") value=summary.zero_result_rate detail=t(locale, "search.analytics.summary.zeroResultRate.detail", "Share of successful queries that returned no results.") />
             </div>
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <InfoCard title=t(locale, "search.analytics.summary.avgLatency.title", "Avg latency") value=core::format_milliseconds(summary.avg_took_ms) detail=t(locale, "search.analytics.summary.avgLatency.detail", "Average PostgreSQL search execution time.") />
-                <InfoCard title=t(locale, "search.analytics.summary.slowQueryRate.title", "Slow-query rate") value=core::format_percent_fraction(summary.slow_query_rate) detail=t(locale, "search.analytics.summary.slowQueryRate.detail", "Share of successful queries at or above the current slow-query threshold.") />
-                <InfoCard title=t(locale, "search.analytics.summary.totalClicks.title", "Total clicks") value=summary.total_clicks.to_string() detail=t(locale, "search.analytics.summary.totalClicks.detail", "All tracked result clicks in the current window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.abandonedQueries.title", "Abandoned queries") value=summary.abandonment_queries.to_string() detail=t(locale, "search.analytics.summary.abandonedQueries.detail", "Successful queries older than the click-eval window with no clicks.") />
-                <InfoCard title=t(locale, "search.analytics.summary.uniqueQueries.title", "Unique queries") value=summary.unique_queries.to_string() detail=t(locale, "search.analytics.summary.uniqueQueries.detail", "Distinct normalized queries observed in the window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.avgLatency.title", "Avg latency") value=summary.avg_took_ms detail=t(locale, "search.analytics.summary.avgLatency.detail", "Average PostgreSQL search execution time.") />
+                <InfoCard title=t(locale, "search.analytics.summary.slowQueryRate.title", "Slow-query rate") value=summary.slow_query_rate detail=t(locale, "search.analytics.summary.slowQueryRate.detail", "Share of successful queries at or above the current slow-query threshold.") />
+                <InfoCard title=t(locale, "search.analytics.summary.totalClicks.title", "Total clicks") value=summary.total_clicks detail=t(locale, "search.analytics.summary.totalClicks.detail", "All tracked result clicks in the current window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.abandonedQueries.title", "Abandoned queries") value=summary.abandonment_queries detail=t(locale, "search.analytics.summary.abandonedQueries.detail", "Successful queries older than the click-eval window with no clicks.") />
+                <InfoCard title=t(locale, "search.analytics.summary.uniqueQueries.title", "Unique queries") value=summary.unique_queries detail=t(locale, "search.analytics.summary.uniqueQueries.detail", "Distinct normalized queries observed in the window.") />
             </div>
             <div class="grid gap-6 xl:grid-cols-2">
                 <section class="rounded-xl border border-border bg-background p-4">
@@ -1069,28 +1058,20 @@ fn analytics_panel(analytics: SearchAnalyticsPayload, ui_locale: Option<String>)
     }
 }
 
-fn preview_panel(payload: SearchPreviewPayload, labels: SearchPreviewLabels) -> impl IntoView {
-    let preview_summary = core::render_preview_summary(
-        labels.summary_template.as_str(),
-        payload.total,
-        payload.took_ms,
-        payload.engine.as_str(),
-        payload.ranking_profile.as_str(),
-    );
-    let preview_preset = core::render_preview_preset(
-        labels.preset_template.as_str(),
-        payload.preset_key.as_deref(),
-        labels.none_label.as_str(),
-    );
+fn preview_panel(
+    payload: SearchPreviewPayload,
+    labels: core::SearchPreviewLabels,
+) -> impl IntoView {
+    let view_model = core::build_search_preview_view_model(payload, &labels);
     view! { <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div><h2 class="text-lg font-semibold text-card-foreground">{labels.title.clone()}</h2><p class="text-sm text-muted-foreground">{preview_summary}</p><p class="mt-2 text-xs text-muted-foreground">{preview_preset}</p></div>
-        <div class="mt-5 grid gap-4 lg:grid-cols-3">{payload.facets.iter().map(|facet| view! { <FacetCard facet=facet.clone() /> }).collect_view()}</div>
-        <div class="mt-6 space-y-3">{payload.items.into_iter().enumerate().map(|(index, item)| view! {
+        <div><h2 class="text-lg font-semibold text-card-foreground">{view_model.title}</h2><p class="text-sm text-muted-foreground">{view_model.summary}</p><p class="mt-2 text-xs text-muted-foreground">{view_model.preset}</p></div>
+        <div class="mt-5 grid gap-4 lg:grid-cols-3">{view_model.facets.iter().map(|facet| view! { <FacetCard facet=facet.clone() /> }).collect_view()}</div>
+        <div class="mt-6 space-y-3">{view_model.items.into_iter().enumerate().map(|(index, item)| view! {
             <article class="rounded-xl border border-border bg-background p-4">
-                <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"><span>{core::entity_source_label(&item.entity_type, &item.source_module)}</span><span>"|"</span><span>{core::score_label(item.score)}</span></div>
+                <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground"><span>{item.source_label}</span><span>"|"</span><span>{item.score_label}</span></div>
                 <h3 class="mt-2 text-base font-semibold text-card-foreground">{item.title}</h3>
-                <p class="mt-2 text-sm text-muted-foreground">{core::snippet_or_fallback(item.snippet.clone(), &labels.no_snippet)}</p>
-                {preview_result_action(payload.query_log_id.clone(), item.id.clone(), item.url.clone(), index, labels.clone())}
+                <p class="mt-2 text-sm text-muted-foreground">{item.snippet}</p>
+                {preview_result_action(view_model.query_log_id.clone(), item.id, item.url, index, labels.clone())}
             </article>
         }).collect_view()}</div>
     </section> }
@@ -1102,6 +1083,7 @@ fn analytics_rows_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let rows = core::build_search_analytics_query_row_view_models(rows);
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{empty_message}</div> }.into_any();
     }
@@ -1124,10 +1106,10 @@ fn analytics_rows_table(
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_percent_fraction(row.click_through_rate)}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_percent_fraction(row.abandonment_rate)}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_milliseconds(row.avg_took_ms)}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_decimal_1(row.avg_results)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.click_through_rate}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.abandonment_rate}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.avg_took_ms}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.avg_results}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.last_seen_at}</td>
             </tr>
         }).collect_view()}</tbody>
@@ -1139,6 +1121,7 @@ fn intelligence_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let rows = core::build_search_analytics_insight_row_view_models(rows);
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{t(locale, "search.analytics.intelligence.empty", "No query-intelligence candidates surfaced in the current window.")}</div> }.into_any();
     }
@@ -1158,7 +1141,7 @@ fn intelligence_table(
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.zero_result_hits}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.clicks}</td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::format_percent_fraction(row.click_through_rate)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.click_through_rate}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.recommendation}</td>
             </tr>
         }).collect_view()}</tbody>
@@ -1170,7 +1153,7 @@ fn preview_result_action(
     document_id: String,
     url: Option<String>,
     index: usize,
-    labels: SearchPreviewLabels,
+    labels: core::SearchPreviewLabels,
 ) -> impl IntoView {
     let Some(url) = url else {
         return view! { <p class="mt-4 text-xs text-muted-foreground">{labels.no_target_url}</p> }
@@ -1221,6 +1204,7 @@ fn lagging_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let rows = core::build_lagging_search_document_row_view_models(rows);
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{t(locale, "search.analytics.lagging.empty", "No lagging documents detected. Search projection is currently caught up.")}</p></div> }.into_any();
     }
@@ -1236,9 +1220,9 @@ fn lagging_table(
         <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
             <tr class="transition-colors hover:bg-muted/30">
                 <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
-                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.source_status_label}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
-                <td class="px-4 py-3 align-top"><span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{core::format_seconds(row.lag_seconds)}</span></td>
+                <td class="px-4 py-3 align-top"><span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{row.lag}</span></td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
                 <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
             </tr>
@@ -1825,25 +1809,18 @@ fn DiagnosticsCard(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let badge_class = core::diagnostics_state_badge_class(diagnostics.state.as_str());
-    let state_label = match diagnostics.state.as_str() {
-        "healthy" => t(locale, "search.state.healthy", "healthy"),
-        "inconsistent" => t(locale, "search.state.inconsistent", "inconsistent"),
-        "lagging" => t(locale, "search.state.lagging", "lagging"),
-        other => other.to_string(),
+    let labels = core::SearchDiagnosticsLabels {
+        healthy: t(locale, "search.state.healthy", "healthy"),
+        inconsistent: t(locale, "search.state.inconsistent", "inconsistent"),
+        lagging: t(locale, "search.state.lagging", "lagging"),
+        not_indexed_yet: t(locale, "search.common.notIndexedYet", "not indexed yet"),
+        newest_indexed: t(locale, "search.diagnostics.newestIndexed", "Newest indexed"),
     };
-    let newest_indexed = core::value_or_fallback(
-        diagnostics.newest_indexed_at,
-        t(locale, "search.common.notIndexedYet", "not indexed yet").as_str(),
-    );
-    let newest_indexed_summary = core::label_value_summary(
-        t(locale, "search.diagnostics.newestIndexed", "Newest indexed").as_str(),
-        newest_indexed.as_str(),
-    );
+    let view_model = core::build_search_diagnostics_card_view_model(diagnostics, &labels);
     view! { <article class="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t(locale, "search.diagnostics.indexState", "Index state")}</div>
-        <div class="mt-3"><span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {badge_class}")>{state_label}</span></div>
-        <p class="mt-3 text-sm text-muted-foreground">{newest_indexed_summary}</p>
+        <div class="mt-3"><span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", view_model.badge_class)>{view_model.state_label}</span></div>
+        <p class="mt-3 text-sm text-muted-foreground">{view_model.newest_indexed_summary}</p>
     </article> }
 }
 

@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Phase B pilot slice #19 moved reusable UI text/CSV and route-query update semantics to shared `rustok-api`, with `leptos-ui-routing` applying the shared intent.
-- Next step: Continue Phase B by extracting the next preview view-model/state helper while reusing shared FFA UI contracts instead of package-local duplicates.
+- Current phase: phase_b_in_progress
+- Last checkpoint: Phase B slice #24 перенёс render-ready values для lagging diagnostics table rows во framework-agnostic `LaggingSearchDocumentRowViewModel` в `admin/src/core.rs`.
+- Next step: Продолжить Phase B: вынести следующий render-ready фрагмент consistency diagnostics table или dictionaries tables, сохраняя Leptos как thin adapter.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-29T00:00:00Z
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
+- Last updated at (UTC): 2026-05-31T00:00:00Z
 
 
 ## FFA/FBA status
@@ -21,8 +21,13 @@
   - module plan синхронизирован с central FFA/FBA readiness board;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - Phase B slices #17-18 extracted admin route-query update semantics and preview form/request normalization into `admin/src/core.rs`; native/GraphQL transport was not modified;
-  - Phase B slice #19 promoted reusable UI text/CSV and route-query update semantics to `rustok-api`, consumed by `leptos-ui-routing` and search admin core.
-- Last verified at (UTC): 2026-05-29T00:00:00Z
+  - Phase B slice #19 promoted reusable UI text/CSV and route-query update semantics to `rustok-api`, consumed by `leptos-ui-routing` and search admin core;
+  - Phase B slice #20 перенёс render-ready labels, summary/preset text и представление result item-ов admin preview в `admin/src/core.rs`, оставив `admin/src/lib.rs` Leptos render adapter без изменений transport;
+  - Phase B slice #21 перенёс форматирование analytics summary card values в `SearchAnalyticsSummaryViewModel`, поэтому Leptos analytics panel больше не форматирует метрики inline;
+  - Phase B slice #22 перенёс форматирование analytics query/intelligence table rows в core row view-models, сохранив transport/native+GraphQL paths без изменений;
+  - Phase B slice #23 перенёс diagnostics card state badge и newest-indexed summary в core view-model, оставив Leptos слой только для i18n labels и render;
+  - Phase B slice #24 перенёс форматирование lagging diagnostics table rows в core row view-model, сохранив transport/native+GraphQL paths без изменений.
+- Last verified at (UTC): 2026-05-31T00:00:00Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -110,3 +115,8 @@
 - [x] Slice 17: admin preview route-query update semantics moved to core (`RouteQueryUpdate`, `route_query_update`) without native/GraphQL transport changes.
 - [x] Slice 18: admin preview form/request normalization moved to core (`SearchPreviewFormInput`, `SearchPreviewRequest`, `build_search_preview_request`), replacing the weak empty-state helper slice.
 - [x] Slice 19: reusable UI text/CSV normalization and route-query update intent promoted to `rustok-api` (`normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate`) and applied by `leptos-ui-routing`.
+- [x] Slice 20: render-ready view-model admin preview panel перенесён в core (`SearchPreviewLabels`, `SearchPreviewViewModel`, `build_search_preview_view_model`), поэтому Leptos panel только рендерит подготовленные поля и click actions.
+- [x] Slice 21: render-ready values analytics summary cards перенесены в core (`SearchAnalyticsSummaryViewModel`, `build_search_analytics_summary_view_model`), поэтому Leptos analytics panel передаёт в cards уже подготовленные строки.
+- [x] Slice 22: render-ready values analytics query/intelligence table rows перенесены в core (`SearchAnalyticsQueryRowViewModel`, `SearchAnalyticsInsightRowViewModel`), поэтому Leptos tables рендерят уже подготовленные строки без inline metric formatting.
+- [x] Slice 23: diagnostics card state badge и newest-indexed summary перенесены в core (`SearchDiagnosticsLabels`, `SearchDiagnosticsCardViewModel`, `build_search_diagnostics_card_view_model`), поэтому Leptos card только передаёт host-provided labels и рендерит подготовленную модель.
+- [x] Slice 24: render-ready values lagging diagnostics table rows перенесены в core (`LaggingSearchDocumentRowViewModel`, `build_lagging_search_document_row_view_models`), поэтому Leptos table рендерит source/status label и lag как подготовленные строки.

@@ -2,7 +2,11 @@ use rustok_api::{
     normalize_ui_text, parse_ui_csv, route_query_update_for_text, UiRouteQueryUpdate,
 };
 
-use crate::model::SearchPreviewFilters;
+use crate::model::{
+    LaggingSearchDocumentPayload, SearchAnalyticsInsightRowPayload, SearchAnalyticsQueryRowPayload,
+    SearchAnalyticsSummaryPayload, SearchDiagnosticsPayload, SearchFacetGroup,
+    SearchPreviewFilters, SearchPreviewPayload,
+};
 
 pub fn parse_csv(value: &str) -> Vec<String> {
     parse_ui_csv(value)
@@ -29,6 +33,72 @@ pub fn score_label(score: f64) -> String {
 }
 
 pub type RouteQueryUpdate = UiRouteQueryUpdate;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPreviewLabels {
+    pub title: String,
+    pub summary_template: String,
+    pub preset_template: String,
+    pub none_label: String,
+    pub no_snippet: String,
+    pub no_target_url: String,
+    pub open_result: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchPreviewItemViewModel {
+    pub id: String,
+    pub source_label: String,
+    pub score_label: String,
+    pub title: String,
+    pub snippet: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchPreviewViewModel {
+    pub title: String,
+    pub summary: String,
+    pub preset: String,
+    pub query_log_id: Option<String>,
+    pub facets: Vec<SearchFacetGroup>,
+    pub items: Vec<SearchPreviewItemViewModel>,
+}
+
+pub fn build_search_preview_view_model(
+    payload: SearchPreviewPayload,
+    labels: &SearchPreviewLabels,
+) -> SearchPreviewViewModel {
+    SearchPreviewViewModel {
+        title: labels.title.clone(),
+        summary: render_preview_summary(
+            labels.summary_template.as_str(),
+            payload.total,
+            payload.took_ms,
+            payload.engine.as_str(),
+            payload.ranking_profile.as_str(),
+        ),
+        preset: render_preview_preset(
+            labels.preset_template.as_str(),
+            payload.preset_key.as_deref(),
+            labels.none_label.as_str(),
+        ),
+        query_log_id: payload.query_log_id,
+        facets: payload.facets,
+        items: payload
+            .items
+            .into_iter()
+            .map(|item| SearchPreviewItemViewModel {
+                source_label: entity_source_label(&item.entity_type, &item.source_module),
+                score_label: score_label(item.score),
+                snippet: snippet_or_fallback(item.snippet, labels.no_snippet.as_str()),
+                id: item.id,
+                title: item.title,
+                url: item.url,
+            })
+            .collect(),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchPreviewFormInput<'a> {
@@ -161,6 +231,57 @@ mod tests {
     }
 
     #[test]
+    fn search_preview_view_model_prepares_render_ready_fields() {
+        let payload = SearchPreviewPayload {
+            query_log_id: Some("log-1".to_string()),
+            preset_key: None,
+            total: 1,
+            took_ms: 12,
+            engine: "postgres".to_string(),
+            ranking_profile: "balanced".to_string(),
+            facets: vec![SearchFacetGroup {
+                name: "entity_type".to_string(),
+                buckets: vec![],
+            }],
+            items: vec![crate::model::SearchPreviewResultItem {
+                id: "doc-1".to_string(),
+                entity_type: "product".to_string(),
+                source_module: "catalog".to_string(),
+                title: "Boots".to_string(),
+                snippet: None,
+                score: 0.98765,
+                locale: Some("en".to_string()),
+                url: Some("/products/boots".to_string()),
+                payload: "{}".to_string(),
+            }],
+        };
+        let labels = SearchPreviewLabels {
+            title: "Preview Results".to_string(),
+            summary_template: "{total} results in {took_ms} ms via {engine} ({ranking_profile})"
+                .to_string(),
+            preset_template: "preset = {preset}".to_string(),
+            none_label: "none".to_string(),
+            no_snippet: "No snippet returned.".to_string(),
+            no_target_url: "No target URL".to_string(),
+            open_result: "Open".to_string(),
+        };
+
+        let view_model = build_search_preview_view_model(payload, &labels);
+
+        assert_eq!(view_model.title, "Preview Results");
+        assert_eq!(
+            view_model.summary,
+            "1 results in 12 ms via postgres (balanced)"
+        );
+        assert_eq!(view_model.preset, "preset = none");
+        assert_eq!(view_model.query_log_id, Some("log-1".to_string()));
+        assert_eq!(view_model.facets[0].name, "entity_type");
+        assert_eq!(view_model.items[0].source_label, "product | catalog");
+        assert_eq!(view_model.items[0].score_label, "score 0.988");
+        assert_eq!(view_model.items[0].snippet, "No snippet returned.");
+    }
+
+    #[test]
     fn analytics_formatting_helpers_are_stable() {
         assert_eq!(format_days(14), "14d");
         assert_eq!(format_percent_fraction(0.1234), "12.3%");
@@ -171,6 +292,85 @@ mod tests {
             document_source_path("doc-1", "catalog", "product"),
             "doc-1 / catalog / product"
         );
+    }
+
+    #[test]
+    fn analytics_summary_view_model_formats_render_ready_values() {
+        let view_model =
+            build_search_analytics_summary_view_model(&SearchAnalyticsSummaryPayload {
+                window_days: 30,
+                total_queries: 1000,
+                successful_queries: 900,
+                zero_result_queries: 45,
+                zero_result_rate: 0.045,
+                slow_queries: 12,
+                slow_query_rate: 0.012,
+                avg_took_ms: 18.42,
+                avg_results_per_query: 7.5,
+                unique_queries: 250,
+                clicked_queries: 375,
+                total_clicks: 420,
+                click_through_rate: 0.375,
+                abandonment_queries: 125,
+                abandonment_rate: 0.125,
+                last_query_at: Some("2026-05-31T00:00:00Z".to_string()),
+            });
+
+        assert_eq!(view_model.window, "30d");
+        assert_eq!(view_model.total_queries, "1000");
+        assert_eq!(view_model.click_through_rate, "37.5%");
+        assert_eq!(view_model.abandonment_rate, "12.5%");
+        assert_eq!(view_model.zero_result_rate, "4.5%");
+        assert_eq!(view_model.avg_took_ms, "18.4 ms");
+        assert_eq!(view_model.slow_query_rate, "1.2%");
+        assert_eq!(view_model.total_clicks, "420");
+        assert_eq!(view_model.abandonment_queries, "125");
+        assert_eq!(view_model.unique_queries, "250");
+    }
+
+    #[test]
+    fn analytics_row_view_models_format_table_values() {
+        let rows =
+            build_search_analytics_query_row_view_models(vec![SearchAnalyticsQueryRowPayload {
+                query: "boots".to_string(),
+                hits: 12,
+                zero_result_hits: 2,
+                clicks: 5,
+                avg_took_ms: 8.64,
+                avg_results: 3.25,
+                click_through_rate: 0.416,
+                abandonment_rate: 0.125,
+                last_seen_at: "2026-05-31T00:00:00Z".to_string(),
+            }]);
+
+        assert_eq!(rows[0].query, "boots");
+        assert_eq!(rows[0].hits, "12");
+        assert_eq!(rows[0].zero_result_hits, "2");
+        assert_eq!(rows[0].clicks, "5");
+        assert_eq!(rows[0].click_through_rate, "41.6%");
+        assert_eq!(rows[0].abandonment_rate, "12.5%");
+        assert_eq!(rows[0].avg_took_ms, "8.6 ms");
+        assert_eq!(rows[0].avg_results, "3.2");
+        assert_eq!(rows[0].last_seen_at, "2026-05-31T00:00:00Z");
+
+        let insights = build_search_analytics_insight_row_view_models(vec![
+            SearchAnalyticsInsightRowPayload {
+                query: "sneakers".to_string(),
+                hits: 20,
+                zero_result_hits: 0,
+                clicks: 3,
+                click_through_rate: 0.15,
+                abandonment_rate: 0.4,
+                recommendation: "Add synonym".to_string(),
+            },
+        ]);
+
+        assert_eq!(insights[0].query, "sneakers");
+        assert_eq!(insights[0].hits, "20");
+        assert_eq!(insights[0].zero_result_hits, "0");
+        assert_eq!(insights[0].clicks, "3");
+        assert_eq!(insights[0].click_through_rate, "15.0%");
+        assert_eq!(insights[0].recommendation, "Add synonym");
     }
 
     #[test]
@@ -242,6 +442,93 @@ mod tests {
         assert_eq!(
             label_value_summary("Newest indexed", "n/a"),
             "Newest indexed: n/a"
+        );
+    }
+
+    #[test]
+    fn lagging_document_row_view_models_format_render_ready_values() {
+        let rows =
+            build_lagging_search_document_row_view_models(vec![LaggingSearchDocumentPayload {
+                document_key: "product:boot-1".to_string(),
+                document_id: "boot-1".to_string(),
+                source_module: "catalog".to_string(),
+                entity_type: "product".to_string(),
+                locale: "en".to_string(),
+                status: "published".to_string(),
+                is_public: true,
+                title: "Boots".to_string(),
+                updated_at: "2026-05-31T00:01:00Z".to_string(),
+                indexed_at: "2026-05-31T00:00:00Z".to_string(),
+                lag_seconds: 61,
+            }]);
+
+        assert_eq!(rows[0].title, "Boots");
+        assert_eq!(rows[0].document_key, "product:boot-1");
+        assert_eq!(rows[0].source_status_label, "catalog/product (published)");
+        assert_eq!(rows[0].locale, "en");
+        assert_eq!(rows[0].lag, "61s");
+        assert_eq!(rows[0].indexed_at, "2026-05-31T00:00:00Z");
+        assert_eq!(rows[0].updated_at, "2026-05-31T00:01:00Z");
+    }
+
+    #[test]
+    fn diagnostics_card_view_model_formats_state_and_newest_indexed() {
+        let labels = SearchDiagnosticsLabels {
+            healthy: "healthy".to_string(),
+            inconsistent: "inconsistent".to_string(),
+            lagging: "lagging".to_string(),
+            not_indexed_yet: "not indexed yet".to_string(),
+            newest_indexed: "Newest indexed".to_string(),
+        };
+        let diagnostics = SearchDiagnosticsPayload {
+            tenant_id: "tenant-1".to_string(),
+            total_documents: 10,
+            public_documents: 8,
+            content_documents: 4,
+            product_documents: 6,
+            stale_documents: 2,
+            missing_documents: 1,
+            orphaned_documents: 0,
+            newest_indexed_at: None,
+            oldest_indexed_at: Some("2026-05-30T00:00:00Z".to_string()),
+            max_lag_seconds: 42,
+            state: "lagging".to_string(),
+        };
+
+        let view_model = build_search_diagnostics_card_view_model(diagnostics, &labels);
+
+        assert_eq!(view_model.state_label, "lagging");
+        assert_eq!(
+            view_model.badge_class,
+            "border-amber-200 bg-amber-50 text-amber-700"
+        );
+        assert_eq!(
+            view_model.newest_indexed_summary,
+            "Newest indexed: not indexed yet"
+        );
+
+        let unknown = build_search_diagnostics_card_view_model(
+            SearchDiagnosticsPayload {
+                tenant_id: "tenant-1".to_string(),
+                total_documents: 0,
+                public_documents: 0,
+                content_documents: 0,
+                product_documents: 0,
+                stale_documents: 0,
+                missing_documents: 0,
+                orphaned_documents: 0,
+                newest_indexed_at: Some("2026-05-31T00:00:00Z".to_string()),
+                oldest_indexed_at: None,
+                max_lag_seconds: 0,
+                state: "custom".to_string(),
+            },
+            &labels,
+        );
+
+        assert_eq!(unknown.state_label, "custom");
+        assert_eq!(
+            unknown.newest_indexed_summary,
+            "Newest indexed: 2026-05-31T00:00:00Z"
         );
     }
 
@@ -384,6 +671,93 @@ pub fn format_seconds(seconds: u64) -> String {
     format!("{}s", seconds)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchAnalyticsSummaryViewModel {
+    pub window: String,
+    pub total_queries: String,
+    pub click_through_rate: String,
+    pub abandonment_rate: String,
+    pub zero_result_rate: String,
+    pub avg_took_ms: String,
+    pub slow_query_rate: String,
+    pub total_clicks: String,
+    pub abandonment_queries: String,
+    pub unique_queries: String,
+}
+
+pub fn build_search_analytics_summary_view_model(
+    summary: &SearchAnalyticsSummaryPayload,
+) -> SearchAnalyticsSummaryViewModel {
+    SearchAnalyticsSummaryViewModel {
+        window: format_days(summary.window_days),
+        total_queries: summary.total_queries.to_string(),
+        click_through_rate: format_percent_fraction(summary.click_through_rate),
+        abandonment_rate: format_percent_fraction(summary.abandonment_rate),
+        zero_result_rate: format_percent_fraction(summary.zero_result_rate),
+        avg_took_ms: format_milliseconds(summary.avg_took_ms),
+        slow_query_rate: format_percent_fraction(summary.slow_query_rate),
+        total_clicks: summary.total_clicks.to_string(),
+        abandonment_queries: summary.abandonment_queries.to_string(),
+        unique_queries: summary.unique_queries.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchAnalyticsQueryRowViewModel {
+    pub query: String,
+    pub hits: String,
+    pub zero_result_hits: String,
+    pub clicks: String,
+    pub click_through_rate: String,
+    pub abandonment_rate: String,
+    pub avg_took_ms: String,
+    pub avg_results: String,
+    pub last_seen_at: String,
+}
+
+pub fn build_search_analytics_query_row_view_models(
+    rows: Vec<SearchAnalyticsQueryRowPayload>,
+) -> Vec<SearchAnalyticsQueryRowViewModel> {
+    rows.into_iter()
+        .map(|row| SearchAnalyticsQueryRowViewModel {
+            query: row.query,
+            hits: row.hits.to_string(),
+            zero_result_hits: row.zero_result_hits.to_string(),
+            clicks: row.clicks.to_string(),
+            click_through_rate: format_percent_fraction(row.click_through_rate),
+            abandonment_rate: format_percent_fraction(row.abandonment_rate),
+            avg_took_ms: format_milliseconds(row.avg_took_ms),
+            avg_results: format_decimal_1(row.avg_results),
+            last_seen_at: row.last_seen_at,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchAnalyticsInsightRowViewModel {
+    pub query: String,
+    pub hits: String,
+    pub zero_result_hits: String,
+    pub clicks: String,
+    pub click_through_rate: String,
+    pub recommendation: String,
+}
+
+pub fn build_search_analytics_insight_row_view_models(
+    rows: Vec<SearchAnalyticsInsightRowPayload>,
+) -> Vec<SearchAnalyticsInsightRowViewModel> {
+    rows.into_iter()
+        .map(|row| SearchAnalyticsInsightRowViewModel {
+            query: row.query,
+            hits: row.hits.to_string(),
+            zero_result_hits: row.zero_result_hits.to_string(),
+            clicks: row.clicks.to_string(),
+            click_through_rate: format_percent_fraction(row.click_through_rate),
+            recommendation: row.recommendation,
+        })
+        .collect()
+}
+
 pub fn document_source_path(document_id: &str, source_module: &str, entity_type: &str) -> String {
     format!("{} / {} / {}", document_id, source_module, entity_type)
 }
@@ -429,6 +803,78 @@ pub fn consistency_issue_badge_class(issue_kind: &str) -> &'static str {
     } else {
         "border-orange-200 bg-orange-50 text-orange-700"
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchDiagnosticsLabels {
+    pub healthy: String,
+    pub inconsistent: String,
+    pub lagging: String,
+    pub not_indexed_yet: String,
+    pub newest_indexed: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchDiagnosticsCardViewModel {
+    pub badge_class: &'static str,
+    pub state_label: String,
+    pub newest_indexed_summary: String,
+}
+
+pub fn build_search_diagnostics_card_view_model(
+    diagnostics: SearchDiagnosticsPayload,
+    labels: &SearchDiagnosticsLabels,
+) -> SearchDiagnosticsCardViewModel {
+    let state_label = match diagnostics.state.as_str() {
+        "healthy" => labels.healthy.clone(),
+        "inconsistent" => labels.inconsistent.clone(),
+        "lagging" => labels.lagging.clone(),
+        other => other.to_string(),
+    };
+    let newest_indexed = value_or_fallback(
+        diagnostics.newest_indexed_at,
+        labels.not_indexed_yet.as_str(),
+    );
+
+    SearchDiagnosticsCardViewModel {
+        badge_class: diagnostics_state_badge_class(diagnostics.state.as_str()),
+        state_label,
+        newest_indexed_summary: label_value_summary(
+            labels.newest_indexed.as_str(),
+            newest_indexed.as_str(),
+        ),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaggingSearchDocumentRowViewModel {
+    pub title: String,
+    pub document_key: String,
+    pub source_status_label: String,
+    pub locale: String,
+    pub lag: String,
+    pub indexed_at: String,
+    pub updated_at: String,
+}
+
+pub fn build_lagging_search_document_row_view_models(
+    rows: Vec<LaggingSearchDocumentPayload>,
+) -> Vec<LaggingSearchDocumentRowViewModel> {
+    rows.into_iter()
+        .map(|row| LaggingSearchDocumentRowViewModel {
+            title: row.title,
+            document_key: row.document_key,
+            source_status_label: source_entity_status_label(
+                &row.source_module,
+                &row.entity_type,
+                &row.status,
+            ),
+            locale: row.locale,
+            lag: format_seconds(row.lag_seconds),
+            indexed_at: row.indexed_at,
+            updated_at: row.updated_at,
+        })
+        .collect()
 }
 
 pub fn tab_class(active: bool) -> &'static str {
