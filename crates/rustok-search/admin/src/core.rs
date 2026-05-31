@@ -2,7 +2,9 @@ use rustok_api::{
     normalize_ui_text, parse_ui_csv, route_query_update_for_text, UiRouteQueryUpdate,
 };
 
-use crate::model::{SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload};
+use crate::model::{
+    SearchAnalyticsSummaryPayload, SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload,
+};
 
 pub fn parse_csv(value: &str) -> Vec<String> {
     parse_ui_csv(value)
@@ -291,6 +293,40 @@ mod tests {
     }
 
     #[test]
+    fn analytics_summary_view_model_formats_render_ready_values() {
+        let view_model =
+            build_search_analytics_summary_view_model(&SearchAnalyticsSummaryPayload {
+                window_days: 30,
+                total_queries: 1000,
+                successful_queries: 900,
+                zero_result_queries: 45,
+                zero_result_rate: 0.045,
+                slow_queries: 12,
+                slow_query_rate: 0.012,
+                avg_took_ms: 18.42,
+                avg_results_per_query: 7.5,
+                unique_queries: 250,
+                clicked_queries: 375,
+                total_clicks: 420,
+                click_through_rate: 0.375,
+                abandonment_queries: 125,
+                abandonment_rate: 0.125,
+                last_query_at: Some("2026-05-31T00:00:00Z".to_string()),
+            });
+
+        assert_eq!(view_model.window, "30d");
+        assert_eq!(view_model.total_queries, "1000");
+        assert_eq!(view_model.click_through_rate, "37.5%");
+        assert_eq!(view_model.abandonment_rate, "12.5%");
+        assert_eq!(view_model.zero_result_rate, "4.5%");
+        assert_eq!(view_model.avg_took_ms, "18.4 ms");
+        assert_eq!(view_model.slow_query_rate, "1.2%");
+        assert_eq!(view_model.total_clicks, "420");
+        assert_eq!(view_model.abandonment_queries, "125");
+        assert_eq!(view_model.unique_queries, "250");
+    }
+
+    #[test]
     fn navigation_and_rebuild_helpers_are_stable() {
         assert_eq!(module_overview_href("search"), "/modules/search");
         assert_eq!(
@@ -499,6 +535,37 @@ pub fn format_decimal_1(value: f64) -> String {
 
 pub fn format_seconds(seconds: u64) -> String {
     format!("{}s", seconds)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchAnalyticsSummaryViewModel {
+    pub window: String,
+    pub total_queries: String,
+    pub click_through_rate: String,
+    pub abandonment_rate: String,
+    pub zero_result_rate: String,
+    pub avg_took_ms: String,
+    pub slow_query_rate: String,
+    pub total_clicks: String,
+    pub abandonment_queries: String,
+    pub unique_queries: String,
+}
+
+pub fn build_search_analytics_summary_view_model(
+    summary: &SearchAnalyticsSummaryPayload,
+) -> SearchAnalyticsSummaryViewModel {
+    SearchAnalyticsSummaryViewModel {
+        window: format_days(summary.window_days),
+        total_queries: summary.total_queries.to_string(),
+        click_through_rate: format_percent_fraction(summary.click_through_rate),
+        abandonment_rate: format_percent_fraction(summary.abandonment_rate),
+        zero_result_rate: format_percent_fraction(summary.zero_result_rate),
+        avg_took_ms: format_milliseconds(summary.avg_took_ms),
+        slow_query_rate: format_percent_fraction(summary.slow_query_rate),
+        total_clicks: summary.total_clicks.to_string(),
+        abandonment_queries: summary.abandonment_queries.to_string(),
+        unique_queries: summary.unique_queries.to_string(),
+    }
 }
 
 pub fn document_source_path(document_id: &str, source_module: &str, entity_type: &str) -> String {

@@ -991,22 +991,22 @@ fn analytics_view(
 
 fn analytics_panel(analytics: SearchAnalyticsPayload, ui_locale: Option<String>) -> impl IntoView {
     let locale = ui_locale.as_deref();
-    let summary = analytics.summary.clone();
+    let summary = core::build_search_analytics_summary_view_model(&analytics.summary);
     view! {
         <div class="space-y-6">
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <InfoCard title=t(locale, "search.analytics.summary.window.title", "Window") value=core::format_days(summary.window_days) detail=t(locale, "search.analytics.summary.window.detail", "Rolling analytics lookback window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.queries.title", "Queries") value=summary.total_queries.to_string() detail=t(locale, "search.analytics.summary.queries.detail", "All logged search queries in the current window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.ctr.title", "CTR") value=core::format_percent_fraction(summary.click_through_rate) detail=t(locale, "search.analytics.summary.ctr.detail", "Share of eligible successful queries that received at least one click.") />
-                <InfoCard title=t(locale, "search.analytics.summary.abandonment.title", "Abandonment") value=core::format_percent_fraction(summary.abandonment_rate) detail=t(locale, "search.analytics.summary.abandonment.detail", "Eligible successful queries that ended without any tracked click.") />
-                <InfoCard title=t(locale, "search.analytics.summary.zeroResultRate.title", "Zero-result rate") value=core::format_percent_fraction(summary.zero_result_rate) detail=t(locale, "search.analytics.summary.zeroResultRate.detail", "Share of successful queries that returned no results.") />
+                <InfoCard title=t(locale, "search.analytics.summary.window.title", "Window") value=summary.window detail=t(locale, "search.analytics.summary.window.detail", "Rolling analytics lookback window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.queries.title", "Queries") value=summary.total_queries detail=t(locale, "search.analytics.summary.queries.detail", "All logged search queries in the current window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.ctr.title", "CTR") value=summary.click_through_rate detail=t(locale, "search.analytics.summary.ctr.detail", "Share of eligible successful queries that received at least one click.") />
+                <InfoCard title=t(locale, "search.analytics.summary.abandonment.title", "Abandonment") value=summary.abandonment_rate detail=t(locale, "search.analytics.summary.abandonment.detail", "Eligible successful queries that ended without any tracked click.") />
+                <InfoCard title=t(locale, "search.analytics.summary.zeroResultRate.title", "Zero-result rate") value=summary.zero_result_rate detail=t(locale, "search.analytics.summary.zeroResultRate.detail", "Share of successful queries that returned no results.") />
             </div>
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <InfoCard title=t(locale, "search.analytics.summary.avgLatency.title", "Avg latency") value=core::format_milliseconds(summary.avg_took_ms) detail=t(locale, "search.analytics.summary.avgLatency.detail", "Average PostgreSQL search execution time.") />
-                <InfoCard title=t(locale, "search.analytics.summary.slowQueryRate.title", "Slow-query rate") value=core::format_percent_fraction(summary.slow_query_rate) detail=t(locale, "search.analytics.summary.slowQueryRate.detail", "Share of successful queries at or above the current slow-query threshold.") />
-                <InfoCard title=t(locale, "search.analytics.summary.totalClicks.title", "Total clicks") value=summary.total_clicks.to_string() detail=t(locale, "search.analytics.summary.totalClicks.detail", "All tracked result clicks in the current window.") />
-                <InfoCard title=t(locale, "search.analytics.summary.abandonedQueries.title", "Abandoned queries") value=summary.abandonment_queries.to_string() detail=t(locale, "search.analytics.summary.abandonedQueries.detail", "Successful queries older than the click-eval window with no clicks.") />
-                <InfoCard title=t(locale, "search.analytics.summary.uniqueQueries.title", "Unique queries") value=summary.unique_queries.to_string() detail=t(locale, "search.analytics.summary.uniqueQueries.detail", "Distinct normalized queries observed in the window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.avgLatency.title", "Avg latency") value=summary.avg_took_ms detail=t(locale, "search.analytics.summary.avgLatency.detail", "Average PostgreSQL search execution time.") />
+                <InfoCard title=t(locale, "search.analytics.summary.slowQueryRate.title", "Slow-query rate") value=summary.slow_query_rate detail=t(locale, "search.analytics.summary.slowQueryRate.detail", "Share of successful queries at or above the current slow-query threshold.") />
+                <InfoCard title=t(locale, "search.analytics.summary.totalClicks.title", "Total clicks") value=summary.total_clicks detail=t(locale, "search.analytics.summary.totalClicks.detail", "All tracked result clicks in the current window.") />
+                <InfoCard title=t(locale, "search.analytics.summary.abandonedQueries.title", "Abandoned queries") value=summary.abandonment_queries detail=t(locale, "search.analytics.summary.abandonedQueries.detail", "Successful queries older than the click-eval window with no clicks.") />
+                <InfoCard title=t(locale, "search.analytics.summary.uniqueQueries.title", "Unique queries") value=summary.unique_queries detail=t(locale, "search.analytics.summary.uniqueQueries.detail", "Distinct normalized queries observed in the window.") />
             </div>
             <div class="grid gap-6 xl:grid-cols-2">
                 <section class="rounded-xl border border-border bg-background p-4">
