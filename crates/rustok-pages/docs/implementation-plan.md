@@ -50,9 +50,27 @@
 
 ### Sprint scope (must-have)
 
-- [ ] Typed fallback matrix: `builder_off`, `preview_off`, `publish_off` с ожидаемыми runtime/error outcomes.
+- [x] Typed fallback matrix: `builder_off`, `preview_off`, `publish_off` с ожидаемыми runtime/error outcomes.
 - [x] Unified builder error catalog для `validation/sanitize/runtime/feature-disabled` без расхождения между GraphQL, `#[server]` и UI adapters.
 - [ ] CI fallback gate для профилей `builder.enabled=false` и `builder.publish.enabled=false`.
+
+### Fallback matrix (admin/list/read/publish snapshots)
+
+Эта матрица является consumer-side snapshot для `rustok-pages` и должна совпадать с provider matrix в `rustok-page-builder::rollout`. Read/list/menu paths остаются owned by pages и не должны зависеть от доступности builder capability endpoint.
+
+| Профиль | Admin visual path | Preview | Properties/tree | Publish | Read/list/storefront paths | Expected typed error |
+|---|---|---|---|---|---|---|
+| `all_on` | `editable_builder` | `available` | `available` | `available` | `stable` | — |
+| `publish_off` | `editable_builder_publish_disabled` | `available` | `available` | `typed_feature_disabled_error` | `stable` | `publish` |
+| `preview_off` | `preview_hidden_properties_available` | `typed_feature_disabled_error` | `available` | `typed_feature_disabled_error` | `stable` | `preview` |
+| `builder_off` | `readonly_fallback` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `stable` | `builder` |
+
+Операционные заметки:
+
+1. `builder_off` не отключает pages-owned list/read/menu runtime; admin visual path обязан показать read-only fallback вместо 5xx.
+2. `publish_off` возвращает typed `feature-disabled`/`typed_feature_disabled_error` только на builder publish path; legacy/direct read paths остаются стабильными.
+3. `preview_off` скрывает или блокирует preview capability, но не должен запрещать properties/tree чтение, если `builder.properties.enabled=true`.
+
 - [ ] Wave 0 evidence template: flags snapshot + smoke output + observability snapshot + keep/rollback decision.
 
 ### Out of scope (for this sprint)
@@ -150,8 +168,8 @@ Rollback trigger:
 ### B2. Fallback & error semantics
 
 - [x] Закрепить единый typed error catalog для builder-related runtime ошибок (`validation/sanitize/runtime/feature-disabled`).
-- [ ] Добавить fallback snapshots в docs для admin/list/read/publish surfaces.
-- [ ] Убедиться, что partial disable не ломает page read/list/menu paths в storefront/admin.
+- [x] Добавить fallback snapshots в docs для admin/list/read/publish surfaces.
+- [~] Убедиться, что partial disable не ломает page read/list/menu paths в storefront/admin (docs/runtime matrix зафиксированы, targeted integration checks остаются в B4).
 
 ### B3. Operability & rollout
 

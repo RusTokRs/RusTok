@@ -116,6 +116,23 @@
 2. Выключение `builder.enabled` переводит UI в fallback-поведение (read-only + диагностическое сообщение), без 5xx на storefront/admin list views.
 3. Для pilot-tenants запрещено включать `builder.publish.enabled=true`, если `builder.preview.enabled=false`.
 
+### Фаза 3.1.1 — Fallback matrix для capability-профилей
+
+Единая матрица fallback-поведения синхронизирована с runtime helper-ами `rustok-page-builder::rollout` и consumer manifest `rustok-pages`. Она задаёт минимальный ожидаемый outcome для Next/Leptos/Flutter adapters без требования 1:1 UI-клона.
+
+| Профиль | Admin visual path | Preview | Properties/tree | Publish | Read/list/storefront paths | Expected typed error |
+|---|---|---|---|---|---|---|
+| `all_on` | `editable_builder` | `available` | `available` | `available` | `stable` | — |
+| `publish_off` | `editable_builder_publish_disabled` | `available` | `available` | `typed_feature_disabled_error` | `stable` | `publish` |
+| `preview_off` | `preview_hidden_properties_available` | `typed_feature_disabled_error` | `available` | `typed_feature_disabled_error` | `stable` | `preview` |
+| `builder_off` | `readonly_fallback` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `stable` | `builder` |
+
+Правила синхронизации:
+
+1. При изменении профилей сначала обновляется runtime matrix в `crates/rustok-page-builder/src/rollout.rs`.
+2. Затем синхронизируются consumer manifest/docs (`rustok-pages`) и этот центральный план.
+3. Anti-drift gate `verify-page-builder-fallback-matrix-docs.mjs` должен оставаться частью baseline-проверки до Wave 1.
+
 ### Фаза 3.2 — Матрица rollout по волнам
 
 Ниже — минимально обязательная матрица включений для baseline rollout.

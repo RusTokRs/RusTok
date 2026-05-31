@@ -10,6 +10,122 @@ pub struct BuilderCapabilityFlags {
     pub legacy_bridge_readonly: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuilderToggleProfile {
+    AllOn,
+    PublishOff,
+    PreviewOff,
+    BuilderOff,
+}
+
+impl BuilderToggleProfile {
+    pub const ALL: [Self; 4] = [
+        Self::AllOn,
+        Self::PublishOff,
+        Self::PreviewOff,
+        Self::BuilderOff,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllOn => "all_on",
+            Self::PublishOff => "publish_off",
+            Self::PreviewOff => "preview_off",
+            Self::BuilderOff => "builder_off",
+        }
+    }
+
+    pub fn flags(self) -> BuilderCapabilityFlags {
+        match self {
+            Self::AllOn => BuilderCapabilityFlags {
+                builder_enabled: true,
+                preview_enabled: true,
+                properties_enabled: true,
+                publish_enabled: true,
+                legacy_bridge_readonly: true,
+            },
+            Self::PublishOff => BuilderCapabilityFlags {
+                builder_enabled: true,
+                preview_enabled: true,
+                properties_enabled: true,
+                publish_enabled: false,
+                legacy_bridge_readonly: true,
+            },
+            Self::PreviewOff => BuilderCapabilityFlags {
+                builder_enabled: true,
+                preview_enabled: false,
+                properties_enabled: true,
+                publish_enabled: false,
+                legacy_bridge_readonly: true,
+            },
+            Self::BuilderOff => BuilderCapabilityFlags {
+                builder_enabled: false,
+                preview_enabled: false,
+                properties_enabled: false,
+                publish_enabled: false,
+                legacy_bridge_readonly: true,
+            },
+        }
+    }
+
+    pub fn fallback_outcome(self) -> BuilderFallbackOutcome {
+        match self {
+            Self::AllOn => BuilderFallbackOutcome {
+                profile: self,
+                admin_visual_path: "editable_builder",
+                preview: "available",
+                properties: "available",
+                publish: "available",
+                read_paths: "stable",
+                expected_error: None,
+            },
+            Self::PublishOff => BuilderFallbackOutcome {
+                profile: self,
+                admin_visual_path: "editable_builder_publish_disabled",
+                preview: "available",
+                properties: "available",
+                publish: "typed_feature_disabled_error",
+                read_paths: "stable",
+                expected_error: Some("publish"),
+            },
+            Self::PreviewOff => BuilderFallbackOutcome {
+                profile: self,
+                admin_visual_path: "preview_hidden_properties_available",
+                preview: "typed_feature_disabled_error",
+                properties: "available",
+                publish: "typed_feature_disabled_error",
+                read_paths: "stable",
+                expected_error: Some("preview"),
+            },
+            Self::BuilderOff => BuilderFallbackOutcome {
+                profile: self,
+                admin_visual_path: "readonly_fallback",
+                preview: "typed_feature_disabled_error",
+                properties: "typed_feature_disabled_error",
+                publish: "typed_feature_disabled_error",
+                read_paths: "stable",
+                expected_error: Some("builder"),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuilderFallbackOutcome {
+    pub profile: BuilderToggleProfile,
+    pub admin_visual_path: &'static str,
+    pub preview: &'static str,
+    pub properties: &'static str,
+    pub publish: &'static str,
+    pub read_paths: &'static str,
+    pub expected_error: Option<&'static str>,
+}
+
+pub fn fallback_matrix() -> [BuilderFallbackOutcome; 4] {
+    BuilderToggleProfile::ALL.map(BuilderToggleProfile::fallback_outcome)
+}
+
 impl Default for BuilderCapabilityFlags {
     fn default() -> Self {
         Self {

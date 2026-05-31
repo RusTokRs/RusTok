@@ -11,6 +11,7 @@ const checks = [
   "verify-page-builder-contract-parity.mjs",
   "verify-page-builder-consumer-readiness.mjs",
   "verify-page-builder-fallback-profiles.mjs",
+  "verify-page-builder-fallback-matrix-docs.mjs",
   "verify-page-builder-toggle-profiles-consistency.mjs",
   "verify-page-builder-terminology.mjs",
 ];

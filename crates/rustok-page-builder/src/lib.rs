@@ -61,7 +61,10 @@ mod tests {
         BuilderCapabilityKind, BuilderNodePropertiesInput, PublishPageBuilderInput,
         PublishPageBuilderResult,
     };
-    use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
+    use crate::rollout::{
+        ensure_capability, fallback_matrix, BuilderCapabilityFlags, BuilderRolloutError,
+        BuilderToggleProfile,
+    };
 
     #[test]
     fn module_metadata_is_stable() {
@@ -162,6 +165,54 @@ mod tests {
         let err = ensure_capability(&flags, BuilderCapabilityKind::Publish)
             .expect_err("publish should be disabled");
         assert_eq!(err, BuilderRolloutError::CapabilityDisabled("publish"));
+    }
+
+    #[test]
+    fn rollout_toggle_profiles_match_baseline_matrix() {
+        let profiles = BuilderToggleProfile::ALL;
+        let names: Vec<_> = profiles.iter().map(|profile| profile.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["all_on", "publish_off", "preview_off", "builder_off"]
+        );
+
+        for profile in profiles {
+            profile
+                .flags()
+                .validate()
+                .unwrap_or_else(|err| panic!("profile {} must be valid: {err}", profile.as_str()));
+        }
+
+        let publish_off = BuilderToggleProfile::PublishOff.flags();
+        assert!(publish_off.is_allowed(BuilderCapabilityKind::Preview));
+        assert!(publish_off.is_allowed(BuilderCapabilityKind::Properties));
+        assert!(!publish_off.is_allowed(BuilderCapabilityKind::Publish));
+
+        let preview_off = BuilderToggleProfile::PreviewOff.flags();
+        assert!(!preview_off.is_allowed(BuilderCapabilityKind::Preview));
+        assert!(preview_off.is_allowed(BuilderCapabilityKind::Properties));
+        assert!(!preview_off.is_allowed(BuilderCapabilityKind::Publish));
+
+        let builder_off = BuilderToggleProfile::BuilderOff.flags();
+        assert!(!builder_off.is_allowed(BuilderCapabilityKind::Preview));
+        assert!(!builder_off.is_allowed(BuilderCapabilityKind::Properties));
+        assert!(!builder_off.is_allowed(BuilderCapabilityKind::Publish));
+    }
+
+    #[test]
+    fn fallback_matrix_declares_stable_runtime_outcomes() {
+        let matrix = fallback_matrix();
+        assert_eq!(matrix.len(), 4);
+
+        let publish_off = BuilderToggleProfile::PublishOff.fallback_outcome();
+        assert_eq!(publish_off.publish, "typed_feature_disabled_error");
+        assert_eq!(publish_off.read_paths, "stable");
+
+        let builder_off = BuilderToggleProfile::BuilderOff.fallback_outcome();
+        assert_eq!(builder_off.admin_visual_path, "readonly_fallback");
+        assert_eq!(builder_off.preview, "typed_feature_disabled_error");
+        assert_eq!(builder_off.properties, "typed_feature_disabled_error");
+        assert_eq!(builder_off.publish, "typed_feature_disabled_error");
     }
 
     #[test]
