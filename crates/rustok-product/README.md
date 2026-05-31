@@ -32,6 +32,9 @@
 - Keep product-owned admin/storefront UI aligned with that split by rendering
   catalog snapshot pricing separately from pricing-module previews instead of
   using generic `variants.prices` as resolved pricing.
+- Keep storefront rail presentation state in the framework-agnostic storefront
+  core so Leptos remains a host-context/render adapter over native + GraphQL
+  transport parity.
 - Product module metadata for runtime registration.
 
 ## Interactions

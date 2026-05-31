@@ -62,6 +62,35 @@ pub struct SelectedProductViewModel {
     pub pricing_href: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductCatalogRailLabels {
+    pub title: String,
+    pub total_template: String,
+    pub empty_message: String,
+    pub open_label: String,
+    pub catalog_fallback_label: String,
+    pub vendor_fallback_label: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductCatalogRailItemViewModel {
+    pub product_type: String,
+    pub title: String,
+    pub vendor: String,
+    pub seller_boundary: String,
+    pub published_at: String,
+    pub href: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductCatalogRailViewModel {
+    pub title: String,
+    pub total_label: String,
+    pub empty_message: String,
+    pub open_label: String,
+    pub items: Vec<ProductCatalogRailItemViewModel>,
+}
+
 pub fn build_selected_product_view_model(
     product: &ProductDetail,
     pricing: Option<&ProductPricingDetail>,
@@ -307,6 +336,47 @@ pub fn format_pricing_context(locale: Option<&str>, context: &ProductPricingCont
     parts.join(" | ")
 }
 
+pub fn count_label(template: &str, total: u64) -> String {
+    template.replace("{count}", &total.to_string())
+}
+
+pub fn build_product_catalog_rail_view_model(
+    module_route_base: &str,
+    items: &[crate::model::ProductListItem],
+    total: u64,
+    locale: Option<&str>,
+    labels: ProductCatalogRailLabels,
+) -> ProductCatalogRailViewModel {
+    let items = items
+        .iter()
+        .map(|product| ProductCatalogRailItemViewModel {
+            product_type: product
+                .product_type
+                .clone()
+                .unwrap_or_else(|| labels.catalog_fallback_label.clone()),
+            title: product.title.clone(),
+            vendor: product
+                .vendor
+                .clone()
+                .unwrap_or_else(|| labels.vendor_fallback_label.clone()),
+            seller_boundary: format_seller_boundary(locale, product.seller_id.as_deref()),
+            published_at: product
+                .published_at
+                .clone()
+                .unwrap_or_else(|| product.created_at.clone()),
+            href: format!("{module_route_base}?handle={}", product.handle),
+        })
+        .collect();
+
+    ProductCatalogRailViewModel {
+        title: labels.title,
+        total_label: count_label(labels.total_template.as_str(), total),
+        empty_message: labels.empty_message,
+        open_label: labels.open_label,
+        items,
+    }
+}
+
 pub fn build_storefront_pricing_href(
     module_route_base: &str,
     handle: Option<&str>,
@@ -450,6 +520,49 @@ mod tests {
             build_storefront_pricing_href("/products", Some("boot"), None, Some(&variant)),
             "/products?handle=boot&currency=USD".to_string(),
         );
+    }
+
+    #[test]
+    fn catalog_rail_view_model_is_built_without_ui_runtime() {
+        let item = crate::model::ProductListItem {
+            id: "product-1".to_string(),
+            status: "published".to_string(),
+            seller_id: Some("seller-1".to_string()),
+            vendor: None,
+            product_type: None,
+            tags: vec!["featured".to_string()],
+            title: "Trail boot".to_string(),
+            handle: "trail-boot".to_string(),
+            published_at: None,
+            created_at: "2026-05-29T00:00:00Z".to_string(),
+        };
+
+        let view_model = build_product_catalog_rail_view_model(
+            "/products",
+            &[item],
+            3,
+            Some("en"),
+            ProductCatalogRailLabels {
+                title: "Published products".to_string(),
+                total_template: "{count} total".to_string(),
+                empty_message: "No products".to_string(),
+                open_label: "Open".to_string(),
+                catalog_fallback_label: "catalog".to_string(),
+                vendor_fallback_label: "Independent label".to_string(),
+            },
+        );
+
+        assert_eq!(view_model.title, "Published products");
+        assert_eq!(view_model.total_label, "3 total");
+        assert_eq!(view_model.open_label, "Open");
+        assert_eq!(view_model.items.len(), 1);
+        let item = &view_model.items[0];
+        assert_eq!(item.product_type, "catalog");
+        assert_eq!(item.title, "Trail boot");
+        assert_eq!(item.vendor, "Independent label");
+        assert_eq!(item.seller_boundary, "seller id: seller-1");
+        assert_eq!(item.published_at, "2026-05-29T00:00:00Z");
+        assert_eq!(item.href, "/products?handle=trail-boot");
     }
 
     #[test]

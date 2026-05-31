@@ -63,7 +63,7 @@ capability crate-ов и host-приложений в RusToK.
 | `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.4: admin REST/GraphQL return decision-tree transport published over shared `PostOrderOrchestrationService`) |
 | `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
 | `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` (slice #15: storefront rail list presentation data moved into core view-model) |
-| `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront route/query state, selected-product view-model, and pricing/seller helpers moved into framework-agnostic core) |
+| `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront catalog rail presentation joined route/query state, selected-product view-model, and pricing/seller helpers in framework-agnostic core) |
 | `customer` | admin | `in_progress` | `in_progress` | `crates/rustok-customer/docs/implementation-plan.md` |
 | `pricing` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pricing/docs/implementation-plan.md` |
 | `inventory` | admin | `in_progress` | `in_progress` | `crates/rustok-inventory/docs/implementation-plan.md` |

@@ -5,7 +5,8 @@ mod model;
 mod transport;
 
 use crate::core::{
-    build_selected_product_view_model, build_storefront_route_input, format_seller_boundary,
+    build_product_catalog_rail_view_model, build_selected_product_view_model,
+    build_storefront_route_input, ProductCatalogRailLabels,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -221,33 +222,59 @@ fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
         .cloned()
         .unwrap_or_else(|| "products".to_string());
     let module_route_base = route_context.module_route_base(route_segment.as_str());
+    let view_model = build_product_catalog_rail_view_model(
+        module_route_base.as_str(),
+        &items,
+        total,
+        locale.as_deref(),
+        ProductCatalogRailLabels {
+            title: t(
+                locale.as_deref(),
+                "product.list.title",
+                "Published products",
+            ),
+            total_template: t(locale.as_deref(), "product.list.total", "{count} total"),
+            empty_message: t(
+                locale.as_deref(),
+                "product.list.empty",
+                "No published products are available yet.",
+            ),
+            open_label: t(locale.as_deref(), "product.list.open", "Open"),
+            catalog_fallback_label: t(locale.as_deref(), "product.selected.catalog", "catalog"),
+            vendor_fallback_label: t(
+                locale.as_deref(),
+                "product.list.vendorFallback",
+                "Independent label",
+            ),
+        },
+    );
 
-    if items.is_empty() {
-        return view! { <article class="rounded-3xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(locale.as_deref(), "product.list.empty", "No published products are available yet.")}</article> }.into_any();
+    if view_model.items.is_empty() {
+        return view! { <article class="rounded-3xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{view_model.empty_message}</article> }.into_any();
     }
+
+    let open_label = view_model.open_label.clone();
 
     view! {
         <div class="space-y-4">
             <div class="flex items-center justify-between gap-3">
-                <h3 class="text-lg font-semibold text-card-foreground">{t(locale.as_deref(), "product.list.title", "Published products")}</h3>
+                <h3 class="text-lg font-semibold text-card-foreground">{view_model.title.clone()}</h3>
                 <span class="text-sm text-muted-foreground">
-                    {t(locale.as_deref(), "product.list.total", "{count} total").replace("{count}", &total.to_string())}
+                    {view_model.total_label.clone()}
                 </span>
             </div>
             <div class="space-y-3">
-                {items.into_iter().map(|product| {
-                    let locale = locale.clone();
-                    let href = format!("{module_route_base}?handle={}", product.handle);
-                    let seller_boundary = format_seller_boundary(locale.as_deref(), product.seller_id.as_deref());
+                {view_model.items.into_iter().map(|product| {
+                    let open_label = open_label.clone();
                     view! {
                         <article class="rounded-2xl border border-border bg-background p-5">
-                            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{product.product_type.unwrap_or_else(|| t(locale.as_deref(), "product.selected.catalog", "catalog"))}</div>
+                            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{product.product_type}</div>
                             <h4 class="mt-2 text-base font-semibold text-card-foreground">{product.title}</h4>
-                            <p class="mt-2 text-sm text-muted-foreground">{product.vendor.unwrap_or_else(|| t(locale.as_deref(), "product.list.vendorFallback", "Independent label"))}</p>
-                            <p class="mt-1 text-xs text-muted-foreground">{seller_boundary}</p>
+                            <p class="mt-2 text-sm text-muted-foreground">{product.vendor}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">{product.seller_boundary}</p>
                             <div class="mt-4 flex items-center justify-between gap-3">
-                                <span class="text-xs text-muted-foreground">{product.published_at.unwrap_or(product.created_at)}</span>
-                                <a class="inline-flex text-sm font-medium text-primary hover:underline" href=href>{t(locale.as_deref(), "product.list.open", "Open")}</a>
+                                <span class="text-xs text-muted-foreground">{product.published_at}</span>
+                                <a class="inline-flex text-sm font-medium text-primary hover:underline" href=product.href>{open_label}</a>
                             </div>
                         </article>
                     }
