@@ -1123,18 +1123,18 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | ⬜ Planned | **Phase 5 — Offline/advanced sync (optional)** | Добавить офлайн-сценарии только после продуктового подтверждения требований. | [Open questions и ограничения](#open-questions-и-ограничения), [Риски и митигации](#риски-и-митигации) | Есть утверждённые offline requirements и реализована целевая стратегия sync/outbox. |
 
 
-#### Операционный статус плана (обновлено: 2026-05-30, Phase 1 lifecycle recovery actions)
+#### Операционный статус плана (обновлено: 2026-05-31, Phase 1 operation history/recovery screen)
 
 - **FFA в плане отмечен:** ✅ Да. FFA-baseline явно зафиксирован в `Phase 0 — Foundation` и отдельно закреплён в anti-drift guardrail разделе.
-- **Текущий фокус выполнения:** `Phase 1 — Pilot module` (статус `🟡 In progress`) поверх закрытого host adapter seam; первый mutation-backed operator action для `modules` добавлен через canonical GraphQL `toggleModule`, permission gate берётся из GraphQL `me.permissions`, а retryable post-hook failures получают recovery feedback и retry/compensation actions через существующие lifecycle GraphQL contracts без feature-local transport-клиентов. `Phase 2 — Registry/codegen` остаётся в поддерживающем режиме без изменения platform contract. В отдельном host-треке добавлен `rustok_frontend_mobile` как customer storefront shell, чтобы не смешивать admin/operator и storefront UX.
-- **Следующая точка контроля:** расширить modules pilot до более детального operation history/recovery screen, а storefront mobile — к первому module-owned catalog/cart package, не добавляя feature-local transport-клиентов.
+- **Текущий фокус выполнения:** `Phase 1 — Pilot module` (статус `🟡 In progress`) поверх закрытого host adapter seam; первый mutation-backed operator action для `modules` добавлен через canonical GraphQL `toggleModule`, permission gate берётся из GraphQL `me.permissions`, а retryable post-hook failures получают recovery feedback, retry/compensation actions и отдельный operation history/recovery screen через существующие lifecycle GraphQL contracts без feature-local transport-клиентов. `Phase 2 — Registry/codegen` остаётся в поддерживающем режиме без изменения platform contract. В отдельном host-треке добавлен `rustok_frontend_mobile` как customer storefront shell, чтобы не смешивать admin/operator и storefront UX.
+- **Следующая точка контроля:** закрепить E2E evidence operation history/recovery screen в CI-сигнале и двигать storefront mobile к первому module-owned catalog/cart package, не добавляя feature-local transport-клиентов.
 
 #### Ближайший execution backlog (Phase 1 pilot)
 
 1. **Registry schema freeze (FFA-safe):** зафиксировать минимальный mobile registry contract (`module_slug`, `surface_kind`, `route_segment`, `child_pages`, `permissions`, `locale_namespace`) без Flutter-only полей.
 2. **Codegen pipeline:** добавить reproducible генерацию `mobile_manifest.g.dart` из manifest snapshot + CI-проверку diff generated-файлов (в работе: локальная verify-команда уже фиксирует stale-state для manifest + snapshot).
 3. **Host integration seam:** подключить registry через единый adapter-слой (`module_entry_adapter`) и убрать ручное перечисление модулей в shell routing/nav.
-4. **Pilot gate:** `Phase 1 — Pilot module` переведён в `🟡 In progress`; первый mutation-backed operator action реализован через `toggleModule`, permission gate подключён к hydrated `me.permissions`, retryable post-hook failures показывают recovery feedback и retry/compensation actions, следующий шаг — operation history/recovery screen.
+4. **Pilot gate:** `Phase 1 — Pilot module` переведён в `🟡 In progress`; первый mutation-backed operator action реализован через `toggleModule`, permission gate подключён к hydrated `me.permissions`, retryable post-hook failures показывают recovery feedback и retry/compensation actions; operation history/recovery screen добавлен как следующий audit-oriented слой pilot-флоу.
 
 
 
@@ -1166,7 +1166,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | Generated-file diff diagnostics | `rustok_mobile/tooling/scripts/verify_mobile_manifest.py` | stale manifest/snapshot failures print unified diff + regeneration command | ✅ Done |
 | Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ✅ Done |
 | Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav использует `nav.icon` из generated manifest и fallback по module metadata без ручного списка routes | ✅ Done |
-| Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` + `rustok_mobile/packages/rustok_modules_mobile/test/modules_mobile_screen_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back; package widget test verifies `toggleModule` action refresh | 🟡 In progress |
+| Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` + `rustok_mobile/packages/rustok_modules_mobile/test/modules_mobile_screen_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back; package widget test verifies `toggleModule` action refresh and operation history/recovery actions | 🟡 In progress |
 
 #### PR-D evidence pack (Flutter storefront mobile host)
 
@@ -1216,7 +1216,20 @@ Pilot-флоу `modules` теперь не только показывает rec
 - UI action — `_RecoveryPlanNotice` показывает `Retry post-hook` и `Compensate`, блокирует retry для non-retryable plans и инвалидирует `modulesControllerProvider` после recovery;
 - test evidence — `modules_mobile_screen_test.dart` проверяет retry и compensation action requests, очистку recovery notice и отсутствие feature-local GraphQL client.
 
-Следующий шаг после PR-F: вынести inline recovery notice в отдельный operation history/recovery screen, если потребуется больше audit context или manual operator workflow.
+Следующий шаг после PR-F был закрыт отдельным audit-oriented слоем: inline recovery notice теперь может вести в dedicated operation history/recovery screen без feature-local GraphQL client.
+
+#### PR-G evidence pack (Phase 1 operation history/recovery screen)
+
+**Operation history screen:** `ModulesRecoveryScreen` в `rustok_mobile/packages/rustok_modules_mobile`.
+
+Pilot-флоу `modules` расширен от inline recovery notice к отдельному экрану истории failed lifecycle operations:
+- UI boundary — `ModulesRecoveryScreen` показывает список `failedModuleOperationRecoveryPlans` с `operationId`, requested/previous state, `issue`, `recommendedAction`, `correlationId`, `requestedBy` и `errorMessage`;
+- host route — `apps/rustok_admin_mobile` монтирует `/modules/recovery/:moduleSlug` внутри существующего shell и передаёт тот же host-provided `ModulesRepository`;
+- action parity — экран выполняет те же canonical `retryFailedModuleOperationPostHook` и `compensateFailedModuleOperation`, инвалидирует `modulesControllerProvider` и перечитывает recovery history;
+- FFA guardrail — recovery screen не добавляет Flutter-only API, не создаёт feature-local GraphQL client и остаётся потребителем existing lifecycle GraphQL contracts;
+- test evidence — `modules_mobile_screen_test.dart` проверяет metadata/history rendering и recovery action requests, а `pilot_modules_flow_test.dart` проверяет переход из recovery feedback в shell-mounted recovery route.
+
+Следующий шаг после PR-G: закрепить operation history/recovery screen в CI/codegen evidence и продолжить storefront mobile track с первым module-owned catalog/cart package.
 
 #### PR-A evidence pack (registry contract freeze)
 

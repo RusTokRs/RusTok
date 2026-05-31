@@ -5,6 +5,7 @@ import 'package:graphql/client.dart';
 import 'package:rustok_modules_mobile/rustok_modules_mobile.dart';
 
 void main() {
+  recoveryScreenTests();
   testWidgets('renders GraphQL-backed module summaries and route hints', (
     tester,
   ) async {
@@ -432,5 +433,126 @@ class _FailingRepository implements ModulesRepository {
     required String operationId,
   }) async {
     throw StateError('registry unavailable');
+  }
+}
+
+void recoveryScreenTests() {
+  testWidgets('renders operation history with recovery metadata', (tester) async {
+    final repository = _RecoveryHistoryRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          modulesRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: ModulesRecoveryScreen(moduleSlug: 'blog')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.historyQueries, const ['blog:20']);
+    expect(find.text('blog recovery'), findsOneWidget);
+    expect(find.text('Operation op-1'), findsOneWidget);
+    expect(find.text('Requested: disable module blog'), findsOneWidget);
+    expect(find.text('Correlation ID: corr-1'), findsOneWidget);
+    expect(find.text('Requested by: operator@example.com'), findsOneWidget);
+  });
+
+  testWidgets('runs recovery actions from operation history screen', (
+    tester,
+  ) async {
+    final repository = _RecoveryHistoryRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          modulesRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: ModulesRecoveryScreen(moduleSlug: 'blog')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Retry post-hook'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Compensate'));
+    await tester.pumpAndSettle();
+
+    expect(repository.retryRequests, const ['op-1']);
+    expect(repository.compensateRequests, const ['op-1']);
+    expect(repository.historyQueries.length, 3);
+  });
+}
+
+class _RecoveryHistoryRepository implements ModulesRepository {
+  final List<String> historyQueries = <String>[];
+  final List<String> retryRequests = <String>[];
+  final List<String> compensateRequests = <String>[];
+
+  @override
+  Future<List<ModuleSummary>> listModules() async => const <ModuleSummary>[];
+
+  @override
+  Future<ModuleToggleResult> toggleModule({
+    required String moduleSlug,
+    required bool enabled,
+  }) async {
+    throw UnimplementedError('toggle is not used by this test repository');
+  }
+
+  @override
+  Future<List<ModuleOperationRecoveryPlan>> failedRecoveryPlans({
+    required String moduleSlug,
+    int limit = 1,
+  }) async {
+    historyQueries.add('$moduleSlug:$limit');
+    return const [
+      ModuleOperationRecoveryPlan(
+        operationId: 'op-1',
+        moduleSlug: 'blog',
+        requestedEnabled: false,
+        previousEffectiveEnabled: true,
+        status: 'failed',
+        issue: 'post_hook_failed',
+        retryable: true,
+        recommendedAction: 'retry_post_hook',
+        correlationId: 'corr-1',
+        requestedBy: 'operator@example.com',
+        errorMessage: 'post hook timed out',
+      ),
+    ];
+  }
+
+  @override
+  Future<ModuleOperationRecoveryPlan> retryFailedPostHook({
+    required String operationId,
+  }) async {
+    retryRequests.add(operationId);
+    return const ModuleOperationRecoveryPlan(
+      operationId: 'op-1',
+      moduleSlug: 'blog',
+      requestedEnabled: false,
+      previousEffectiveEnabled: true,
+      status: 'committed',
+      issue: 'none',
+      retryable: false,
+      recommendedAction: 'none',
+    );
+  }
+
+  @override
+  Future<ModuleToggleResult> compensateFailedOperation({
+    required String operationId,
+  }) async {
+    compensateRequests.add(operationId);
+    return const ModuleToggleResult(
+      moduleSlug: 'blog',
+      enabled: true,
+      settings: '{}',
+    );
   }
 }

@@ -13,18 +13,25 @@ typedef ModuleOpenCallback = void Function(
   ModuleSummary module,
 );
 
+typedef ModuleRecoveryHistoryCallback = void Function(
+  BuildContext context,
+  ModuleSummary module,
+);
+
 class ModulesMobileScreen extends ConsumerWidget {
   const ModulesMobileScreen({
     super.key,
     this.header,
     this.onOpenModule,
     this.resolveModulePath,
+    this.onOpenRecoveryHistory,
     this.canManageModules = false,
   });
 
   final Widget? header;
   final ModuleOpenCallback? onOpenModule;
   final String? Function(ModuleSummary module)? resolveModulePath;
+  final ModuleRecoveryHistoryCallback? onOpenRecoveryHistory;
   final bool canManageModules;
 
   @override
@@ -36,6 +43,7 @@ class ModulesMobileScreen extends ConsumerWidget {
         header: header,
         onOpenModule: onOpenModule,
         resolveModulePath: resolveModulePath,
+        onOpenRecoveryHistory: onOpenRecoveryHistory,
         canManageModules: canManageModules,
       ),
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -53,6 +61,7 @@ class _ModulesList extends StatelessWidget {
     required this.header,
     required this.onOpenModule,
     required this.resolveModulePath,
+    required this.onOpenRecoveryHistory,
     required this.canManageModules,
   });
 
@@ -60,6 +69,7 @@ class _ModulesList extends StatelessWidget {
   final Widget? header;
   final ModuleOpenCallback? onOpenModule;
   final String? Function(ModuleSummary module)? resolveModulePath;
+  final ModuleRecoveryHistoryCallback? onOpenRecoveryHistory;
   final bool canManageModules;
 
   @override
@@ -87,6 +97,7 @@ class _ModulesList extends StatelessWidget {
           path: resolveModulePath?.call(module),
           onOpenModule: onOpenModule,
           canManageModules: canManageModules,
+          onOpenRecoveryHistory: onOpenRecoveryHistory,
         ),
     ];
 
@@ -100,12 +111,14 @@ class _ModuleCard extends ConsumerStatefulWidget {
     required this.path,
     required this.onOpenModule,
     required this.canManageModules,
+    required this.onOpenRecoveryHistory,
   });
 
   final ModuleSummary module;
   final String? path;
   final ModuleOpenCallback? onOpenModule;
   final bool canManageModules;
+  final ModuleRecoveryHistoryCallback? onOpenRecoveryHistory;
 
   @override
   ConsumerState<_ModuleCard> createState() => _ModuleCardState();
@@ -161,6 +174,12 @@ class _ModuleCardState extends ConsumerState<_ModuleCard> {
                     actionError: _recoveryActionError,
                     onRetry: _retryPostHook,
                     onCompensate: _compensateOperation,
+                    onOpenHistory: widget.onOpenRecoveryHistory == null
+                        ? null
+                        : () => widget.onOpenRecoveryHistory!(
+                              context,
+                              widget.module,
+                            ),
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -345,6 +364,7 @@ class _RecoveryPlanNotice extends StatelessWidget {
     required this.isBusy,
     required this.onRetry,
     required this.onCompensate,
+    this.onOpenHistory,
     this.actionError,
   });
 
@@ -352,6 +372,7 @@ class _RecoveryPlanNotice extends StatelessWidget {
   final bool isBusy;
   final VoidCallback onRetry;
   final VoidCallback onCompensate;
+  final VoidCallback? onOpenHistory;
   final Object? actionError;
 
   @override
@@ -414,6 +435,12 @@ class _RecoveryPlanNotice extends StatelessWidget {
                   icon: const Icon(Icons.undo),
                   label: const Text('Compensate'),
                 ),
+                if (onOpenHistory != null)
+                  TextButton.icon(
+                    onPressed: isBusy ? null : onOpenHistory,
+                    icon: const Icon(Icons.history),
+                    label: const Text('Open history'),
+                  ),
               ],
             ),
           ],

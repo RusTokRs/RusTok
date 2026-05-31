@@ -13,6 +13,8 @@ import 'registry_warnings_card.dart';
 
 const _modulesManagePermission = 'modules:manage';
 
+const _moduleRecoveryRoute = 'recovery';
+
 const _routeCodec = RouteCodec(
   RouteSanitizer({
     QueryKeys.tab,
@@ -65,11 +67,32 @@ GoRouter buildRouter(
                         context.go(path);
                       }
                     },
+                    onOpenRecoveryHistory: (context, module) {
+                      context.go(_moduleRecoveryPath(module.slug));
+                    },
                   );
                 },
               ),
             ),
             routes: [
+              GoRoute(
+                path: '$_moduleRecoveryRoute/:moduleSlug',
+                name: 'modules:recovery',
+                builder: (context, state) {
+                  final moduleSlug = state.pathParameters['moduleSlug'] ?? '';
+                  return ProviderScope(
+                    overrides: [
+                      modulesRepositoryProvider.overrideWithValue(
+                        modulesRepository,
+                      ),
+                    ],
+                    child: ModulesRecoveryScreen(
+                      moduleSlug: moduleSlug,
+                      onBackToModules: () => context.go(modulesRootPath),
+                    ),
+                  );
+                },
+              ),
               for (final routeEntry in moduleRoutes)
                 GoRoute(
                   path: routeEntry.routeSegment,
@@ -102,6 +125,11 @@ GoRouter buildRouter(
       ),
     ],
   );
+}
+
+String _moduleRecoveryPath(String moduleSlug) {
+  final normalizedSlug = moduleSlug.trim().toLowerCase().replaceAll('_', '-');
+  return '$modulesRootPath/$_moduleRecoveryRoute/$normalizedSlug';
 }
 
 String? _resolveModulePath(List<ModuleRouteEntry> routes, String moduleSlug) {
