@@ -1,3 +1,58 @@
+use rustok_api::normalize_ui_text;
+
+use crate::i18n::t;
+
+pub const DEFAULT_POST_SLUG: &str = "latest";
+pub const DEFAULT_ROUTE_SEGMENT: &str = "blog";
+pub const SELECTED_POST_QUERY_KEY: &str = "slug";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlogStorefrontRouteState {
+    pub selected_slug: String,
+    pub selected_slug_query_key: &'static str,
+    pub route_segment: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlogStorefrontShellViewModel {
+    pub badge: String,
+    pub title: String,
+    pub subtitle: String,
+    pub load_error: String,
+}
+
+pub fn build_storefront_route_state(
+    route_slug: Option<String>,
+    route_segment: Option<String>,
+) -> BlogStorefrontRouteState {
+    BlogStorefrontRouteState {
+        selected_slug: selected_slug_or_default(route_slug, DEFAULT_POST_SLUG),
+        selected_slug_query_key: SELECTED_POST_QUERY_KEY,
+        route_segment: route_segment_or_default(route_segment, DEFAULT_ROUTE_SEGMENT),
+    }
+}
+
+pub fn build_storefront_shell_view_model(locale: Option<&str>) -> BlogStorefrontShellViewModel {
+    BlogStorefrontShellViewModel {
+        badge: t(locale, "blog.badge", "blog"),
+        title: t(
+            locale,
+            "blog.title",
+            "Stories published from the module package",
+        ),
+        subtitle: t(
+            locale,
+            "blog.subtitle",
+            "This storefront surface reads blog data through GraphQL with no host-specific blog wiring.",
+        ),
+        load_error: t(
+            locale,
+            "blog.error.load",
+            "Failed to load blog storefront data",
+        ),
+    }
+}
+
 pub fn fallback_text(value: Option<String>, fallback: &str) -> String {
     value.unwrap_or_else(|| fallback.to_string())
 }
@@ -363,11 +418,17 @@ pub fn selected_post_fallback_fields(
 }
 
 pub fn selected_slug_or_default(value: Option<String>, default_slug: &str) -> String {
-    value.unwrap_or_else(|| default_slug.to_string())
+    value
+        .as_deref()
+        .and_then(normalize_ui_text)
+        .unwrap_or_else(|| default_slug.to_string())
 }
 
 pub fn route_segment_or_default(value: Option<String>, default_segment: &str) -> String {
-    value.unwrap_or_else(|| default_segment.to_string())
+    value
+        .as_deref()
+        .and_then(normalize_ui_text)
+        .unwrap_or_else(|| default_segment.to_string())
 }
 
 pub fn body_or_fallback(value: Option<String>, fallback: &str) -> String {
@@ -493,6 +554,41 @@ pub fn published_posts_empty_state_view(message: String) -> (String,) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn storefront_route_state_normalizes_slug_and_segment_contract() {
+        let route_state = build_storefront_route_state(
+            Some("  release-notes  ".to_string()),
+            Some("  stories  ".to_string()),
+        );
+
+        assert_eq!(route_state.selected_slug, "release-notes".to_string());
+        assert_eq!(route_state.selected_slug_query_key, SELECTED_POST_QUERY_KEY);
+        assert_eq!(route_state.route_segment, "stories".to_string());
+
+        let fallback_state = build_storefront_route_state(Some("   ".to_string()), None);
+        assert_eq!(fallback_state.selected_slug, DEFAULT_POST_SLUG.to_string());
+        assert_eq!(
+            fallback_state.route_segment,
+            DEFAULT_ROUTE_SEGMENT.to_string()
+        );
+    }
+
+    #[test]
+    fn storefront_shell_view_model_resolves_copy_from_effective_locale() {
+        let view = build_storefront_shell_view_model(Some("en"));
+
+        assert_eq!(view.badge, "blog".to_string());
+        assert_eq!(
+            view.title,
+            "Stories published from the module package".to_string()
+        );
+        assert_eq!(
+            view.load_error,
+            "Failed to load blog storefront data".to_string()
+        );
+        assert!(view.subtitle.contains("GraphQL"));
+    }
 
     #[test]
     fn fallback_text_returns_fallback_for_none() {

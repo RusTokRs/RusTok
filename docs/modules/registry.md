@@ -56,7 +56,7 @@ capability crate-ов и host-приложений в RusToK.
 | Module slug | UI surfaces | FFA status | FBA status | Source plan |
 |---|---|---|---|---|
 | `pages` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pages/docs/implementation-plan.md` (maintenance slice: нормализация create-page draft использует shared UI helpers) |
-| `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` (slice #71: admin form normalization uses shared UI helpers) |
+| `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` (slice #72: storefront shell copy and `slug` route/query state moved into core) |
 | `forum` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-forum/docs/implementation-plan.md` (FW-1 contract freeze: widget catalog v1, compatibility matrix and typed error mapping are machine-readable in manifest + REST/GraphQL contract surfaces) |
 | `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slice #25: consistency diagnostics table rows перенесены в core) |
 | `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` (slice: storefront `core/` policy/view-model helpers + `ui/leptos` render adapter + thin `transport` facade with validation-aware fallback policy introduced without dropping native/GraphQL parity) |
