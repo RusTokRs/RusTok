@@ -7,12 +7,12 @@ rule и scope write paths, а полный promotions engine и остально
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
+- Current phase: phase_b_in_progress
+- Last checkpoint: Storefront pricing получил FFA slice: framework-agnostic `core` теперь владеет pricing summary, localized option/health/effective-context formatting и route href builders, а Leptos layer оставлен render/bind adapter поверх существующего native-first/GraphQL transport.
+- Next step: Продолжать переносить storefront/admin presentation state и request-building из Leptos компонентов в `core`, затем разделить transport facade на explicit native/GraphQL adapters без изменения public contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Last updated at (UTC): 2026-05-31T00:00:00Z
 
 ## FFA/FBA status
 
@@ -20,8 +20,9 @@ rule и scope write paths, а полный promotions engine и остально
 - FBA status: `in_progress`
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
-  - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
-- Last verified at (UTC): 2026-05-24T00:00:00Z
+  - storefront pricing route теперь использует framework-agnostic `storefront/src/core.rs` для summary/label/effective context formatting и query href building; Leptos `lib.rs` больше не владеет этой presentation policy;
+  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` подтверждает existing transport validation tests и новые pure-core route/channel formatting tests без изменения native/GraphQL fallback contract.
+- Last verified at (UTC): 2026-05-31T00:00:00Z
 - Owner: `rustok-pricing` module team
 
 ## Область работ
@@ -43,7 +44,10 @@ rule и scope write paths, а полный promotions engine и остально
   же теперь вынесен selected active `price_list` rule editor;
 - `rustok-pricing/storefront` уже публикует pricing-owned storefront route для public
   pricing atlas, currency coverage, sale-marker visibility и selector активных
-  price lists поверх existing effective context;
+  price lists поверх existing effective context; storefront presentation policy
+  для summary, health/option labels, effective context и query href теперь вынесена
+  в framework-agnostic `storefront/src/core.rs`, а Leptos `lib.rs` остаётся
+  render/bind слоем;
 - storefront package по-прежнему остаётся read-side surface, но admin package уже
   использует native-first `#[server]` transport не только для read-side, но и для
   base-row writes, active `price_list` overrides, typed percentage adjustments и
@@ -60,6 +64,16 @@ rule и scope write paths, а полный promotions engine и остально
 - [x] вынести pricing storefront UI в module-owned пакет `rustok-pricing/storefront`;
 - [x] удерживать sync между pricing runtime contract, admin UI, commerce transport
   и module metadata.
+
+### 1.1. FFA storefront decomposition
+
+- [x] вынести pricing storefront presentation policy из Leptos компонента в
+  framework-agnostic `storefront/src/core.rs`: summary, variant health, seller/channel
+  labels, effective price/context formatting и route href builders;
+- [x] добавить pure-core tests для query href/channel-scope formatting рядом с existing
+  transport validation suite;
+- [~] продолжить разделение storefront package на `core/`, `transport/` и
+  `ui/leptos/`, не меняя native-first + GraphQL fallback contract.
 
 ### 2. Pricing transport split
 
