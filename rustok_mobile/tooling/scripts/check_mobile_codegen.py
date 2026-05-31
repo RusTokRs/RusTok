@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
         default=("rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json"),
         help="Path to committed generated registry snapshot JSON",
     )
+    parser.add_argument(
+        "--surface",
+        choices=("admin", "storefront"),
+        default="admin",
+        help="Manifest surface to verify. Defaults to admin.",
+    )
     return parser.parse_args()
 
 
@@ -55,6 +61,7 @@ def _run_generator(
     repo_root: pathlib.Path,
     generated_manifest: pathlib.Path,
     generated_snapshot: pathlib.Path,
+    surface: str,
 ) -> None:
     generator = (
         pathlib.Path(__file__).resolve().with_name("generate_mobile_manifest.py")
@@ -69,6 +76,8 @@ def _run_generator(
             str(generated_manifest),
             "--snapshot-output",
             str(generated_snapshot),
+            "--surface",
+            surface,
         ],
         check=True,
         stdout=subprocess.PIPE,
@@ -99,6 +108,7 @@ def main() -> int:
                 repo_root=repo_root,
                 generated_manifest=generated_manifest,
                 generated_snapshot=generated_snapshot,
+                surface=args.surface,
             )
         except subprocess.CalledProcessError as exc:
             print("ERROR: mobile manifest generator failed")

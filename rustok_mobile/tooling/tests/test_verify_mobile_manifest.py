@@ -19,7 +19,12 @@ from rustok_mobile.tooling.scripts.verify_mobile_manifest import (
 
 class VerifyMobileManifestTests(unittest.TestCase):
     def _run_verify(
-        self, root: pathlib.Path, manifest: pathlib.Path, snapshot: pathlib.Path
+        self,
+        root: pathlib.Path,
+        manifest: pathlib.Path,
+        snapshot: pathlib.Path,
+        *,
+        surface: str = "admin",
     ):
         argv_backup = sys.argv
         sys.argv = [
@@ -30,6 +35,8 @@ class VerifyMobileManifestTests(unittest.TestCase):
             str(manifest),
             "--snapshot",
             str(snapshot),
+            "--surface",
+            surface,
         ]
         stdout = io.StringIO()
         try:
@@ -60,6 +67,35 @@ class VerifyMobileManifestTests(unittest.TestCase):
             snapshot.write_text(render_snapshot_json(modules), encoding="utf-8")
 
             code, output = self._run_verify(root, manifest, snapshot)
+
+            self.assertEqual(code, 0)
+            self.assertIn("OK: mobile manifest and snapshot are up to date", output)
+
+
+    def test_verify_returns_zero_for_fresh_storefront_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "crates/mod-a").mkdir(parents=True)
+            (root / "crates/mod-a/rustok-module.toml").write_text(
+                textwrap.dedent("""
+                    [module]
+                    slug = "product"
+                    name = "Product"
+                    [provides.storefront_ui]
+                    route_segment = "products"
+                    page_title = "Products"
+                    """).strip(),
+                encoding="utf-8",
+            )
+            manifest = root / "storefront_mobile_manifest.g.dart"
+            modules = scan_modules(root, surface="storefront")
+            manifest.write_text(render(modules), encoding="utf-8")
+            snapshot = root / "storefront_mobile_manifest.snapshot.json"
+            snapshot.write_text(render_snapshot_json(modules), encoding="utf-8")
+
+            code, output = self._run_verify(
+                root, manifest, snapshot, surface="storefront"
+            )
 
             self.assertEqual(code, 0)
             self.assertIn("OK: mobile manifest and snapshot are up to date", output)

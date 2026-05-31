@@ -13,3 +13,4 @@ workspace:
   - packages/app_route_contracts
   - packages/app_module_contracts
   - packages/rustok_modules_mobile
+  - packages/rustok_catalog_mobile

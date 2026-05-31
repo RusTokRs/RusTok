@@ -14,14 +14,21 @@ const _defaultLocale = String.fromEnvironment(
   'RUSTOK_STOREFRONT_LOCALE',
   defaultValue: 'en',
 );
+const _defaultCartId = String.fromEnvironment(
+  'RUSTOK_STOREFRONT_CART_ID',
+  defaultValue: '',
+);
 
 Uri _serverBaseUri(String serverBaseUrl) => Uri.parse(serverBaseUrl);
 
-final storefrontRuntimeContextProvider = Provider<StorefrontRuntimeContext>((ref) {
-  return const StorefrontRuntimeContext(
+final storefrontRuntimeContextProvider = Provider<StorefrontRuntimeContext>((
+  ref,
+) {
+  return StorefrontRuntimeContext(
     serverBaseUrl: _defaultServerBaseUrl,
     tenantSlug: _defaultTenantSlug,
     locale: _defaultLocale,
+    cartId: _defaultCartId.isEmpty ? null : _defaultCartId,
   );
 });
 
@@ -46,9 +53,11 @@ class StorefrontRuntimeContext {
     required this.serverBaseUrl,
     required this.tenantSlug,
     required this.locale,
+    this.cartId,
   });
 
   final String serverBaseUrl;
   final String tenantSlug;
   final String locale;
+  final String? cartId;
 }

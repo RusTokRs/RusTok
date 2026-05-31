@@ -41,6 +41,7 @@ RusToK поддерживает два web storefront host-приложения 
 
 - `apps/next-frontend` обязан сохранять parity с `apps/storefront` по route, auth, i18n и backend contracts.
 - `rustok_frontend_mobile` обязан использовать тот же customer-facing storefront contract и не смешиваться с admin/operator mobile UX.
+- Поверхности Flutter catalog/cart живут в `rustok_mobile/packages/rustok_catalog_mobile` и монтируются host-ом через repository boundary; package не создаёт собственный GraphQL client, tenant resolver или locale fallback chain.
 - Next.js и Flutter storefront не должны дублировать storage или canonical-routing логику во frontend слое.
 - Source of truth для transport и canonical routing остаётся на backend стороне.
 
@@ -55,6 +56,7 @@ RusToK поддерживает два web storefront host-приложения 
 - [Leptos storefront docs](../../apps/storefront/docs/README.md)
 - [Next.js storefront docs](../../apps/next-frontend/docs/README.md)
 - [Flutter storefront mobile docs](../../rustok_mobile/apps/rustok_frontend_mobile/README.md)
+- [Flutter package catalog/cart](../../rustok_mobile/packages/rustok_catalog_mobile/README.md)
 - [Контракты manifest-слоя](../modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI index](./README.md)
