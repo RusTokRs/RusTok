@@ -14,4 +14,4 @@ Rules:
 - `verify/verify-page-builder-fallback-matrix-docs.mjs` keeps central, provider, and pages fallback matrix docs aligned with `all_on`, `publish_off`, `preview_off`, and `builder_off` runtime profiles.
 
 - `verify/verify-page-builder-runtime-fallback-gate.mjs` runs the provider runtime fallback tests used by the CI baseline gate.
-- `verify/verify-page-builder-pages-fallback-gate.mjs` runs the `rustok-pages` consumer fallback checks for `builder.enabled=false` and `builder.publish.enabled=false`.
+- `verify/verify-page-builder-pages-fallback-gate.mjs` runs the `rustok-pages` consumer fallback checks for all baseline profiles (`all_on`, `publish_off`, `preview_off`, `builder_off`).

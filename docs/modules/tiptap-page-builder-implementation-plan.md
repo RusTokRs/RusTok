@@ -737,7 +737,7 @@ Notes: <known deviations or waivers>
    - [x] создать/обновить machine-readable запись `builder_contract_version=1.0` для provider и `consumer_min_version=1.0` для `rustok-pages`;
    - [x] добавить ссылку на запись в `docs/modules/registry.md` и локальный implementation-plan `crates/rustok-pages/docs/implementation-plan.md`.
 2. **Fallback smoke baseline**
-   - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `builder_off` на одном internal tenant;
+   - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `preview_off`, `builder_off` на одном internal tenant;
    - [ ] приложить краткий отчёт с фактами по `admin list/read`, `storefront read`, `publish(dry)`.
 3. **Observability wiring check**
    - [ ] подтвердить наличие correlation-id в цепочке `builder write -> pages publish -> storefront read`;
@@ -748,7 +748,7 @@ Notes: <known deviations or waivers>
 
 **Exit criteria (next 10 working days):**
 - есть валидный contract registry snapshot;
-- есть fallback smoke evidence минимум для `all_on/publish_off/builder_off`;
+- есть fallback smoke evidence минимум для `all_on/publish_off/preview_off/builder_off`;
 - есть observability baseline с correlation examples;
 - есть черновик readiness packet с незакрытыми рисками и owner-назначениями.
 
@@ -909,8 +909,8 @@ Notes: <known deviations or waivers>
 - Закрыть typed fallback matrix для профилей `builder_off`, `preview_off`, `publish_off`.
 - Зафиксировать единый error catalog (`validation`, `sanitize`, `runtime`, `feature-disabled`)
   без дрейфа между `#[server]`, GraphQL и UI adapters.
-- Добавить CI fallback-gate для профилей `builder.enabled=false` и
-  `builder.publish.enabled=false`.
+- Добавить CI fallback-gate для профилей `all_on`, `publish_off`,
+  `preview_off` и `builder_off`.
 - Сформировать Wave 0 evidence package: toggle snapshots + smoke output +
   observability snapshot + decision note (`keep/rollback`).
 
@@ -921,7 +921,7 @@ Notes: <known deviations or waivers>
 2. **Error semantics slice:** привести payload typed ошибок к одному catalog key-space
    для `preview/properties/publish` capability endpoints.
 3. **Verification slice:** расширить module test gate целевыми проверками
-   `publish_disabled` и `builder_disabled` без деградации list/read.
+   `all_on/publish_off/preview_off/builder_off` без деградации list/read.
 4. **Operability slice:** оформить единый evidence-template для Wave 0 и привязать
    к control-plane audit trail.
 
@@ -951,8 +951,9 @@ Notes: <known deviations or waivers>
 - [x] **PB-FBA-1A / Contract freeze:**
   - [x] зафиксировать `builder_contract_version=1.0` и `consumer_min_version=1.0` в machine-readable registry `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`;
   - [x] приложить anti-drift diff-check в baseline gate (`verify-page-builder-contract-registry.mjs`, aggregate `verify-page-builder-fba-baseline.mjs`, fail-fast при несовместимости).
-- [ ] **PB-FBA-1B / Fallback hardening:**
-  - [ ] подтвердить smoke-профили `all_on/publish_off/preview_off/builder_off` без `5xx` на `admin list/read` и `storefront read`;
+- [~] **PB-FBA-1B / Fallback hardening:**
+  - [x] подтвердить service-level smoke-профили `all_on/publish_off/preview_off/builder_off` без деградации `pages` read/list через `pages_builder_fallback_*` gate;
+  - [ ] приложить host-level evidence без `5xx` на `admin list/read` и `storefront read`;
   - [ ] собрать parity-таблицу typed errors для Next/Leptos/Flutter adapters.
 
 #### Week 2 — закрыть P2/P3
@@ -967,7 +968,7 @@ Notes: <known deviations or waivers>
 #### Артефакты, обязательные для checkpoint update
 
 1. `metadata snapshot` (provider/consumer versions + fallback profile mapping): `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`;
-2. `fallback smoke report` (`all_on`, `publish_off`, `preview_off`, `builder_off`);
+2. `fallback smoke report` (`all_on`, `publish_off`, `preview_off`, `builder_off`): service-level gate `cargo test -p rustok-pages --test page_service_kind_guard pages_builder_fallback`, host-level evidence pending;
 3. `toggle audit log` (change-set id, before/after, decision);
 4. `observability snapshot` (p95/error-rate/sanitize + traces).
 

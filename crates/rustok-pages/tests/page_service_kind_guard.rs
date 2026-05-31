@@ -1,3 +1,4 @@
+use rustok_content::entities::node::ContentStatus;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_pages::dto::{
     BlockType, CreateBlockInput, CreatePageInput, PageBodyInput, PageTranslationInput,
@@ -797,7 +798,59 @@ async fn publish_forbidden_user_gets_forbidden_before_builder_toggle_errors() {
 }
 
 #[tokio::test]
-async fn pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_read_path() {
+async fn pages_builder_fallback_all_on_allows_publish_and_keeps_read_list_paths() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        r#"{"builder":{"enabled":true,"preview":{"enabled":true},"properties":{"enabled":true},"publish":{"enabled":true}}}"#,
+    )
+    .await;
+
+    let page = create_grapesjs_page(
+        &page_service,
+        tenant_id,
+        security.clone(),
+        "Fallback all-on",
+        "fallback-all-on",
+    )
+    .await;
+
+    page_service
+        .ensure_builder_preview_enabled_for_tenant(tenant_id)
+        .await
+        .expect("preview capability must be available in all_on profile");
+    page_service
+        .ensure_builder_properties_enabled_for_tenant(tenant_id)
+        .await
+        .expect("properties capability must be available in all_on profile");
+
+    let published = page_service
+        .publish(tenant_id, security.clone(), page.id)
+        .await
+        .expect("publish must be available in all_on profile");
+    assert_eq!(published.status, ContentStatus::Published);
+
+    let loaded = page_service
+        .get(tenant_id, security.clone(), page.id)
+        .await
+        .expect("read path must remain stable in all_on profile");
+    assert_eq!(loaded.id, page.id);
+    assert_eq!(
+        loaded.body.expect("builder body must stay readable").format,
+        "grapesjs_v1"
+    );
+
+    let (items, total) = page_service
+        .list(tenant_id, security, Default::default())
+        .await
+        .expect("list path must remain stable in all_on profile");
+    assert_eq!(total, 1);
+    assert!(items.iter().any(|item| item.id == page.id));
+}
+
+#[tokio::test]
+async fn pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_read_list_paths() {
     let (db, page_service, _block_service, tenant_id, security) = setup().await;
     seed_pages_module_settings(&db, tenant_id, r#"{"builder":{"enabled":true}}"#).await;
     let page = create_grapesjs_page(
@@ -825,7 +878,7 @@ async fn pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_re
     ));
 
     let loaded = page_service
-        .get(tenant_id, security, page.id)
+        .get(tenant_id, security.clone(), page.id)
         .await
         .expect("read path must remain stable when builder publish is disabled");
     assert_eq!(loaded.id, page.id);
@@ -833,6 +886,72 @@ async fn pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_re
         loaded.body.expect("builder body must stay readable").format,
         "grapesjs_v1"
     );
+
+    let (items, total) = page_service
+        .list(tenant_id, security, Default::default())
+        .await
+        .expect("list path must remain stable when builder publish is disabled");
+    assert_eq!(total, 1);
+    assert!(items.iter().any(|item| item.id == page.id));
+}
+
+#[tokio::test]
+async fn pages_builder_fallback_preview_off_blocks_preview_publish_but_keeps_read_list_paths() {
+    let (db, page_service, _block_service, tenant_id, security) = setup().await;
+    seed_pages_module_settings(&db, tenant_id, r#"{"builder":{"enabled":true}}"#).await;
+    let page = create_grapesjs_page(
+        &page_service,
+        tenant_id,
+        security.clone(),
+        "Fallback preview-off",
+        "fallback-preview-off",
+    )
+    .await;
+
+    seed_pages_module_settings(
+        &db,
+        tenant_id,
+        r#"{"builder":{"enabled":true,"preview":{"enabled":false},"properties":{"enabled":true},"publish":{"enabled":false}}}"#,
+    )
+    .await;
+
+    let preview_result = page_service
+        .ensure_builder_preview_enabled_for_tenant(tenant_id)
+        .await;
+    assert!(matches!(
+        preview_result,
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_PREVIEW_ENABLED
+    ));
+
+    page_service
+        .ensure_builder_properties_enabled_for_tenant(tenant_id)
+        .await
+        .expect("properties capability must remain available in preview_off profile");
+
+    let publish_result = page_service
+        .publish(tenant_id, security.clone(), page.id)
+        .await;
+    assert!(matches!(
+        publish_result,
+        Err(PagesError::FeatureDisabled { feature }) if feature == FEATURE_BUILDER_PUBLISH_ENABLED
+    ));
+
+    let loaded = page_service
+        .get(tenant_id, security.clone(), page.id)
+        .await
+        .expect("read path must remain stable when preview is disabled");
+    assert_eq!(loaded.id, page.id);
+    assert_eq!(
+        loaded.body.expect("builder body must stay readable").format,
+        "grapesjs_v1"
+    );
+
+    let (items, total) = page_service
+        .list(tenant_id, security, Default::default())
+        .await
+        .expect("list path must remain stable when preview is disabled");
+    assert_eq!(total, 1);
+    assert!(items.iter().any(|item| item.id == page.id));
 }
 
 #[tokio::test]
