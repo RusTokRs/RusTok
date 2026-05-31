@@ -65,7 +65,7 @@ capability crate-ов и host-приложений в RusToK.
 | `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` (slice #15: storefront rail list presentation data moved into core view-model) |
 | `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront shell copy/fetch request, selected-card labels/empty state and catalog rail presentation joined route/query state, selected-product view-model, and pricing/seller helpers in framework-agnostic core) |
 | `customer` | admin | `in_progress` | `in_progress` | `crates/rustok-customer/docs/implementation-plan.md` |
-| `pricing` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pricing/docs/implementation-plan.md` (slice: storefront core/transport/ui-leptos layers separated) |
+| `pricing` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pricing/docs/implementation-plan.md` (slice: storefront core/transport/ui-leptos layers separated with native-first facade tests) |
 | `inventory` | admin | `in_progress` | `in_progress` | `crates/rustok-inventory/docs/implementation-plan.md` |
 | `order` | admin | `in_progress` | `in_progress` | `crates/rustok-order/docs/implementation-plan.md` (slice 10.1/10.3: validation матрица resolution-ссылок возврата) |
 | `payment` | no module-owned UI | `in_progress` | `in_progress` | `crates/rustok-payment/docs/implementation-plan.md` |

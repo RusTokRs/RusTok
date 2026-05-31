@@ -8,11 +8,11 @@ rule и scope write paths, а полный promotions engine и остально
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: Storefront pricing получил следующий FFA slice: Leptos render/bind слой выделен в `ui/leptos.rs`, crate root теперь только объявляет слои и re-export публичного компонента, а `core` + `transport` остаются отдельными framework-agnostic/adapter boundaries.
-- Next step: Продолжать переносить request normalization/port contracts из `api.rs` в `core`, затем покрыть transport facade targeted fallback tests без изменения native-first + GraphQL fallback contract.
+- Last checkpoint: Storefront pricing получил следующий FFA slice: transport facade теперь имеет targeted tests для native-success и GraphQL-fallback веток через injectable native/GraphQL adapters, сохраняя production native-first orchestration.
+- Next step: Продолжать переносить request normalization/port contracts из `api.rs` в `core` без изменения native-first + GraphQL fallback contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-31T02:00:00Z
+- Last updated at (UTC): 2026-05-31T03:00:00Z
 
 ## FFA/FBA status
 
@@ -23,8 +23,9 @@ rule и scope write paths, а полный promotions engine и остально
   - storefront pricing route теперь использует framework-agnostic `storefront/src/core.rs` для summary/label/effective context formatting, query href building и shared `StorefrontPricingQuery`; Leptos `lib.rs` больше не владеет этой presentation/request policy;
   - storefront transport разделён на thin facade + explicit `native_server_adapter` и `graphql_adapter`, при этом fallback order (`native #[server]` first, GraphQL second) сохранён;
   - Leptos render/bind adapter выделен в `storefront/src/ui/leptos.rs`, а `storefront/src/lib.rs` стал crate-level composition/re-export boundary;
-  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` подтверждает existing transport validation tests и pure-core route/channel formatting tests без изменения native/GraphQL fallback contract.
-- Last verified at (UTC): 2026-05-31T02:00:00Z
+  - targeted facade tests подтверждают обе ветки orchestration: native success не вызывает GraphQL, native error передаёт исходный `StorefrontPricingQuery` в GraphQL fallback;
+  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` подтверждает existing transport validation tests, pure-core route/channel formatting tests и transport facade fallback tests без изменения native/GraphQL fallback contract.
+- Last verified at (UTC): 2026-05-31T03:00:00Z
 - Owner: `rustok-pricing` module team
 
 ## Область работ
@@ -79,6 +80,8 @@ rule и scope write paths, а полный promotions engine и остально
   `graphql_adapter`, сохранив native-first + GraphQL fallback contract;
 - [x] выделить Leptos render/bind adapter в `storefront/src/ui/leptos.rs`, оставив
   crate root composition/re-export boundary;
+- [x] добавить targeted tests для `transport` facade: native-success path и GraphQL
+  fallback path с сохранением исходного `StorefrontPricingQuery`;
 - [~] продолжить request normalization/port extraction из `api.rs` в `core`, не меняя
   public route/transport contract.
 
