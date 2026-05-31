@@ -1260,7 +1260,22 @@ Storefront mobile получил generated registry рядом с admin mobile r
 
 FFA guardrail для этого шага: registry содержит только mobile-safe surface metadata и не переносит server-side FBA/provider details в Flutter host.
 
-Следующий storefront шаг: подключать package discovery через generated storefront registry для конкретных module-owned packages и довести cart-часть до canonical shared-transport reads/writes.
+Следующий storefront шаг: довести cart-часть до canonical shared-transport reads/writes и расширять manifest-to-package mapping по мере появления новых module-owned storefront packages.
+
+
+#### PR-J evidence pack (storefront registry package discovery)
+
+**Storefront package discovery:** `rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_surface_registry.dart`.
+
+Generated storefront registry теперь используется не только для placeholder-title metadata, но и для выбора mounted package surface:
+- registry adapter — `StorefrontSurfaceRegistry` нормализует `route_segment` из generated manifest и возвращает typed `catalog`, `cart` или `generic` surface match;
+- host route — `/modules/products` монтирует `StorefrontCatalogScreen`, а `/modules/cart` монтирует `StorefrontCartScreen` через тот же host-provided `StorefrontCatalogRepository`;
+- generic fallback — остальные storefront module routes продолжают показывать manifest-backed placeholder без feature-local transport clients;
+- test evidence — `storefront_router_test.dart` проверяет generic `blog`, package-backed `products` и package-backed `cart` routes внутри shell.
+
+FFA guardrail для этого шага: mapping остаётся host-side adapter logic поверх generated mobile-safe registry и не переносит server-side provider/FBA metadata в Flutter package.
+
+Следующий storefront шаг: довести cart-часть до canonical shared-transport reads/writes и добавлять новые manifest-to-package mappings только при появлении соответствующих module-owned packages.
 
 #### PR-A evidence pack (registry contract freeze)
 

@@ -6,7 +6,7 @@ import 'package:rustok_catalog_mobile/rustok_catalog_mobile.dart';
 import '../app_shell/storefront_context.dart';
 import '../app_shell/storefront_shell_page.dart';
 import '../data/storefront_catalog_repository.dart';
-import '../registry/storefront_mobile_manifest.g.dart' as storefront_manifest;
+import '../registry/storefront_surface_registry.dart';
 
 const homePath = '/';
 const catalogPath = '/catalog';
@@ -73,9 +73,12 @@ GoRouter buildStorefrontRouter({
             path: '$storefrontModulesRootPath/:routeSegment',
             builder: (context, state) {
               final routeSegment = state.pathParameters['routeSegment'] ?? '';
-              return StorefrontModulePlaceholderPage(
-                routeSegment: routeSegment,
-                title: _storefrontModuleTitle(routeSegment),
+              final surface = storefrontSurfaceRegistry.resolve(
+                routeSegment,
+              );
+              return StorefrontModuleSurfacePage(
+                surface: surface,
+                catalogRepository: catalogRepository,
               );
             },
           ),
@@ -206,36 +209,48 @@ class StorefrontPlaceholderPage extends StatelessWidget {
   }
 }
 
-class StorefrontModulePlaceholderPage extends StatelessWidget {
-  const StorefrontModulePlaceholderPage({
+class StorefrontModuleSurfacePage extends StatelessWidget {
+  const StorefrontModuleSurfacePage({
     super.key,
-    required this.routeSegment,
-    this.title,
+    required this.surface,
+    this.catalogRepository,
   });
 
-  final String routeSegment;
-  final String? title;
+  final StorefrontSurfaceMatch surface;
+  final StorefrontCatalogRepository? catalogRepository;
 
   @override
   Widget build(BuildContext context) {
-    return StorefrontPlaceholderPage(
-      title: title ?? 'Module: $routeSegment',
-      description: 'Manifest-driven storefront mobile surface.',
-      icon: Icons.extension_outlined,
-    );
+    return switch (surface.kind) {
+      StorefrontMountedSurfaceKind.catalog => ProviderScope(
+        overrides: [
+          if (catalogRepository != null)
+            storefrontCatalogRepositoryProvider.overrideWithValue(
+              catalogRepository!,
+            ),
+        ],
+        child: StorefrontCatalogScreen(
+          onOpenCart: () => context.go('$storefrontModulesRootPath/cart'),
+        ),
+      ),
+      StorefrontMountedSurfaceKind.cart => ProviderScope(
+        overrides: [
+          if (catalogRepository != null)
+            storefrontCatalogRepositoryProvider.overrideWithValue(
+              catalogRepository!,
+            ),
+        ],
+        child: StorefrontCartScreen(
+          onContinueShopping: () => context.go(
+            '$storefrontModulesRootPath/products',
+          ),
+        ),
+      ),
+      StorefrontMountedSurfaceKind.generic => StorefrontPlaceholderPage(
+        title: surface.title ?? 'Module: ${surface.routeSegment ?? 'unknown'}',
+        description: 'Manifest-driven storefront mobile surface.',
+        icon: Icons.extension_outlined,
+      ),
+    };
   }
-}
-
-String? _storefrontModuleTitle(String routeSegment) {
-  final normalized = routeSegment.trim().toLowerCase().replaceAll('_', '-');
-  if (normalized.isEmpty) {
-    return null;
-  }
-
-  for (final entry in storefront_manifest.generatedMobileManifest) {
-    if (entry.routeSegment.replaceAll('_', '-') == normalized) {
-      return entry.nav.title;
-    }
-  }
-  return null;
 }

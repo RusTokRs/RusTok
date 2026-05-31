@@ -29,6 +29,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Separate Flutter storefront mobile host scaffold with host-owned tenant/locale/GraphQL context.
 - Module-owned storefront catalog/cart mobile package mounted by `rustok_frontend_mobile` without package-local transport clients; catalog reads are wired through the host GraphQL client and existing storefront search surface.
 - Generated storefront mobile manifest from `provides.storefront_ui` with a dedicated snapshot and freshness checks.
+- Storefront registry adapter that maps generated `products` and `cart` routes to mounted module-owned package screens, with generic fallback for unmapped storefront modules.
 
 
 Host-level providers now resolve sessions via `AuthSessionManager` and `RefreshTokenService` before building the authenticated GraphQL client. The refresh flow uses an HTTP-only GraphQL client to avoid unnecessary WebSocket initialization during bootstrap. Provider wiring is isolated in `apps/rustok_admin_mobile/lib/app_shell/auth_bootstrap.dart`.
@@ -106,4 +107,4 @@ python3 rustok_mobile/tooling/scripts/check_mobile_codegen.py \
 1. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
 2. Add canonical shared-transport cart reads/writes when the product/cart GraphQL or REST surface is ready.
 3. Add deterministic generated-file checks to the mobile CI pipeline.
-4. Use generated storefront registry entries for package discovery as more module-owned storefront packages are added.
+4. Extend generated storefront registry mappings as more module-owned storefront packages are added.

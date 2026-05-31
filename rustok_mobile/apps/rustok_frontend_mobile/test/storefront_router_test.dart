@@ -62,7 +62,25 @@ void main() {
     router.go('$storefrontModulesRootPath/blog');
     await tester.pumpAndSettle();
     expect(find.text('Blog'), findsOneWidget);
-    expect(find.text('Manifest-driven storefront mobile surface.'), findsOneWidget);
+    expect(
+      find.text('Manifest-driven storefront mobile surface.'),
+      findsOneWidget,
+    );
+
+    router.go('$storefrontModulesRootPath/products');
+    await tester.pumpAndSettle();
+    expect(find.text('Creator kit'), findsOneWidget);
+    expect(
+      find.text('Module-owned mobile surface mounted by the storefront host.'),
+      findsOneWidget,
+    );
+
+    router.go('$storefrontModulesRootPath/cart');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Customer checkout preview without admin affordances.'),
+      findsOneWidget,
+    );
   });
 }
 
