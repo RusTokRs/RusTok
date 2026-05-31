@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rustok_catalog_mobile/rustok_catalog_mobile.dart';
 import 'package:rustok_frontend_mobile/app_shell/storefront_context.dart';
 import 'package:rustok_frontend_mobile/routes/storefront_router.dart';
 
@@ -35,7 +36,7 @@ void main() {
     tester,
   ) async {
     final router = buildStorefrontRouter(
-      catalogRepository: const StorefrontPreviewCatalogRepository(locale: 'en'),
+      catalogRepository: const _FakeStorefrontCatalogRepository(),
     );
 
     await tester.pumpWidget(
@@ -62,4 +63,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Module: blog'), findsOneWidget);
   });
+}
+
+class _FakeStorefrontCatalogRepository implements StorefrontCatalogRepository {
+  const _FakeStorefrontCatalogRepository();
+
+  @override
+  Future<List<StorefrontProductSummary>> featuredProducts() async {
+    return const [
+      StorefrontProductSummary(
+        id: 'creator-kit',
+        title: 'Creator kit',
+        description: 'Mounted through the storefront shell.',
+        priceLabel: '49.00 USD',
+      ),
+    ];
+  }
+
+  @override
+  Future<List<StorefrontCartLine>> cartLines() async {
+    return const [
+      StorefrontCartLine(
+        productId: 'creator-kit',
+        title: 'Creator kit',
+        quantity: 1,
+        priceLabel: '49.00 USD',
+      ),
+    ];
+  }
 }

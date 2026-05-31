@@ -5,6 +5,7 @@ import 'package:rustok_catalog_mobile/rustok_catalog_mobile.dart';
 
 import '../app_shell/storefront_context.dart';
 import '../app_shell/storefront_shell_page.dart';
+import '../data/storefront_catalog_repository.dart';
 
 const homePath = '/';
 const catalogPath = '/catalog';
@@ -18,7 +19,9 @@ final storefrontRouterProvider = Provider<GoRouter>((ref) {
   return buildStorefrontRouter(catalogRepository: catalogRepository);
 });
 
-GoRouter buildStorefrontRouter({StorefrontCatalogRepository? catalogRepository}) {
+GoRouter buildStorefrontRouter({
+  StorefrontCatalogRepository? catalogRepository,
+}) {
   return GoRouter(
     initialLocation: homePath,
     routes: [

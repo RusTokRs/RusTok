@@ -29,7 +29,8 @@ UX do not drift into one host.
 
 - `lib/main.dart` — app bootstrap and provider wiring.
 - `lib/app_shell/storefront_shell_page.dart` — mobile storefront shell.
-- `lib/app_shell/storefront_context.dart` — host-owned runtime context, GraphQL client configuration, and catalog repository override.
+- `lib/app_shell/storefront_context.dart` — host-owned runtime context and GraphQL client configuration.
+- `lib/data/storefront_catalog_repository.dart` — host-owned catalog repository using the shared GraphQL client and existing storefront search surface.
 - `lib/routes/storefront_router.dart` — route table, module-owned catalog/cart mounting, and generic module placeholders.
 
 ## Documentation

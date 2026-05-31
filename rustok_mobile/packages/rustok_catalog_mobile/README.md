@@ -25,8 +25,9 @@ GraphQL transport, and route wiring.
   and `StorefrontCartScreen` at `/cart`.
 - The host overrides `storefrontCatalogRepositoryProvider` with a host-owned
   repository implementation.
-- Future transport-backed implementations must continue using shared host
-  transport wiring instead of package-local clients.
+- The current storefront host implementation reads catalog data through shared
+  GraphQL transport and the existing storefront search surface; future cart
+  transport must continue using host-owned wiring instead of package-local clients.
 
 ## Entry points
 
