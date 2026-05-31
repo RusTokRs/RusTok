@@ -1235,6 +1235,12 @@ fn consistency_table(
     ui_locale: Option<String>,
 ) -> impl IntoView {
     let locale = ui_locale.as_deref();
+    let labels = core::SearchConsistencyIssueLabels {
+        missing: t(locale, "search.issue.missing", "missing"),
+        orphaned: t(locale, "search.issue.orphaned", "orphaned"),
+        not_indexed: t(locale, "search.common.notIndexed", "not indexed"),
+    };
+    let rows = core::build_search_consistency_issue_row_view_models(rows, &labels);
     if rows.is_empty() {
         return view! { <div class="rounded-xl border border-dashed border-border p-12 text-center"><p class="text-sm text-muted-foreground">{t(locale, "search.analytics.consistency.empty", "No missing or orphaned search documents detected. Projection consistency is healthy.")}</p></div> }.into_any();
     }
@@ -1247,25 +1253,17 @@ fn consistency_table(
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.updated", "Updated")}</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t(locale, "search.table.indexed", "Indexed")}</th>
         </tr></thead>
-        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| {
-            let badge_class = core::consistency_issue_badge_class(&row.issue_kind);
-            let issue_label = if row.issue_kind == "missing" {
-                t(locale, "search.issue.missing", "missing")
-            } else {
-                t(locale, "search.issue.orphaned", "orphaned")
-            };
-            view! {
-                <tr class="transition-colors hover:bg-muted/30">
-                    <td class="px-4 py-3 align-top">
-                        <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {badge_class}")>{issue_label}</span>
-                    </td>
-                    <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::source_entity_status_label(&row.source_module, &row.entity_type, &row.status)}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
-                    <td class="px-4 py-3 align-top text-xs text-muted-foreground">{core::value_or_fallback(row.indexed_at, t(locale, "search.common.notIndexed", "not indexed").as_str())}</td>
-                </tr>
-            }
+        <tbody class="divide-y divide-border">{rows.into_iter().map(|row| view! {
+            <tr class="transition-colors hover:bg-muted/30">
+                <td class="px-4 py-3 align-top">
+                    <span class=format!("inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold {}", row.issue_badge_class)>{row.issue_label}</span>
+                </td>
+                <td class="px-4 py-3 align-top"><div class="font-medium text-card-foreground">{row.title}</div><div class="mt-1 text-xs text-muted-foreground">{row.document_key}</div></td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.source_status_label}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.updated_at}</td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.indexed_at}</td>
+            </tr>
         }).collect_view()}</tbody>
     </table></div> }.into_any()
 }

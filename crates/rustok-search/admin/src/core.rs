@@ -4,8 +4,8 @@ use rustok_api::{
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAnalyticsInsightRowPayload, SearchAnalyticsQueryRowPayload,
-    SearchAnalyticsSummaryPayload, SearchDiagnosticsPayload, SearchFacetGroup,
-    SearchPreviewFilters, SearchPreviewPayload,
+    SearchAnalyticsSummaryPayload, SearchConsistencyIssuePayload, SearchDiagnosticsPayload,
+    SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload,
 };
 
 pub fn parse_csv(value: &str) -> Vec<String> {
@@ -472,6 +472,59 @@ mod tests {
     }
 
     #[test]
+    fn consistency_issue_row_view_models_format_render_ready_values() {
+        let labels = SearchConsistencyIssueLabels {
+            missing: "missing".to_string(),
+            orphaned: "orphaned".to_string(),
+            not_indexed: "not indexed".to_string(),
+        };
+        let rows = build_search_consistency_issue_row_view_models(
+            vec![
+                SearchConsistencyIssuePayload {
+                    issue_kind: "missing".to_string(),
+                    document_key: "product:boot-1".to_string(),
+                    document_id: "boot-1".to_string(),
+                    source_module: "catalog".to_string(),
+                    entity_type: "product".to_string(),
+                    locale: "en".to_string(),
+                    status: "published".to_string(),
+                    title: "Boots".to_string(),
+                    updated_at: "2026-05-31T00:01:00Z".to_string(),
+                    indexed_at: None,
+                },
+                SearchConsistencyIssuePayload {
+                    issue_kind: "orphaned".to_string(),
+                    document_key: "blog:post-1".to_string(),
+                    document_id: "post-1".to_string(),
+                    source_module: "blog".to_string(),
+                    entity_type: "post".to_string(),
+                    locale: "ru".to_string(),
+                    status: "archived".to_string(),
+                    title: "Post".to_string(),
+                    updated_at: "2026-05-30T00:00:00Z".to_string(),
+                    indexed_at: Some("2026-05-29T00:00:00Z".to_string()),
+                },
+            ],
+            &labels,
+        );
+
+        assert_eq!(rows[0].issue_label, "missing");
+        assert_eq!(
+            rows[0].issue_badge_class,
+            "border-rose-200 bg-rose-50 text-rose-700"
+        );
+        assert_eq!(rows[0].source_status_label, "catalog/product (published)");
+        assert_eq!(rows[0].indexed_at, "not indexed");
+        assert_eq!(rows[1].issue_label, "orphaned");
+        assert_eq!(
+            rows[1].issue_badge_class,
+            "border-orange-200 bg-orange-50 text-orange-700"
+        );
+        assert_eq!(rows[1].source_status_label, "blog/post (archived)");
+        assert_eq!(rows[1].indexed_at, "2026-05-29T00:00:00Z");
+    }
+
+    #[test]
     fn diagnostics_card_view_model_formats_state_and_newest_indexed() {
         let labels = SearchDiagnosticsLabels {
             healthy: "healthy".to_string(),
@@ -873,6 +926,55 @@ pub fn build_lagging_search_document_row_view_models(
             lag: format_seconds(row.lag_seconds),
             indexed_at: row.indexed_at,
             updated_at: row.updated_at,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchConsistencyIssueLabels {
+    pub missing: String,
+    pub orphaned: String,
+    pub not_indexed: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchConsistencyIssueRowViewModel {
+    pub issue_badge_class: &'static str,
+    pub issue_label: String,
+    pub title: String,
+    pub document_key: String,
+    pub source_status_label: String,
+    pub locale: String,
+    pub updated_at: String,
+    pub indexed_at: String,
+}
+
+pub fn build_search_consistency_issue_row_view_models(
+    rows: Vec<SearchConsistencyIssuePayload>,
+    labels: &SearchConsistencyIssueLabels,
+) -> Vec<SearchConsistencyIssueRowViewModel> {
+    rows.into_iter()
+        .map(|row| {
+            let issue_label = if row.issue_kind == "missing" {
+                labels.missing.clone()
+            } else {
+                labels.orphaned.clone()
+            };
+
+            SearchConsistencyIssueRowViewModel {
+                issue_badge_class: consistency_issue_badge_class(&row.issue_kind),
+                issue_label,
+                title: row.title,
+                document_key: row.document_key,
+                source_status_label: source_entity_status_label(
+                    &row.source_module,
+                    &row.entity_type,
+                    &row.status,
+                ),
+                locale: row.locale,
+                updated_at: row.updated_at,
+                indexed_at: value_or_fallback(row.indexed_at, labels.not_indexed.as_str()),
+            }
         })
         .collect()
 }

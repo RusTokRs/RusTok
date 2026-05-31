@@ -8,7 +8,7 @@ Leptos admin UI package for the `rustok-search` module.
 - Keeps search-specific admin UX inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Provides a scaffold for overview, playground, engines, dictionaries, and analytics pages.
-- Keeps preview, analytics summary/table row, diagnostics card, and lagging diagnostics row presentation mapping in framework-agnostic core view-model helpers so the Leptos layer only renders prepared fields and host click actions.
+- Keeps preview, analytics summary/table row, diagnostics card, and lagging/consistency diagnostics row presentation mapping in framework-agnostic core view-model helpers so the Leptos layer only renders prepared fields and host click actions.
 
 ## Entry Points
 
