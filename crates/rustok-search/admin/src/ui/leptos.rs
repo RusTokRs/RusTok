@@ -1390,12 +1390,22 @@ fn DictionariesView() -> impl IntoView {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let term = synonym_term.get_untracked();
-            let synonyms = core::parse_csv(&synonym_values.get_untracked());
+            let synonyms = synonym_values.get_untracked();
+            let request =
+                core::build_search_synonym_mutation_request(core::SearchSynonymMutationInput {
+                    term: term.as_str(),
+                    synonyms: synonyms.as_str(),
+                });
             let synonym_updated_label = synonym_updated_label.clone();
             let synonym_save_error_label = synonym_save_error_label.clone();
             async move {
-                match transport::upsert_search_synonym(token_value, tenant_value, term, synonyms)
-                    .await
+                match transport::upsert_search_synonym(
+                    token_value,
+                    tenant_value,
+                    request.term,
+                    request.synonyms,
+                )
+                .await
                 {
                     Ok(_) => {
                         set_feedback.set(Some(synonym_updated_label));
@@ -1423,10 +1433,16 @@ fn DictionariesView() -> impl IntoView {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let value = stop_word_value.get_untracked();
+            let request =
+                core::build_search_stop_word_mutation_request(core::SearchStopWordMutationInput {
+                    value: value.as_str(),
+                });
             let stop_word_updated_label = stop_word_updated_label.clone();
             let stop_word_save_error_label = stop_word_save_error_label.clone();
             async move {
-                match transport::add_search_stop_word(token_value, tenant_value, value).await {
+                match transport::add_search_stop_word(token_value, tenant_value, request.value)
+                    .await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(stop_word_updated_label));
                         set_stop_word_value.set(String::new());
@@ -1446,15 +1462,22 @@ fn DictionariesView() -> impl IntoView {
 
     let submit_pin_rule = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
-        let pinned_position = match core::optional_text(&pin_position.get_untracked()) {
-            Some(value) => match value.parse::<i32>() {
-                Ok(parsed) => Some(parsed),
-                Err(_) => {
-                    set_feedback.set(Some(pin_position_error_label.clone()));
-                    return;
-                }
+        let query_text = pin_query_text.get_untracked();
+        let document_id = pin_document_id.get_untracked();
+        let pinned_position = pin_position.get_untracked();
+        let request = match core::build_search_pin_rule_mutation_request(
+            core::SearchPinRuleMutationInput {
+                query_text: query_text.as_str(),
+                document_id: document_id.as_str(),
+                pinned_position: pinned_position.as_str(),
             },
-            None => Some(1),
+            pin_position_error_label.as_str(),
+        ) {
+            Ok(request) => request,
+            Err(err) => {
+                set_feedback.set(Some(err));
+                return;
+            }
         };
 
         set_busy.set(true);
@@ -1462,17 +1485,15 @@ fn DictionariesView() -> impl IntoView {
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
-            let query_text = pin_query_text.get_untracked();
-            let document_id = pin_document_id.get_untracked();
             let pin_rule_updated_label = pin_rule_updated_label.clone();
             let pin_rule_save_error_label = pin_rule_save_error_label.clone();
             async move {
                 match transport::upsert_search_pin_rule(
                     token_value,
                     tenant_value,
-                    query_text,
-                    document_id,
-                    pinned_position,
+                    request.query_text,
+                    request.document_id,
+                    request.pinned_position,
                 )
                 .await
                 {

@@ -141,6 +141,79 @@ pub fn build_search_preview_request(input: SearchPreviewFormInput<'_>) -> Search
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchSynonymMutationInput<'a> {
+    pub term: &'a str,
+    pub synonyms: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchSynonymMutationRequest {
+    pub term: String,
+    pub synonyms: Vec<String>,
+}
+
+pub fn build_search_synonym_mutation_request(
+    input: SearchSynonymMutationInput<'_>,
+) -> SearchSynonymMutationRequest {
+    SearchSynonymMutationRequest {
+        term: input.term.to_string(),
+        synonyms: parse_csv(input.synonyms),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchStopWordMutationInput<'a> {
+    pub value: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchStopWordMutationRequest {
+    pub value: String,
+}
+
+pub fn build_search_stop_word_mutation_request(
+    input: SearchStopWordMutationInput<'_>,
+) -> SearchStopWordMutationRequest {
+    SearchStopWordMutationRequest {
+        value: input.value.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPinRuleMutationInput<'a> {
+    pub query_text: &'a str,
+    pub document_id: &'a str,
+    pub pinned_position: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPinRuleMutationRequest {
+    pub query_text: String,
+    pub document_id: String,
+    pub pinned_position: Option<i32>,
+}
+
+pub fn build_search_pin_rule_mutation_request(
+    input: SearchPinRuleMutationInput<'_>,
+    invalid_position_message: &str,
+) -> Result<SearchPinRuleMutationRequest, String> {
+    let pinned_position = match optional_text(input.pinned_position) {
+        Some(value) => Some(
+            value
+                .parse::<i32>()
+                .map_err(|_| invalid_position_message.to_string())?,
+        ),
+        None => Some(1),
+    };
+
+    Ok(SearchPinRuleMutationRequest {
+        query_text: input.query_text.to_string(),
+        document_id: input.document_id.to_string(),
+        pinned_position,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,6 +302,55 @@ mod tests {
             request.filters.statuses,
             vec!["published".to_string(), "draft".to_string()]
         );
+    }
+
+    #[test]
+    fn dictionary_mutation_requests_normalize_ui_form_state_without_runtime() {
+        let synonym = build_search_synonym_mutation_request(SearchSynonymMutationInput {
+            term: " boot ",
+            synonyms: " boots, shoe ,, sneaker ",
+        });
+        assert_eq!(synonym.term, " boot ");
+        assert_eq!(synonym.synonyms, vec!["boots", "shoe", "sneaker"]);
+
+        let stop_word =
+            build_search_stop_word_mutation_request(SearchStopWordMutationInput { value: " the " });
+        assert_eq!(stop_word.value, " the ");
+
+        let pin_rule = build_search_pin_rule_mutation_request(
+            SearchPinRuleMutationInput {
+                query_text: " winter boots ",
+                document_id: " product-1 ",
+                pinned_position: " 2 ",
+            },
+            "invalid position",
+        )
+        .expect("valid pinned position");
+        assert_eq!(pin_rule.query_text, " winter boots ");
+        assert_eq!(pin_rule.document_id, " product-1 ");
+        assert_eq!(pin_rule.pinned_position, Some(2));
+
+        let default_pin_rule = build_search_pin_rule_mutation_request(
+            SearchPinRuleMutationInput {
+                query_text: "boots",
+                document_id: "product-1",
+                pinned_position: "  ",
+            },
+            "invalid position",
+        )
+        .expect("blank pinned position defaults to first position");
+        assert_eq!(default_pin_rule.pinned_position, Some(1));
+
+        let err = build_search_pin_rule_mutation_request(
+            SearchPinRuleMutationInput {
+                query_text: "boots",
+                document_id: "product-1",
+                pinned_position: "first",
+            },
+            "invalid position",
+        )
+        .expect_err("non-numeric pinned position should fail");
+        assert_eq!(err, "invalid position");
     }
 
     #[test]
