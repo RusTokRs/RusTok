@@ -116,7 +116,7 @@ python3 rustok_mobile/tooling/scripts/check_mobile_codegen.py \
 python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py --repo-root /workspace/RusTok
 ```
 
-Use `--json` when CI needs machine-readable evidence for the mobile operation documents and the server-side surfaces that back them.
+Use `--json` when CI needs machine-readable evidence for the mobile operation documents and the server-side surfaces that back them; `server_evidence` is emitted as a path list, not a comma-delimited string.
 
 ## Next steps
 

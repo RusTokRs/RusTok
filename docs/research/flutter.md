@@ -1335,7 +1335,7 @@ Storefront track получил первый детерминированный 
 - cart contract — CLI-проверка извлекает mobile `StorefrontMobileCart` read и create/add/update/remove mutation documents, проверяет operation/root-field markers и сверяет их с canonical commerce operation names;
 - server-backed evidence — cart operation documents дополнительно привязаны к `crates/rustok-commerce/tests/graphql_runtime_parity_test.rs`, где те же create/add/query/update/remove steps выполняются через `schema.execute(Request::new(...))` и проверяют отсутствие GraphQL errors;
 - FFA guardrail — CLI-проверка не вводит `/api/flutter`, `/api/mobile`, feature-local transport client или package-local tenant/locale/cart ownership и запрещает `tenantId` в mobile operation documents, потому что tenant/locale остаются host-provided GraphQL context;
-- environment note — это source-backed contract/integration evidence для текущего окружения без Flutter SDK; CLI умеет печатать JSON evidence через `--json`, а live schema/test-server job остаётся следующим CI-усилением, а не новым архитектурным контрактом.
+- environment note — это source-backed contract/integration evidence для текущего окружения без Flutter SDK; CLI умеет печатать JSON evidence со списком server evidence paths через `--json`, а live schema/test-server job остаётся следующим CI-усилением, а не новым архитектурным контрактом.
 
 Следующий storefront шаг: поднять этот сигнал до live schema/test-server job в CI, когда будет доступен Flutter SDK/test server harness, и расширять package mappings только при появлении новых module-owned storefront packages.
 

@@ -13,7 +13,21 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, TypedDict
+
+
+class ContractEvidence(TypedDict):
+    const: str
+    operation: str
+    kind: str
+    root_field: str
+    server_evidence: list[str]
+
+
+@dataclass(frozen=True)
+class SourceMarker:
+    path: str
+    marker: str
 
 
 @dataclass(frozen=True)
@@ -22,9 +36,16 @@ class GraphQlContract:
     operation_name: str
     operation_kind: str
     root_field: str
-    server_markers: tuple[tuple[str, str], ...]
+    server_markers: tuple[SourceMarker, ...]
     runtime_builder: str | None = None
     runtime_error_marker: str | None = None
+
+
+SEARCH_STOREFRONT_API = "crates/rustok-search/storefront/src/api.rs"
+COMMERCE_QUERY = "crates/rustok-commerce/src/graphql/query.rs"
+COMMERCE_MUTATION = "crates/rustok-commerce/src/graphql/mutation.rs"
+COMMERCE_TYPES = "crates/rustok-commerce/src/graphql/types.rs"
+COMMERCE_RUNTIME_TEST = "crates/rustok-commerce/tests/graphql_runtime_parity_test.rs"
 
 
 CONTRACTS: tuple[GraphQlContract, ...] = (
@@ -34,12 +55,12 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
         operation_kind="query",
         root_field="storefrontSearch",
         server_markers=(
-            (
-                "crates/rustok-search/storefront/src/api.rs",
+            SourceMarker(
+                SEARCH_STOREFRONT_API,
                 "query StorefrontSearch($input: SearchPreviewInput!)",
             ),
-            ("crates/rustok-search/storefront/src/api.rs", "storefrontSearch(input: $input)"),
-            ("crates/rustok-search/storefront/src/api.rs", "struct SearchPreviewInput"),
+            SourceMarker(SEARCH_STOREFRONT_API, "storefrontSearch(input: $input)"),
+            SourceMarker(SEARCH_STOREFRONT_API, "struct SearchPreviewInput"),
         ),
     ),
     GraphQlContract(
@@ -48,8 +69,8 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
         operation_kind="query",
         root_field="storefrontCart",
         server_markers=(
-            ("crates/rustok-commerce/src/graphql/query.rs", "async fn storefront_cart"),
-            ("crates/rustok-commerce/src/graphql/query.rs", "id: Uuid"),
+            SourceMarker(COMMERCE_QUERY, "async fn storefront_cart"),
+            SourceMarker(COMMERCE_QUERY, "id: Uuid"),
         ),
         runtime_builder="storefront_cart_query",
         runtime_error_marker="unexpected cart query GraphQL errors",
@@ -60,11 +81,8 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
         operation_kind="mutation",
         root_field="createStorefrontCart",
         server_markers=(
-            (
-                "crates/rustok-commerce/src/graphql/mutation.rs",
-                "async fn create_storefront_cart",
-            ),
-            ("crates/rustok-commerce/src/graphql/types.rs", "pub struct CreateStorefrontCartInput"),
+            SourceMarker(COMMERCE_MUTATION, "async fn create_storefront_cart"),
+            SourceMarker(COMMERCE_TYPES, "pub struct CreateStorefrontCartInput"),
         ),
         runtime_builder="storefront_cart_flow_mutation",
         runtime_error_marker="unexpected create cart GraphQL errors",
@@ -75,14 +93,8 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
         operation_kind="mutation",
         root_field="addStorefrontCartLineItem",
         server_markers=(
-            (
-                "crates/rustok-commerce/src/graphql/mutation.rs",
-                "async fn add_storefront_cart_line_item",
-            ),
-            (
-                "crates/rustok-commerce/src/graphql/types.rs",
-                "pub struct AddStorefrontCartLineItemInput",
-            ),
+            SourceMarker(COMMERCE_MUTATION, "async fn add_storefront_cart_line_item"),
+            SourceMarker(COMMERCE_TYPES, "pub struct AddStorefrontCartLineItemInput"),
         ),
         runtime_builder="storefront_cart_add_line_item_mutation",
         runtime_error_marker="unexpected add line item GraphQL errors",
@@ -93,12 +105,12 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
         operation_kind="mutation",
         root_field="updateStorefrontCartLineItem",
         server_markers=(
-            (
-                "crates/rustok-commerce/src/graphql/mutation.rs",
+            SourceMarker(
+                COMMERCE_MUTATION,
                 "async fn update_storefront_cart_line_item",
             ),
-            (
-                "crates/rustok-commerce/src/graphql/types.rs",
+            SourceMarker(
+                COMMERCE_TYPES,
                 "pub struct UpdateStorefrontCartLineItemInput",
             ),
         ),
@@ -111,11 +123,11 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
         operation_kind="mutation",
         root_field="removeStorefrontCartLineItem",
         server_markers=(
-            (
-                "crates/rustok-commerce/src/graphql/mutation.rs",
+            SourceMarker(
+                COMMERCE_MUTATION,
                 "async fn remove_storefront_cart_line_item",
             ),
-            ("crates/rustok-commerce/src/graphql/mutation.rs", "line_id: Uuid"),
+            SourceMarker(COMMERCE_MUTATION, "line_id: Uuid"),
         ),
         runtime_builder="storefront_cart_remove_line_item_mutation",
         runtime_error_marker="unexpected remove line item GraphQL errors",
@@ -123,13 +135,15 @@ CONTRACTS: tuple[GraphQlContract, ...] = (
 )
 
 MOBILE_REPOSITORY_PATH = Path(
-    "rustok_mobile/apps/rustok_frontend_mobile/lib/data/storefront_catalog_repository.dart"
+    "rustok_mobile/apps/rustok_frontend_mobile/lib/data/"
+    "storefront_catalog_repository.dart"
 )
 MOBILE_CONTEXT_PATH = Path(
     "rustok_mobile/apps/rustok_frontend_mobile/lib/app_shell/storefront_context.dart"
 )
-COMMERCE_RUNTIME_TEST_PATH = Path("crates/rustok-commerce/tests/graphql_runtime_parity_test.rs")
-FORBIDDEN_MOBILE_MARKERS = ("/api/flutter", "/api/mobile", "tenantId:", "$tenantId")
+COMMERCE_RUNTIME_TEST_PATH = Path(COMMERCE_RUNTIME_TEST)
+FORBIDDEN_TRANSPORT_MARKERS = ("/api/flutter", "/api/mobile")
+FORBIDDEN_DOCUMENT_MARKERS = (*FORBIDDEN_TRANSPORT_MARKERS, "tenantId:", "$tenantId")
 
 
 class ContractError(RuntimeError):
@@ -156,16 +170,26 @@ def assert_contains(source: str, marker: str, context: str) -> None:
         raise ContractError(f"missing marker `{marker}` in {context}")
 
 
+def assert_absent(source: str, marker: str, context: str) -> None:
+    if marker in source:
+        raise ContractError(f"forbidden marker `{marker}` in {context}")
+
+
 def assert_runtime_builder_is_executed(runtime_source: str, builder: str) -> None:
-    assert_contains(runtime_source, f"fn {builder}", str(COMMERCE_RUNTIME_TEST_PATH))
-    pattern = re.compile(rf"schema\s*\.execute\(Request::new\(\s*{re.escape(builder)}")
+    assert_contains(runtime_source, f"fn {builder}", COMMERCE_RUNTIME_TEST)
+    pattern = re.compile(rf"schema\s*\.execute\(Request::new\(\s*{builder}")
     if pattern.search(runtime_source) is None:
         raise ContractError(
-            f"runtime parity test defines `{builder}` but does not execute it through schema.execute"
+            f"runtime parity test defines `{builder}` but does not execute it "
+            "through schema.execute"
         )
 
 
-def verify_contract(repo_root: Path, contract: GraphQlContract, mobile_source: str) -> dict[str, str]:
+def verify_contract(
+    repo_root: Path,
+    contract: GraphQlContract,
+    mobile_source: str,
+) -> ContractEvidence:
     document = extract_dart_raw_string_const(mobile_source, contract.const_name)
     assert_contains(
         document,
@@ -174,48 +198,60 @@ def verify_contract(repo_root: Path, contract: GraphQlContract, mobile_source: s
     )
     assert_contains(document, f"{contract.root_field}(", contract.const_name)
 
-    for forbidden in FORBIDDEN_MOBILE_MARKERS:
-        if forbidden in document:
-            raise ContractError(
-                f"mobile GraphQL document `{contract.const_name}` must not contain `{forbidden}`"
-            )
+    for forbidden in FORBIDDEN_DOCUMENT_MARKERS:
+        assert_absent(document, forbidden, contract.const_name)
 
     checked_paths: set[str] = set()
-    for path, marker in contract.server_markers:
-        server_source = read(repo_root, path)
-        assert_contains(server_source, marker, path)
-        checked_paths.add(path)
+    for source_marker in contract.server_markers:
+        server_source = read(repo_root, source_marker.path)
+        assert_contains(server_source, source_marker.marker, source_marker.path)
+        checked_paths.add(source_marker.path)
 
     if contract.runtime_builder is not None:
         runtime_source = read(repo_root, COMMERCE_RUNTIME_TEST_PATH)
         assert_runtime_builder_is_executed(runtime_source, contract.runtime_builder)
-        checked_paths.add(str(COMMERCE_RUNTIME_TEST_PATH))
+        checked_paths.add(COMMERCE_RUNTIME_TEST)
     if contract.runtime_error_marker is not None:
         runtime_source = read(repo_root, COMMERCE_RUNTIME_TEST_PATH)
-        assert_contains(runtime_source, contract.runtime_error_marker, str(COMMERCE_RUNTIME_TEST_PATH))
-        checked_paths.add(str(COMMERCE_RUNTIME_TEST_PATH))
+        assert_contains(
+            runtime_source,
+            contract.runtime_error_marker,
+            COMMERCE_RUNTIME_TEST,
+        )
+        checked_paths.add(COMMERCE_RUNTIME_TEST)
 
     return {
         "const": contract.const_name,
         "operation": contract.operation_name,
         "kind": contract.operation_kind,
         "root_field": contract.root_field,
-        "server_evidence": ",".join(sorted(checked_paths)),
+        "server_evidence": sorted(checked_paths),
     }
 
 
-def verify(repo_root: Path) -> list[dict[str, str]]:
+def verify(repo_root: Path) -> list[ContractEvidence]:
     mobile_source = read(repo_root, MOBILE_REPOSITORY_PATH)
     mobile_context = read(repo_root, MOBILE_CONTEXT_PATH)
 
-    for forbidden in ("/api/flutter", "/api/mobile"):
-        if forbidden in mobile_source or forbidden in mobile_context:
-            raise ContractError(f"mobile storefront transport must not define `{forbidden}`")
+    for forbidden in FORBIDDEN_TRANSPORT_MARKERS:
+        assert_absent(mobile_source, forbidden, str(MOBILE_REPOSITORY_PATH))
+        assert_absent(mobile_context, forbidden, str(MOBILE_CONTEXT_PATH))
 
-    assert_contains(mobile_source, "GraphQlStorefrontCatalogRepository", str(MOBILE_REPOSITORY_PATH))
-    assert_contains(mobile_context, "GraphQlClientFactory().create", str(MOBILE_CONTEXT_PATH))
+    assert_contains(
+        mobile_source,
+        "GraphQlStorefrontCatalogRepository",
+        str(MOBILE_REPOSITORY_PATH),
+    )
+    assert_contains(
+        mobile_context,
+        "GraphQlClientFactory().create",
+        str(MOBILE_CONTEXT_PATH),
+    )
 
-    return [verify_contract(repo_root, contract, mobile_source) for contract in CONTRACTS]
+    return [
+        verify_contract(repo_root, contract, mobile_source)
+        for contract in CONTRACTS
+    ]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -244,7 +280,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 1
 
     if args.json:
-        print(json.dumps({"storefront_graphql_contracts": evidence}, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {"storefront_graphql_contracts": evidence},
+                indent=2,
+                sort_keys=True,
+            )
+        )
     else:
         print(f"OK: verified {len(evidence)} storefront mobile GraphQL contracts")
     return 0
