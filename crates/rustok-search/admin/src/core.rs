@@ -5,7 +5,8 @@ use rustok_api::{
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAnalyticsInsightRowPayload, SearchAnalyticsQueryRowPayload,
     SearchAnalyticsSummaryPayload, SearchConsistencyIssuePayload, SearchDiagnosticsPayload,
-    SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload,
+    SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload, SearchQueryRulePayload,
+    SearchStopWordPayload, SearchSynonymPayload,
 };
 
 pub fn parse_csv(value: &str) -> Vec<String> {
@@ -140,6 +141,79 @@ pub fn build_search_preview_request(input: SearchPreviewFormInput<'_>) -> Search
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchSynonymMutationInput<'a> {
+    pub term: &'a str,
+    pub synonyms: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchSynonymMutationRequest {
+    pub term: String,
+    pub synonyms: Vec<String>,
+}
+
+pub fn build_search_synonym_mutation_request(
+    input: SearchSynonymMutationInput<'_>,
+) -> SearchSynonymMutationRequest {
+    SearchSynonymMutationRequest {
+        term: input.term.to_string(),
+        synonyms: parse_csv(input.synonyms),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchStopWordMutationInput<'a> {
+    pub value: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchStopWordMutationRequest {
+    pub value: String,
+}
+
+pub fn build_search_stop_word_mutation_request(
+    input: SearchStopWordMutationInput<'_>,
+) -> SearchStopWordMutationRequest {
+    SearchStopWordMutationRequest {
+        value: input.value.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPinRuleMutationInput<'a> {
+    pub query_text: &'a str,
+    pub document_id: &'a str,
+    pub pinned_position: &'a str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPinRuleMutationRequest {
+    pub query_text: String,
+    pub document_id: String,
+    pub pinned_position: Option<i32>,
+}
+
+pub fn build_search_pin_rule_mutation_request(
+    input: SearchPinRuleMutationInput<'_>,
+    invalid_position_message: &str,
+) -> Result<SearchPinRuleMutationRequest, String> {
+    let pinned_position = match optional_text(input.pinned_position) {
+        Some(value) => Some(
+            value
+                .parse::<i32>()
+                .map_err(|_| invalid_position_message.to_string())?,
+        ),
+        None => Some(1),
+    };
+
+    Ok(SearchPinRuleMutationRequest {
+        query_text: input.query_text.to_string(),
+        document_id: input.document_id.to_string(),
+        pinned_position,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +302,55 @@ mod tests {
             request.filters.statuses,
             vec!["published".to_string(), "draft".to_string()]
         );
+    }
+
+    #[test]
+    fn dictionary_mutation_requests_normalize_ui_form_state_without_runtime() {
+        let synonym = build_search_synonym_mutation_request(SearchSynonymMutationInput {
+            term: " boot ",
+            synonyms: " boots, shoe ,, sneaker ",
+        });
+        assert_eq!(synonym.term, " boot ");
+        assert_eq!(synonym.synonyms, vec!["boots", "shoe", "sneaker"]);
+
+        let stop_word =
+            build_search_stop_word_mutation_request(SearchStopWordMutationInput { value: " the " });
+        assert_eq!(stop_word.value, " the ");
+
+        let pin_rule = build_search_pin_rule_mutation_request(
+            SearchPinRuleMutationInput {
+                query_text: " winter boots ",
+                document_id: " product-1 ",
+                pinned_position: " 2 ",
+            },
+            "invalid position",
+        )
+        .expect("valid pinned position");
+        assert_eq!(pin_rule.query_text, " winter boots ");
+        assert_eq!(pin_rule.document_id, " product-1 ");
+        assert_eq!(pin_rule.pinned_position, Some(2));
+
+        let default_pin_rule = build_search_pin_rule_mutation_request(
+            SearchPinRuleMutationInput {
+                query_text: "boots",
+                document_id: "product-1",
+                pinned_position: "  ",
+            },
+            "invalid position",
+        )
+        .expect("blank pinned position defaults to first position");
+        assert_eq!(default_pin_rule.pinned_position, Some(1));
+
+        let err = build_search_pin_rule_mutation_request(
+            SearchPinRuleMutationInput {
+                query_text: "boots",
+                document_id: "product-1",
+                pinned_position: "first",
+            },
+            "invalid position",
+        )
+        .expect_err("non-numeric pinned position should fail");
+        assert_eq!(err, "invalid position");
     }
 
     #[test]
@@ -522,6 +645,52 @@ mod tests {
         );
         assert_eq!(rows[1].source_status_label, "blog/post (archived)");
         assert_eq!(rows[1].indexed_at, "2026-05-29T00:00:00Z");
+    }
+
+    #[test]
+    fn dictionary_row_view_models_prepare_render_ready_values() {
+        let synonyms = build_search_synonym_row_view_models(vec![SearchSynonymPayload {
+            id: "syn-1".to_string(),
+            term: "boot".to_string(),
+            synonyms: vec!["boots".to_string(), "shoe".to_string()],
+            updated_at: "2026-06-01T00:00:00Z".to_string(),
+        }]);
+        assert_eq!(synonyms[0].id, "syn-1");
+        assert_eq!(synonyms[0].term, "boot");
+        assert_eq!(synonyms[0].synonyms_summary, "boots, shoe");
+        assert_eq!(synonyms[0].updated_at, "2026-06-01T00:00:00Z");
+
+        let stop_words = build_search_stop_word_row_view_models(vec![SearchStopWordPayload {
+            id: "stop-1".to_string(),
+            value: "the".to_string(),
+            updated_at: "2026-06-01T00:01:00Z".to_string(),
+        }]);
+        assert_eq!(stop_words[0].id, "stop-1");
+        assert_eq!(stop_words[0].value, "the");
+        assert_eq!(stop_words[0].updated_at, "2026-06-01T00:01:00Z");
+
+        let query_rules = build_search_query_rule_row_view_models(vec![SearchQueryRulePayload {
+            id: "pin-1".to_string(),
+            query_text: "winter boots".to_string(),
+            query_normalized: "winter boots".to_string(),
+            rule_kind: "pin".to_string(),
+            document_id: "product-1".to_string(),
+            entity_type: "product".to_string(),
+            source_module: "catalog".to_string(),
+            title: "Winter Boots".to_string(),
+            pinned_position: 1,
+            updated_at: "2026-06-01T00:02:00Z".to_string(),
+        }]);
+        assert_eq!(query_rules[0].id, "pin-1");
+        assert_eq!(query_rules[0].query_text, "winter boots");
+        assert_eq!(query_rules[0].query_normalized, "winter boots");
+        assert_eq!(query_rules[0].title, "Winter Boots");
+        assert_eq!(
+            query_rules[0].target_source_path,
+            "product-1 / catalog / product"
+        );
+        assert_eq!(query_rules[0].pinned_position, "1");
+        assert_eq!(query_rules[0].updated_at, "2026-06-01T00:02:00Z");
     }
 
     #[test]
@@ -975,6 +1144,77 @@ pub fn build_search_consistency_issue_row_view_models(
                 updated_at: row.updated_at,
                 indexed_at: value_or_fallback(row.indexed_at, labels.not_indexed.as_str()),
             }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchSynonymRowViewModel {
+    pub id: String,
+    pub term: String,
+    pub synonyms_summary: String,
+    pub updated_at: String,
+}
+
+pub fn build_search_synonym_row_view_models(
+    rows: Vec<SearchSynonymPayload>,
+) -> Vec<SearchSynonymRowViewModel> {
+    rows.into_iter()
+        .map(|row| SearchSynonymRowViewModel {
+            id: row.id,
+            term: row.term,
+            synonyms_summary: row.synonyms.join(", "),
+            updated_at: row.updated_at,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchStopWordRowViewModel {
+    pub id: String,
+    pub value: String,
+    pub updated_at: String,
+}
+
+pub fn build_search_stop_word_row_view_models(
+    rows: Vec<SearchStopWordPayload>,
+) -> Vec<SearchStopWordRowViewModel> {
+    rows.into_iter()
+        .map(|row| SearchStopWordRowViewModel {
+            id: row.id,
+            value: row.value,
+            updated_at: row.updated_at,
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchQueryRuleRowViewModel {
+    pub id: String,
+    pub query_text: String,
+    pub query_normalized: String,
+    pub title: String,
+    pub target_source_path: String,
+    pub pinned_position: String,
+    pub updated_at: String,
+}
+
+pub fn build_search_query_rule_row_view_models(
+    rows: Vec<SearchQueryRulePayload>,
+) -> Vec<SearchQueryRuleRowViewModel> {
+    rows.into_iter()
+        .map(|row| SearchQueryRuleRowViewModel {
+            id: row.id,
+            query_text: row.query_text,
+            query_normalized: row.query_normalized,
+            title: row.title,
+            target_source_path: document_source_path(
+                &row.document_id,
+                &row.source_module,
+                &row.entity_type,
+            ),
+            pinned_position: row.pinned_position.to_string(),
+            updated_at: row.updated_at,
         })
         .collect()
 }

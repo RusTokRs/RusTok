@@ -7,8 +7,9 @@ Leptos admin UI package for the `rustok-search` module.
 - Exposes the search admin root view used by `apps/admin`.
 - Keeps search-specific admin UX inside the module package.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
+- Keeps the crate root wiring-only: `src/lib.rs` declares `core`, `transport`, and `ui`, while `src/ui/leptos.rs` owns the Leptos render adapter for `SearchAdmin`.
 - Provides a scaffold for overview, playground, engines, dictionaries, and analytics pages.
-- Keeps preview, analytics summary/table row, diagnostics card, and lagging/consistency diagnostics row presentation mapping in framework-agnostic core view-model helpers so the Leptos layer only renders prepared fields and host click actions.
+- Keeps preview, analytics summary/table row, diagnostics card, lagging/consistency diagnostics, dictionaries table row presentation, and dictionaries mutation request construction in framework-agnostic core helpers so the Leptos layer only renders prepared fields and host click/delete/submit actions.
 
 ## Entry Points
 
