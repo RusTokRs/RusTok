@@ -14,8 +14,8 @@ UX do not drift into one host.
 - Keep tenant, locale, and GraphQL transport context host-owned.
 - Mirror the existing web storefront contract from `apps/storefront` and
   `apps/next-frontend` without introducing a Flutter-only backend API.
-- Mount module-owned catalog/cart mobile surfaces at `/catalog` and `/cart`.
-- Resolve manifest-driven module routes under `/modules/:routeSegment`, using the generated storefront mobile registry to mount known package surfaces and fallback placeholders for the rest.
+- Mount module-owned catalog/cart mobile surfaces at `/catalog` and `/cart`, including create/add/update/remove cart actions through the host-owned repository boundary.
+- Resolve manifest-driven module routes under `/modules/:routeSegment`, using the generated storefront mobile registry to mount known package surfaces, show registry-driven home links, and fallback placeholders for the rest.
 
 ## Interactions
 
@@ -28,18 +28,20 @@ UX do not drift into one host.
 
 - `lib/main.dart` — app bootstrap and provider wiring.
 - `lib/app_shell/storefront_shell_page.dart` — mobile storefront shell.
-- `lib/app_shell/storefront_context.dart` — host-owned runtime context and GraphQL client configuration.
-- `lib/data/storefront_catalog_repository.dart` — host-owned catalog/cart repository using the shared GraphQL client and existing `storefrontSearch`/`storefrontCart` surfaces.
+- `lib/app_shell/storefront_context.dart` — host-owned runtime context, durable cart id store adapter, and GraphQL client configuration.
+- `lib/data/storefront_catalog_repository.dart` — host-owned catalog/cart repository using the shared GraphQL client and existing `storefrontSearch`, `storefrontCart`, and storefront cart mutation surfaces.
 - `lib/registry/storefront_mobile_manifest.g.dart` — generated storefront registry from `provides.storefront_ui`.
 - `lib/registry/storefront_surface_registry.dart` — host adapter that maps generated storefront entries to mounted mobile package surfaces.
-- `lib/routes/storefront_router.dart` — route table, module-owned catalog/cart mounting, and generic manifest-backed module placeholders.
+- `lib/routes/storefront_router.dart` — route table, registry-driven module links, module-owned catalog/cart mounting, and generic manifest-backed module placeholders.
 
 ## Runtime defines
 
 - `RUSTOK_STOREFRONT_SERVER_BASE_URL` — server base URL.
 - `RUSTOK_STOREFRONT_TENANT_SLUG` — tenant slug for shared GraphQL headers.
 - `RUSTOK_STOREFRONT_LOCALE` — host-selected effective locale.
-- `RUSTOK_STOREFRONT_CART_ID` — optional cart id for the canonical `storefrontCart` read path.
+- `RUSTOK_STOREFRONT_CART_ID` — optional initial cart id loaded into the host-owned cart id store for the canonical `storefrontCart` read path and cart line mutation context.
+- `RUSTOK_STOREFRONT_CART_ID_FILE` — optional host-owned JSON file used by the durable cart id adapter on mobile/desktop builds; when unset, tests and previews keep using the in-memory adapter.
+- `RUSTOK_STOREFRONT_CART_STORAGE_KEY` — optional key for the host-owned cart id persistence adapter; defaults to `rustok.storefront.cart_id`.
 
 ## Documentation
 

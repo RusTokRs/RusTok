@@ -734,10 +734,10 @@ Notes: <known deviations or waivers>
 Чтобы команда могла продолжить работу без дополнительного re-planning, фиксируется минимальный стартовый пакет на ближайшие 10 рабочих дней:
 
 1. **Contract registry update**
-   - [ ] создать/обновить machine-readable запись `builder_contract_version=v1` для provider и `consumer_min_version` для `rustok-pages`;
-   - [ ] добавить ссылку на запись в `docs/modules/registry.md` и локальный implementation-plan `crates/rustok-pages/docs/implementation-plan.md`.
+   - [x] создать/обновить machine-readable запись `builder_contract_version=1.0` для provider и `consumer_min_version=1.0` для `rustok-pages`;
+   - [x] добавить ссылку на запись в `docs/modules/registry.md` и локальный implementation-plan `crates/rustok-pages/docs/implementation-plan.md`.
 2. **Fallback smoke baseline**
-   - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `builder_off` на одном internal tenant;
+   - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `preview_off`, `builder_off` на одном internal tenant;
    - [ ] приложить краткий отчёт с фактами по `admin list/read`, `storefront read`, `publish(dry)`.
 3. **Observability wiring check**
    - [ ] подтвердить наличие correlation-id в цепочке `builder write -> pages publish -> storefront read`;
@@ -748,7 +748,7 @@ Notes: <known deviations or waivers>
 
 **Exit criteria (next 10 working days):**
 - есть валидный contract registry snapshot;
-- есть fallback smoke evidence минимум для `all_on/publish_off/builder_off`;
+- есть fallback smoke evidence минимум для `all_on/publish_off/preview_off/builder_off`;
 - есть observability baseline с correlation examples;
 - есть черновик readiness packet с незакрытыми рисками и owner-назначениями.
 
@@ -787,7 +787,7 @@ Notes: <known deviations or waivers>
 Переход разрешён только при одновременном выполнении:
 
 1. **Contract integrity**
-   - [ ] `builder_contract_version` и `consumer_min_version` подтверждены CI anti-drift gate без waiver.
+   - [x] `builder_contract_version` и `consumer_min_version` подтверждены anti-drift gate без waiver (`verify-page-builder-contract-registry.mjs`; CI aggregate gate обновлён).
 2. **Fallback integrity**
    - [ ] проверены `all_on/publish_off/preview_off/builder_off` и нет 5xx в `admin list/read` + `storefront read`.
 3. **Operational integrity**
@@ -909,8 +909,8 @@ Notes: <known deviations or waivers>
 - Закрыть typed fallback matrix для профилей `builder_off`, `preview_off`, `publish_off`.
 - Зафиксировать единый error catalog (`validation`, `sanitize`, `runtime`, `feature-disabled`)
   без дрейфа между `#[server]`, GraphQL и UI adapters.
-- Добавить CI fallback-gate для профилей `builder.enabled=false` и
-  `builder.publish.enabled=false`.
+- Добавить CI fallback-gate для профилей `all_on`, `publish_off`,
+  `preview_off` и `builder_off`.
 - Сформировать Wave 0 evidence package: toggle snapshots + smoke output +
   observability snapshot + decision note (`keep/rollback`).
 
@@ -921,7 +921,7 @@ Notes: <known deviations or waivers>
 2. **Error semantics slice:** привести payload typed ошибок к одному catalog key-space
    для `preview/properties/publish` capability endpoints.
 3. **Verification slice:** расширить module test gate целевыми проверками
-   `publish_disabled` и `builder_disabled` без деградации list/read.
+   `all_on/publish_off/preview_off/builder_off` без деградации list/read.
 4. **Operability slice:** оформить единый evidence-template для Wave 0 и привязать
    к control-plane audit trail.
 
@@ -948,11 +948,12 @@ Notes: <known deviations or waivers>
 
 #### Week 1 — закрыть P0/P1
 
-- [ ] **PB-FBA-1A / Contract freeze:**
-  - [ ] зафиксировать `builder_contract_version=v1` и `consumer_min_version` в machine-readable registry;
-  - [ ] приложить anti-drift diff-check в CI (`fail-fast` при несовместимости).
-- [ ] **PB-FBA-1B / Fallback hardening:**
-  - [ ] подтвердить smoke-профили `all_on/publish_off/preview_off/builder_off` без `5xx` на `admin list/read` и `storefront read`;
+- [x] **PB-FBA-1A / Contract freeze:**
+  - [x] зафиксировать `builder_contract_version=1.0` и `consumer_min_version=1.0` в machine-readable registry `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`;
+  - [x] приложить anti-drift diff-check в baseline gate (`verify-page-builder-contract-registry.mjs`, aggregate `verify-page-builder-fba-baseline.mjs`, fail-fast при несовместимости).
+- [~] **PB-FBA-1B / Fallback hardening:**
+  - [x] подтвердить service-level smoke-профили `all_on/publish_off/preview_off/builder_off` без деградации `pages` read/list через `pages_builder_fallback_*` gate;
+  - [x] приложить admin/storefront host-helper evidence без деградации read/list и без builder capability requirement на storefront render;
   - [ ] собрать parity-таблицу typed errors для Next/Leptos/Flutter adapters.
 
 #### Week 2 — закрыть P2/P3
@@ -966,15 +967,15 @@ Notes: <known deviations or waivers>
 
 #### Артефакты, обязательные для checkpoint update
 
-1. `metadata snapshot` (provider/consumer versions + fallback profile mapping);
-2. `fallback smoke report` (`all_on`, `publish_off`, `preview_off`, `builder_off`);
+1. `metadata snapshot` (provider/consumer versions + fallback profile mapping): `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`;
+2. `fallback smoke report` (`all_on`, `publish_off`, `preview_off`, `builder_off`): service-level gate `cargo test -p rustok-pages --test page_service_kind_guard pages_builder_fallback`, admin/storefront host-helper static checks inside `verify-page-builder-pages-fallback-gate.mjs`;
 3. `toggle audit log` (change-set id, before/after, decision);
 4. `observability snapshot` (p95/error-rate/sanitize + traces).
 
 #### Жёсткие ограничения на период backlog
 
 - Запрещено открывать delivery по `FW-1..FW-4` до полного закрытия `P5` (раздел 14.2).
-- Любой waiver по anti-drift или fallback-check автоматически ставит статус Wave 1 readiness в `hold`.
+- Любой waiver по anti-drift или fallback-check автоматически ставит статус Wave 1 readiness в `hold`; текущий PB-FBA-1A anti-drift gate должен проходить без waiver.
 - Любой change в builder-contract без синхронного обновления:
   - `crates/rustok-pages/docs/implementation-plan.md`;
   - `docs/modules/registry.md`;

@@ -41,7 +41,7 @@ RusToK поддерживает два web storefront host-приложения 
 
 - `apps/next-frontend` обязан сохранять parity с `apps/storefront` по route, auth, i18n и backend contracts.
 - `rustok_frontend_mobile` обязан использовать тот же customer-facing storefront contract и не смешиваться с admin/operator mobile UX.
-- Поверхности Flutter catalog/cart живут в `rustok_mobile/packages/rustok_catalog_mobile` и монтируются host-ом через repository boundary; package не создаёт собственный GraphQL client, tenant resolver или locale fallback chain.
+- Поверхности Flutter catalog/cart живут в `rustok_mobile/packages/rustok_catalog_mobile` и монтируются host-ом через repository boundary; read/write cart actions идут через canonical storefront GraphQL surface в host-owned repository, cart id хранится только в host-owned cart id store, а package не создаёт собственный GraphQL client, tenant resolver, locale fallback chain или cart storage contract.
 - Next.js и Flutter storefront не должны дублировать storage или canonical-routing логику во frontend слое.
 - Source of truth для transport и canonical routing остаётся на backend стороне.
 

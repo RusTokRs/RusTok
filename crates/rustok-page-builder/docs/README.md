@@ -22,7 +22,8 @@
 ## Точки входа
 
 - `src/lib.rs` — runtime metadata и permission surface;
-- `rustok-module.toml` — декларация slug/entry type/ui-classification.
+- `rustok-module.toml` — декларация slug/entry type/ui-classification;
+- `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 
 ## Интеграция
 
@@ -44,7 +45,8 @@ Runtime provider-а фиксирует baseline fallback-профили в `src/
 ## Проверка
 
 - `cargo test -p rustok-page-builder --lib` — базовая проверка runtime metadata/contract surface;
-- `cargo xtask module validate page_builder` — проверка publish-readiness и manifest/docs contracts.
+- `cargo xtask module validate page_builder` — проверка publish-readiness и manifest/docs contracts;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages` — anti-drift проверка machine-readable registry против provider/consumer manifests.
 
 ## Связанные документы
 

@@ -64,10 +64,13 @@ title = "Forum Categories"
 nav_label = "Categories"
 
 [fba.builder_consumer]
+provider_module = "page-builder"
+contract = "grapesjs_v1"
 contract_version = "1.0"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
 catalog_version = "v1"
+capabilities = ["preview", "tree", "properties", "publish"]
 
 [fba.builder_consumer.error_mapping]
 validation = "forum.widget.validation"

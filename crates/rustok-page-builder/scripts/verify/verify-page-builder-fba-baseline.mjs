@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const checks = [
   "verify-page-builder-contract-parity.mjs",
+  "verify-page-builder-contract-registry.mjs",
   "verify-page-builder-consumer-readiness.mjs",
   "verify-page-builder-fallback-profiles.mjs",
   "verify-page-builder-fallback-matrix-docs.mjs",
@@ -23,7 +24,7 @@ const moduleSlug = process.argv[2] ?? "pages";
 for (const check of checks) {
   const checkPath = path.join(__dirname, check);
   const args = [checkPath];
-  if (check === "verify-page-builder-consumer-readiness.mjs") {
+  if (check === "verify-page-builder-consumer-readiness.mjs" || check === "verify-page-builder-contract-registry.mjs" || check === "verify-page-builder-contract-parity.mjs" || check === "verify-page-builder-fallback-profiles.mjs" || check === "verify-page-builder-toggle-profiles-consistency.mjs") {
     args.push(moduleSlug);
   }
   console.log(`[verify-page-builder-fba-baseline] running ${check}`);

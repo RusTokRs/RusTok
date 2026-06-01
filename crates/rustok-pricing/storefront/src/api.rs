@@ -2,12 +2,18 @@ use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+#[cfg(feature = "ssr")]
 use uuid::Uuid;
 
+#[cfg(feature = "ssr")]
+use crate::core::{normalize_public_channel_slug, resolve_requested_locale};
+use crate::core::{
+    parse_optional_uuid_string, sanitize_channel_slug, sanitize_resolution_context,
+    StorefrontPricingQuery,
+};
 use crate::model::{
     PricingChannelOption, PricingPriceListOption, PricingProductDetail, PricingProductList,
-    PricingProductListItem, PricingProductTranslation, PricingResolutionContext, PricingVariant,
-    StorefrontPricingData,
+    PricingProductListItem, PricingProductTranslation, PricingVariant, StorefrontPricingData,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{PricingEffectivePrice, PricingPrice};
@@ -195,71 +201,7 @@ where
     .map_err(ApiError::from)
 }
 
-pub async fn fetch_storefront_pricing(
-    query: StorefrontPricingQuery,
-) -> Result<StorefrontPricingData, ApiError> {
-    let channel_id = parse_optional_uuid_string(query.channel_id.clone(), "channel_id")?;
-    let channel_slug = sanitize_channel_slug(query.channel_slug.clone());
-    let resolution_context = sanitize_resolution_context(
-        query.currency_code.clone(),
-        query.region_id.clone(),
-        query.price_list_id.clone(),
-        channel_id.clone(),
-        channel_slug.clone(),
-        query.quantity,
-    )?;
-    let currency_code = resolution_context
-        .as_ref()
-        .map(|context| context.currency_code.clone());
-    let region_id = resolution_context
-        .as_ref()
-        .and_then(|context| context.region_id.clone());
-    let price_list_id = resolution_context
-        .as_ref()
-        .and_then(|context| context.price_list_id.clone());
-    let quantity = resolution_context.as_ref().map(|context| context.quantity);
-    match fetch_storefront_pricing_server(StorefrontPricingQuery {
-        selected_handle: query.selected_handle.clone(),
-        locale: query.locale.clone(),
-        currency_code: currency_code.clone(),
-        region_id: region_id.clone(),
-        price_list_id: price_list_id.clone(),
-        channel_id: channel_id.clone(),
-        channel_slug: channel_slug.clone(),
-        quantity,
-    })
-    .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => {
-            fetch_storefront_pricing_graphql(StorefrontPricingQuery {
-                selected_handle: query.selected_handle,
-                locale: query.locale,
-                currency_code,
-                region_id,
-                price_list_id,
-                channel_id,
-                channel_slug,
-                quantity,
-            })
-            .await
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct StorefrontPricingQuery {
-    pub selected_handle: Option<String>,
-    pub locale: Option<String>,
-    pub currency_code: Option<String>,
-    pub region_id: Option<String>,
-    pub price_list_id: Option<String>,
-    pub channel_id: Option<String>,
-    pub channel_slug: Option<String>,
-    pub quantity: Option<i32>,
-}
-
-pub async fn fetch_storefront_pricing_server(
+pub(crate) async fn fetch_storefront_pricing_server(
     query: StorefrontPricingQuery,
 ) -> Result<StorefrontPricingData, ApiError> {
     storefront_pricing_native(query)
@@ -267,10 +209,11 @@ pub async fn fetch_storefront_pricing_server(
         .map_err(ApiError::from)
 }
 
-pub async fn fetch_storefront_pricing_graphql(
+pub(crate) async fn fetch_storefront_pricing_graphql(
     query: StorefrontPricingQuery,
 ) -> Result<StorefrontPricingData, ApiError> {
-    let selected_channel_id = parse_optional_uuid_string(query.channel_id.clone(), "channel_id")?;
+    let selected_channel_id = parse_optional_uuid_string(query.channel_id.clone(), "channel_id")
+        .map_err(|err| ApiError::ServerFn(err.to_string()))?;
     let selected_channel_slug = sanitize_channel_slug(query.channel_slug.clone());
     let resolution_context = sanitize_resolution_context(
         query.currency_code.clone(),
@@ -279,7 +222,8 @@ pub async fn fetch_storefront_pricing_graphql(
         query.channel_id,
         query.channel_slug,
         query.quantity,
-    )?;
+    )
+    .map_err(|err| ApiError::ServerFn(err.to_string()))?;
     let list_response: StorefrontProductsResponse = request(
         STOREFRONT_PRODUCTS_QUERY,
         StorefrontProductsVariables {
@@ -589,127 +533,6 @@ fn map_channel_option(value: rustok_channel::ChannelResponse) -> PricingChannelO
     }
 }
 
-fn text_or_none(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn parse_optional_currency_code(currency_code: Option<String>) -> Result<Option<String>, ApiError> {
-    let Some(currency_code) = currency_code.and_then(text_or_none) else {
-        return Ok(None);
-    };
-    let normalized = currency_code.to_ascii_uppercase();
-    if normalized.len() != 3 || !normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
-        return Err(ApiError::ServerFn(
-            "currency_code must be a 3-letter code".to_string(),
-        ));
-    }
-
-    Ok(Some(normalized))
-}
-
-fn parse_optional_uuid_string(
-    value: Option<String>,
-    field_name: &str,
-) -> Result<Option<String>, ApiError> {
-    let Some(value) = value.and_then(text_or_none) else {
-        return Ok(None);
-    };
-
-    Uuid::parse_str(value.as_str())
-        .map(|_| Some(value))
-        .map_err(|_| ApiError::ServerFn(format!("Invalid {field_name}")))
-}
-
-fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<String> {
-    channel_slug
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-}
-
-fn normalize_optional(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn resolve_requested_locale(
-    requested: Option<String>,
-    request_context_locale: Option<&str>,
-    tenant_default_locale: &str,
-) -> String {
-    normalize_optional(requested)
-        .or_else(|| {
-            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
-        })
-        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
-        .unwrap_or_default()
-}
-
-fn parse_resolution_quantity(quantity: Option<i32>) -> Result<i32, ApiError> {
-    match quantity {
-        Some(value) if value < 1 => Err(ApiError::ServerFn(
-            "quantity must be at least 1".to_string(),
-        )),
-        Some(value) => Ok(value),
-        None => Ok(1),
-    }
-}
-
-fn sanitize_resolution_context(
-    currency_code: Option<String>,
-    region_id: Option<String>,
-    price_list_id: Option<String>,
-    channel_id: Option<String>,
-    channel_slug: Option<String>,
-    quantity: Option<i32>,
-) -> Result<Option<PricingResolutionContext>, ApiError> {
-    let channel_id = parse_optional_uuid_string(channel_id, "channel_id")?;
-    let requires_currency = region_id
-        .as_ref()
-        .and_then(|value| text_or_none(value.clone()))
-        .is_some()
-        || price_list_id
-            .as_ref()
-            .and_then(|value| text_or_none(value.clone()))
-            .is_some()
-        || quantity.is_some();
-    let Some(currency_code) = parse_optional_currency_code(currency_code)? else {
-        if requires_currency {
-            return Err(ApiError::ServerFn(
-                "currency_code is required for pricing resolution context".to_string(),
-            ));
-        }
-        return Ok(None);
-    };
-
-    Ok(Some(PricingResolutionContext {
-        currency_code,
-        region_id: parse_optional_uuid_string(region_id, "region_id")?,
-        price_list_id: parse_optional_uuid_string(price_list_id, "price_list_id")?,
-        channel_id,
-        channel_slug: sanitize_channel_slug(channel_slug),
-        quantity: parse_resolution_quantity(quantity)?,
-    }))
-}
-
-#[cfg(feature = "ssr")]
-fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
-    channel_slug
-        .map(str::trim)
-        .filter(|slug| !slug.is_empty())
-        .map(|slug| slug.to_ascii_lowercase())
-}
-
 #[server(prefix = "/api/fn", endpoint = "pricing/storefront-data")]
 async fn storefront_pricing_native(
     query: StorefrontPricingQuery,
@@ -870,62 +693,5 @@ async fn storefront_pricing_native(
         Err(ServerFnError::new(
             "pricing/storefront-data requires the `ssr` feature",
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn storefront_pricing_resolution_context_rejects_non_letter_currency_code() {
-        let error =
-            sanitize_resolution_context(Some("EU1".to_string()), None, None, None, None, Some(1))
-                .expect_err("invalid currency should be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("currency_code must be a 3-letter code"));
-    }
-
-    #[test]
-    fn storefront_pricing_resolution_context_rejects_non_positive_quantity() {
-        let error =
-            sanitize_resolution_context(Some("EUR".to_string()), None, None, None, None, Some(0))
-                .expect_err("invalid quantity should be rejected");
-
-        assert!(error.to_string().contains("quantity must be at least 1"));
-    }
-
-    #[test]
-    fn storefront_pricing_resolution_context_rejects_modifiers_without_currency_code() {
-        let error = sanitize_resolution_context(
-            None,
-            Some(Uuid::new_v4().to_string()),
-            None,
-            None,
-            None,
-            None,
-        )
-        .expect_err("region_id without currency should be rejected");
-
-        assert!(error
-            .to_string()
-            .contains("currency_code is required for pricing resolution context"));
-    }
-
-    #[test]
-    fn storefront_pricing_resolution_context_rejects_invalid_channel_id() {
-        let error = sanitize_resolution_context(
-            None,
-            None,
-            None,
-            Some("not-a-uuid".to_string()),
-            None,
-            None,
-        )
-        .expect_err("invalid channel_id should be rejected");
-
-        assert!(error.to_string().contains("Invalid channel_id"));
     }
 }

@@ -1,3 +1,4 @@
+import 'package:app_module_contracts/app_module_contracts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -116,12 +117,7 @@ class StorefrontHomePage extends ConsumerWidget {
           icon: Icons.shopping_cart_outlined,
           path: cartPath,
         ),
-        const _SurfaceLinkCard(
-          title: 'Storefront module route',
-          subtitle: 'Reserved for manifest-driven module storefront surfaces.',
-          icon: Icons.extension_outlined,
-          path: '$storefrontModulesRootPath/blog',
-        ),
+        const _StorefrontModuleLinksCard(registry: storefrontSurfaceRegistry),
       ],
     );
   }
@@ -147,6 +143,86 @@ class _RuntimeContextCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _StorefrontModuleLinksCard extends StatelessWidget {
+  const _StorefrontModuleLinksCard({required this.registry});
+
+  final StorefrontSurfaceRegistry registry;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = registry.entries;
+    if (entries.isEmpty) {
+      return const _SurfaceLinkCard(
+        title: 'Storefront modules',
+        subtitle: 'No generated storefront module routes are available.',
+        icon: Icons.extension_outlined,
+        path: storefrontModulesRootPath,
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ListTile(
+            leading: Icon(Icons.extension_outlined),
+            title: Text('Storefront modules'),
+            subtitle: Text(
+              'Generated module routes from the storefront mobile manifest.',
+            ),
+          ),
+          const Divider(height: 1),
+          for (final entry in entries)
+            _StorefrontModuleLinkTile(
+              entry: entry,
+              surfaceKind: registry.resolve(entry.routeSegment).kind,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StorefrontModuleLinkTile extends StatelessWidget {
+  const _StorefrontModuleLinkTile({
+    required this.entry,
+    required this.surfaceKind,
+  });
+
+  final MobileModuleEntry entry;
+  final StorefrontMountedSurfaceKind surfaceKind;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(_iconFor(surfaceKind)),
+      title: Text(entry.nav.title),
+      subtitle: Text('/modules/${entry.routeSegment}'),
+      trailing: Text(_labelFor(surfaceKind)),
+      onTap: () => context.go(
+        '$storefrontModulesRootPath/${entry.routeSegment}',
+      ),
+    );
+  }
+}
+
+IconData _iconFor(StorefrontMountedSurfaceKind kind) {
+  return switch (kind) {
+    StorefrontMountedSurfaceKind.catalog => Icons.category_outlined,
+    StorefrontMountedSurfaceKind.cart => Icons.shopping_cart_outlined,
+    StorefrontMountedSurfaceKind.generic => Icons.extension_outlined,
+  };
+}
+
+String _labelFor(StorefrontMountedSurfaceKind kind) {
+  return switch (kind) {
+    StorefrontMountedSurfaceKind.catalog => 'package',
+    StorefrontMountedSurfaceKind.cart => 'package',
+    StorefrontMountedSurfaceKind.generic => 'manifest',
+  };
 }
 
 class _SurfaceLinkCard extends StatelessWidget {

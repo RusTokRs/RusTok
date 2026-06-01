@@ -18,14 +18,15 @@
 
 - runtime module scaffold завершён;
 - module manifest и docs contracts заведены;
+- machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) фиксирует provider version, `consumer_min_version`, consumer contract versions и fallback profile set для anti-drift gate;
 - server feature wiring (`mod-page-builder`) подключён;
 - capability handlers пока в статусе planned (Phase 1).
 
 ## Ближайшие шаги
 
-1. Зафиксировать transport-neutral DTO/contract package для builder capabilities.
+1. Довести transport-neutral DTO/contract package для builder capabilities до publish-ready evidence.
 2. Добавить server-side stub handlers и permission checks.
-3. Подключить contract checks в `xtask module test page_builder`.
+3. Удерживать `verify-page-builder-contract-registry.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift.
 4. Описать sunset path для legacy block-driven compatibility.
 
 ## Область работ

@@ -258,8 +258,8 @@ fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{core, PageBlock, PageDetail};
-    use crate::model::PageBody;
+    use super::{core, PageDetail};
+    use crate::model::{PageBlock, PageBody};
 
     #[test]
     fn label_value_pair_formats_label_and_value() {

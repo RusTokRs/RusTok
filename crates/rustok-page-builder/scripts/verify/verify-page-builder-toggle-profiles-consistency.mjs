@@ -7,7 +7,20 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
-const pagesManifest = path.join(repoRoot, "crates", "rustok-pages", "rustok-module.toml");
+
+const moduleArg = process.argv[2] ?? "pages";
+const moduleToCrate = {
+  pages: "rustok-pages",
+  forum: "rustok-forum",
+};
+const crateName = moduleToCrate[moduleArg];
+if (!crateName) {
+  console.error(`[${path.basename(__filename, ".mjs")}] FAIL`);
+  console.error(`- unsupported module '${moduleArg}'. supported: ${Object.keys(moduleToCrate).join(", ")}`);
+  process.exit(1);
+}
+
+const pagesManifest = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
 
 function fail(message) {
   console.error("[verify-page-builder-toggle-profiles-consistency] FAIL");
@@ -69,3 +82,4 @@ for (const [profile, flags] of Object.entries(profileExpectations)) {
 }
 
 console.log("[verify-page-builder-toggle-profiles-consistency] PASS");
+console.log(`module=${moduleArg}; crate=${crateName}`);

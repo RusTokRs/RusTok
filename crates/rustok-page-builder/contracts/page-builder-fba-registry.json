@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "provider": {
+    "module_slug": "page_builder",
+    "manifest_module": "page-builder",
+    "contract": "grapesjs_v1",
+    "builder_contract_version": "1.0",
+    "consumer_min_version": "1.0",
+    "capabilities": ["preview", "tree", "properties", "publish"]
+  },
+  "consumers": [
+    {
+      "module_slug": "pages",
+      "crate": "rustok-pages",
+      "provider_module": "page-builder",
+      "contract": "grapesjs_v1",
+      "contract_version": "1.0",
+      "builder_contract_version": "1.0",
+      "consumer_min_version": "1.0",
+      "capabilities": ["preview", "tree", "properties", "publish"],
+      "rollout_state": "wave0_baseline"
+    },
+    {
+      "module_slug": "forum",
+      "crate": "rustok-forum",
+      "provider_module": "page-builder",
+      "contract": "grapesjs_v1",
+      "contract_version": "1.0",
+      "builder_contract_version": "1.0",
+      "consumer_min_version": "1.0",
+      "capabilities": ["preview", "tree", "properties", "publish"],
+      "rollout_state": "deferred"
+    }
+  ],
+  "fallback_profiles": ["all_on", "publish_off", "preview_off", "builder_off"]
+}
