@@ -48,6 +48,42 @@ final storefrontGraphQlClientProvider = Provider<GraphQLClient>((ref) {
   return const GraphQlClientFactory().create(config);
 });
 
+final storefrontCartIdStoreProvider = Provider<StorefrontCartIdStore>((ref) {
+  final runtime = ref.watch(storefrontRuntimeContextProvider);
+  return InMemoryStorefrontCartIdStore(runtime.cartId);
+});
+
+abstract interface class StorefrontCartIdStore {
+  String? read();
+  void write(String? cartId);
+  void clear();
+}
+
+class InMemoryStorefrontCartIdStore implements StorefrontCartIdStore {
+  InMemoryStorefrontCartIdStore(String? initialCartId)
+      : _cartId = _normalizeCartId(initialCartId);
+
+  String? _cartId;
+
+  @override
+  String? read() => _cartId;
+
+  @override
+  void write(String? cartId) {
+    _cartId = _normalizeCartId(cartId);
+  }
+
+  @override
+  void clear() {
+    _cartId = null;
+  }
+}
+
+String? _normalizeCartId(String? cartId) {
+  final trimmed = cartId?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
 class StorefrontRuntimeContext {
   const StorefrontRuntimeContext({
     required this.serverBaseUrl,

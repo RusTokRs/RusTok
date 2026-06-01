@@ -113,6 +113,66 @@ pub fn issue_label<'a>(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuilderHostFallbackSurface {
+    pub profile: &'static str,
+    pub admin_visual_path: &'static str,
+    pub preview_available: bool,
+    pub properties_available: bool,
+    pub publish_available: bool,
+    pub read_list_paths_stable: bool,
+    pub disabled_capabilities: &'static [&'static str],
+}
+
+pub fn builder_host_fallback_surface(profile: &str) -> Option<BuilderHostFallbackSurface> {
+    match profile {
+        "all_on" => Some(BuilderHostFallbackSurface {
+            profile: "all_on",
+            admin_visual_path: "editable_builder",
+            preview_available: true,
+            properties_available: true,
+            publish_available: true,
+            read_list_paths_stable: true,
+            disabled_capabilities: &[],
+        }),
+        "publish_off" => Some(BuilderHostFallbackSurface {
+            profile: "publish_off",
+            admin_visual_path: "editable_builder_publish_disabled",
+            preview_available: true,
+            properties_available: true,
+            publish_available: false,
+            read_list_paths_stable: true,
+            disabled_capabilities: &["publish"],
+        }),
+        "preview_off" => Some(BuilderHostFallbackSurface {
+            profile: "preview_off",
+            admin_visual_path: "preview_hidden_properties_available",
+            preview_available: false,
+            properties_available: true,
+            publish_available: false,
+            read_list_paths_stable: true,
+            disabled_capabilities: &["preview", "publish"],
+        }),
+        "builder_off" => Some(BuilderHostFallbackSurface {
+            profile: "builder_off",
+            admin_visual_path: "readonly_fallback",
+            preview_available: false,
+            properties_available: false,
+            publish_available: false,
+            read_list_paths_stable: true,
+            disabled_capabilities: &["preview", "tree", "properties", "publish"],
+        }),
+        _ => None,
+    }
+}
+
+pub fn builder_disabled_capability_error_key(capability: &str) -> &'static str {
+    match capability {
+        "preview" | "tree" | "properties" | "publish" => "feature-disabled",
+        _ => "runtime",
+    }
+}
+
 pub fn status_badge_class(status: &str) -> &'static str {
     match status.to_ascii_lowercase().as_str() {
         "published" => {
@@ -470,6 +530,63 @@ mod tests {
             missing_required_page_field(&draft),
             Some(PageRequiredField::Title)
         );
+    }
+
+    #[test]
+    fn builder_host_fallback_profiles_keep_read_list_stable() {
+        let expected = [
+            ("all_on", "editable_builder", true, true, true, &[][..]),
+            (
+                "publish_off",
+                "editable_builder_publish_disabled",
+                true,
+                true,
+                false,
+                &["publish"][..],
+            ),
+            (
+                "preview_off",
+                "preview_hidden_properties_available",
+                false,
+                true,
+                false,
+                &["preview", "publish"][..],
+            ),
+            (
+                "builder_off",
+                "readonly_fallback",
+                false,
+                false,
+                false,
+                &["preview", "tree", "properties", "publish"][..],
+            ),
+        ];
+
+        for (profile, visual_path, preview, properties, publish, disabled) in expected {
+            let surface = builder_host_fallback_surface(profile)
+                .expect("profile must have an admin fallback surface");
+            assert_eq!(surface.profile, profile);
+            assert_eq!(surface.admin_visual_path, visual_path);
+            assert_eq!(surface.preview_available, preview);
+            assert_eq!(surface.properties_available, properties);
+            assert_eq!(surface.publish_available, publish);
+            assert!(surface.read_list_paths_stable);
+            assert_eq!(surface.disabled_capabilities, disabled);
+        }
+
+        assert!(builder_host_fallback_surface("unknown").is_none());
+    }
+
+    #[test]
+    fn disabled_builder_capabilities_map_to_typed_feature_disabled_errors() {
+        for capability in ["preview", "tree", "properties", "publish"] {
+            assert_eq!(
+                builder_disabled_capability_error_key(capability),
+                "feature-disabled"
+            );
+        }
+
+        assert_eq!(builder_disabled_capability_error_key("storage"), "runtime");
     }
 
     #[test]

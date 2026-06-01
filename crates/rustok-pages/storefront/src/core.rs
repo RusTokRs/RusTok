@@ -49,6 +49,46 @@ fn summarize_legacy_blocks(blocks: &[PageBlock]) -> String {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StorefrontBuilderFallbackReadContract {
+    pub profile: &'static str,
+    pub read_paths_stable: bool,
+    pub list_paths_stable: bool,
+    pub render_requires_builder_capability: bool,
+}
+
+pub fn storefront_builder_fallback_read_contract(
+    profile: &str,
+) -> Option<StorefrontBuilderFallbackReadContract> {
+    match profile {
+        "all_on" => Some(StorefrontBuilderFallbackReadContract {
+            profile: "all_on",
+            read_paths_stable: true,
+            list_paths_stable: true,
+            render_requires_builder_capability: false,
+        }),
+        "publish_off" => Some(StorefrontBuilderFallbackReadContract {
+            profile: "publish_off",
+            read_paths_stable: true,
+            list_paths_stable: true,
+            render_requires_builder_capability: false,
+        }),
+        "preview_off" => Some(StorefrontBuilderFallbackReadContract {
+            profile: "preview_off",
+            read_paths_stable: true,
+            list_paths_stable: true,
+            render_requires_builder_capability: false,
+        }),
+        "builder_off" => Some(StorefrontBuilderFallbackReadContract {
+            profile: "builder_off",
+            read_paths_stable: true,
+            list_paths_stable: true,
+            render_requires_builder_capability: false,
+        }),
+        _ => None,
+    }
+}
+
 pub fn raw_body_format_summary(format: &str, char_count: usize, template: &str) -> String {
     template
         .replace("{format}", format)
@@ -65,4 +105,52 @@ pub fn open_link_label(prefix: &str, slug: &str) -> String {
 
 pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{}: {}", label, value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{PageBody, PageDetail, PageTranslation};
+
+    #[test]
+    fn storefront_builder_fallback_profiles_keep_read_and_list_stable() {
+        for profile in ["all_on", "publish_off", "preview_off", "builder_off"] {
+            let contract = storefront_builder_fallback_read_contract(profile)
+                .expect("profile must have a storefront read contract");
+            assert_eq!(contract.profile, profile);
+            assert!(contract.read_paths_stable);
+            assert!(contract.list_paths_stable);
+            assert!(!contract.render_requires_builder_capability);
+        }
+
+        assert!(storefront_builder_fallback_read_contract("unknown").is_none());
+    }
+
+    #[test]
+    fn storefront_grapesjs_summary_does_not_require_builder_capability() {
+        let page = PageDetail {
+            effective_locale: Some("en".to_string()),
+            translation: Some(PageTranslation {
+                locale: "en".to_string(),
+                title: Some("Landing".to_string()),
+                slug: Some("landing".to_string()),
+                meta_title: None,
+                meta_description: None,
+            }),
+            body: Some(PageBody {
+                locale: "en".to_string(),
+                content: "{\"pages\":[]}".to_string(),
+                format: "grapesjs_v1".to_string(),
+            }),
+            blocks: Vec::new(),
+        };
+
+        let summary = summarize_page_content(
+            &page,
+            |content, format| raw_body_format_summary(format, content.len(), "{format}:{count}"),
+            "empty".to_string(),
+        );
+
+        assert_eq!(summary, "grapesjs_v1:12");
+    }
 }

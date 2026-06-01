@@ -89,6 +89,7 @@ class _FakeCatalogRepository implements StorefrontCatalogRepository {
         title: 'Starter hoodie',
         description: 'A storefront product card owned by the catalog package.',
         priceLabel: '24.00 USD',
+        variantId: 'starter-hoodie-variant',
         badge: 'Featured',
       ),
     ];
@@ -98,12 +99,51 @@ class _FakeCatalogRepository implements StorefrontCatalogRepository {
   Future<List<StorefrontCartLine>> cartLines() async {
     return const [
       StorefrontCartLine(
+        lineId: 'line-starter-hoodie',
         productId: 'starter-hoodie',
         title: 'Starter hoodie',
         quantity: 1,
         priceLabel: '24.00 USD',
       ),
     ];
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> createCart(
+    StorefrontCreateCartDraft draft,
+  ) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> addCartLine(
+    StorefrontAddCartLineDraft draft,
+  ) async {
+    return StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: await cartLines(),
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> updateCartLine(
+    StorefrontUpdateCartLineDraft draft,
+  ) async {
+    return StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: await cartLines(),
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> removeCartLine(String lineId) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
   }
 }
 
@@ -118,5 +158,43 @@ class _EmptyCatalogRepository implements StorefrontCatalogRepository {
   @override
   Future<List<StorefrontCartLine>> cartLines() async {
     return const <StorefrontCartLine>[];
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> createCart(
+    StorefrontCreateCartDraft draft,
+  ) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> addCartLine(
+    StorefrontAddCartLineDraft draft,
+  ) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> updateCartLine(
+    StorefrontUpdateCartLineDraft draft,
+  ) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> removeCartLine(String lineId) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
   }
 }

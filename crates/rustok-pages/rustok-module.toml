@@ -69,6 +69,7 @@ provider_module = "page-builder"
 contract = "grapesjs_v1"
 contract_version = "1.0"
 builder_contract_version = "1.0"
+consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
 
 [fba.builder_consumer.degraded_modes]

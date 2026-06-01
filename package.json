@@ -3,6 +3,7 @@
     "format:next-admin": "npm --prefix apps/next-admin run format",
     "format:next-admin:check": "npm --prefix apps/next-admin run format:check",
     "verify:page-builder:contract-parity": "node scripts/verify/verify-page-builder-contract-parity.mjs",
+    "verify:page-builder:contract-registry": "node scripts/verify/verify-page-builder-contract-registry.mjs",
     "verify:page-builder:fallback-profiles": "node scripts/verify/verify-page-builder-fallback-profiles.mjs",
     "verify:page-builder:toggle-profiles": "node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs",
     "verify:page-builder:fba:baseline": "node scripts/verify/verify-page-builder-fba-baseline.mjs",

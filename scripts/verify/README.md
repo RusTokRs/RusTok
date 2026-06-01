@@ -22,6 +22,7 @@
 node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
@@ -45,6 +46,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-read
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
 | Проверка parity provider/consumer для page-builder контракта | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
+| Проверка machine-readable registry page-builder против manifests | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
 | Проверка required fallback/toggle профилей page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
 | Проверка консистентности значений в toggle профилях page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
 | Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
@@ -237,6 +239,18 @@ npm run verify:page-builder:consumer:forum
 
 ---
 
+
+### `verify-page-builder-contract-registry.mjs`
+**Page Builder FBA baseline** — Machine-readable registry anti-drift
+
+Что проверяет:
+- `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` существует и имеет `schema_version = 1`;
+- provider metadata (`contract`, `builder_contract_version`, `consumer_min_version`, capabilities) совпадает с `rustok-page-builder/rustok-module.toml`;
+- выбранный consumer (`pages` или `forum`) совпадает с registry по `contract_version`, `builder_contract_version`, `consumer_min_version` и capabilities;
+- consumer version не ниже provider `consumer_min_version`.
+
+**Severity:** HIGH. Registry drift блокирует Wave 0/Wave 1 promotion, потому что contract freeze становится непроверяемым.
+
 ### `verify-page-builder-fallback-profiles.mjs`
 **Page Builder FBA baseline** — Required fallback/toggle structure
 
@@ -266,10 +280,11 @@ npm run verify:page-builder:consumer:forum
 Что делает:
 - последовательно запускает:
   1) `verify-page-builder-contract-parity.mjs`,
-  2) `verify-page-builder-consumer-readiness.mjs <module-slug>` (по умолчанию `pages` в агрегаторе),
-  3) `verify-page-builder-fallback-profiles.mjs`,
-  4) `verify-page-builder-toggle-profiles-consistency.mjs`,
-  5) `verify-page-builder-terminology.mjs`.
+  2) `verify-page-builder-contract-registry.mjs <module-slug>`,
+  3) `verify-page-builder-consumer-readiness.mjs <module-slug>` (по умолчанию `pages` в агрегаторе),
+  4) `verify-page-builder-fallback-profiles.mjs <module-slug>`,
+  5) `verify-page-builder-toggle-profiles-consistency.mjs <module-slug>`,
+  6) `verify-page-builder-terminology.mjs`.
 - возвращает non-zero exit code при падении любого шага.
 
 **Severity:** GATE. Это канонический baseline-check перед promotion в следующий rollout wave.

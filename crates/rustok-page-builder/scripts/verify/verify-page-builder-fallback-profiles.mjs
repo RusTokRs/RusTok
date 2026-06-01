@@ -8,7 +8,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 
-const pagesManifest = path.join(repoRoot, "crates", "rustok-pages", "rustok-module.toml");
+const moduleArg = process.argv[2] ?? "pages";
+const moduleToCrate = {
+  pages: "rustok-pages",
+  forum: "rustok-forum",
+};
+const crateName = moduleToCrate[moduleArg];
+
+if (!crateName) {
+  console.error(`[${path.basename(__filename, ".mjs")}] FAIL`);
+  console.error(`- unsupported module '${moduleArg}'. supported: ${Object.keys(moduleToCrate).join(", ")}`);
+  process.exit(1);
+}
+
+const pagesManifest = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
 
 function fail(message) {
   console.error("[verify-page-builder-fallback-profiles] FAIL");
@@ -63,8 +76,10 @@ for (const flag of requiredFlags) {
   }
 }
 
-if (!content.includes("typed_feature_disabled_error_keep_read_paths")) {
-  fail("publish_disabled degraded mode must keep read paths with typed error");
+const publishDisabledMatch = content.match(/^\s*publish_disabled\s*=\s*"([^"]+)"\s*$/m);
+if (!publishDisabledMatch?.[1]?.includes("feature_disabled")) {
+  fail("publish_disabled degraded mode must encode a typed feature_disabled outcome");
 }
 
 console.log("[verify-page-builder-fallback-profiles] PASS");
+console.log(`module=${moduleArg}; crate=${crateName}`);

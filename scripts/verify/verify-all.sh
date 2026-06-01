@@ -40,6 +40,7 @@ usage() {
     echo "  flex-multilingual-contract  Verify Flex multilingual live contract guardrails"
     echo "  module-lifecycle-bypass-usage  Verify lifecycle bypass helper is blocked in production paths"
     echo "  page-builder-contract-parity  Verify page-builder provider/consumer contract version parity"
+    echo "  page-builder-contract-registry  Verify machine-readable page-builder provider/consumer registry"
     echo "  page-builder-fallback-profiles  Verify required page-builder fallback/toggle profile structure"
     echo "  page-builder-toggle-profiles-consistency  Verify page-builder toggle profile flag combinations"
     echo "  page-builder-fba-baseline  Run full page-builder FBA baseline gate (parity + fallback + toggle consistency)"
@@ -73,6 +74,7 @@ SCRIPTS=(
     "verify-flex-multilingual-contract.mjs:Flex Multilingual Contract"
     "verify-module-lifecycle-bypass-usage.mjs:Module Lifecycle Bypass Usage"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
+    "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:Page Builder Contract Registry"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs:Page Builder Fallback Profiles"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs:Page Builder Toggle Profiles Consistency"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs:Page Builder FBA Baseline Gate"
@@ -129,7 +131,7 @@ for entry in "${SCRIPTS[@]}"; do
     echo -e "${SEPARATOR}"
 
     if [[ "$script_file" == *.mjs ]]; then
-        if [[ "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs" ]]; then
+        if [[ "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs" || "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs" || "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs" || "$script_file" == "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs" ]]; then
             runner=(node "$script_path" "${PBC_MODULE:-pages}")
         else
             runner=(node "$script_path")
