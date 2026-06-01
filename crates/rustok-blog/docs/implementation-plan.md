@@ -21,6 +21,7 @@ packages и module metadata синхронизированы.
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `core_transport`
 - Evidence:
   - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples;
   - native `#[server]` + GraphQL fallback остаются параллельными путями, GraphQL removal/replacement не выполнялся;

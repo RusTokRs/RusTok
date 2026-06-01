@@ -26,10 +26,20 @@ Checklist используется как evidence для phase-gates `A -> B`, 
 
 ### 2) FFA layering
 
+Целевой структурный shape фиксируется одним из значений:
+
+- `none` — кодовый FFA split ещё не начат;
+- `docs_boundary` — синхронизирован boundary/docs track, но UI split ещё не начат;
+- `core_only` — framework-agnostic `core.rs` или `core/` уже владеет view-model/request/policy фрагментом;
+- `core_transport` — добавлен module-owned `transport/` facade/adapters;
+- `core_transport_ui` — есть `core`, `transport` и явный `ui/leptos.rs` или `ui/leptos/` adapter.
+
+`core.rs` разрешён для небольшого среза; при появлении нескольких поддоменов (`view_model`, `policy`, `error`, `ports`, `identifiers`) модуль должен переходить на `core/`. Аналогично `ui/leptos.rs` разрешён для одного render adapter file, а `ui/leptos/` используется при разрастании adapter слоя.
+
 - [ ] UI слой не владеет transport/business логикой.
-- [ ] Доступ к transport идёт через core ports.
+- [ ] UI adapter обращается к transport только через module-owned facade; request/command/state construction и business/policy остаются в core ports/helpers.
 - [ ] Core слой не зависит от `leptos*`.
-- [ ] Transport adapters разделены по ролям: native и GraphQL fallback.
+- [ ] Transport adapters разделены по ролям: native и GraphQL fallback либо явно зафиксирован temporary single-adapter state с next-step parity plan.
 - [ ] Host-visible UI status/error contracts имеют stable machine-readable codes и documented locale keys.
 
 ### 3) i18n/tenant/request context
@@ -67,6 +77,7 @@ Checklist используется как evidence для phase-gates `A -> B`, 
 - Native path: PASS/FAIL
 - GraphQL fallback: PASS/FAIL
 - Headless path: PASS/FAIL
+- Structural shape: none/docs_boundary/core_only/core_transport/core_transport_ui
 - Contract guard (GraphQL/REST retained): PASS/FAIL
 - Docs double-check: PASS/FAIL
 - Error/status contract (if changed): `<code>` -> `<locale key>`

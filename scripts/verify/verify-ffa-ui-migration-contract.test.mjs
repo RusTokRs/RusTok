@@ -14,10 +14,21 @@ import { spawnSync } from "node:child_process";
 
 const scriptPath = path.resolve("scripts/verify/verify-ffa-ui-migration-contract.mjs");
 
-function withFixture({ pipeline, contractCommand, docsCommand }) {
+function withFixture({
+  pipeline,
+  contractCommand,
+  docsCommand,
+  registryShape = "core_transport_ui",
+  localShape = "core_transport_ui",
+}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-ffa-verify-"));
   mkdirSync(path.join(root, "docs", "research"), { recursive: true });
   mkdirSync(path.join(root, "docs", "verification"), { recursive: true });
+  mkdirSync(path.join(root, "docs", "modules"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "docs"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "core"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
 
@@ -51,12 +62,39 @@ function withFixture({ pipeline, contractCommand, docsCommand }) {
       "- [ ] Headless host path (Next/mobile/external) не сломан.",
       "- [ ] GraphQL/REST surface не удалён и не ослаблен.",
       "- [ ] UI слой не владеет transport/business логикой.",
-      "- [ ] Доступ к transport идёт через core ports.",
+      "- [ ] UI adapter обращается к transport только через module-owned facade; request/command/state construction и business/policy остаются в core ports/helpers.",
       "- [ ] Core слой не зависит от `leptos*`.",
-      "- [ ] Transport adapters разделены по ролям: native и GraphQL fallback.",
+      "- [ ] Transport adapters разделены по ролям: native и GraphQL fallback либо явно зафиксирован temporary single-adapter state с next-step parity plan.",
       "- [ ] Host-visible UI status/error contracts имеют stable machine-readable codes и documented locale keys.",
       "- [ ] Выполнен `npm run verify:ffa:ui:migration`.",
       "- [ ] Для изменённых error/status контрактов приложен список stable codes и locale keys.",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "docs", "modules", "registry.md"),
+    [
+      "Structural shape фиксирует глубину code-level FFA split.",
+      "- `none`",
+      "- `docs_boundary`",
+      "- `core_only`",
+      "- `core_transport`",
+      "- `core_transport_ui`",
+      "- `no_ui_boundary`",
+      "| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |",
+      "|---|---|---|---|---|---|",
+      "| `cart` | storefront | `in_progress` | `in_progress` | `" + registryShape + "` | `crates/rustok-cart/docs/implementation-plan.md` fixture |",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-cart", "docs", "implementation-plan.md"),
+    [
+      "## FFA/FBA status",
+      "",
+      "- FFA status: `in_progress`",
+      "- FBA status: `in_progress`",
+      "- Structural shape: `" + localShape + "`",
     ].join("\n"),
   );
 
@@ -205,6 +243,39 @@ test("fails when contract script command is drifted", () => {
   }
 });
 
+
+test("fails when registry structural shape drifts from local module plan", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    registryShape: "core_transport_ui",
+    localShape: "core_only",
+  });
+
+  try {
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected local structural shape drift fixture to fail");
+    assert.match(result.stderr, /Structural shape: `core_transport_ui`/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("fails when structural shape has no matching code layout", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    registryShape: "core_transport_ui",
+    localShape: "core_transport_ui",
+  });
+
+  try {
+    rmSync(path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true, force: true });
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected missing ui adapter fixture to fail");
+    assert.match(result.stderr, /требует ui\/leptos\.rs или ui\/leptos\//);
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 test("passes when docs script uses sh variant", () => {
   const fixture = withFixture({

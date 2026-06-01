@@ -19,6 +19,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `docs_boundary`
 - Last verification evidence:
   - `cargo xtask module validate seo` *(pass, 2026-05-30)*
   - `cargo check -p rustok-seo --tests --config profile.dev.debug=0` *(pass, 2026-05-30)*

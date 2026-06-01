@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{WorkflowSummary, WorkflowTemplateDto};
 
-pub type ApiError = GraphqlHttpError;
+pub type TransportError = GraphqlHttpError;
 
 const WORKFLOWS_QUERY: &str =
     "query Workflows { workflows { id tenantId name status failureCount createdAt updatedAt } }";
@@ -40,6 +40,10 @@ struct CreateFromTemplateVars {
     name: String,
 }
 
+fn graphql_endpoint_from_base(base: &str) -> String {
+    format!("{}/api/graphql", base.trim_end_matches('/'))
+}
+
 fn graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
         return url.to_string();
@@ -50,13 +54,13 @@ fn graphql_url() -> String {
         let origin = web_sys::window()
             .and_then(|window| window.location().origin().ok())
             .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
+        graphql_endpoint_from_base(&origin)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let base =
             std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
+        graphql_endpoint_from_base(&base)
     }
 }
 
@@ -65,7 +69,7 @@ async fn request<V, T>(
     variables: V,
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<T, ApiError>
+) -> Result<T, TransportError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -83,7 +87,7 @@ where
 pub async fn fetch_workflows(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<Vec<WorkflowSummary>, ApiError> {
+) -> Result<Vec<WorkflowSummary>, TransportError> {
     let response: WorkflowsResponse =
         request(WORKFLOWS_QUERY, EmptyVars {}, token, tenant_slug).await?;
     Ok(response.workflows)
@@ -92,7 +96,7 @@ pub async fn fetch_workflows(
 pub async fn fetch_templates(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<Vec<WorkflowTemplateDto>, ApiError> {
+) -> Result<Vec<WorkflowTemplateDto>, TransportError> {
     let response: TemplatesResponse =
         request(WORKFLOW_TEMPLATES_QUERY, EmptyVars {}, token, tenant_slug).await?;
     Ok(response.workflow_templates)
@@ -103,7 +107,7 @@ pub async fn create_from_template(
     tenant_slug: Option<String>,
     template_id: String,
     name: String,
-) -> Result<String, ApiError> {
+) -> Result<String, TransportError> {
     let response: CreateFromTemplateResponse = request(
         CREATE_FROM_TEMPLATE_MUTATION,
         CreateFromTemplateVars { template_id, name },
@@ -112,4 +116,21 @@ pub async fn create_from_template(
     )
     .await?;
     Ok(response.create_workflow_from_template)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn graphql_endpoint_from_base_is_stable_for_host_adapters() {
+        assert_eq!(
+            graphql_endpoint_from_base("http://localhost:5150"),
+            "http://localhost:5150/api/graphql"
+        );
+        assert_eq!(
+            graphql_endpoint_from_base("http://localhost:5150/"),
+            "http://localhost:5150/api/graphql"
+        );
+    }
 }

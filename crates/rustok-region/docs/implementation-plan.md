@@ -18,6 +18,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `core_transport`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;

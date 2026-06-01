@@ -58,16 +58,19 @@
 
 Для каждого пилотного UI пакета ввести 3 слоя:
 
-1. `core/` (framework-agnostic)
+1. `core.rs` или `core/` (framework-agnostic)
    - use-cases, typed state transitions, view-model mapping;
-   - ошибки и policy-результаты в transport-agnostic форме.
+   - ошибки и policy-результаты в transport-agnostic форме;
+   - `core.rs` допустим для маленького среза, `core/` обязателен при появлении нескольких поддоменов (`view_model`, `policy`, `error`, `ports`, `identifiers`).
 2. `transport/`
    - `native_server_adapter` (текущий Leptos native path);
-   - `graphql_adapter` (fallback/headless-compatible path).
-3. `ui/leptos/`
-   - только render/bind слой без transport/business ownership.
+   - `graphql_adapter` (fallback/headless-compatible path);
+   - если срез временно имеет только один adapter, это фиксируется как temporary single-adapter state с next-step parity plan.
+3. `ui/leptos.rs` или `ui/leptos/`
+   - только render/bind слой без transport/business ownership;
+   - `ui/leptos.rs` допустим для одного adapter file, `ui/leptos/` используется при разрастании render adapter слоя.
 
-Ключевое правило: компоненты не вызывают transport напрямую; только через core ports.
+Ключевое правило: UI adapter не вызывает raw GraphQL/native functions напрямую. Он может обращаться только к module-owned `transport/` facade; request/command/state construction, validation и business/policy decisions остаются в `core` ports/helpers.
 
 ## Phase C — Shared platform abstractions (1–2 недели)
 
@@ -95,9 +98,10 @@
 
 Для каждого пакета обязательный DoD:
 
-- core отделён от Leptos runtime;
-- native + GraphQL adapters работают и покрыты integration тестами;
-- Leptos UI слой стал thin adapter;
+- structural shape зафиксирован как минимум до `core_only`, а для phase-gate — до `core_transport_ui`;
+- core отделён от Leptos runtime (`core.rs` и `core/` не содержат `leptos*` imports);
+- native + GraphQL adapters работают и покрыты integration тестами либо temporary single-adapter state явно отмечен с next-step parity plan;
+- Leptos UI слой стал thin adapter и не вызывает raw GraphQL/native functions напрямую;
 - docs модуля и central docs обновлены при изменении контрактов.
 
 ## Параллельный host-track для admin/storefront

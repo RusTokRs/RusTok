@@ -22,8 +22,8 @@ rg -n "Phase-gate" "$PLAN" >/dev/null
 rg -n "KPI parity" "$PLAN" >/dev/null
 rg -n "RACI" "$PLAN" >/dev/null
 
-echo "[3/4] Поиск Leptos-зависимостей внутри core-папок (если появились)..."
-CORE_HITS=$(rg -n --no-heading -S "leptos|leptos_router|leptos_ui_routing" crates --glob "**/core/**" || true)
+echo "[3/4] Поиск Leptos-зависимостей внутри core-слоя (core.rs и core/)..."
+CORE_HITS=$(rg -n --no-heading -S "leptos|leptos_router|leptos_ui_routing" crates --glob "**/core/**" --glob "**/core.rs" || true)
 if [[ -n "$CORE_HITS" ]]; then
   echo "Найдены Leptos-зависимости в core-слое:" >&2
   echo "$CORE_HITS" >&2

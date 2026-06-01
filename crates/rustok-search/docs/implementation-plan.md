@@ -17,6 +17,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `core_only`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;

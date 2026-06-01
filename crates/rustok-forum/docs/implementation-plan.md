@@ -16,6 +16,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `docs_boundary`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
   - API parity: forum widget catalog/validation доступен через REST + GraphQL contract surface;

@@ -17,6 +17,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - storefront slice выделяет `core/` helpers для route/input normalization, UUID validation, adjustment metadata mapping, channel-slug normalization, decrement policy и display/view-model mapping;

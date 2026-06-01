@@ -53,24 +53,33 @@ capability crate-ов и host-приложений в RusToK.
 2. При изменении локального FFA/FBA status block этот board обновляется в том же PR.
 3. Если статус = `parity_verified` или `transport_verified`, в PR должны быть verification evidence.
 
-| Module slug | UI surfaces | FFA status | FBA status | Source plan |
-|---|---|---|---|---|
-| `pages` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pages/docs/implementation-plan.md` (maintenance slice: нормализация create-page draft использует shared UI helpers) |
-| `blog` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-blog/docs/implementation-plan.md` (slice #74: storefront transport adapters consume core-owned fetch request) |
-| `forum` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-forum/docs/implementation-plan.md` (FW-1 contract freeze: widget catalog v1, compatibility matrix and typed error mapping are machine-readable in manifest + REST/GraphQL contract surfaces) |
-| `search` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-search/docs/implementation-plan.md` (slice #25: consistency diagnostics table rows перенесены в core) |
-| `cart` | storefront | `in_progress` | `in_progress` | `crates/rustok-cart/docs/implementation-plan.md` (slice: storefront `core/` policy/view-model helpers + `ui/leptos` render adapter + thin `transport` facade with validation-aware fallback policy introduced without dropping native/GraphQL parity) |
-| `commerce` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.4: admin REST/GraphQL return decision-tree transport plus module-owned post-order order-change operator over `orderChanges`/`applyOrderChange`/`cancelOrderChange`) |
-| `workflow` | admin | `in_progress` | `in_progress` | `crates/rustok-workflow/docs/implementation-plan.md` |
-| `region` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-region/docs/implementation-plan.md` (slice #15: storefront rail list presentation data moved into core view-model) |
-| `product` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront shell copy/fetch request, selected-card labels/empty state and catalog rail presentation joined route/query state, selected-product view-model, and pricing/seller helpers in framework-agnostic core) |
-| `customer` | admin | `in_progress` | `in_progress` | `crates/rustok-customer/docs/implementation-plan.md` |
-| `pricing` | admin + storefront | `in_progress` | `in_progress` | `crates/rustok-pricing/docs/implementation-plan.md` |
-| `inventory` | admin | `in_progress` | `in_progress` | `crates/rustok-inventory/docs/implementation-plan.md` |
-| `order` | admin | `in_progress` | `in_progress` | `crates/rustok-order/docs/implementation-plan.md` (slice 10.1/10.3: validation матрица resolution-ссылок возврата) |
-| `payment` | no module-owned UI | `in_progress` | `in_progress` | `crates/rustok-payment/docs/implementation-plan.md` |
-| `fulfillment` | admin | `in_progress` | `in_progress` | `crates/rustok-fulfillment/docs/implementation-plan.md` |
-| `seo` | admin + storefront contracts | `in_progress` | `in_progress` | `crates/rustok-seo/docs/implementation-plan.md` |
+Structural shape фиксирует глубину code-level FFA split независимо от governance status:
+
+- `none` — кодовый split ещё не начат;
+- `docs_boundary` — синхронизирован boundary/docs track, но UI split ещё не начат;
+- `core_only` — framework-agnostic `core.rs` или `core/` уже владеет view-model/request/policy фрагментом;
+- `core_transport` — добавлен module-owned `transport/` facade/adapters;
+- `core_transport_ui` — есть `core`, `transport` и явный `ui/leptos.rs` или `ui/leptos/` adapter;
+- `no_ui_boundary` — у модуля нет module-owned UI, но есть backend boundary/FBA track.
+
+| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
+|---|---|---|---|---|---|
+| `pages` | admin + storefront | `in_progress` | `in_progress` | `core_only` | `crates/rustok-pages/docs/implementation-plan.md` (maintenance slice: нормализация create-page draft использует shared UI helpers) |
+| `blog` | admin + storefront | `in_progress` | `in_progress` | `core_transport` | `crates/rustok-blog/docs/implementation-plan.md` (slice #74: storefront transport adapters consume core-owned fetch request) |
+| `forum` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-forum/docs/implementation-plan.md` (FW-1 contract freeze: widget catalog v1, compatibility matrix and typed error mapping are machine-readable in manifest + REST/GraphQL contract surfaces) |
+| `search` | admin + storefront | `in_progress` | `in_progress` | `core_only` | `crates/rustok-search/docs/implementation-plan.md` (slice #25: consistency diagnostics table rows перенесены в core) |
+| `cart` | storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-cart/docs/implementation-plan.md` (slice: storefront `core/` policy/view-model helpers + `ui/leptos` render adapter + thin `transport` facade with validation-aware fallback policy introduced without dropping native/GraphQL parity) |
+| `commerce` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.4: admin REST/GraphQL return decision-tree transport plus module-owned post-order order-change operator over `orderChanges`/`applyOrderChange`/`cancelOrderChange`) |
+| `workflow` | admin | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-workflow/docs/implementation-plan.md` (slice: admin core helpers + thin `transport/` facade + explicit `ui/leptos` adapter; внешний GraphQL contract не изменялся) |
+| `region` | admin + storefront | `in_progress` | `in_progress` | `core_transport` | `crates/rustok-region/docs/implementation-plan.md` (slice #15: storefront rail list presentation data moved into core view-model) |
+| `product` | admin + storefront | `in_progress` | `in_progress` | `core_only` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront shell copy/fetch request, selected-card labels/empty state and catalog rail presentation joined route/query state, selected-product view-model, and pricing/seller helpers in framework-agnostic core) |
+| `customer` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-customer/docs/implementation-plan.md` |
+| `pricing` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-pricing/docs/implementation-plan.md` |
+| `inventory` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-inventory/docs/implementation-plan.md` |
+| `order` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-order/docs/implementation-plan.md` (slice 10.1/10.3: validation матрица resolution-ссылок возврата) |
+| `payment` | no module-owned UI | `in_progress` | `in_progress` | `no_ui_boundary` | `crates/rustok-payment/docs/implementation-plan.md` |
+| `fulfillment` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-fulfillment/docs/implementation-plan.md` |
+| `seo` | admin + storefront contracts | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-seo/docs/implementation-plan.md` |
 
 ## Hotspot contract (DOC-12 / H1)
 

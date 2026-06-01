@@ -18,6 +18,7 @@ rule и scope write paths, а полный promotions engine и остально
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Structural shape: `docs_boundary`
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
