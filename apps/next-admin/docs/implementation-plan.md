@@ -59,7 +59,8 @@ Must-have parity между `apps/next-admin` и `apps/admin`:
 - единый backend payload contract `grapesjs_v1` (`body.format`, `body.contentJson`);
 - capability surfaces `preview/tree/properties/publish` на обоих host-стэках;
 - publish/write actions и compatibility-правила для legacy `blocks/body` не расходятся;
-- единый UX-паттерн ошибок write-path (`validation/sanitize/runtime`) для rich/page-builder форм.
+- единый UX-паттерн ошибок write-path (`validation/sanitize/runtime`) для rich/page-builder форм;
+- для page-builder save/publish ошибок Next Admin использует тот же typed catalog, что и `rustok-pages`: `validation`, `sanitize`, `runtime`, `feature-disabled` (`FEATURE_DISABLED`) с operator-guidance для disabled publish capability.
 
 Host-specific UX, который допустим без drift:
 

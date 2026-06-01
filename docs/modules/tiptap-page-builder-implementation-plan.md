@@ -955,7 +955,8 @@ Notes: <known deviations or waivers>
   - [x] подтвердить service-level smoke-профили `all_on/publish_off/preview_off/builder_off` без деградации `pages` read/list через `pages_builder_fallback_*` gate;
   - [x] приложить admin/storefront host-helper evidence без деградации read/list и без builder capability requirement на storefront render;
   - [x] связать `degraded_modes` с typed error catalog (`FEATURE_DISABLED`) в provider/consumer metadata, FBA registry и runtime anti-drift gate;
-  - [ ] собрать parity-таблицу typed errors для Next/Leptos/Flutter adapters.
+  - [x] закрепить Next Admin typed-error parity (`validation/sanitize/runtime/feature-disabled`) и operator guidance через static baseline gate;
+  - [ ] собрать оставшуюся parity-таблицу typed errors для Leptos/Flutter adapters.
 
 #### Week 2 — закрыть P2/P3
 

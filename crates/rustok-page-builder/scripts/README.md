@@ -3,6 +3,7 @@
 This folder stores scripts that are specific to this crate/module.
 
 Rules:
+
 - Keep module-specific verification, migration, generation, or maintenance scripts here.
 - Keep cross-platform orchestration scripts in the repository-level `scripts/` folder.
 - When script behavior changes public/runtime contracts, update local docs and central docs accordingly.
@@ -16,3 +17,4 @@ Rules:
 
 - `verify/verify-page-builder-runtime-fallback-gate.mjs` runs the provider runtime fallback tests used by the CI baseline gate.
 - `verify/verify-page-builder-pages-fallback-gate.mjs` runs the `rustok-pages` service fallback checks plus admin/storefront host-helper static checks for all baseline profiles (`all_on`, `publish_off`, `preview_off`, `builder_off`).
+- `verify/verify-page-builder-next-admin-parity.mjs` keeps Next Admin page-builder save errors aligned with the `rustok-pages` typed error catalog and operator-guidance contract.
