@@ -64,14 +64,14 @@ Structural shape фиксирует глубину code-level FFA split неза
 
 | Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
 |---|---|---|---|---|---|
-| `pages` | admin + storefront | `in_progress` | `in_progress` | `core_only` | `crates/rustok-pages/docs/implementation-plan.md` (maintenance slice: нормализация create-page draft использует shared UI helpers) |
+| `pages` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pages/docs/implementation-plan.md` (admin slice: `core` + thin `transport` facade + explicit `ui/leptos` adapter; GraphQL contract unchanged) |
 | `blog` | admin + storefront | `in_progress` | `in_progress` | `core_transport` | `crates/rustok-blog/docs/implementation-plan.md` (slice #74: storefront transport adapters consume core-owned fetch request) |
 | `forum` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-forum/docs/implementation-plan.md` (FW-1 contract freeze: widget catalog v1, compatibility matrix and typed error mapping are machine-readable in manifest + REST/GraphQL contract surfaces) |
-| `search` | admin + storefront | `in_progress` | `in_progress` | `core_only` | `crates/rustok-search/docs/implementation-plan.md` (slice #25: consistency diagnostics table rows перенесены в core) |
+| `search` | admin + storefront | `in_progress` | `in_progress` | `core_transport` | `crates/rustok-search/docs/implementation-plan.md` (slice #26: admin native/GraphQL calls route through module-owned `transport/` facade; GraphQL fallback unchanged) |
 | `cart` | storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-cart/docs/implementation-plan.md` (slice: storefront `core/` policy/view-model helpers + `ui/leptos` render adapter + thin `transport` facade with validation-aware fallback policy introduced without dropping native/GraphQL parity) |
 | `commerce` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.4: admin REST/GraphQL return decision-tree transport plus module-owned post-order order-change operator over `orderChanges`/`applyOrderChange`/`cancelOrderChange`) |
 | `workflow` | admin | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-workflow/docs/implementation-plan.md` (slice: admin core helpers + thin `transport/` facade + explicit `ui/leptos` adapter; внешний GraphQL contract не изменялся) |
-| `region` | admin + storefront | `in_progress` | `in_progress` | `core_transport` | `crates/rustok-region/docs/implementation-plan.md` (slice #15: storefront rail list presentation data moved into core view-model) |
+| `region` | admin + storefront | `in_progress` | `in_progress` | `core_transport` | `crates/rustok-region/docs/implementation-plan.md` (slice #16: admin calls route through module-owned `transport/` facade; storefront keeps native/GraphQL transport split) |
 | `product` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront native/GraphQL + Leptos adapter split; product admin core helpers, `SelectedProductSummaryViewModel`, transport facade and `admin/src/ui/leptos.rs` adapter) |
 | `customer` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-customer/docs/implementation-plan.md` |
 | `pricing` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-pricing/docs/implementation-plan.md` |

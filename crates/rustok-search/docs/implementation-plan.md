@@ -6,18 +6,19 @@
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: Phase B slice #25 перенёс render-ready values для consistency diagnostics table rows во framework-agnostic `SearchConsistencyIssueRowViewModel` в `admin/src/core.rs`.
-- Next step: Продолжить Phase B: вынести следующий render-ready фрагмент dictionaries tables или mutation feedback, сохраняя Leptos как thin adapter.
+- Last checkpoint: Phase B slice #26 добавил `admin/src/transport/` facade над текущим native/GraphQL adapter и перевёл Leptos admin calls на этот module-owned transport boundary.
+- Next step: Продолжить Phase B: вынести следующий render-ready фрагмент dictionaries tables или mutation feedback, сохраняя Leptos как thin adapter; затем выделить явный `ui/leptos` adapter, когда будет отдельный render-split slice.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
 - Last updated at (UTC): 2026-05-31T00:00:00Z
+- Last updated at (UTC): 2026-06-01T11:52:00Z
 
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_only`
+- Structural shape: `core_transport`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
@@ -28,8 +29,9 @@
   - Phase B slice #22 перенёс форматирование analytics query/intelligence table rows в core row view-models, сохранив transport/native+GraphQL paths без изменений;
   - Phase B slice #23 перенёс diagnostics card state badge и newest-indexed summary в core view-model, оставив Leptos слой только для i18n labels и render;
   - Phase B slice #24 перенёс форматирование lagging diagnostics table rows в core row view-model, сохранив transport/native+GraphQL paths без изменений;
-  - Phase B slice #25 перенёс consistency diagnostics issue labels, badge classes, source/status labels и indexed fallback в core row view-model.
-- Last verified at (UTC): 2026-05-31T00:00:00Z
+  - Phase B slice #25 перенёс consistency diagnostics issue labels, badge classes, source/status labels и indexed fallback в core row view-model;
+  - Phase B slice #26 добавил module-owned `admin/src/transport/` facade для bootstrap, preview, analytics, diagnostics, settings и dictionary operations; Leptos admin больше не вызывает `api::*` напрямую, а existing native/GraphQL fallback adapter остался в `admin/src/api.rs`.
+- Last verified at (UTC): 2026-06-01T11:52:00Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -123,3 +125,4 @@
 - [x] Slice 23: diagnostics card state badge и newest-indexed summary перенесены в core (`SearchDiagnosticsLabels`, `SearchDiagnosticsCardViewModel`, `build_search_diagnostics_card_view_model`), поэтому Leptos card только передаёт host-provided labels и рендерит подготовленную модель.
 - [x] Slice 24: render-ready values lagging diagnostics table rows перенесены в core (`LaggingSearchDocumentRowViewModel`, `build_lagging_search_document_row_view_models`), поэтому Leptos table рендерит source/status label и lag как подготовленные строки.
 - [x] Slice 25: render-ready values consistency diagnostics table rows перенесены в core (`SearchConsistencyIssueLabels`, `SearchConsistencyIssueRowViewModel`, `build_search_consistency_issue_row_view_models`), поэтому Leptos table только передаёт host-provided labels и рендерит подготовленные issue/source/indexed поля.
+- [x] Slice 26: admin native/GraphQL calls заведены за module-owned `transport/` facade; Leptos admin вызывает `transport::*`, а `api.rs` остаётся transport adapter implementation с прежним fallback контрактом.

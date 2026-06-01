@@ -2,6 +2,7 @@ mod api;
 mod core;
 mod i18n;
 mod model;
+mod transport;
 
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
@@ -132,31 +133,31 @@ pub fn SearchAdmin() -> impl IntoView {
     let bootstrap = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            api::fetch_bootstrap(token_value, tenant_value).await
+            transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
     let lagging_documents = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            api::fetch_lagging_documents(token_value, tenant_value, Some(25)).await
+            transport::fetch_lagging_documents(token_value, tenant_value, Some(25)).await
         },
     );
     let consistency_issues = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            api::fetch_consistency_issues(token_value, tenant_value, Some(25)).await
+            transport::fetch_consistency_issues(token_value, tenant_value, Some(25)).await
         },
     );
     let search_analytics = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            api::fetch_search_analytics(token_value, tenant_value, Some(7), Some(10)).await
+            transport::fetch_search_analytics(token_value, tenant_value, Some(7), Some(10)).await
         },
     );
     let filter_presets = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            api::fetch_filter_presets(token_value, tenant_value, "search_preview").await
+            transport::fetch_filter_presets(token_value, tenant_value, "search_preview").await
         },
     );
 
@@ -236,7 +237,7 @@ pub fn SearchAdmin() -> impl IntoView {
                 } = preview_request;
                 preview_query_writer
                     .replace_query_update(AdminQueryKey::Query.as_str(), route_query_update);
-                match api::fetch_search_preview(
+                match transport::fetch_search_preview(
                     token_value,
                     tenant_value,
                     query,
@@ -269,7 +270,7 @@ pub fn SearchAdmin() -> impl IntoView {
             let rebuild_queued_template = rebuild_queued_template.clone();
             let queue_rebuild_error_label = queue_rebuild_error_label.clone();
             async move {
-                match api::trigger_search_rebuild(
+                match transport::trigger_search_rebuild(
                     token_value,
                     tenant_value,
                     Some(target_type.clone()),
@@ -439,7 +440,7 @@ pub fn SearchAdmin() -> impl IntoView {
                                         let save_settings_error_label =
                                             save_settings_error_label.clone();
                                         async move {
-                                            match api::update_search_settings(
+                                            match transport::update_search_settings(
                                                 token_value,
                                                 tenant_value,
                                                 active_engine,
@@ -767,7 +768,9 @@ fn playground_view(
     set_ranking_profile: WriteSignal<String>,
     preset_key: ReadSignal<String>,
     set_preset_key: WriteSignal<String>,
-    filter_presets: LocalResource<Result<Vec<SearchFilterPresetPayload>, api::ApiError>>,
+    filter_presets: LocalResource<
+        Result<Vec<SearchFilterPresetPayload>, transport::TransportError>,
+    >,
     preview: ReadSignal<Option<SearchPreviewPayload>>,
     preview_error: ReadSignal<Option<String>>,
     busy: ReadSignal<bool>,
@@ -895,9 +898,13 @@ fn playground_view(
 fn analytics_view(
     ui_locale: Option<String>,
     diagnostics: SearchDiagnosticsPayload,
-    lagging_documents: LocalResource<Result<Vec<LaggingSearchDocumentPayload>, api::ApiError>>,
-    consistency_issues: LocalResource<Result<Vec<SearchConsistencyIssuePayload>, api::ApiError>>,
-    search_analytics: LocalResource<Result<SearchAnalyticsPayload, api::ApiError>>,
+    lagging_documents: LocalResource<
+        Result<Vec<LaggingSearchDocumentPayload>, transport::TransportError>,
+    >,
+    consistency_issues: LocalResource<
+        Result<Vec<SearchConsistencyIssuePayload>, transport::TransportError>,
+    >,
+    search_analytics: LocalResource<Result<SearchAnalyticsPayload, transport::TransportError>>,
 ) -> impl IntoView {
     let locale = ui_locale.clone();
     let locale_ref = locale.as_deref();
@@ -1180,7 +1187,7 @@ fn preview_result_action(
                 let document_id = document_id.clone();
                 let url = url.clone();
                 spawn_local(async move {
-                    let _ = api::track_search_click(
+                    let _ = transport::track_search_click(
                         token_value,
                         tenant_value,
                         query_log_id,
@@ -1377,7 +1384,7 @@ fn DictionariesView() -> impl IntoView {
     let snapshot = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            api::fetch_dictionary_snapshot(token_value, tenant_value).await
+            transport::fetch_dictionary_snapshot(token_value, tenant_value).await
         },
     );
 
@@ -1393,7 +1400,9 @@ fn DictionariesView() -> impl IntoView {
             let synonym_updated_label = synonym_updated_label.clone();
             let synonym_save_error_label = synonym_save_error_label.clone();
             async move {
-                match api::upsert_search_synonym(token_value, tenant_value, term, synonyms).await {
+                match transport::upsert_search_synonym(token_value, tenant_value, term, synonyms)
+                    .await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(synonym_updated_label));
                         set_synonym_term.set(String::new());
@@ -1423,7 +1432,7 @@ fn DictionariesView() -> impl IntoView {
             let stop_word_updated_label = stop_word_updated_label.clone();
             let stop_word_save_error_label = stop_word_save_error_label.clone();
             async move {
-                match api::add_search_stop_word(token_value, tenant_value, value).await {
+                match transport::add_search_stop_word(token_value, tenant_value, value).await {
                     Ok(_) => {
                         set_feedback.set(Some(stop_word_updated_label));
                         set_stop_word_value.set(String::new());
@@ -1464,7 +1473,7 @@ fn DictionariesView() -> impl IntoView {
             let pin_rule_updated_label = pin_rule_updated_label.clone();
             let pin_rule_save_error_label = pin_rule_save_error_label.clone();
             async move {
-                match api::upsert_search_pin_rule(
+                match transport::upsert_search_pin_rule(
                     token_value,
                     tenant_value,
                     query_text,
@@ -1501,7 +1510,8 @@ fn DictionariesView() -> impl IntoView {
             let synonym_removed_label = synonym_removed_label.clone();
             let synonym_remove_error_label = synonym_remove_error_label.clone();
             async move {
-                match api::delete_search_synonym(token_value, tenant_value, synonym_id).await {
+                match transport::delete_search_synonym(token_value, tenant_value, synonym_id).await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(synonym_removed_label));
                         set_refresh_nonce.update(|nonce| *nonce += 1);
@@ -1527,7 +1537,9 @@ fn DictionariesView() -> impl IntoView {
             let stop_word_removed_label = stop_word_removed_label.clone();
             let stop_word_remove_error_label = stop_word_remove_error_label.clone();
             async move {
-                match api::delete_search_stop_word(token_value, tenant_value, stop_word_id).await {
+                match transport::delete_search_stop_word(token_value, tenant_value, stop_word_id)
+                    .await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(stop_word_removed_label));
                         set_refresh_nonce.update(|nonce| *nonce += 1);
@@ -1553,7 +1565,8 @@ fn DictionariesView() -> impl IntoView {
             let pin_rule_removed_label = pin_rule_removed_label.clone();
             let pin_rule_remove_error_label = pin_rule_remove_error_label.clone();
             async move {
-                match api::delete_search_query_rule(token_value, tenant_value, query_rule_id).await
+                match transport::delete_search_query_rule(token_value, tenant_value, query_rule_id)
+                    .await
                 {
                     Ok(_) => {
                         set_feedback.set(Some(pin_rule_removed_label));

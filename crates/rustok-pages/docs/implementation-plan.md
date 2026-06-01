@@ -6,9 +6,9 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_closed
-- Last checkpoint: FFA maintenance slice вынесла create-page draft normalization (`PageDraftFormInput` / `build_create_page_draft`) и route text checks на shared UI helpers из `rustok-api`.
-- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots.
+- Current phase: phase_b_admin_ui_split
+- Last checkpoint: FFA admin slice выделил `admin/src/transport/` как module-owned facade над GraphQL adapter и перенёс Leptos render/bind слой в `admin/src/ui/leptos.rs`; crate root теперь только wires modules и re-export `PagesAdmin`.
+- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем выровнять storefront slice до такого же явного `ui/leptos` adapter, если появится новый кодовый срез.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Перед любыми изменениями pages сначала сверить `docs/research/dioxus-ffa-pilot-connectivity-map.md` и этот файл; не открывать новый slice без явной цели в трекере.
@@ -26,9 +26,11 @@
 - Last updated at (UTC): 2026-06-01T03:00:00Z
 - Last updated at (UTC): 2026-06-01T04:00:00Z
 - Last updated at (UTC): 2026-06-01T04:30:00Z
+- Last updated at (UTC): 2026-06-01T11:45:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
+- Latest maintenance update: admin UI получил явный FFA split `core` + `transport` + `ui/leptos`; GraphQL operations остаются в `admin/src/api.rs`, а render/effect код вызывает только facade из `admin/src/transport/`.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -43,12 +45,13 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_only`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
-  - FFA maintenance slice: create-page draft normalization, channel slug CSV parsing and route text checks переиспользуют shared UI helpers из `rustok-api` без изменения native/GraphQL транспорта.
-- Last verified at (UTC): 2026-05-29T00:00:00Z
+  - FFA maintenance slice: create-page draft normalization, channel slug CSV parsing and route text checks переиспользуют shared UI helpers из `rustok-api` без изменения native/GraphQL транспорта;
+  - FFA admin slice: Leptos render/effect adapter живёт в `admin/src/ui/leptos.rs`, transport facade — в `admin/src/transport/`, GraphQL adapter — в `admin/src/api.rs`; внешний GraphQL contract не менялся.
+- Last verified at (UTC): 2026-06-01T11:45:00Z
 - Owner: `rustok-pages` module team
 
 ## PB-FBA immediate sprint (продолжение page builder разработки)

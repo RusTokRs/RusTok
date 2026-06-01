@@ -42,12 +42,12 @@ pub fn RegionAdmin() -> impl IntoView {
 
     let bootstrap = local_resource(
         move || refresh_nonce.get(),
-        move |_| async move { crate::api::fetch_bootstrap().await },
+        move |_| async move { crate::transport::fetch_bootstrap().await },
     );
 
     let regions = local_resource(
         move || refresh_nonce.get(),
-        move |_| async move { crate::api::fetch_regions().await },
+        move |_| async move { crate::transport::fetch_regions().await },
     );
 
     let required_name_label = t(
@@ -106,7 +106,7 @@ pub fn RegionAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            match crate::api::fetch_region_detail(region_id).await {
+            match crate::transport::fetch_region_detail(region_id).await {
                 Ok(detail) => apply_region_detail(
                     &detail,
                     set_editing_id,
@@ -207,8 +207,8 @@ pub fn RegionAdmin() -> impl IntoView {
         set_error.set(None);
         spawn_local(async move {
             let result = match editing_region_id {
-                Some(region_id) => crate::api::update_region(region_id, payload).await,
-                None => crate::api::create_region(payload).await,
+                Some(region_id) => crate::transport::update_region(region_id, payload).await,
+                None => crate::transport::create_region(payload).await,
             };
 
             match result {

@@ -6,12 +6,13 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_storefront_rail_view_model_slice
-- Last checkpoint: FFA slice #15 вынесла render-ready rail list state в framework-agnostic `RegionRailViewModel`: title/total/empty/open labels и rail item rows собираются в core, а Leptos rail adapter только рендерит модель и DOM route/query evidence.
-- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer или вынести следующий storefront render fragment из Leptos-only слоя в core view-model.
+- Current phase: ffa_admin_transport_facade_slice
+- Last checkpoint: FFA slice #16 добавила `admin/src/transport/` facade над текущими native server functions и перевела RegionAdmin Leptos adapter на module-owned transport boundary.
+- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer или вынести следующий storefront/admin render fragment из Leptos-only слоя в core view-model.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
 - Last updated at (UTC): 2026-05-30T07:00:00Z
+- Last updated at (UTC): 2026-06-01T12:10:00Z
 
 
 ## FFA/FBA status
@@ -36,8 +37,9 @@
   - FFA slice #12 добавила host-visible route/query DOM evidence на rail links и verifier guard для route/query core contract + README evidence;
   - FFA slice #13 добавила SSR smoke-тест Leptos rail adapter, который подтверждает rendered href и route/query DOM evidence без полноценного host runtime;
   - FFA slice #14 добавила `SelectedRegionCardViewModel`, чтобы selected-region card presentation data собирались вне Leptos render слоя;
-  - FFA slice #15 добавила `RegionRailViewModel` / `RegionRailLabels`, чтобы rail list title, total, empty state, open label и item rows собирались вне Leptos render слоя.
-- Last verified at (UTC): 2026-05-30T07:00:00Z
+  - FFA slice #15 добавила `RegionRailViewModel` / `RegionRailLabels`, чтобы rail list title, total, empty state, open label и item rows собирались вне Leptos render слоя;
+  - FFA slice #16 добавила admin `transport/` facade для bootstrap/list/detail/create/update operations; Leptos component больше не вызывает `api::*` напрямую, а native server-function adapter остался в `admin/src/api.rs`.
+- Last verified at (UTC): 2026-06-01T12:10:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
