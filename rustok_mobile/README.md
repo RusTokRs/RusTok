@@ -27,7 +27,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Phase 1 pilot modules package with GraphQL-backed list/detail shell navigation evidence.
 - First mutation-backed modules operator action via the canonical `toggleModule` GraphQL mutation, gated by GraphQL-hydrated `me.permissions` capability context, with post-hook recovery feedback and retry/compensation actions.
 - Separate Flutter storefront mobile host scaffold with host-owned tenant/locale/GraphQL context.
-- Module-owned storefront catalog/cart mobile package mounted by `rustok_frontend_mobile` without package-local transport clients; catalog reads use the existing `storefrontSearch` GraphQL surface and cart reads/writes use the canonical `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, and `removeStorefrontCartLineItem` GraphQL surfaces through the host repository boundary, with cart id state held by the host cart id store.
+- Module-owned storefront catalog/cart mobile package mounted by `rustok_frontend_mobile` without package-local transport clients; catalog reads use the existing `storefrontSearch` GraphQL surface and cart reads/writes use the canonical `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, and `removeStorefrontCartLineItem` GraphQL surfaces through the host repository boundary, with cart id state held by the host cart id store and optional durable file-backed persistence adapter.
 - Generated storefront mobile manifest from `provides.storefront_ui` with a dedicated snapshot and freshness checks.
 - Storefront registry adapter that maps generated `products` and `cart` routes to mounted module-owned package screens, with generic fallback for unmapped storefront modules.
 
@@ -58,6 +58,8 @@ For the storefront mobile host use the storefront-specific defines:
 - `RUSTOK_STOREFRONT_TENANT_SLUG` (default: `default`)
 - `RUSTOK_STOREFRONT_LOCALE` (default: `en`)
 - `RUSTOK_STOREFRONT_CART_ID` (optional; when set, `/cart` reads the canonical `storefrontCart` GraphQL surface)
+- `RUSTOK_STOREFRONT_CART_ID_FILE` (optional; enables host-owned durable cart id persistence for mobile/desktop storefront clients)
+- `RUSTOK_STOREFRONT_CART_STORAGE_KEY` (optional; overrides the key used inside the host-owned cart id persistence adapter)
 
 ## Regenerate mobile manifest
 
@@ -113,6 +115,6 @@ python3 rustok_mobile/tooling/scripts/check_mobile_codegen.py \
 ## Next steps
 
 1. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
-2. Replace the in-memory storefront cart id store with a durable host-owned adapter once product requirements choose secure/non-sensitive storage boundaries.
+2. Promote storefront cart id persistence from the file-backed adapter to the agreed production storage backend once product requirements choose secure/non-sensitive storage boundaries.
 3. Add deterministic generated-file checks to the mobile CI pipeline.
 4. Extend generated storefront registry mappings as more module-owned storefront packages are added.

@@ -28,7 +28,7 @@ UX do not drift into one host.
 
 - `lib/main.dart` — app bootstrap and provider wiring.
 - `lib/app_shell/storefront_shell_page.dart` — mobile storefront shell.
-- `lib/app_shell/storefront_context.dart` — host-owned runtime context, cart id store, and GraphQL client configuration.
+- `lib/app_shell/storefront_context.dart` — host-owned runtime context, durable cart id store adapter, and GraphQL client configuration.
 - `lib/data/storefront_catalog_repository.dart` — host-owned catalog/cart repository using the shared GraphQL client and existing `storefrontSearch`, `storefrontCart`, and storefront cart mutation surfaces.
 - `lib/registry/storefront_mobile_manifest.g.dart` — generated storefront registry from `provides.storefront_ui`.
 - `lib/registry/storefront_surface_registry.dart` — host adapter that maps generated storefront entries to mounted mobile package surfaces.
@@ -40,6 +40,8 @@ UX do not drift into one host.
 - `RUSTOK_STOREFRONT_TENANT_SLUG` — tenant slug for shared GraphQL headers.
 - `RUSTOK_STOREFRONT_LOCALE` — host-selected effective locale.
 - `RUSTOK_STOREFRONT_CART_ID` — optional initial cart id loaded into the host-owned cart id store for the canonical `storefrontCart` read path and cart line mutation context.
+- `RUSTOK_STOREFRONT_CART_ID_FILE` — optional host-owned JSON file used by the durable cart id adapter on mobile/desktop builds; when unset, tests and previews keep using the in-memory adapter.
+- `RUSTOK_STOREFRONT_CART_STORAGE_KEY` — optional key for the host-owned cart id persistence adapter; defaults to `rustok.storefront.cart_id`.
 
 ## Documentation
 

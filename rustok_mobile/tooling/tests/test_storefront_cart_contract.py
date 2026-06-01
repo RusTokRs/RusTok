@@ -12,6 +12,9 @@ def test_storefront_cart_writes_use_host_cart_id_store() -> None:
     repo = read("rustok_mobile/apps/rustok_frontend_mobile/lib/data/storefront_catalog_repository.dart")
 
     assert "abstract interface class StorefrontCartIdStore" in context
+    assert "abstract interface class StorefrontCartIdPersistence" in context
+    assert "class DurableStorefrontCartIdStore implements StorefrontCartIdStore" in context
+    assert "class FileStorefrontCartIdPersistence implements StorefrontCartIdPersistence" in context
     assert "final StorefrontCartIdStore _cartIdStore" in repo
     assert "_cartIdStore.write(id)" in repo
     assert "String? _activeCartId" not in repo
