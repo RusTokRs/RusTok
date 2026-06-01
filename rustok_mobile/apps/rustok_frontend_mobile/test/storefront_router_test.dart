@@ -95,6 +95,7 @@ class _FakeStorefrontCatalogRepository implements StorefrontCatalogRepository {
         title: 'Creator kit',
         description: 'Mounted through the storefront shell.',
         priceLabel: '49.00 USD',
+        variantId: 'creator-kit-variant',
       ),
     ];
   }
@@ -103,11 +104,50 @@ class _FakeStorefrontCatalogRepository implements StorefrontCatalogRepository {
   Future<List<StorefrontCartLine>> cartLines() async {
     return const [
       StorefrontCartLine(
+        lineId: 'line-starter-hoodie',
         productId: 'creator-kit',
         title: 'Creator kit',
         quantity: 1,
         priceLabel: '49.00 USD',
       ),
     ];
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> createCart(
+    StorefrontCreateCartDraft draft,
+  ) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> addCartLine(
+    StorefrontAddCartLineDraft draft,
+  ) async {
+    return StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: await cartLines(),
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> updateCartLine(
+    StorefrontUpdateCartLineDraft draft,
+  ) async {
+    return StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: await cartLines(),
+    );
+  }
+
+  @override
+  Future<StorefrontCartWriteResult> removeCartLine(String lineId) async {
+    return const StorefrontCartWriteResult(
+      cartId: 'cart-1',
+      lines: <StorefrontCartLine>[],
+    );
   }
 }

@@ -1288,7 +1288,18 @@ Storefront catalog/cart package теперь получает cart data чере
 - empty fallback — если host не передал cart id, cart surface остаётся empty state без Flutter-only API или локального fallback resolver;
 - FFA guardrail — catalog/cart package по-прежнему потребляет только host-provided repository и не создаёт собственный GraphQL client, tenant resolver или locale fallback chain.
 
-Следующий storefront шаг: добавить canonical cart write actions (`createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, `removeStorefrontCartLineItem`) через тот же host-owned repository boundary.
+#### PR-L evidence pack (storefront cart write transport)
+
+**Cart write path:** `rustok_mobile/apps/rustok_frontend_mobile/lib/data/storefront_catalog_repository.dart` + `rustok_mobile/packages/rustok_catalog_mobile/lib/src/catalog_repository.dart`.
+
+Storefront catalog/cart package теперь выполняет customer cart write actions через тот же host-owned repository seam:
+- repository contract — module-owned package объявляет create/add/update/remove intents, но не создаёт GraphQL client, tenant resolver, locale fallback или package-local cart storage;
+- data adapter — host repository вызывает canonical GraphQL mutations `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem` и `removeStorefrontCartLineItem`, повторно используя shared GraphQL headers/context;
+- UX actions — catalog cards могут добавить товар только при наличии backend-provided `variantId`, empty cart может стартовать cart, line items могут увеличить/уменьшить quantity или удалить строку;
+- runtime guardrail — созданный cart id хранится в host-owned `StorefrontCartIdStore`; durable storage остаётся отдельным host-owned product decision, а не package-local contract;
+- contract tests — `rustok_mobile/tooling/tests/test_storefront_cart_contract.py` фиксирует, что package не fallback-ит product id в variant id и что host repository использует host cart id store.
+
+Следующий storefront шаг: заменить in-memory `StorefrontCartIdStore` на согласованный durable host-owned adapter, если это потребуется продуктом, и добавить schema-backed integration tests, не расширяя Flutter-specific API surface.
 
 #### PR-A evidence pack (registry contract freeze)
 

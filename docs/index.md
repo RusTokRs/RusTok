@@ -118,6 +118,7 @@
 - [Fluid Frontend Architecture для RusTok](./research/fluid-frontend-architecture.md)
 - [Fluid Backend Architecture для RusTok](./research/fluid-backend-architecture.md)
 - [Архитектура Flutter-приложения для RusTok](./research/flutter.md)
+- [FFA для Flutter: статья о платформенной mobile-архитектуре](./research/flutter-ffa-architecture-article.md)
 - [Единый план реализации Fluid Backend Architecture](./research/fluid-backend-architecture-unified-plan.md)
 - [План FFA-рефакторинга UI и подготовки к Dioxus](./research/dioxus-ffa-ui-migration-plan.md)
 - [Карта связности пилотов FFA/Dioxus (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
