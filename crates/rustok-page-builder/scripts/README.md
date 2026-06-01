@@ -19,3 +19,4 @@ Rules:
 - `verify/verify-page-builder-pages-fallback-gate.mjs` runs the `rustok-pages` service fallback checks plus admin/storefront host-helper static checks for all baseline profiles (`all_on`, `publish_off`, `preview_off`, `builder_off`).
 - `verify/verify-page-builder-next-admin-parity.mjs` keeps Next Admin page-builder save errors aligned with the `rustok-pages` typed error catalog and operator-guidance contract.
 - `verify/verify-page-builder-leptos-admin-parity.mjs` keeps the module-owned Leptos admin package aligned with the same typed error catalog and localized operator-guidance contract.
+- `verify/verify-page-builder-flutter-parity.mjs` keeps Flutter mobile shared app-core error mapping aligned with the same typed page-builder catalog and operator-guidance contract.

@@ -23,6 +23,7 @@
 - Last updated at (UTC): 2026-06-01T00:00:00Z
 - Last updated at (UTC): 2026-06-01T01:00:00Z
 - Last updated at (UTC): 2026-06-01T02:00:00Z
+- Last updated at (UTC): 2026-06-01T03:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
@@ -34,6 +35,7 @@
 - PB-FBA-1B catalog update: `fba.builder_consumer.error_catalog`, `error_codes` и `degraded_mode_errors` синхронизированы с provider metadata, FBA registry и runtime constants; aggregate baseline gate теперь включает anti-drift проверку error-catalog binding.
 - PB-FBA-1B Next parity update: `apps/next-admin` save-flow отображает тот же typed catalog (`validation/sanitize/runtime/feature-disabled`) и operator guidance для `FEATURE_DISABLED`; baseline gate включает static parity-check для Next Admin.
 - PB-FBA-1B Leptos parity update: module-owned Leptos admin показывает localized operator guidance для `validation/sanitize/runtime/feature-disabled`; baseline gate включает static parity-check для `rustok-pages-admin`.
+- PB-FBA-1B Flutter parity update: `rustok_mobile/packages/app_core` содержит shared mapper для того же typed catalog и `FEATURE_DISABLED` guidance; baseline gate включает static parity-check для Flutter app-core.
 
 ## FFA/FBA status
 
@@ -176,7 +178,7 @@ Rollback trigger:
 
 - [x] Закрепить единый typed error catalog для builder-related runtime ошибок (`validation/sanitize/runtime/feature-disabled`) и связать его с `degraded_modes` через machine-readable manifest/registry gate.
 - [x] Добавить fallback snapshots в docs для admin/list/read/publish surfaces.
-- [x] Убедиться, что baseline-профили `all_on`, `publish_off`, `preview_off`, `builder_off` не ломают page read/list/menu paths на service fallback gate и host-level admin/storefront helper checks; Next Admin и Leptos typed-error parity зафиксированы, Flutter parity evidence остаётся в Wave hand-off.
+- [x] Убедиться, что baseline-профили `all_on`, `publish_off`, `preview_off`, `builder_off` не ломают page read/list/menu paths на service fallback gate и host-level admin/storefront helper checks; Next Admin, Leptos и Flutter app-core typed-error parity зафиксированы; runtime device-level evidence остаётся в Wave hand-off.
 
 ### B3. Operability & rollout
 
@@ -186,7 +188,7 @@ Rollback trigger:
 
 ### B4. Verification gates
 
-- [x] Включить fallback regression checks в `cargo xtask module test pages` (или эквивалентный CI gate): `verify-page-builder-fba-baseline.mjs` запускает provider runtime gate, registry anti-drift gate, error-catalog binding gate, Next Admin parity gate, Leptos admin parity gate и `rustok-pages` service/admin/storefront fallback gates по всем четырём baseline-профилям.
+- [x] Включить fallback regression checks в `cargo xtask module test pages` (или эквивалентный CI gate): `verify-page-builder-fba-baseline.mjs` запускает provider runtime gate, registry anti-drift gate, error-catalog binding gate, Next Admin parity gate, Leptos admin parity gate, Flutter parity gate и `rustok-pages` service/admin/storefront fallback gates по всем четырём baseline-профилям.
 - [x] Добавить targeted integration checks для `all_on`, `publish_off`, `preview_off`, `builder_off` на уровне `pages` service/transport boundary (`pages_builder_fallback_*` checks).
 - [ ] Зафиксировать evidence-template для Wave hand-off (platform + pages owner approval).
 

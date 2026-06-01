@@ -957,7 +957,8 @@ Notes: <known deviations or waivers>
   - [x] связать `degraded_modes` с typed error catalog (`FEATURE_DISABLED`) в provider/consumer metadata, FBA registry и runtime anti-drift gate;
   - [x] закрепить Next Admin typed-error parity (`validation/sanitize/runtime/feature-disabled`) и operator guidance через static baseline gate;
   - [x] закрепить Leptos admin typed-error parity и localized operator guidance через static baseline gate;
-  - [ ] собрать оставшуюся parity-таблицу typed errors для Flutter adapters.
+  - [x] закрепить Flutter app-core typed-error parity и operator guidance через static baseline gate;
+  - [ ] собрать device/runtime evidence packet для Flutter adapters в Wave hand-off.
 
 #### Week 2 — закрыть P2/P3
 
