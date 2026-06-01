@@ -1,3 +1,5 @@
+use crate::model::{SearchFacetGroup, SearchPreviewPayload};
+
 pub fn parse_csv(value: &str) -> Vec<String> {
     value
         .split(',')
@@ -176,6 +178,61 @@ mod tests {
         assert_eq!(next_preset_selection("featured", "featured"), "");
         assert_eq!(next_preset_selection("", "featured"), "featured");
     }
+
+    #[test]
+    fn search_results_view_model_prepares_render_ready_fields() {
+        let payload = SearchPreviewPayload {
+            query_log_id: Some("log-1".to_string()),
+            preset_key: None,
+            items: vec![crate::model::SearchPreviewResultItem {
+                id: "doc-1".to_string(),
+                entity_type: "product".to_string(),
+                source_module: "catalog".to_string(),
+                title: "Boots".to_string(),
+                snippet: None,
+                score: 0.98765,
+                locale: Some("ru".to_string()),
+                url: Some("/products/boots".to_string()),
+                payload: "{}".to_string(),
+            }],
+            total: 1,
+            took_ms: 12,
+            engine: "postgres".to_string(),
+            ranking_profile: "balanced".to_string(),
+            facets: vec![SearchFacetGroup {
+                name: "entity_type".to_string(),
+                buckets: vec![],
+            }],
+        };
+        let labels = SearchResultsLabels {
+            summary_template: "{count} results in {took_ms}ms via {engine}/{ranking_profile}"
+                .to_string(),
+            preset_template: "preset: {preset}".to_string(),
+            none_label: "none".to_string(),
+            locale_template: "locale: {locale}".to_string(),
+            no_snippet: "No snippet returned.".to_string(),
+        };
+
+        let view_model = build_search_results_view_model(payload, "manual", &labels);
+
+        assert_eq!(view_model.query_log_id, Some("log-1".to_string()));
+        assert_eq!(
+            view_model.summary,
+            "1 results in 12ms via postgres/balanced"
+        );
+        assert_eq!(view_model.preset, "preset: manual");
+        assert_eq!(view_model.locale, "locale: ru");
+        assert!(view_model.has_items);
+        assert_eq!(view_model.items[0].id, "doc-1");
+        assert_eq!(view_model.items[0].source_label, "product | catalog");
+        assert_eq!(view_model.items[0].score_label, "score 0.988");
+        assert_eq!(view_model.items[0].snippet, "No snippet returned.");
+        assert_eq!(
+            view_model.items[0].href,
+            Some("/products/boots".to_string())
+        );
+        assert_eq!(view_model.facets.len(), 1);
+    }
 }
 
 pub fn entity_source_label(entity_type: &str, source_module: &str) -> String {
@@ -269,6 +326,87 @@ pub fn next_preset_selection(current: &str, selected_key: &str) -> String {
         String::new()
     } else {
         selected_key.to_string()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchResultsLabels {
+    pub summary_template: String,
+    pub preset_template: String,
+    pub none_label: String,
+    pub locale_template: String,
+    pub no_snippet: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchResultItemViewModel {
+    pub id: String,
+    pub source_label: String,
+    pub score_label: String,
+    pub title: String,
+    pub snippet: String,
+    pub href: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchResultsViewModel {
+    pub query_log_id: Option<String>,
+    pub summary: String,
+    pub preset: String,
+    pub locale: String,
+    pub has_items: bool,
+    pub items: Vec<SearchResultItemViewModel>,
+    pub facets: Vec<SearchFacetGroup>,
+}
+
+pub fn build_search_results_view_model(
+    payload: SearchPreviewPayload,
+    selected_preset: &str,
+    labels: &SearchResultsLabels,
+) -> SearchResultsViewModel {
+    let locale = locale_or_all(payload.items.first().and_then(|item| item.locale.clone()));
+    let SearchPreviewPayload {
+        query_log_id,
+        preset_key,
+        items,
+        total,
+        took_ms,
+        engine,
+        ranking_profile,
+        facets,
+    } = payload;
+
+    let has_items = has_items(items.as_slice());
+    let items = items
+        .into_iter()
+        .map(|item| SearchResultItemViewModel {
+            id: item.id,
+            source_label: entity_source_label(&item.entity_type, &item.source_module),
+            score_label: score_label(item.score),
+            title: item.title,
+            snippet: snippet_or_fallback(item.snippet, labels.no_snippet.as_str()),
+            href: item.url,
+        })
+        .collect();
+
+    SearchResultsViewModel {
+        query_log_id,
+        summary: render_results_summary(
+            labels.summary_template.as_str(),
+            total,
+            took_ms,
+            engine.as_str(),
+            ranking_profile.as_str(),
+        ),
+        preset: render_preset_label(
+            labels.preset_template.as_str(),
+            applied_preset_or_selected(preset_key, selected_preset, labels.none_label.as_str())
+                .as_str(),
+        ),
+        locale: render_locale_label(labels.locale_template.as_str(), locale.as_str()),
+        has_items,
+        items,
+        facets,
     }
 }
 

@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: Phase B slice #29 перенёс dictionaries mutation request construction и pinned-position parsing в `admin/src/core.rs`; Leptos adapter больше не собирает transport payloads inline.
-- Next step: Продолжить Phase B: вынести mutation feedback envelope/status state dictionaries editor или следующий storefront render-ready fragment в core view-model, сохраняя transport/native+GraphQL paths без изменений.
+- Last checkpoint: Phase B slice #30 перенёс storefront results render-ready summary/preset/locale/item presentation в `storefront/src/core.rs`; Leptos results adapter теперь рендерит `SearchResultsViewModel`.
+- Next step: Продолжить Phase B: вынести storefront suggestions presentation или dictionaries mutation feedback envelope/status state в core view-model, сохраняя transport/native+GraphQL paths без изменений.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-01T17:04:25Z
+- Last updated at (UTC): 2026-06-01T17:33:53Z
 
 
 ## FFA/FBA status
@@ -32,8 +32,9 @@
   - Phase B slice #26 добавил module-owned `admin/src/transport/` facade для bootstrap, preview, analytics, diagnostics, settings и dictionary operations; Leptos admin больше не вызывает `api::*` напрямую, а existing native/GraphQL fallback adapter остался в `admin/src/api.rs`;
   - Phase B slice #27 выделил `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные render adapters; `admin/src/lib.rs` и `storefront/src/lib.rs` теперь только объявляют слои и re-export публичных entry points, без изменения native/GraphQL transport contract;
   - Phase B slice #28 добавил `SearchSynonymRowViewModel`, `SearchStopWordRowViewModel` и `SearchQueryRuleRowViewModel` в `admin/src/core.rs`; Leptos dictionaries tables больше не форматируют synonyms summary, pinned position и document/source path inline;
-  - Phase B slice #29 добавил `SearchSynonymMutationRequest`, `SearchStopWordMutationRequest` и `SearchPinRuleMutationRequest` builders в `admin/src/core.rs`; Leptos dictionaries forms теперь передают в transport core-owned request objects вместо inline parsing/request construction.
-- Last verified at (UTC): 2026-06-01T17:04:25Z
+  - Phase B slice #29 добавил `SearchSynonymMutationRequest`, `SearchStopWordMutationRequest` и `SearchPinRuleMutationRequest` builders в `admin/src/core.rs`; Leptos dictionaries forms теперь передают в transport core-owned request objects вместо inline parsing/request construction;
+  - Phase B slice #30 добавил `SearchResultsLabels`, `SearchResultItemViewModel` и `SearchResultsViewModel` в `storefront/src/core.rs`; Leptos storefront results больше не форматируют summary/preset/locale/source/score/snippet inline.
+- Last verified at (UTC): 2026-06-01T17:33:53Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -131,3 +132,4 @@
 - [x] Slice 27: admin/storefront render layers вынесены в явные `ui/leptos.rs` adapters; crate roots стали wiring-only (`core` + `transport` + `ui`) и публично re-export `SearchAdmin`/`SearchView` без изменения GraphQL fallback или native server functions.
 - [x] Slice 28: dictionaries table rows перенесены в core (`SearchSynonymRowViewModel`, `SearchStopWordRowViewModel`, `SearchQueryRuleRowViewModel`), поэтому Leptos adapter больше не форматирует synonyms summary, pinned position и document/source path inline.
 - [x] Slice 29: dictionaries mutation request construction перенесён в core (`SearchSynonymMutationRequest`, `SearchStopWordMutationRequest`, `SearchPinRuleMutationRequest`), поэтому Leptos forms больше не парсят CSV/pinned position и не собирают transport payloads inline.
+- [x] Slice 30: storefront results render-ready presentation перенесён в core (`SearchResultsLabels`, `SearchResultItemViewModel`, `SearchResultsViewModel`), поэтому Leptos results adapter рендерит подготовленные summary/preset/locale/item поля.

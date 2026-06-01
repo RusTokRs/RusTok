@@ -22,6 +22,7 @@
   "search.results.preset": "preset = {preset}",
   "search.results.none": "none",
   "search.results.locale": "locale = {locale}",
+  "search.results.noSnippet": "Сниппет не вернулся.",
   "search.results.noResultsTitle": "Ничего не найдено",
   "search.results.noResultsBody": "Попробуйте другой запрос или ослабьте storefront-фильтры в query string.",
   "search.results.noTarget": "Для этого результата пока нет storefront target.",

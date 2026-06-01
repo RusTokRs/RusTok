@@ -428,41 +428,46 @@ fn SearchResults(
         "search.features.facetsBody",
         "Entity type and source module facets come from the same search payload used by admin previews.",
     );
-    let locale = core::locale_or_all(payload.items.first().and_then(|item| item.locale.clone()));
-    let SearchPreviewPayload {
-        query_log_id,
-        preset_key: applied_preset_key,
-        items,
-        total,
-        took_ms,
-        engine,
-        ranking_profile,
-        facets,
-    } = payload;
-    let has_items = core::has_items(items.as_slice());
-    let item_views = items
-        .into_iter()
+    let view_model = core::build_search_results_view_model(
+        payload,
+        selected_preset.as_str(),
+        &core::SearchResultsLabels {
+            summary_template: results_summary_template,
+            preset_template,
+            none_label,
+            locale_template,
+            no_snippet: t(
+                locale_context.as_deref(),
+                "search.results.noSnippet",
+                "No snippet returned.",
+            ),
+        },
+    );
+    let item_views = view_model
+        .items
+        .iter()
         .enumerate()
         .map(|(index, item)| {
-            let query_log_id = query_log_id.clone();
-            let href = item.url.clone();
+            let query_log_id = view_model.query_log_id.clone();
+            let href = item.href.clone();
             view! {
                 <article class="rounded-2xl border border-border bg-background p-5">
                     <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                        <span>{core::entity_source_label(&item.entity_type, &item.source_module)}</span>
+                        <span>{item.source_label.clone()}</span>
                         <span>"|"</span>
-                        <span>{core::score_label(item.score)}</span>
+                        <span>{item.score_label.clone()}</span>
                     </div>
-                    <h3 class="mt-3 text-lg font-semibold text-foreground">{item.title}</h3>
+                    <h3 class="mt-3 text-lg font-semibold text-foreground">{item.title.clone()}</h3>
                     <p class="mt-2 text-sm text-muted-foreground">
-                        {core::snippet_or_fallback(item.snippet.clone(), "No snippet returned.")}
+                        {item.snippet.clone()}
                     </p>
                     {render_result_action(query_log_id, item.id.clone(), href, index)}
                 </article>
             }
         })
         .collect_view();
-    let facet_views = facets
+    let facet_views = view_model
+        .facets
         .into_iter()
         .map(|facet| view! { <FacetCard facet /> })
         .collect_view();
@@ -478,33 +483,19 @@ fn SearchResults(
                             </div>
                             <h3 class="mt-2 text-xl font-semibold text-foreground">{query}</h3>
                             <p class="mt-2 text-sm text-muted-foreground">
-                                {core::render_results_summary(
-                                    results_summary_template.as_str(),
-                                    total,
-                                    took_ms,
-                                    engine.as_str(),
-                                    ranking_profile.as_str(),
-                                )}
+                                {view_model.summary.clone()}
                             </p>
                             <p class="mt-2 text-xs text-muted-foreground">
-                                {core::render_preset_label(
-                                    preset_template.as_str(),
-                                    core::applied_preset_or_selected(
-                                        applied_preset_key,
-                                        selected_preset.as_str(),
-                                        none_label.as_str(),
-                                    )
-                                    .as_str(),
-                                )}
+                                {view_model.preset.clone()}
                             </p>
                         </div>
                         <div class="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-card-foreground">
-                            {core::render_locale_label(locale_template.as_str(), locale.as_str())}
+                            {view_model.locale.clone()}
                         </div>
                     </div>
                 </article>
 
-                {if has_items {
+                {if view_model.has_items {
                     view! {
                         <div class="space-y-3">
                             {item_views}
