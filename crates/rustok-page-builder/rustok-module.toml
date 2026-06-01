@@ -15,3 +15,12 @@ contract = "grapesjs_v1"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
+
+[fba.provider.error_catalog]
+validation = "validation"
+sanitize = "sanitize"
+runtime = "runtime"
+feature_disabled = "feature-disabled"
+
+[fba.provider.error_codes]
+feature_disabled = "FEATURE_DISABLED"

@@ -107,9 +107,33 @@ pub fn PagesAdmin() -> impl IntoView {
         "pages.error.runtimeBadge",
         "Runtime",
     );
+    let validation_issue_guidance = t(
+        route_context.locale.as_deref(),
+        "pages.error.validationGuidance",
+        "Check required page fields and ensure project data is valid grapesjs_v1 JSON.",
+    );
+    let sanitize_issue_guidance = t(
+        route_context.locale.as_deref(),
+        "pages.error.sanitizeGuidance",
+        "Review the GrapesJS payload for unsafe HTML, scripts, URLs, or attributes before retrying.",
+    );
+    let runtime_issue_guidance = t(
+        route_context.locale.as_deref(),
+        "pages.error.runtimeGuidance",
+        "Retry after checking server health, tenant context, and page-builder runtime logs.",
+    );
+    let feature_disabled_issue_guidance = t(
+        route_context.locale.as_deref(),
+        "pages.error.featureDisabledGuidance",
+        "Builder publish is disabled for this tenant. Keep the page readable and ask Platform to check builder.publish.enabled before retrying.",
+    );
     let validation_issue_label = StoredValue::new(validation_issue_label);
     let sanitize_issue_label = StoredValue::new(sanitize_issue_label);
     let runtime_issue_label = StoredValue::new(runtime_issue_label);
+    let validation_issue_guidance = StoredValue::new(validation_issue_guidance);
+    let sanitize_issue_guidance = StoredValue::new(sanitize_issue_guidance);
+    let runtime_issue_guidance = StoredValue::new(runtime_issue_guidance);
+    let feature_disabled_issue_guidance = StoredValue::new(feature_disabled_issue_guidance);
     let form_subtitle_text = t(
         route_context.locale.as_deref(),
         "pages.form.subtitle",
@@ -949,13 +973,27 @@ pub fn PagesAdmin() -> impl IntoView {
                                                 sanitize_issue_label.as_str(),
                                                 runtime_issue_label.as_str(),
                                             );
+                                            let validation_issue_guidance = validation_issue_guidance.get_value();
+                                            let sanitize_issue_guidance = sanitize_issue_guidance.get_value();
+                                            let runtime_issue_guidance = runtime_issue_guidance.get_value();
+                                            let feature_disabled_issue_guidance = feature_disabled_issue_guidance.get_value();
+                                            let guidance = core::issue_guidance(
+                                                &issue,
+                                                validation_issue_guidance.as_str(),
+                                                sanitize_issue_guidance.as_str(),
+                                                runtime_issue_guidance.as_str(),
+                                                feature_disabled_issue_guidance.as_str(),
+                                            );
 
                                             view! {
-                                                <span>
-                                                    <strong>{label}</strong>
-                                                    {": "}
-                                                    {issue.message}
-                                                </span>
+                                                <div class="space-y-1">
+                                                    <div>
+                                                        <strong>{label}</strong>
+                                                        {": "}
+                                                        {issue.message}
+                                                    </div>
+                                                    <div class="text-xs opacity-80">{guidance}</div>
+                                                </div>
                                             }
                                             .into_any()
                                         })

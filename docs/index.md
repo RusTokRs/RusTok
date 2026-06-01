@@ -35,13 +35,14 @@
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
 - [Runtime-контракт `rustok-page-builder`](../crates/rustok-page-builder/docs/README.md)
 - [Machine-readable FBA registry page-builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
+- [Machine-readable Page Builder Wave evidence template](../crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
+- [Synthetic pages Wave 0 dry-run evidence packet](../crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
 - [Индекс документации по модулям](./modules/_index.md)
 - [Реестр implementation plans](./modules/implementation-plans-registry.md)
 - [Шаблон документации модуля](./templates/module_contract.md)
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
-- [Спец-план rich-text и визуального page builder](
-  ./modules/tiptap-page-builder-implementation-plan.md)
+- [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности
 
@@ -53,8 +54,7 @@
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
 - [SEO runtime/control-plane contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
 - [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
-- [Трек rich-text и визуального page builder](
-  ./modules/tiptap-page-builder-implementation-plan.md)
+- [Трек rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Архитектура i18n](./architecture/i18n.md)
 
 ## Архитектура и foundation
@@ -79,8 +79,7 @@
 - [Тестирование](./guides/testing.md)
 - [Быстрый старт по observability](./guides/observability-quickstart.md)
 - [Runtime guardrails](./guides/runtime-guardrails.md)
-- [ADR: control-plane lifecycle and migration ordering contracts](
-  ../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
+- [ADR: control-plane lifecycle and migration ordering contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Валидация входных данных](./guides/input-validation.md)
 - [Обработка ошибок](./guides/error-handling.md)
 - [Аудит безопасности](./guides/security-audit.md)
@@ -94,19 +93,13 @@
 
 - [Инструмент workspace CLI `xtask`](../xtask/README.md)
 - [Главный README по верификации](./verification/README.md)
-- [Проверка Flex multilingual contract](
-  ../scripts/verify/verify-flex-multilingual-contract.mjs)
+- [Проверка Flex multilingual contract](../scripts/verify/verify-flex-multilingual-contract.mjs)
 - [Сводный план верификации](./verification/PLATFORM_VERIFICATION_PLAN.md)
-- [Верификация foundation-слоя](
-  ./verification/platform-foundation-verification-plan.md)
-- [Верификация API-поверхностей](
-  ./verification/platform-api-surfaces-verification-plan.md)
-- [Верификация frontend-поверхностей](
-  ./verification/platform-frontend-surfaces-verification-plan.md)
-- [Верификация целостности ядра](
-  ./verification/platform-core-integrity-verification-plan.md)
-- [Верификация качества и эксплуатации](
-  ./verification/platform-quality-operations-verification-plan.md)
+- [Верификация foundation-слоя](./verification/platform-foundation-verification-plan.md)
+- [Верификация API-поверхностей](./verification/platform-api-surfaces-verification-plan.md)
+- [Верификация frontend-поверхностей](./verification/platform-frontend-surfaces-verification-plan.md)
+- [Верификация целостности ядра](./verification/platform-core-integrity-verification-plan.md)
+- [Верификация качества и эксплуатации](./verification/platform-quality-operations-verification-plan.md)
 
 ## AI, исследования и шаблоны
 
@@ -170,9 +163,6 @@
 
 - [Индекс ADR](../DECISIONS/README.md)
 
-- [Security: RUSTSEC-2026-0045 remediation note](
-  ./security/aws-lc-rustsec-2026-0045.md)
-- [Security: RUSTSEC-2026-0098 / 0099 / 0104 remediation note](
-  ./security/rustls-webpki-rustsec-2026-0099-0104.md)
-- [Security: RUSTSEC-2023-0071 remediation note](
-  ./security/rsa-rustsec-2023-0071.md)
+- [Security: RUSTSEC-2026-0045 remediation note](./security/aws-lc-rustsec-2026-0045.md)
+- [Security: RUSTSEC-2026-0098 / 0099 / 0104 remediation note](./security/rustls-webpki-rustsec-2026-0099-0104.md)
+- [Security: RUSTSEC-2023-0071 remediation note](./security/rsa-rustsec-2023-0071.md)

@@ -6,7 +6,21 @@
     "contract": "grapesjs_v1",
     "builder_contract_version": "1.0",
     "consumer_min_version": "1.0",
-    "capabilities": ["preview", "tree", "properties", "publish"]
+    "capabilities": [
+      "preview",
+      "tree",
+      "properties",
+      "publish"
+    ],
+    "error_catalog": {
+      "validation": "validation",
+      "sanitize": "sanitize",
+      "runtime": "runtime",
+      "feature_disabled": "feature-disabled"
+    },
+    "error_codes": {
+      "feature_disabled": "FEATURE_DISABLED"
+    }
   },
   "consumers": [
     {
@@ -17,8 +31,27 @@
       "contract_version": "1.0",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",
-      "capabilities": ["preview", "tree", "properties", "publish"],
-      "rollout_state": "wave0_baseline"
+      "capabilities": [
+        "preview",
+        "tree",
+        "properties",
+        "publish"
+      ],
+      "rollout_state": "wave0_baseline",
+      "error_catalog": {
+        "validation": "validation",
+        "sanitize": "sanitize",
+        "runtime": "runtime",
+        "feature_disabled": "feature-disabled"
+      },
+      "error_codes": {
+        "feature_disabled": "FEATURE_DISABLED"
+      },
+      "degraded_mode_errors": {
+        "builder_disabled": "FEATURE_DISABLED",
+        "preview_disabled": "FEATURE_DISABLED",
+        "publish_disabled": "FEATURE_DISABLED"
+      }
     },
     {
       "module_slug": "forum",
@@ -28,9 +61,19 @@
       "contract_version": "1.0",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",
-      "capabilities": ["preview", "tree", "properties", "publish"],
+      "capabilities": [
+        "preview",
+        "tree",
+        "properties",
+        "publish"
+      ],
       "rollout_state": "deferred"
     }
   ],
-  "fallback_profiles": ["all_on", "publish_off", "preview_off", "builder_off"]
+  "fallback_profiles": [
+    "all_on",
+    "publish_off",
+    "preview_off",
+    "builder_off"
+  ]
 }

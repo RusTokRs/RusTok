@@ -113,6 +113,35 @@ pub fn issue_label<'a>(
     }
 }
 
+pub fn issue_guidance<'a>(
+    issue: &WritePathIssue,
+    validation_guidance: &'a str,
+    sanitization_guidance: &'a str,
+    runtime_guidance: &'a str,
+    feature_disabled_guidance: &'a str,
+) -> &'a str {
+    if is_builder_feature_disabled_issue(issue) {
+        return feature_disabled_guidance;
+    }
+
+    match issue.kind {
+        WritePathIssueKind::Validation => validation_guidance,
+        WritePathIssueKind::Sanitization => sanitization_guidance,
+        WritePathIssueKind::Runtime => runtime_guidance,
+    }
+}
+
+pub fn is_builder_feature_disabled_issue(issue: &WritePathIssue) -> bool {
+    let normalized = issue.message.to_ascii_lowercase();
+    normalized.contains("feature disabled")
+        || normalized.contains("feature_disabled")
+        || normalized.contains("feature-disabled")
+        || normalized.contains("builder.enabled")
+        || normalized.contains("builder.preview.enabled")
+        || normalized.contains("builder.properties.enabled")
+        || normalized.contains("builder.publish.enabled")
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderHostFallbackSurface {
     pub profile: &'static str,
@@ -587,6 +616,38 @@ mod tests {
         }
 
         assert_eq!(builder_disabled_capability_error_key("storage"), "runtime");
+    }
+
+    #[test]
+    fn builder_feature_disabled_issues_use_operator_guidance() {
+        let issue = WritePathIssue::new(
+            "Feature disabled: builder.publish.enabled is disabled for this tenant",
+        );
+
+        assert!(is_builder_feature_disabled_issue(&issue));
+        assert_eq!(
+            issue_guidance(
+                &issue,
+                "validation guidance",
+                "sanitize guidance",
+                "runtime guidance",
+                "feature disabled guidance",
+            ),
+            "feature disabled guidance"
+        );
+
+        let validation = WritePathIssue::new("Validation error: title is required");
+        assert!(!is_builder_feature_disabled_issue(&validation));
+        assert_eq!(
+            issue_guidance(
+                &validation,
+                "validation guidance",
+                "sanitize guidance",
+                "runtime guidance",
+                "feature disabled guidance",
+            ),
+            "validation guidance"
+        );
     }
 
     #[test]

@@ -21,6 +21,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Manifest-driven navigation icon mapping with metadata fallbacks for generic module icons.
 - Shared route contracts with snake_case query key constraints.
 - Shared GraphQL transport context/header builders (tenant/locale non-blank validation in request context).
+- Shared Flutter app-core page-builder error mapping for the canonical `validation` / `sanitize` / `runtime` / `feature-disabled` catalog and `FEATURE_DISABLED` operator guidance.
 - GraphQL client factory with HTTP/WebSocket split transport and subscription support.
 - Auth session scaffolding (`AuthSessionStore`, `AuthSessionManager`, in-memory store, refresh service contract).
 - Manifest generator script from `crates/*/rustok-module.toml`.
@@ -30,7 +31,6 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Module-owned storefront catalog/cart mobile package mounted by `rustok_frontend_mobile` without package-local transport clients; catalog reads use the existing `storefrontSearch` GraphQL surface and cart reads/writes use the canonical `storefrontCart`, `createStorefrontCart`, `addStorefrontCartLineItem`, `updateStorefrontCartLineItem`, and `removeStorefrontCartLineItem` GraphQL surfaces through the host repository boundary, with cart id state held by the host cart id store and optional durable file-backed persistence adapter.
 - Generated storefront mobile manifest from `provides.storefront_ui` with a dedicated snapshot and freshness checks.
 - Storefront registry adapter that maps generated `products` and `cart` routes to mounted module-owned package screens, with generic fallback for unmapped storefront modules and registry-driven home navigation for all generated storefront routes.
-
 
 Host-level providers now resolve sessions via `AuthSessionManager` and `RefreshTokenService` before building the authenticated GraphQL client. The refresh flow uses an HTTP-only GraphQL client to avoid unnecessary WebSocket initialization during bootstrap. Provider wiring is isolated in `apps/rustok_admin_mobile/lib/app_shell/auth_bootstrap.dart`.
 
@@ -50,7 +50,6 @@ flutter run \
   --dart-define=RUSTOK_TENANT_SLUG=acme \
   --dart-define=RUSTOK_LOCALE=ru
 ```
-
 
 For the storefront mobile host use the storefront-specific defines:
 
@@ -89,8 +88,6 @@ python3 rustok_mobile/tooling/scripts/check_mobile_codegen.py --repo-root /works
 This command runs the generator into temporary files and compares those outputs
 with the committed manifest and snapshot. Use it when you need a CI-friendly
 signal that exercises the generator CLI itself.
-
-
 
 ## Regenerate storefront mobile manifest
 

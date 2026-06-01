@@ -384,7 +384,7 @@ Notes: <known deviations or waivers>
 
 **Итерация PB-FBA-1 (contract hardening + metadata parity)**
 
-- [~] Зафиксировать в `rustok-pages` machine-readable матрицу capability fallback (`builder_off`, `preview_off`, `publish_off`) и связать её с runtime error catalog (toggle profiles + degraded modes зафиксированы в manifest; связка с error catalog закрывается в Phase 5).
+- [~] Зафиксировать в `rustok-pages` machine-readable матрицу capability fallback (`builder_off`, `preview_off`, `publish_off`) и связать её с runtime error catalog (toggle profiles + degraded modes + error-catalog binding зафиксированы в manifest/registry/runtime gate; cross-runtime parity evidence остаётся в Wave hand-off).
 - [ ] Закрыть contract-parity по consumer adapters (Next/Leptos/Flutter) на уровне одинаковых error semantics, без требования UI 1:1.
 - [ ] Зафиксировать anti-drift checks: `contract_version` между provider/consumer должен валидироваться в CI.
 
@@ -475,8 +475,8 @@ Notes: <known deviations or waivers>
    - обновить `docs/modules/implementation-plans-registry.md` после фиксации Wave 0 evidence packet;
    - приложить ссылки на `toggle snapshots` и `fallback gate` результаты для `all_on/publish_off/preview_off/builder_off`.
 2. **PB-FBA-1b — error catalog binding**
-   - связать `degraded_modes` из `rustok-module.toml` с typed runtime error catalog в `rustok-pages`;
-   - добавить проверку anti-drift: каждый degraded mode должен иметь documented error code.
+   - [x] связать `degraded_modes` из `rustok-module.toml` с typed runtime error catalog в `rustok-pages`;
+   - [x] добавить проверку anti-drift: каждый degraded mode должен иметь documented error code.
 3. **PB-FBA-2a — CI fallback gate hardening**
    - довести до required-check сценарии `builder_off` и `publish_off` без 5xx на read/list surfaces;
    - зафиксировать waiver policy: временные исключения только с owner sign-off и expiry date.
@@ -505,7 +505,7 @@ Notes: <known deviations or waivers>
 **Цель:** довести reference-модуль builder-а до стабильного provider-контракта.
 
 - [ ] Зафиксировать `builder_contract_version` в provider metadata и добавить anti-drift проверку в CI.
-- [ ] Формализовать typed error catalog для `preview/tree/properties/publish` (validation/sanitize/rbac/runtime).
+- [x] Формализовать baseline typed error catalog для `preview/tree/properties/publish` (`validation/sanitize/runtime/feature-disabled`) в provider/consumer metadata и runtime gate; RBAC parity остаётся Wave evidence.
 - [ ] Довести health contract до machine-readable профиля (`ready/degraded/unavailable`) с причиной деградации.
 - [ ] Подготовить SLO-baseline для capability endpoints по pilot-tenant классу нагрузки.
 
@@ -515,9 +515,9 @@ Notes: <known deviations or waivers>
 
 **Цель:** на примере `pages` зафиксировать канонический migration path module-owned → FBA-consumer.
 
-- [ ] В `rustok-pages` metadata зафиксировать dependency profile на внешний builder provider (без локального ownership fallback).
-- [ ] Внедрить fallback-matrix для admin/storefront сценариев (`builder_off`, `publish_off`, `preview_off`) и подтвердить отсутствие 5xx в read/list.
-- [ ] Добавить publish gating contract: typed runtime error + UX guidance вместо аварийного падения publish flow.
+- [x] В `rustok-pages` metadata зафиксировать dependency profile на внешний builder provider (без локального ownership fallback).
+- [x] Внедрить fallback-matrix для admin/storefront сценариев (`builder_off`, `publish_off`, `preview_off`) и подтвердить отсутствие 5xx в read/list.
+- [x] Добавить publish gating contract: typed runtime error + UX guidance вместо аварийного падения publish flow.
 - [ ] Свести observability correlation: один trace/correlation-id на путь `builder write -> pages publish -> storefront read`.
 
 **Выход итерации:** `pages` подтверждён как эталонный FBA-consumer, пригодный как шаблон для `content`-подобных модулей.
@@ -712,7 +712,7 @@ Notes: <known deviations or waivers>
 
 ### 12.6 Минимальный evidence packet template (для Wave 0/Wave 1)
 
-Для унификации пакета между модулями после `pages` используется единая структура:
+Для унификации пакета между модулями после `pages` используется единая структура. Machine-readable baseline закреплён в `crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json` и проверяется `verify-page-builder-wave-evidence-template.mjs`; синтетический dry-run packet для `pages` лежит в `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json` и проверяется `verify-page-builder-wave-evidence-packet.mjs`, но не заменяет фактическое tenant evidence:
 
 1. `metadata/`
    - provider snapshot (`builder_contract_version`, health profile, degraded modes);
@@ -727,7 +727,7 @@ Notes: <known deviations or waivers>
    - rollback decision log (`keep` / `rollback`) с причиной;
    - owner on-call подтверждение и timestamp.
 
-Минимальный стандарт: без полного packet template модуль не может перейти из Wave 0 в Wave 1.
+Минимальный стандарт: без полного packet template модуль не может перейти из Wave 0 в Wave 1. Template и gate синтетического packet должны оставаться частью aggregate baseline gate `verify-page-builder-fba-baseline.mjs`; переход в Wave 1 требует заменить синтетические snapshots фактическими before/after артефактами tenant dry-run.
 
 ### 12.7 Следующий практический шаг “прямо сейчас” (next 10 working days)
 
@@ -954,13 +954,19 @@ Notes: <known deviations or waivers>
 - [~] **PB-FBA-1B / Fallback hardening:**
   - [x] подтвердить service-level smoke-профили `all_on/publish_off/preview_off/builder_off` без деградации `pages` read/list через `pages_builder_fallback_*` gate;
   - [x] приложить admin/storefront host-helper evidence без деградации read/list и без builder capability requirement на storefront render;
-  - [ ] собрать parity-таблицу typed errors для Next/Leptos/Flutter adapters.
+  - [x] связать `degraded_modes` с typed error catalog (`FEATURE_DISABLED`) в provider/consumer metadata, FBA registry и runtime anti-drift gate;
+  - [x] закрепить Next Admin typed-error parity (`validation/sanitize/runtime/feature-disabled`) и operator guidance через static baseline gate;
+  - [x] закрепить Leptos admin typed-error parity и localized operator guidance через static baseline gate;
+  - [x] закрепить Flutter app-core typed-error parity и operator guidance через static baseline gate;
+  - [ ] собрать device/runtime evidence packet для Flutter adapters в Wave hand-off.
 
 #### Week 2 — закрыть P2/P3
 
-- [ ] **PB-FBA-1C / Control-plane operability:**
-  - [ ] провести dry-run toggle change-set (tenant internal), сохранить `before/after` snapshots;
-  - [ ] оформить decision log (`keep|rollback`) с owner sign-off.
+- [~] **PB-FBA-1C / Control-plane operability:**
+  - [x] зафиксировать machine-readable evidence template для metadata/control-plane/fallback/observability/rollback/approvals;
+  - [x] зафиксировать синтетический Wave 0 dry-run packet для всех baseline toggle profiles как gate формы/семантики;
+  - [ ] провести реальный dry-run toggle change-set (tenant internal), сохранить фактические `before/after` snapshots;
+  - [ ] оформить реальный decision log (`keep|rollback`) с owner sign-off.
 - [ ] **PB-FBA-1D / Observability baseline:**
   - [ ] зафиксировать baseline-метрики `preview p95`, `publish p95`, `sanitize failure rate`;
   - [ ] приложить минимум 2 correlation trace (`builder write -> pages publish -> storefront read`).

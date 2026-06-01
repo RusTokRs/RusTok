@@ -8,6 +8,10 @@ import { useLocale } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { GqlOpts } from '../api/posts';
+import {
+  resolvePageBuilderError,
+  type PageBuilderErrorViewModel
+} from '../api/page-builder-errors';
 import { updatePageBody, type PageBlock, type PageBody } from '../api/pages';
 
 const GRAPESJS_FORMAT = 'grapesjs_v1';
@@ -33,6 +37,9 @@ export function PageBuilder({
   const [isReady, setIsReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<PageBuilderErrorViewModel | null>(
+    null
+  );
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(
     initialBody?.updatedAt ?? null
   );
@@ -124,6 +131,7 @@ export function PageBuilder({
     }
 
     setIsSaving(true);
+    setSaveError(null);
 
     try {
       const updatedBody = await updatePageBody(
@@ -143,9 +151,11 @@ export function PageBuilder({
       setLastSavedAt(updatedBody.updatedAt);
       toast.success('Page project saved');
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to save page project'
-      );
+      const viewModel = resolvePageBuilderError(error);
+      setSaveError(viewModel);
+      toast.error(viewModel.message, {
+        description: viewModel.operatorGuidance
+      });
     } finally {
       setIsSaving(false);
     }
@@ -209,6 +219,16 @@ export function PageBuilder({
         {loadError ? (
           <div className='border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-4 py-3 text-sm'>
             {loadError}
+          </div>
+        ) : null}
+
+        {saveError ? (
+          <div className='border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-4 py-3 text-sm'>
+            <div className='font-medium'>
+              Page builder {saveError.kind} error
+            </div>
+            <div>{saveError.message}</div>
+            <div className='mt-1 text-xs'>{saveError.operatorGuidance}</div>
           </div>
         ) : null}
 

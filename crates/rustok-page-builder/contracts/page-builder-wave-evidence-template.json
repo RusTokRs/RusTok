@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "artifact": "page_builder_wave_evidence_template",
+  "contract": "grapesjs_v1",
+  "required_profiles": ["all_on", "publish_off", "preview_off", "builder_off"],
+  "required_sections": {
+    "metadata": {
+      "provider": [
+        "module_slug",
+        "builder_contract_version",
+        "consumer_min_version",
+        "health_profile",
+        "degraded_modes"
+      ],
+      "consumer": [
+        "module_slug",
+        "dependency_profile",
+        "fallback_matrix",
+        "toggle_profiles"
+      ]
+    },
+    "control_plane": {
+      "change_set": [
+        "tenant_id",
+        "wave",
+        "change_set_id",
+        "requested_by",
+        "approved_by",
+        "trace_id"
+      ],
+      "snapshots": ["flags_before", "flags_after", "module_health_before", "module_health_after"]
+    },
+    "fallback": {
+      "profiles": ["all_on", "publish_off", "preview_off", "builder_off"],
+      "smoke_steps": ["list", "open", "preview", "save_draft", "publish_dry"],
+      "read_guarantees": ["admin_list_no_5xx", "admin_read_no_5xx", "storefront_read_no_5xx"]
+    },
+    "observability": {
+      "metrics": ["preview_p95_ms", "publish_p95_ms", "sanitize_failure_rate", "runtime_error_rate"],
+      "traces": ["builder_write_to_pages_publish", "pages_publish_to_storefront_read"]
+    },
+    "rollback": {
+      "decision": ["keep", "rollback"],
+      "required_fields": ["decision", "reason", "rollback_reference", "timestamp"]
+    },
+    "approvals": ["platform_on_call", "pages_owner", "builder_owner", "runtime_owner"]
+  },
+  "waiver_policy": {
+    "allowed": true,
+    "required_fields": ["ticket", "owner", "expiry_date", "reason"],
+    "blocked_for_wave_1": ["anti_drift", "fallback_read_5xx", "rbac_regression"]
+  }
+}

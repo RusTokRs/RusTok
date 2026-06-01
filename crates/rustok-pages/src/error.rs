@@ -52,6 +52,41 @@ pub const FEATURE_BUILDER_ENABLED: &str = "builder.enabled";
 pub const FEATURE_BUILDER_PREVIEW_ENABLED: &str = "builder.preview.enabled";
 pub const FEATURE_BUILDER_PROPERTIES_ENABLED: &str = "builder.properties.enabled";
 pub const FEATURE_BUILDER_PUBLISH_ENABLED: &str = "builder.publish.enabled";
+pub const BUILDER_FEATURE_DISABLED_ERROR_CODE: &str = "FEATURE_DISABLED";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuilderRuntimeErrorCatalogEntry {
+    pub semantic: &'static str,
+    pub adapter_key: &'static str,
+    pub rich_error_code: Option<&'static str>,
+}
+
+pub const BUILDER_RUNTIME_ERROR_CATALOG: [BuilderRuntimeErrorCatalogEntry; 4] = [
+    BuilderRuntimeErrorCatalogEntry {
+        semantic: "validation",
+        adapter_key: "validation",
+        rich_error_code: None,
+    },
+    BuilderRuntimeErrorCatalogEntry {
+        semantic: "sanitize",
+        adapter_key: "sanitize",
+        rich_error_code: None,
+    },
+    BuilderRuntimeErrorCatalogEntry {
+        semantic: "runtime",
+        adapter_key: "runtime",
+        rich_error_code: None,
+    },
+    BuilderRuntimeErrorCatalogEntry {
+        semantic: "feature_disabled",
+        adapter_key: "feature-disabled",
+        rich_error_code: Some(BUILDER_FEATURE_DISABLED_ERROR_CODE),
+    },
+];
+
+pub fn builder_runtime_error_catalog() -> &'static [BuilderRuntimeErrorCatalogEntry] {
+    &BUILDER_RUNTIME_ERROR_CATALOG
+}
 
 // Conversion from PagesError to RichError for API responses
 impl From<PagesError> for RichError {
@@ -105,7 +140,7 @@ impl From<PagesError> for RichError {
             )
             .with_user_message("This feature is disabled for the current tenant")
             .with_field("feature", feature)
-            .with_error_code("FEATURE_DISABLED"),
+            .with_error_code(BUILDER_FEATURE_DISABLED_ERROR_CODE),
             PagesError::Content(content_err) => content_err.into(),
             PagesError::Rich(rich) => *rich,
         }
@@ -222,10 +257,33 @@ mod tests {
         let rich: RichError = err.into();
 
         assert_eq!(rich.kind, ErrorKind::BusinessLogic);
-        assert_eq!(rich.error_code, Some("FEATURE_DISABLED".to_string()));
+        assert_eq!(
+            rich.error_code,
+            Some(BUILDER_FEATURE_DISABLED_ERROR_CODE.to_string())
+        );
         assert_eq!(
             rich.fields.get("feature"),
             Some(&FEATURE_BUILDER_PUBLISH_ENABLED.to_string())
+        );
+    }
+
+    #[test]
+    fn test_builder_runtime_error_catalog_is_stable() {
+        let catalog = builder_runtime_error_catalog();
+        let semantics: Vec<_> = catalog.iter().map(|entry| entry.semantic).collect();
+        assert_eq!(
+            semantics,
+            vec!["validation", "sanitize", "runtime", "feature_disabled"]
+        );
+
+        let feature_disabled = catalog
+            .iter()
+            .find(|entry| entry.semantic == "feature_disabled")
+            .expect("feature-disabled catalog entry must exist");
+        assert_eq!(feature_disabled.adapter_key, "feature-disabled");
+        assert_eq!(
+            feature_disabled.rich_error_code,
+            Some(BUILDER_FEATURE_DISABLED_ERROR_CODE)
         );
     }
 

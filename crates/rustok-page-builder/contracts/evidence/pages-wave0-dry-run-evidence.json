@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "artifact": "page_builder_wave_evidence_packet",
+  "template": "../page-builder-wave-evidence-template.json",
+  "module_slug": "pages",
+  "wave": "0",
+  "mode": "dry_run",
+  "created_at": "2026-06-01T04:30:00Z",
+  "metadata": {
+    "provider": {
+      "module_slug": "page_builder",
+      "builder_contract_version": "1.0",
+      "consumer_min_version": "1.0",
+      "health_profile": "ready",
+      "degraded_modes": ["builder_disabled", "preview_disabled", "publish_disabled"]
+    },
+    "consumer": {
+      "module_slug": "pages",
+      "dependency_profile": "external_capability_provider",
+      "fallback_matrix": ["all_on", "publish_off", "preview_off", "builder_off"],
+      "toggle_profiles": ["all_on", "publish_off", "preview_off", "builder_off"]
+    }
+  },
+  "control_plane": {
+    "change_set": {
+      "tenant_id": "synthetic-wave0-pages",
+      "wave": "0",
+      "change_set_id": "dry-run:pages-wave0:2026-06-01",
+      "requested_by": "agent",
+      "approved_by": ["platform_on_call", "pages_owner", "builder_owner", "runtime_owner"],
+      "trace_id": "trace-pages-wave0-dry-run-20260601"
+    },
+    "snapshots": {
+      "flags_before": {
+        "builder.enabled": false,
+        "builder.preview.enabled": false,
+        "builder.properties.enabled": false,
+        "builder.publish.enabled": false,
+        "builder.legacy_bridge_readonly": true
+      },
+      "flags_after": {
+        "builder.enabled": false,
+        "builder.preview.enabled": false,
+        "builder.properties.enabled": false,
+        "builder.publish.enabled": false,
+        "builder.legacy_bridge_readonly": true
+      },
+      "module_health_before": "ready",
+      "module_health_after": "ready"
+    }
+  },
+  "fallback": {
+    "profiles": [
+      {
+        "name": "all_on",
+        "flags": {
+          "builder.enabled": true,
+          "builder.preview.enabled": true,
+          "builder.properties.enabled": true,
+          "builder.publish.enabled": true,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "pass",
+          "save_draft": "pass",
+          "publish_dry": "pass"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      },
+      {
+        "name": "publish_off",
+        "flags": {
+          "builder.enabled": true,
+          "builder.preview.enabled": true,
+          "builder.properties.enabled": true,
+          "builder.publish.enabled": false,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "pass",
+          "save_draft": "pass",
+          "publish_dry": "typed_feature_disabled_error"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      },
+      {
+        "name": "preview_off",
+        "flags": {
+          "builder.enabled": true,
+          "builder.preview.enabled": false,
+          "builder.properties.enabled": true,
+          "builder.publish.enabled": false,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "typed_feature_disabled_error",
+          "save_draft": "pass",
+          "publish_dry": "typed_feature_disabled_error"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      },
+      {
+        "name": "builder_off",
+        "flags": {
+          "builder.enabled": false,
+          "builder.preview.enabled": false,
+          "builder.properties.enabled": false,
+          "builder.publish.enabled": false,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "typed_feature_disabled_error",
+          "save_draft": "readonly_fallback",
+          "publish_dry": "typed_feature_disabled_error"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      }
+    ]
+  },
+  "observability": {
+    "metrics": {
+      "preview_p95_ms": "dry_run_not_measured",
+      "publish_p95_ms": "dry_run_not_measured",
+      "sanitize_failure_rate": "dry_run_not_measured",
+      "runtime_error_rate": "dry_run_not_measured"
+    },
+    "traces": {
+      "builder_write_to_pages_publish": "dry_run_trace_placeholder",
+      "pages_publish_to_storefront_read": "dry_run_trace_placeholder"
+    }
+  },
+  "rollback": {
+    "decision": "keep",
+    "reason": "Dry-run fixture validates control-plane evidence shape and expected fallback semantics only.",
+    "rollback_reference": "crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
+    "timestamp": "2026-06-01T04:30:00Z"
+  },
+  "approvals": {
+    "platform_on_call": "pending_real_wave0_signoff",
+    "pages_owner": "pending_real_wave0_signoff",
+    "builder_owner": "pending_real_wave0_signoff",
+    "runtime_owner": "pending_real_wave0_signoff"
+  },
+  "waivers": []
+}

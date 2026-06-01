@@ -126,6 +126,56 @@ fn module_manifest_declares_fba_builder_consumer_contract() {
 }
 
 #[test]
+fn builder_degraded_modes_bind_to_typed_error_catalog() {
+    let manifest = include_str!("../rustok-module.toml");
+    let value: toml::Value =
+        toml::from_str(manifest).expect("rustok-module.toml must stay valid TOML");
+
+    let consumer = value
+        .get("fba")
+        .and_then(|fba| fba.get("builder_consumer"))
+        .expect("fba.builder_consumer metadata is required");
+
+    let error_catalog = consumer
+        .get("error_catalog")
+        .expect("fba.builder_consumer.error_catalog must be defined");
+    for (key, expected) in [
+        ("validation", "validation"),
+        ("sanitize", "sanitize"),
+        ("runtime", "runtime"),
+        ("feature_disabled", "feature-disabled"),
+    ] {
+        assert_eq!(
+            error_catalog.get(key).and_then(toml::Value::as_str),
+            Some(expected),
+            "builder error catalog mapping drifted for {key}"
+        );
+    }
+
+    let error_codes = consumer
+        .get("error_codes")
+        .expect("fba.builder_consumer.error_codes must be defined");
+    assert_eq!(
+        error_codes
+            .get("feature_disabled")
+            .and_then(toml::Value::as_str),
+        Some(rustok_pages::error::BUILDER_FEATURE_DISABLED_ERROR_CODE),
+        "manifest feature-disabled code must match PagesError rich error code"
+    );
+
+    let degraded_mode_errors = consumer
+        .get("degraded_mode_errors")
+        .expect("fba.builder_consumer.degraded_mode_errors must be defined");
+    for mode in ["builder_disabled", "preview_disabled", "publish_disabled"] {
+        assert_eq!(
+            degraded_mode_errors.get(mode).and_then(toml::Value::as_str),
+            Some(rustok_pages::error::BUILDER_FEATURE_DISABLED_ERROR_CODE),
+            "degraded mode {mode} must bind to the typed FEATURE_DISABLED rich error code"
+        );
+    }
+}
+
+#[test]
 fn pages_consumer_version_satisfies_provider_minimum() {
     let provider_manifest = include_str!("../../rustok-page-builder/rustok-module.toml");
     let provider: toml::Value =
