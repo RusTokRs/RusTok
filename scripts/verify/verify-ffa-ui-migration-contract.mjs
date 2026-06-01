@@ -398,34 +398,81 @@ function collectStructuralShapeErrors(registry) {
 }
 
 
+function parseRegistryModuleRows(registry) {
+  return registry
+    .split("\n")
+    .filter((line) => line.startsWith("| `") && line.includes("docs/implementation-plan.md"))
+    .map((line) => {
+      const columns = line.split("|").map((column) => column.trim());
+      const sourcePlanCell = columns[6] ?? "";
+      const sourcePlanMatch = sourcePlanCell.match(/(crates\/[^`) ]+\/docs\/implementation-plan\.md)/);
+
+      return {
+        moduleSlug: columns[1]?.replace(/`/g, "") ?? "<unknown>",
+        structuralShape: columns[5]?.replace(/`/g, ""),
+        sourcePlanPath: sourcePlanMatch?.[1],
+      };
+    });
+}
+
 function collectRegistryLocalShapeErrors(registry) {
   const errors = [];
-  const tableLines = registry
-    .split("\n")
-    .filter((line) => line.startsWith("| `") && line.includes("docs/implementation-plan.md"));
 
-  tableLines.forEach((line) => {
-    const columns = line.split("|").map((column) => column.trim());
-    const moduleSlug = columns[1]?.replace(/`/g, "") ?? "<unknown>";
-    const structuralShape = columns[5]?.replace(/`/g, "");
-    const sourcePlanCell = columns[6] ?? "";
-    const sourcePlanMatch = sourcePlanCell.match(/(crates\/[^`) ]+\/docs\/implementation-plan\.md)/);
-
+  parseRegistryModuleRows(registry).forEach(({ moduleSlug, structuralShape, sourcePlanPath }) => {
     if (!requiredStructuralShapes.includes(structuralShape)) {
       errors.push(`FFA/FBA board содержит неизвестный Structural shape для ${moduleSlug}: ${structuralShape}`);
       return;
     }
 
-    if (!sourcePlanMatch) {
+    if (!sourcePlanPath) {
       errors.push(`FFA/FBA board не содержит source implementation plan path для ${moduleSlug}`);
       return;
     }
 
-    const sourcePlanPath = sourcePlanMatch[1];
     const sourcePlan = readText(sourcePlanPath);
     const expectedShapeLine = `- Structural shape: \`${structuralShape}\``;
     if (!sourcePlan.includes(expectedShapeLine)) {
       errors.push(`${sourcePlanPath} должен содержать строку локального статуса: ${expectedShapeLine}`);
+    }
+  });
+
+  return errors;
+}
+
+function moduleSurfacePaths(moduleRoot, surface, candidates) {
+  return candidates.map((candidate) => path.join(moduleRoot, surface, "src", candidate));
+}
+
+function hasAnyPath(paths) {
+  return paths.some((candidate) => existsSync(candidate));
+}
+
+function collectStructuralShapeFilesystemErrors(registry) {
+  const errors = [];
+
+  parseRegistryModuleRows(registry).forEach(({ moduleSlug, structuralShape, sourcePlanPath }) => {
+    if (!sourcePlanPath || ["none", "docs_boundary", "no_ui_boundary"].includes(structuralShape)) {
+      return;
+    }
+
+    const moduleRoot = path.join(repoRoot, path.dirname(path.dirname(sourcePlanPath)));
+    const surfaces = ["admin", "storefront"];
+    const corePaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["core.rs", "core"]));
+    const transportPaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["transport"]));
+    const uiPaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["ui", path.join("ui", "leptos.rs"), path.join("ui", "leptos")]));
+
+    const hasCore = hasAnyPath(corePaths);
+    const hasTransport = hasAnyPath(transportPaths);
+    const hasUi = hasAnyPath(uiPaths);
+
+    if (["core_only", "core_transport", "core_transport_ui"].includes(structuralShape) && !hasCore) {
+      errors.push(`${moduleSlug}: Structural shape ${structuralShape} требует core.rs или core/ в admin/storefront src`);
+    }
+    if (["core_transport", "core_transport_ui"].includes(structuralShape) && !hasTransport) {
+      errors.push(`${moduleSlug}: Structural shape ${structuralShape} требует transport/ в admin/storefront src`);
+    }
+    if (structuralShape === "core_transport_ui" && !hasUi) {
+      errors.push(`${moduleSlug}: Structural shape ${structuralShape} требует ui/leptos.rs или ui/leptos/ adapter в admin/storefront src`);
     }
   });
 
@@ -507,6 +554,7 @@ function collectValidationErrors({ plan, connectivity, checklist, registry, docs
 
   errors.push(...collectStructuralShapeErrors(registry));
   errors.push(...collectRegistryLocalShapeErrors(registry));
+  errors.push(...collectStructuralShapeFilesystemErrors(registry));
   errors.push(...collectRegionErrorStatusContractErrors());
 
   return errors.sort((a, b) => a.localeCompare(b, "ru"));

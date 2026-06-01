@@ -26,6 +26,9 @@ function withFixture({
   mkdirSync(path.join(root, "docs", "verification"), { recursive: true });
   mkdirSync(path.join(root, "docs", "modules"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-cart", "docs"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "core"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
 
@@ -252,6 +255,23 @@ test("fails when registry structural shape drifts from local module plan", () =>
     const result = runVerifier(fixture.root);
     assert.notEqual(result.status, 0, "Expected local structural shape drift fixture to fail");
     assert.match(result.stderr, /Structural shape: `core_transport_ui`/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("fails when structural shape has no matching code layout", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    registryShape: "core_transport_ui",
+    localShape: "core_transport_ui",
+  });
+
+  try {
+    rmSync(path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true, force: true });
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected missing ui adapter fixture to fail");
+    assert.match(result.stderr, /требует ui\/leptos\.rs или ui\/leptos\//);
   } finally {
     fixture.cleanup();
   }
