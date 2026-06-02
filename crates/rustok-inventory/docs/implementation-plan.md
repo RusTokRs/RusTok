@@ -6,22 +6,23 @@ admin read-side UI, а dedicated inventory write transport и channel-aware orch
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
+- Current phase: wave5_read_facade
+- Last checkpoint: Добавлен inventory-owned admin read facade (`admin/src/core.rs` + `admin/src/api.rs` + `admin/src/transport.rs`), а существующий commerce GraphQL доступ изолирован в transitional adapter-е с compatibility test на минимальную read model.
+- Next step: Заменить transitional commerce GraphQL adapter на dedicated inventory transport/mutations и расширить parity coverage для read/write stock operations.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Last updated at (UTC): 2026-06-02T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `docs_boundary`
+- Structural shape: `core_transport`
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
-  - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
-- Last verified at (UTC): 2026-05-24T00:00:00Z
+  - inventory admin UI вызывает inventory-owned `core`/`api` facade, а transport boundary держит transitional commerce GraphQL adapter внутри пакета;
+  - compatibility test фиксирует минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging) до выделения dedicated inventory transport.
+- Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-inventory` module team
 
 ## Область работ
@@ -37,8 +38,8 @@ admin read-side UI, а dedicated inventory write transport и channel-aware orch
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`;
 - `rustok-inventory/admin` уже публикует inventory-owned admin route для stock visibility,
   low-stock triage и variant-level health inspection;
-- dedicated inventory mutations пока не вынесены: текущий inventory UI честно остаётся
-  read-side поверх существующего product GraphQL контракта.
+- dedicated inventory mutations пока не вынесены: текущий inventory UI использует
+  inventory-owned read facade, внутри которого commerce GraphQL остаётся transitional adapter-ом.
 
 ## Этапы
 
@@ -47,11 +48,12 @@ admin read-side UI, а dedicated inventory write transport и channel-aware orch
 - [x] закрепить inventory boundary как отдельный модуль;
 - [x] удерживать product dependency без цикла на umbrella;
 - [x] вынести inventory admin UI в module-owned пакет `rustok-inventory/admin`;
-- [ ] удерживать sync между inventory runtime contract, admin UI, commerce orchestration
-  и module metadata.
+- [x] удерживать sync между inventory runtime contract, admin UI, commerce orchestration
+  и module metadata через local docs + registry evidence.
 
 ### 2. Inventory transport split
 
+- [x] добавить inventory-owned core/read facade для admin UI и изолировать текущий commerce GraphQL доступ в transitional adapter-е;
 - [ ] вынести dedicated inventory read/write transport из umbrella `rustok-commerce`;
 - [ ] перевести inventory admin UI с read-only product-backed transport на inventory-owned
   mutations и targeted stock operations;

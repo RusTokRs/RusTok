@@ -15,7 +15,10 @@
 - runtime dependency: `product`;
 - модуль владеет inventory/stock boundary и операторской read-side UI-поверхностью
   для остатков;
-- GraphQL и REST transport пока остаются в фасаде `rustok-commerce`, а dedicated
+- admin read-side теперь проходит через inventory-owned core/facade в `admin/src/core.rs`,
+  `admin/src/api.rs` и `admin/src/transport.rs`; текущий доступ к commerce GraphQL изолирован в
+  transitional adapter-е до появления dedicated inventory transport;
+- GraphQL и REST write transport пока остаются в фасаде `rustok-commerce`, а dedicated
   inventory write transport ещё не вынесен в отдельный module-owned surface;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
@@ -23,8 +26,8 @@
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу
   без возврата ответственности в umbrella `rustok-commerce`;
-- transport и GraphQL пока публикуются через `rustok-commerce`, а inventory-owned admin UX
-  уже публикуется через `rustok-inventory/admin`;
+- inventory-owned admin UX и read facade публикуются через `rustok-inventory/admin`;
+  underlying commerce GraphQL adapter считается transitional implementation detail;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 
