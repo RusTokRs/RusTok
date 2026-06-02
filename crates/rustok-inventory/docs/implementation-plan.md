@@ -7,7 +7,7 @@ admin read-side service, native server-function read transport и module-owned a
 ## Execution checkpoint
 
 - Current phase: wave5_read_facade
-- Last checkpoint: Подключён primary native `#[server]` read path в `crates/rustok-inventory/admin/src/native.rs`: bootstrap/list/detail извлекают `AuthContext`, `TenantContext`, `RequestContext`, проверяют inventory permissions и tenant match, затем вызывают backend `AdminInventoryReadService`. Transitional commerce GraphQL adapter остаётся package-private compatibility fallback-ом, а `admin/tests/boundary.rs` закрепляет GraphQL runtime boundary.
+- Last checkpoint: Подключён primary native `#[server]` read path в `crates/rustok-inventory/admin/src/native.rs`: bootstrap/list/detail извлекают `AuthContext`, `TenantContext`, `RequestContext`, проверяют inventory permissions и tenant match, затем вызывают backend `AdminInventoryReadService`. Transitional commerce GraphQL adapter остаётся package-private fallback-ом только для native-unavailable ошибок, а `admin/tests/boundary.rs` закрепляет GraphQL runtime boundary.
 - Next step: Расширить parity coverage для native read path против transitional adapter и вынести dedicated inventory write/mutation transport из umbrella `rustok-commerce`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -21,7 +21,7 @@ admin read-side service, native server-function read transport и module-owned a
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
   - backend crate экспортирует `AdminInventoryReadService` и typed read DTO (`AdminInventoryProductList`, `AdminInventoryProductDetail`, variants/prices/translations) как inventory-owned read-side source для native server-function transport;
-  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, а transport boundary держит transitional commerce GraphQL adapter внутри пакета как fallback;
+  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, а transport boundary держит transitional commerce GraphQL adapter внутри пакета только как native-unavailable fallback;
   - unit tests покрывают locale fallback, tags extraction, price sale mapping, search normalization и variant title fallback в backend read-side service;
   - compatibility tests фиксируют минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging), сериализацию normalized GraphQL variables, facade request builders и mapping `GraphqlHttpError` → inventory-owned `InventoryTransportError` до выделения dedicated inventory transport;
   - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `GraphqlHttpError`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model`, `native` или `ui`.
@@ -44,7 +44,7 @@ admin read-side service, native server-function read transport и module-owned a
   low-stock triage и variant-level health inspection;
 - dedicated inventory mutations пока не вынесены: текущий inventory UI использует
   inventory-owned read facade, внутри которого commerce GraphQL остаётся transitional adapter-ом;
-- dedicated native/server-function read transport подключён к backend `AdminInventoryReadService`; GraphQL остаётся transitional compatibility fallback-ом.
+- dedicated native/server-function read transport подключён к backend `AdminInventoryReadService`; GraphQL остаётся transitional compatibility fallback-ом только когда native path недоступен.
 
 ## Этапы
 

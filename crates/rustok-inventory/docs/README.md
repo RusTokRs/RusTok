@@ -21,7 +21,7 @@
 - admin UI read-side теперь проходит через inventory-owned core/facade в `admin/src/core.rs`,
   `admin/src/api.rs`, `admin/src/native.rs`, native `#[server]` functions и explicit Leptos adapter
   `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
-  transitional adapter-е как compatibility fallback до удаления umbrella read dependency;
+  transitional adapter-е только как native-unavailable compatibility fallback до удаления umbrella read dependency;
 - GraphQL и REST write transport пока остаются в фасаде `rustok-commerce`, а dedicated
   inventory write transport ещё не вынесен в отдельный module-owned surface;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.

@@ -74,17 +74,65 @@ fn product_request(
     }
 }
 
+fn native_error_allows_transitional_graphql_fallback(error: &ServerFnError) -> bool {
+    let message = error.to_string();
+    message.contains("requires the `ssr` feature")
+}
+
+async fn fallback_bootstrap(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<InventoryAdminBootstrap, ApiError> {
+    transitional_read_transport()
+        .fetch_bootstrap(token, tenant_slug)
+        .await
+        .map_err(Into::into)
+}
+
+async fn fallback_products(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: Option<String>,
+    search: Option<String>,
+    status: Option<String>,
+) -> Result<InventoryProductList, ApiError> {
+    transitional_read_transport()
+        .fetch_products(products_request(
+            token,
+            tenant_slug,
+            tenant_id,
+            locale,
+            search,
+            status,
+        ))
+        .await
+        .map_err(Into::into)
+}
+
+async fn fallback_product(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+) -> Result<Option<InventoryProductDetail>, ApiError> {
+    transitional_read_transport()
+        .fetch_product(product_request(token, tenant_slug, tenant_id, id, locale))
+        .await
+        .map_err(Into::into)
+}
+
 pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<InventoryAdminBootstrap, ApiError> {
     match crate::native::fetch_bootstrap().await {
         Ok(value) => Ok(value),
-        Err(err) if cfg!(feature = "ssr") => Err(err.into()),
-        Err(_) => transitional_read_transport()
-            .fetch_bootstrap(token, tenant_slug)
-            .await
-            .map_err(Into::into),
+        Err(err) if native_error_allows_transitional_graphql_fallback(&err) => {
+            fallback_bootstrap(token, tenant_slug).await
+        }
+        Err(err) => Err(err.into()),
     }
 }
 
@@ -105,18 +153,10 @@ pub async fn fetch_products(
     .await
     {
         Ok(value) => Ok(value),
-        Err(err) if cfg!(feature = "ssr") => Err(err.into()),
-        Err(_) => transitional_read_transport()
-            .fetch_products(products_request(
-                token,
-                tenant_slug,
-                tenant_id,
-                locale,
-                search,
-                status,
-            ))
-            .await
-            .map_err(Into::into),
+        Err(err) if native_error_allows_transitional_graphql_fallback(&err) => {
+            fallback_products(token, tenant_slug, tenant_id, locale, search, status).await
+        }
+        Err(err) => Err(err.into()),
     }
 }
 
@@ -129,17 +169,20 @@ pub async fn fetch_product(
 ) -> Result<Option<InventoryProductDetail>, ApiError> {
     match crate::native::fetch_product(tenant_id.clone(), id.clone(), locale.clone()).await {
         Ok(value) => Ok(value),
-        Err(err) if cfg!(feature = "ssr") => Err(err.into()),
-        Err(_) => transitional_read_transport()
-            .fetch_product(product_request(token, tenant_slug, tenant_id, id, locale))
-            .await
-            .map_err(Into::into),
+        Err(err) if native_error_allows_transitional_graphql_fallback(&err) => {
+            fallback_product(token, tenant_slug, tenant_id, id, locale).await
+        }
+        Err(err) => Err(err.into()),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{product_request, products_request};
+    use leptos::prelude::ServerFnError;
+
+    use super::{
+        native_error_allows_transitional_graphql_fallback, product_request, products_request,
+    };
 
     #[test]
     fn products_request_preserves_inventory_facade_context() {
@@ -175,5 +218,18 @@ mod tests {
         assert_eq!(request.tenant_id, "tenant-id");
         assert_eq!(request.id, "product-id");
         assert_eq!(request.locale.as_deref(), Some("de"));
+    }
+
+    #[test]
+    fn transitional_graphql_fallback_is_limited_to_native_unavailable_errors() {
+        assert!(native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new("inventory/products requires the `ssr` feature")
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new("Permission denied: inventory:list required")
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new("Invalid product status")
+        ));
     }
 }
