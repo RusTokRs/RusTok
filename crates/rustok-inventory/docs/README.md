@@ -16,7 +16,7 @@
 - модуль владеет inventory/stock boundary и операторской read-side UI-поверхностью
   для остатков;
 - admin read-side теперь проходит через inventory-owned core/facade в `admin/src/core.rs`,
-  `admin/src/api.rs` и `admin/src/transport.rs`; текущий доступ к commerce GraphQL изолирован в
+  `admin/src/api.rs`, `admin/src/transport.rs` и explicit Leptos adapter `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
   transitional adapter-е до появления dedicated inventory transport;
 - GraphQL и REST write transport пока остаются в фасаде `rustok-commerce`, а dedicated
   inventory write transport ещё не вынесен в отдельный module-owned surface;

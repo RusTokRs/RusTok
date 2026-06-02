@@ -82,6 +82,43 @@ struct ProductsFilter {
     per_page: Option<u64>,
 }
 
+fn products_variables(
+    tenant_id: String,
+    locale: Option<String>,
+    search: Option<String>,
+    status: Option<String>,
+) -> TenantScopedVariables<ProductsVariables> {
+    let filter = normalized_products_filter(locale, search, status);
+    TenantScopedVariables {
+        tenant_id,
+        extra: ProductsVariables {
+            locale: filter.locale,
+            filter: ProductsFilter {
+                status: filter.status,
+                vendor: None,
+                search: filter.search,
+                page: Some(filter.page),
+                per_page: Some(filter.per_page),
+            },
+        },
+    }
+}
+
+fn product_variables(
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+) -> TenantScopedVariables<ProductVariables> {
+    let selector = normalized_product_selector(id, locale);
+    TenantScopedVariables {
+        tenant_id,
+        extra: ProductVariables {
+            id: selector.id,
+            locale: selector.locale,
+        },
+    }
+}
+
 fn graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
         return url.to_string();
@@ -146,26 +183,12 @@ impl InventoryReadTransport for CommerceGraphqlInventoryReadAdapter {
     ) -> Result<InventoryProductList, InventoryTransportError> {
         let response: ProductsResponse = request(
             PRODUCTS_QUERY,
-            Some(TenantScopedVariables {
-                tenant_id: request_data.tenant_id,
-                extra: {
-                    let filter = normalized_products_filter(
-                        request_data.locale,
-                        request_data.search,
-                        request_data.status,
-                    );
-                    ProductsVariables {
-                        locale: filter.locale,
-                        filter: ProductsFilter {
-                            status: filter.status,
-                            vendor: None,
-                            search: filter.search,
-                            page: Some(filter.page),
-                            per_page: Some(filter.per_page),
-                        },
-                    }
-                },
-            }),
+            Some(products_variables(
+                request_data.tenant_id,
+                request_data.locale,
+                request_data.search,
+                request_data.status,
+            )),
             request_data.token,
             request_data.tenant_slug,
         )
@@ -179,17 +202,11 @@ impl InventoryReadTransport for CommerceGraphqlInventoryReadAdapter {
     ) -> Result<Option<InventoryProductDetail>, InventoryTransportError> {
         let response: ProductResponse = request(
             PRODUCT_QUERY,
-            Some(TenantScopedVariables {
-                tenant_id: request_data.tenant_id,
-                extra: {
-                    let selector =
-                        normalized_product_selector(request_data.id, request_data.locale);
-                    ProductVariables {
-                        id: selector.id,
-                        locale: selector.locale,
-                    }
-                },
-            }),
+            Some(product_variables(
+                request_data.tenant_id,
+                request_data.id,
+                request_data.locale,
+            )),
             request_data.token,
             request_data.tenant_slug,
         )
@@ -200,7 +217,56 @@ impl InventoryReadTransport for CommerceGraphqlInventoryReadAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::{PRODUCTS_QUERY, PRODUCT_QUERY};
+    use super::{product_variables, products_variables, PRODUCTS_QUERY, PRODUCT_QUERY};
+
+    #[test]
+    fn products_variables_apply_core_normalization_and_paging_defaults() {
+        let json = serde_json::to_value(products_variables(
+            "tenant-1".to_string(),
+            Some("  de-DE  ".to_string()),
+            Some("  winter jacket  ".to_string()),
+            Some(" active ".to_string()),
+        ))
+        .expect("products variables should serialize");
+
+        assert_eq!(json["tenantId"], "tenant-1");
+        assert_eq!(json["locale"], "de-DE");
+        assert_eq!(json["filter"]["status"], "ACTIVE");
+        assert_eq!(json["filter"]["search"], "winter jacket");
+        assert_eq!(json["filter"]["page"], 1);
+        assert_eq!(json["filter"]["perPage"], 24);
+        assert!(json["filter"]["vendor"].is_null());
+    }
+
+    #[test]
+    fn products_variables_drop_blank_optional_filters() {
+        let json = serde_json::to_value(products_variables(
+            "tenant-1".to_string(),
+            Some("   ".to_string()),
+            Some("   ".to_string()),
+            Some("   ".to_string()),
+        ))
+        .expect("products variables should serialize");
+
+        assert_eq!(json["tenantId"], "tenant-1");
+        assert!(json["locale"].is_null());
+        assert!(json["filter"]["status"].is_null());
+        assert!(json["filter"]["search"].is_null());
+    }
+
+    #[test]
+    fn product_variables_trim_locale_without_rewriting_id() {
+        let json = serde_json::to_value(product_variables(
+            "tenant-1".to_string(),
+            " product-1 ".to_string(),
+            Some("  en-US  ".to_string()),
+        ))
+        .expect("product variables should serialize");
+
+        assert_eq!(json["tenantId"], "tenant-1");
+        assert_eq!(json["id"], " product-1 ");
+        assert_eq!(json["locale"], "en-US");
+    }
 
     #[test]
     fn transitional_graphql_adapter_keeps_inventory_read_model_fields() {

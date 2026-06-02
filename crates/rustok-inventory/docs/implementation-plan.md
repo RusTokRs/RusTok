@@ -7,7 +7,7 @@ admin read-side UI, а dedicated inventory write transport и channel-aware orch
 ## Execution checkpoint
 
 - Current phase: wave5_read_facade
-- Last checkpoint: Добавлен inventory-owned admin read facade (`admin/src/core.rs` + `admin/src/api.rs` + `admin/src/transport.rs`), а существующий commerce GraphQL доступ изолирован в transitional adapter-е с compatibility test на минимальную read model.
+- Last checkpoint: Добавлен inventory-owned admin read facade (`admin/src/core.rs` + `admin/src/api.rs` + `admin/src/transport.rs` + `admin/src/ui/leptos.rs`), существующий commerce GraphQL доступ изолирован в transitional adapter-е, а `admin/tests/boundary.rs` закрепляет, что GraphQL runtime markers остаются только в transport boundary.
 - Next step: Заменить transitional commerce GraphQL adapter на dedicated inventory transport/mutations и расширить parity coverage для read/write stock operations.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -17,11 +17,12 @@ admin read-side UI, а dedicated inventory write transport и channel-aware orch
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_transport`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
-  - inventory admin UI вызывает inventory-owned `core`/`api` facade, а transport boundary держит transitional commerce GraphQL adapter внутри пакета;
-  - compatibility test фиксирует минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging) до выделения dedicated inventory transport.
+  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, а transport boundary держит transitional commerce GraphQL adapter внутри пакета;
+  - compatibility tests фиксируют минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging), сериализацию normalized GraphQL variables и facade request builders до выделения dedicated inventory transport;
+  - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model` или `ui`.
 - Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-inventory` module team
 
@@ -53,7 +54,7 @@ admin read-side UI, а dedicated inventory write transport и channel-aware orch
 
 ### 2. Inventory transport split
 
-- [x] добавить inventory-owned core/read facade для admin UI и изолировать текущий commerce GraphQL доступ в transitional adapter-е;
+- [x] добавить inventory-owned core/read facade и explicit Leptos adapter для admin UI, изолировав текущий commerce GraphQL доступ в transitional adapter-е и закрепив это boundary test-ом;
 - [ ] вынести dedicated inventory read/write transport из umbrella `rustok-commerce`;
 - [ ] перевести inventory admin UI с read-only product-backed transport на inventory-owned
   mutations и targeted stock operations;
