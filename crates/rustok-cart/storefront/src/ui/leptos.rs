@@ -4,6 +4,7 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::core::{
+    build_cart_fetch_request, build_decrement_line_item_request, build_remove_line_item_request,
     cart_adjustment_view_model, cart_delivery_group_view_model, cart_line_item_view_model,
     cart_summary_view_model, error_with_context, CartDisplayFallbacks,
 };
@@ -60,7 +61,9 @@ pub fn CartView() -> impl IntoView {
                 refresh_nonce.get(),
             )
         },
-        move |(cart_id, locale, _)| async move { transport::fetch_cart(cart_id, locale).await },
+        move |(cart_id, locale, _)| async move {
+            transport::fetch_cart(build_cart_fetch_request(cart_id, locale)).await
+        },
     );
 
     let on_decrement = {
@@ -71,7 +74,9 @@ pub fn CartView() -> impl IntoView {
                 set_mutation_busy.set(true);
                 set_mutation_error.set(None);
                 spawn_local(async move {
-                    match transport::decrement_line_item(cart_id, line_item_id, quantity).await {
+                    let request =
+                        build_decrement_line_item_request(cart_id, line_item_id, quantity);
+                    match transport::decrement_line_item(request).await {
                         Ok(()) => set_refresh_nonce.update(|value| *value += 1),
                         Err(err) => set_mutation_error
                             .set(Some(error_with_context(&update_error, &err.to_string()))),
@@ -89,7 +94,8 @@ pub fn CartView() -> impl IntoView {
             set_mutation_busy.set(true);
             set_mutation_error.set(None);
             spawn_local(async move {
-                match transport::remove_line_item(cart_id, line_item_id).await {
+                let request = build_remove_line_item_request(cart_id, line_item_id);
+                match transport::remove_line_item(request).await {
                     Ok(()) => set_refresh_nonce.update(|value| *value += 1),
                     Err(err) => set_mutation_error
                         .set(Some(error_with_context(&update_error, &err.to_string()))),
