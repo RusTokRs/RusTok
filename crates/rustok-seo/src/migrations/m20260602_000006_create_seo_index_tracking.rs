@@ -1,0 +1,252 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoIndexDeliveries::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::SeoEventType)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::IdempotencyKey)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::TargetType)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(SeoIndexDeliveries::TargetId).uuid())
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::TargetScope)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::TargetScopeKey)
+                            .string_len(96)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::AttemptCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(SeoIndexDeliveries::OutboxEventId).uuid())
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::NextAttemptAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(ColumnDef::new(SeoIndexDeliveries::LastError).string_len(2048))
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::DeadLetteredAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexDeliveries::DispatchedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_index_deliveries_unique_transition")
+                    .table(SeoIndexDeliveries::Table)
+                    .col(SeoIndexDeliveries::TenantId)
+                    .col(SeoIndexDeliveries::IdempotencyKey)
+                    .col(SeoIndexDeliveries::TargetType)
+                    .col(SeoIndexDeliveries::TargetScopeKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_index_deliveries_status")
+                    .table(SeoIndexDeliveries::Table)
+                    .col(SeoIndexDeliveries::TenantId)
+                    .col(SeoIndexDeliveries::Status)
+                    .col(SeoIndexDeliveries::UpdatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_index_deliveries_target")
+                    .table(SeoIndexDeliveries::Table)
+                    .col(SeoIndexDeliveries::TenantId)
+                    .col(SeoIndexDeliveries::TargetType)
+                    .col(SeoIndexDeliveries::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(SeoIndexCursors::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::TargetType)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::InitialCursorAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::HighWaterMarkAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::LastRepairCursorAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::ReplayMode)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::ReplayRequestedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::ReplayCompletedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SeoIndexCursors::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_seo_index_cursors_tenant_target")
+                    .table(SeoIndexCursors::Table)
+                    .col(SeoIndexCursors::TenantId)
+                    .col(SeoIndexCursors::TargetType)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(SeoIndexCursors::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(SeoIndexDeliveries::Table).to_owned())
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum SeoIndexDeliveries {
+    Table,
+    Id,
+    TenantId,
+    SeoEventType,
+    IdempotencyKey,
+    TargetType,
+    TargetId,
+    TargetScope,
+    TargetScopeKey,
+    Status,
+    AttemptCount,
+    OutboxEventId,
+    NextAttemptAt,
+    LastError,
+    DeadLetteredAt,
+    CreatedAt,
+    UpdatedAt,
+    DispatchedAt,
+}
+
+#[derive(Iden)]
+enum SeoIndexCursors {
+    Table,
+    Id,
+    TenantId,
+    TargetType,
+    InitialCursorAt,
+    HighWaterMarkAt,
+    LastRepairCursorAt,
+    ReplayMode,
+    ReplayRequestedAt,
+    ReplayCompletedAt,
+    CreatedAt,
+    UpdatedAt,
+}
