@@ -6,7 +6,11 @@ use sea_orm_migration::MigrationTrait;
 pub mod migrations;
 pub mod services;
 
-pub use services::InventoryService;
+pub use services::{
+    AdminInventoryPrice, AdminInventoryProductDetail, AdminInventoryProductList,
+    AdminInventoryProductListItem, AdminInventoryProductTranslation, AdminInventoryProductsFilter,
+    AdminInventoryReadService, AdminInventoryVariant, InventoryService,
+};
 
 pub struct InventoryModule;
 

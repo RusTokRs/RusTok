@@ -10386,6 +10386,7 @@ dependencies = [
  "rustok-outbox",
  "sea-orm",
  "sea-orm-migration",
+ "serde",
  "serde_json",
  "tracing",
  "uuid",
