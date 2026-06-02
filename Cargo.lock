@@ -10400,9 +10400,14 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "leptos-ui-routing",
+ "leptos_axum",
+ "loco-rs",
  "rustok-api",
+ "rustok-core",
+ "rustok-inventory",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

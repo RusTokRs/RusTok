@@ -218,7 +218,7 @@ flowchart LR
 
 **Цель:** убрать прямую зависимость inventory admin package от commerce GraphQL как от фактического backend contract.
 
-**Статус на 2026-06-02:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL adapter; backend crate дополнительно экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side. Остаётся подключить dedicated native/server-function transport к этому service, сохранив GraphQL как parallel compatibility path до удаления adapter-а.
+**Статус на 2026-06-02:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL adapter; backend crate дополнительно экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side, а admin package подключает primary native/server-function read path к этому service. Остаётся расширить parity coverage и вынести dedicated inventory mutations/write transport, сохранив GraphQL как parallel compatibility fallback до удаления adapter-а.
 
 1. Описать minimal inventory admin read model:
    - product id/slug/title needed for inventory views;

@@ -20,9 +20,10 @@
 - Depends on `rustok-product` data model through variant references.
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - `apps/admin` consumes `rustok-inventory-admin` through manifest-driven composition;
-  the admin package still has a transitional commerce GraphQL adapter until native/dedicated
-  transport is wired to `AdminInventoryReadService`, and dedicated inventory write transport
-  is still being split from the umbrella commerce surface.
+  the admin package now uses native Leptos server functions backed by
+  `AdminInventoryReadService` as the primary read transport, keeps the transitional commerce
+  GraphQL adapter as a compatibility fallback, and still splits dedicated inventory write
+  transport from the umbrella commerce surface.
 
 ## Entry points
 

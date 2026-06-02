@@ -72,3 +72,23 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
         );
     }
 }
+
+#[test]
+fn native_read_path_targets_inventory_backend_service() {
+    let api = read_source("src/api.rs");
+
+    for marker in [
+        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/bootstrap\")]",
+        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/products\")]",
+        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/product\")]",
+        "AdminInventoryReadService::new",
+        "assert_requested_tenant",
+        "Permission::INVENTORY_LIST",
+        "Permission::INVENTORY_READ",
+    ] {
+        assert!(
+            api.contains(marker),
+            "src/api.rs must keep native inventory read path marker `{marker}`"
+        );
+    }
+}

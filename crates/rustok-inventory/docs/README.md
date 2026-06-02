@@ -17,10 +17,11 @@
   для остатков;
 - backend read-side для админки теперь имеет inventory-owned service/DTO в
   `src/services/admin_read.rs`, который отдаёт tenant-scoped product/variant/price/translations
-  model для будущего dedicated transport;
+  model для native server-function read transport;
 - admin UI read-side теперь проходит через inventory-owned core/facade в `admin/src/core.rs`,
-  `admin/src/api.rs`, `admin/src/transport.rs` и explicit Leptos adapter `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
-  transitional adapter-е до появления dedicated inventory transport;
+  `admin/src/api.rs`, native `#[server]` functions и explicit Leptos adapter
+  `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
+  transitional adapter-е как compatibility fallback до удаления umbrella read dependency;
 - GraphQL и REST write transport пока остаются в фасаде `rustok-commerce`, а dedicated
   inventory write transport ещё не вынесен в отдельный module-owned surface;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
@@ -29,10 +30,10 @@
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу
   без возврата ответственности в umbrella `rustok-commerce`;
-- inventory-owned backend admin read service экспортируется root crate-ом и должен стать source
-  для native server-function/dedicated read transport;
+- inventory-owned backend admin read service экспортируется root crate-ом и является source
+  для native server-function read transport;
 - inventory-owned admin UX и read facade публикуются через `rustok-inventory/admin`;
-  underlying commerce GraphQL adapter считается transitional implementation detail;
+  underlying commerce GraphQL adapter считается transitional compatibility implementation detail;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 
