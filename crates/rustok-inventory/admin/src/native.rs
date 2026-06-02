@@ -2,6 +2,13 @@ use leptos::prelude::*;
 
 use crate::model::{InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList};
 
+pub(crate) const INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR: &str =
+    "inventory/bootstrap requires the `ssr` feature";
+pub(crate) const INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR: &str =
+    "inventory/products requires the `ssr` feature";
+pub(crate) const INVENTORY_PRODUCT_REQUIRES_SSR_ERROR: &str =
+    "inventory/product requires the `ssr` feature";
+
 pub(crate) async fn fetch_bootstrap() -> Result<InventoryAdminBootstrap, ServerFnError> {
     inventory_bootstrap_native().await
 }
@@ -195,9 +202,7 @@ async fn inventory_bootstrap_native() -> Result<InventoryAdminBootstrap, ServerF
     }
     #[cfg(not(feature = "ssr"))]
     {
-        Err(ServerFnError::new(
-            "inventory/bootstrap requires the `ssr` feature",
-        ))
+        Err(ServerFnError::new(INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR))
     }
 }
 
@@ -255,9 +260,7 @@ async fn inventory_products_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (tenant_id, locale, search, status);
-        Err(ServerFnError::new(
-            "inventory/products requires the `ssr` feature",
-        ))
+        Err(ServerFnError::new(INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR))
     }
 }
 
@@ -306,8 +309,6 @@ async fn inventory_product_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (tenant_id, id, locale);
-        Err(ServerFnError::new(
-            "inventory/product requires the `ssr` feature",
-        ))
+        Err(ServerFnError::new(INVENTORY_PRODUCT_REQUIRES_SSR_ERROR))
     }
 }

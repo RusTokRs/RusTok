@@ -76,7 +76,13 @@ fn product_request(
 
 fn native_error_allows_transitional_graphql_fallback(error: &ServerFnError) -> bool {
     let message = error.to_string();
-    message.contains("requires the `ssr` feature")
+    [
+        crate::native::INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR,
+        crate::native::INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR,
+        crate::native::INVENTORY_PRODUCT_REQUIRES_SSR_ERROR,
+    ]
+    .iter()
+    .any(|expected| message == *expected || message.ends_with(expected))
 }
 
 async fn fallback_bootstrap(
@@ -223,13 +229,18 @@ mod tests {
     #[test]
     fn transitional_graphql_fallback_is_limited_to_native_unavailable_errors() {
         assert!(native_error_allows_transitional_graphql_fallback(
-            &ServerFnError::new("inventory/products requires the `ssr` feature")
+            &ServerFnError::new(crate::native::INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR)
         ));
         assert!(!native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new("Permission denied: inventory:list required")
         ));
         assert!(!native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new("Invalid product status")
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new(
+                "Permission denied before inventory/products requires the `ssr` feature"
+            )
         ));
     }
 }
