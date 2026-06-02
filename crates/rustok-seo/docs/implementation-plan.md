@@ -4,17 +4,17 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d3_indexing_seam_contracting`
-- Last checkpoint: Закрыт Batch D4: REST control-plane parity получил унифицированный GraphQL-compatible error envelope (`errors[].extensions.code`) для validation/config/not_found/permission сценариев; `apps/next-admin/src/shared/api/seo.ts` теперь маппит REST ошибки в `GraphqlError` и fallback на GraphQL оставляет только для rollout-gated `NOT_FOUND`/`HTTP_ERROR` случаев.
-- Next step: Перейти к D3 SEO->index consumer seam (tenant/kind scoped reindex + retry/DLQ policy).
+- Current phase: `phase_d5_index_tracking_backfill_foundation`
+- Last checkpoint: Закрыт Batch D3: SEO publish path получил SEO->index adapter seam (`Seo*` events -> `index.reindex_requested`) с selective entity/kind triggers, tenant-scoped index delivery tracker (`seo_index_deliveries`), bounded retry + dead-letter policy и cursor/high-water state (`seo_index_cursors`). Добавлен initial repair/backlog path `SeoService::repair_index_delivery_backlog(...)` для failed/dead-letter index deliveries.
+- Next step: Довести Batch D5 до replay-ready режима (operator-triggered replay mode + explicit control-plane surface для repair/replay).
 - Open blockers:
-  - Для D3 нужен синхронный contract sign-off между владельцами `rustok-seo`, `rustok-outbox` и `rustok-index`.
+  - Для полного D5 replay mode нужен контракт по operator UX/API между `rustok-seo-admin-support` и server host.
 - Hand-off notes for next agent:
   - Не обходить boundary `MediaImageDescriptor` и existing `SeoPageContext` contract.
   - REST/GraphQL расширять только additive-изменениями в стабильном `v1`.
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для REST parity fallback в Next admin не возвращаться к blanket `catch {}`: semantic ошибки (`BAD_USER_INPUT`/`PERMISSION_DENIED`) должны пробрасываться в UI.
-- Last updated at (UTC): 2026-06-02T00:00:00Z
+- Last updated at (UTC): 2026-06-02T12:00:00Z
 
 ## FFA/FBA status block
 
@@ -54,8 +54,9 @@
 - boundary contract C3 закреплён через `rustok-media::MediaImageDescriptor` -> `rustok-seo-targets::SeoTargetImageRecord`;
 - **open productionization gaps (Phase D):**
   - D2 закрыт: typed SEO event model и delivery/idempotency tracking live (`seo_event_deliveries` + outbox envelope linkage + duplicate guard);
+  - D3 закрыт: SEO->index adapter seam live (`Seo*` events -> `index.reindex_requested`), tenant/kind-scoped triggers и bounded retry/dead-letter tracking в `seo_index_deliveries`;
   - D4 закрыт: REST control-plane parity завершён, включая GraphQL-compatible error envelope для validation/config/not_found/permission сценариев;
-  - direct SEO -> `rustok-index` consumer seam и retry/DLQ policy не доведены;
+  - D5 частично закрыт: schema/index cursor foundation + initial repair path готовы, но operator replay mode ещё не завершён;
   - `apps/next-admin` API helper расширен до control-plane read surfaces и error mapping parity, но host UI observability/remediation widgets и Next storefront runtime parity остаются открытыми.
 
 ## Итог последней exploration-сессии
@@ -66,8 +67,10 @@
 - C3 закрыт: `rustok-media` ↔ `rustok-seo` image boundary переведён на typed descriptors;
 - D2 закрыт: publish path пишет delivery tracker (`seo_event_deliveries`), связывает с outbox envelope id и держит duplicate guard по idempotency key;
 - D4 закрыт: REST control-plane parity endpoints и GraphQL `seoSitemapJobs`/`seoSitemapJob` дополнены унифицированным error envelope (`errors[].extensions.code`) и Next admin error mapping parity;
+- D3 закрыт: SEO->index seam публикует selective `index.reindex_requested` triggers и пишет retry/DLQ tracking в `seo_index_deliveries` с cursor state в `seo_index_cursors`;
+- D5 частично закрыт: schema/index tracking foundation и `repair_index_delivery_backlog` готовы как initial backfill/repair path;
 - guardrail по Next route coverage остаётся deferred до появления реального route ownership surface;
-- для следующего execution wave приоритет: D3 index seam -> D5 migration/backfill policy.
+- для следующего execution wave приоритет: завершить D5 replay mode -> D6/D7 host integrations.
 
 ## Контракт совместимости (Phase D freeze)
 
@@ -173,10 +176,10 @@
   - [x] Добавить deterministic idempotency key (`tenant_id + target_kind + target_id + revision_or_job_id`) и scope-sensitive keys для terminal bulk states.
   - [x] Интегрировать emission path с `rustok-outbox` без duplicate emission в bulk loops: publish path пишет `seo_event_deliveries`, связывает delivery с outbox envelope id и фиксирует duplicate guard integration tests для bulk terminal events.
 
-- [ ] **Batch D3 — Indexing integration seam (SEO -> rustok-index)**
-  - [ ] Добавить consumer/adapter contract для selective invalidate/rebuild index documents.
-  - [ ] Добавить tenant/kind-scoped reindex trigger.
-  - [ ] Зафиксировать bounded retry + dead-letter policy для indexing failures.
+- [x] **Batch D3 — Indexing integration seam (SEO -> rustok-index)**
+  - [x] Добавить consumer/adapter contract для selective invalidate/rebuild index documents.
+  - [x] Добавить tenant/kind-scoped reindex trigger.
+  - [x] Зафиксировать bounded retry + dead-letter policy для indexing failures.
 
 - [x] **Batch D4 — GraphQL/REST parity completion**
   - [x] Добавить REST parity для diagnostics summary/filtering.
@@ -185,8 +188,8 @@
   - [x] Унифицировать error envelope между GraphQL/REST (validation/config/not_found/permission).
 
 - [ ] **Batch D5 — Миграции и backfill**
-  - [ ] Добавить schema changes для event/outbox/index tracking.
-  - [ ] Подготовить backfill/repair path: initial cursor/high-water mark.
+  - [x] Добавить schema changes для event/outbox/index tracking.
+  - [x] Подготовить backfill/repair path: initial cursor/high-water mark.
   - [ ] Подготовить optional replay mode для исторических SEO changes.
   - [ ] Зафиксировать forward-only rollback policy.
 
