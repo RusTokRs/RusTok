@@ -22,5 +22,3 @@ leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 
-[dev-dependencies]
-tokio.workspace = true

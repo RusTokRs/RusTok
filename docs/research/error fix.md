@@ -22,7 +22,7 @@
 - Wave 1 evidence по `pages -> [content, page_builder]`, Wave 2 channel request context и Wave 3 TTL-cache tenant locale policy уже отражены в коде текущей ветки.
 - В рамках продолжения Wave 4 добавлен первый migration-safety baseline: module-owned `migration_dependencies()` для известных cross-module FK/order boundaries (`channel -> auth`, `pricing/inventory -> product variants`, `commerce collections/categories -> product`, `blog/forum -> taxonomy`) и агрегация этих descriptors в server migrator.
 - Добавлен локальный PostgreSQL smoke `scripts/verify/verify-migration-smoke.sh`: он запускает ignored integration test, который сам создаёт временную БД без локального `psql`, применяет мигратор from-zero и проверяет representative module tables.
-- Начат Wave 5: inventory admin read-side теперь идёт через inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а прямой доступ к текущему commerce GraphQL contract ограничен transitional adapter-ом с compatibility tests на минимальную read model/normalized variables/api delegation и boundary tests на GraphQL isolation.
+- Начат Wave 5: inventory admin read-side теперь идёт через inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а прямой доступ к текущему commerce GraphQL contract ограничен transitional adapter-ом с compatibility tests на минимальную read model/normalized variables/facade request builders и boundary tests на GraphQL isolation.
 - Открытым остатком Wave 4 остаётся стабилизация PostgreSQL smoke на реальном окружении и последующее вынесение его в отдельный CI job; для Wave 5 остаётся выделить dedicated inventory transport/mutations вместо transitional adapter-а.
 
 ## Проверенные факты
