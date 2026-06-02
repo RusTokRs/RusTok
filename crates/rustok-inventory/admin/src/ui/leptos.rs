@@ -4,6 +4,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
+use crate::core::{inventory_health_state, summarize_inventory, InventoryHealthState};
 use crate::i18n::t;
 use crate::model::{
     InventoryAdminBootstrap, InventoryProductDetail, InventoryProductListItem, InventoryVariant,
@@ -20,8 +21,6 @@ where
 {
     LocalResource::new(move || fetcher(source()))
 }
-
-const LOW_STOCK_THRESHOLD: i32 = 5;
 
 fn locale_tags_match(left: &str, right: &str) -> bool {
     left.trim()
@@ -459,95 +458,12 @@ fn StatCard(title: String, value: String, hint: String) -> impl IntoView {
     }
 }
 
-#[derive(Clone, Copy)]
-struct InventorySummary {
-    variant_count: usize,
-    total_quantity: i32,
-    low_stock: usize,
-    backorder: usize,
-    out_of_stock: usize,
-    healthy: usize,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum InventoryHealthState {
-    Healthy,
-    LowStock,
-    OutOfStock,
-    Backorder,
-}
-
-fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
-    let health_counts = summarize_inventory_health_counts(variants);
-    let non_healthy_total = health_counts.non_healthy_total();
-    let healthy_total = variants.len().saturating_sub(non_healthy_total);
-    let total_quantity = variants
-        .iter()
-        .map(|variant| variant.inventory_quantity)
-        .sum();
-
-    debug_assert_eq!(
-        non_healthy_total + healthy_total,
-        variants.len(),
-        "inventory health partition must cover every variant exactly once"
-    );
-
-    InventorySummary {
-        variant_count: variants.len(),
-        total_quantity,
-        low_stock: health_counts.low_stock,
-        backorder: health_counts.backorder,
-        out_of_stock: health_counts.out_of_stock,
-        healthy: healthy_total,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct InventoryHealthCounts {
-    low_stock: usize,
-    backorder: usize,
-    out_of_stock: usize,
-}
-
-impl InventoryHealthCounts {
-    fn non_healthy_total(self) -> usize {
-        self.low_stock + self.backorder + self.out_of_stock
-    }
-}
-
-fn summarize_inventory_health_counts(variants: &[InventoryVariant]) -> InventoryHealthCounts {
-    variants
-        .iter()
-        .fold(InventoryHealthCounts::default(), |mut counts, variant| {
-            match inventory_health_state(variant) {
-                InventoryHealthState::LowStock => counts.low_stock += 1,
-                InventoryHealthState::Backorder => counts.backorder += 1,
-                InventoryHealthState::OutOfStock => counts.out_of_stock += 1,
-                InventoryHealthState::Healthy => {}
-            }
-            counts
-        })
-}
-
-fn is_backorder_enabled(variant: &InventoryVariant) -> bool {
-    variant.inventory_policy.eq_ignore_ascii_case("continue")
-}
-
-fn inventory_health_state(variant: &InventoryVariant) -> InventoryHealthState {
-    if is_backorder_enabled(variant) {
-        InventoryHealthState::Backorder
-    } else if !variant.in_stock {
-        InventoryHealthState::OutOfStock
-    } else if variant.inventory_quantity <= LOW_STOCK_THRESHOLD {
-        InventoryHealthState::LowStock
-    } else {
-        InventoryHealthState::Healthy
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{
+        summarize_inventory_health_counts, InventoryHealthCounts, LOW_STOCK_THRESHOLD,
+    };
     use crate::model::InventoryVariant;
 
     fn variant(
