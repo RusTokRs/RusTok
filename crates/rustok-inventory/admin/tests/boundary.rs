@@ -30,6 +30,7 @@ fn graphql_runtime_details_stay_inside_transport_adapter() {
         "src/api.rs",
         "src/core.rs",
         "src/model.rs",
+        "src/native.rs",
         "src/ui/leptos.rs",
         "src/ui/mod.rs",
     ] {
@@ -65,6 +66,8 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
         "pub use transport",
         "pub mod core",
         "pub use core",
+        "pub mod native",
+        "pub use native",
     ] {
         assert!(
             !lib.contains(forbidden_export),
@@ -75,7 +78,7 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
 
 #[test]
 fn native_read_path_targets_inventory_backend_service() {
-    let api = read_source("src/api.rs");
+    let native = read_source("src/native.rs");
 
     for marker in [
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/bootstrap\")]",
@@ -87,8 +90,8 @@ fn native_read_path_targets_inventory_backend_service() {
         "Permission::INVENTORY_READ",
     ] {
         assert!(
-            api.contains(marker),
-            "src/api.rs must keep native inventory read path marker `{marker}`"
+            native.contains(marker),
+            "src/native.rs must keep native inventory read path marker `{marker}`"
         );
     }
 }
