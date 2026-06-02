@@ -75,7 +75,7 @@ Structural shape фиксирует глубину code-level FFA split неза
 | `product` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront native/GraphQL + Leptos adapter split; product admin core helpers, `SelectedProductSummaryViewModel`, transport facade and `admin/src/ui/leptos.rs` adapter) |
 | `customer` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-customer/docs/implementation-plan.md` |
 | `pricing` | admin + storefront | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-pricing/docs/implementation-plan.md` |
-| `inventory` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-inventory/docs/implementation-plan.md` |
+| `inventory` | admin | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-inventory/docs/implementation-plan.md` (Wave 5: backend `AdminInventoryReadService`/DTO + admin core/read facade + package-private transitional commerce GraphQL adapter + explicit `ui/leptos.rs` adapter, unit/compatibility tests на inventory read model/normalized variables/facade request builders/error mapping + boundary tests на GraphQL isolation) |
 | `order` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-order/docs/implementation-plan.md` (slice 10.1/10.3: validation матрица resolution-ссылок возврата) |
 | `payment` | no module-owned UI | `in_progress` | `in_progress` | `no_ui_boundary` | `crates/rustok-payment/docs/implementation-plan.md` |
 | `fulfillment` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-fulfillment/docs/implementation-plan.md` |
@@ -244,7 +244,7 @@ graph TD
 | `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
 | `region` | `rustok-region` | — | Region, country, currency, tax baseline, region-owned admin CRUD UI и storefront discovery UI |
 | `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI и storefront pricing atlas UI |
-| `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline и inventory-owned admin visibility UI |
+| `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline, backend inventory-owned admin read model и inventory-owned admin visibility UI |
 | `order` | `rustok-order` | — | Order lifecycle, order snapshots with canonical `seller_id`, typed order adjustments, order returns lifecycle foundation с item-level return lines и refund/exchange/claim resolution-ссылками, order-change preview/apply/cancel skeleton и order-owned admin operations UI |
 | `payment` | `rustok-payment` | — | Payment collections и payments |
 | `fulfillment` | `rustok-fulfillment` | — | Shipping options, fulfillments и fulfillment-owned shipping-option admin UI |

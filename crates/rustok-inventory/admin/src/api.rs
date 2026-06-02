@@ -1,135 +1,54 @@
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use serde::{Deserialize, Serialize};
-
+use crate::core::{InventoryProductRequest, InventoryProductsRequest};
 use crate::model::{InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList};
+use crate::transport::{
+    CommerceGraphqlInventoryReadAdapter, InventoryReadTransport, InventoryTransportError,
+};
 
-pub type ApiError = GraphqlHttpError;
+pub type ApiError = InventoryTransportError;
 
-const BOOTSTRAP_QUERY: &str = "query InventoryAdminBootstrap { currentTenant { id slug name } }";
-const PRODUCTS_QUERY: &str = "query InventoryAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
-const PRODUCT_QUERY: &str = "query InventoryAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status vendor productType shippingProfileSlug createdAt updatedAt publishedAt translations { locale title handle description } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } } }";
-
-#[derive(Debug, Deserialize)]
-struct BootstrapResponse {
-    #[serde(rename = "currentTenant")]
-    current_tenant: crate::model::CurrentTenant,
+fn read_transport() -> impl InventoryReadTransport {
+    CommerceGraphqlInventoryReadAdapter
 }
 
-#[derive(Debug, Deserialize)]
-struct ProductsResponse {
-    products: InventoryProductList,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProductResponse {
-    product: Option<InventoryProductDetail>,
-}
-
-#[derive(Debug, Serialize)]
-struct TenantScopedVariables<T> {
-    #[serde(rename = "tenantId")]
-    tenant_id: String,
-    #[serde(flatten)]
-    extra: T,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductsVariables {
-    locale: Option<String>,
-    filter: ProductsFilter,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductVariables {
-    id: String,
-    locale: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct ProductsFilter {
-    status: Option<String>,
-    vendor: Option<String>,
-    search: Option<String>,
-    page: Option<u64>,
-    #[serde(rename = "perPage")]
-    per_page: Option<u64>,
-}
-
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
-
-fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn normalize_locale_filter(locale: Option<String>) -> Option<String> {
-    normalize_optional_trimmed(locale)
-}
-
-fn normalize_search_filter(search: Option<String>) -> Option<String> {
-    normalize_optional_trimmed(search)
-}
-
-fn normalize_status_filter(status: Option<String>) -> Option<String> {
-    normalize_optional_trimmed(status).map(|value| value.to_ascii_uppercase())
-}
-
-async fn request<V, T>(
-    query: &str,
-    variables: Option<V>,
+fn products_request(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(query, variables),
+    tenant_id: String,
+    locale: Option<String>,
+    search: Option<String>,
+    status: Option<String>,
+) -> InventoryProductsRequest {
+    InventoryProductsRequest {
         token,
         tenant_slug,
-        None,
-    )
-    .await
+        tenant_id,
+        locale,
+        search,
+        status,
+    }
+}
+
+fn product_request(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    locale: Option<String>,
+) -> InventoryProductRequest {
+    InventoryProductRequest {
+        token,
+        tenant_slug,
+        tenant_id,
+        id,
+        locale,
+    }
 }
 
 pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<InventoryAdminBootstrap, ApiError> {
-    let response: BootstrapResponse =
-        request::<serde_json::Value, BootstrapResponse>(BOOTSTRAP_QUERY, None, token, tenant_slug)
-            .await?;
-    Ok(InventoryAdminBootstrap {
-        current_tenant: response.current_tenant,
-    })
+    read_transport().fetch_bootstrap(token, tenant_slug).await
 }
 
 pub async fn fetch_products(
@@ -140,26 +59,16 @@ pub async fn fetch_products(
     search: Option<String>,
     status: Option<String>,
 ) -> Result<InventoryProductList, ApiError> {
-    let response: ProductsResponse = request(
-        PRODUCTS_QUERY,
-        Some(TenantScopedVariables {
+    read_transport()
+        .fetch_products(products_request(
+            token,
+            tenant_slug,
             tenant_id,
-            extra: ProductsVariables {
-                locale: normalize_locale_filter(locale),
-                filter: ProductsFilter {
-                    status: normalize_status_filter(status),
-                    vendor: None,
-                    search: normalize_search_filter(search),
-                    page: Some(1),
-                    per_page: Some(24),
-                },
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.products)
+            locale,
+            search,
+            status,
+        ))
+        .await
 }
 
 pub async fn fetch_product(
@@ -169,107 +78,48 @@ pub async fn fetch_product(
     id: String,
     locale: Option<String>,
 ) -> Result<Option<InventoryProductDetail>, ApiError> {
-    let response: ProductResponse = request(
-        PRODUCT_QUERY,
-        Some(TenantScopedVariables {
-            tenant_id,
-            extra: ProductVariables {
-                id,
-                locale: normalize_locale_filter(locale),
-            },
-        }),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.product)
+    read_transport()
+        .fetch_product(product_request(token, tenant_slug, tenant_id, id, locale))
+        .await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        normalize_locale_filter, normalize_optional_trimmed, normalize_search_filter,
-        normalize_status_filter,
-    };
+    use super::{product_request, products_request};
 
     #[test]
-    fn normalize_optional_trimmed_keeps_non_blank_and_drops_blank_values() {
-        assert_eq!(
-            normalize_optional_trimmed(Some("  value  ".to_string())),
-            Some("value".to_string())
+    fn products_request_preserves_inventory_facade_context() {
+        let request = products_request(
+            Some("token".to_string()),
+            Some("tenant-slug".to_string()),
+            "tenant-id".to_string(),
+            Some("ru".to_string()),
+            Some("coat".to_string()),
+            Some("active".to_string()),
         );
-        assert_eq!(normalize_optional_trimmed(Some("   ".to_string())), None);
-        assert_eq!(normalize_optional_trimmed(None), None);
+
+        assert_eq!(request.token.as_deref(), Some("token"));
+        assert_eq!(request.tenant_slug.as_deref(), Some("tenant-slug"));
+        assert_eq!(request.tenant_id, "tenant-id");
+        assert_eq!(request.locale.as_deref(), Some("ru"));
+        assert_eq!(request.search.as_deref(), Some("coat"));
+        assert_eq!(request.status.as_deref(), Some("active"));
     }
 
     #[test]
-    fn normalize_locale_filter_trims_and_drops_blank_values() {
-        assert_eq!(
-            normalize_locale_filter(Some("  de-DE  ".to_string())),
-            Some("de-DE".to_string())
+    fn product_request_preserves_inventory_facade_context() {
+        let request = product_request(
+            Some("token".to_string()),
+            Some("tenant-slug".to_string()),
+            "tenant-id".to_string(),
+            "product-id".to_string(),
+            Some("en".to_string()),
         );
-        assert_eq!(normalize_locale_filter(Some("   ".to_string())), None);
-        assert_eq!(normalize_locale_filter(None), None);
-    }
 
-    #[test]
-    fn normalize_search_filter_trims_and_drops_blank_values() {
-        assert_eq!(
-            normalize_search_filter(Some("  winter jacket  ".to_string())),
-            Some("winter jacket".to_string())
-        );
-        assert_eq!(normalize_search_filter(Some("   ".to_string())), None);
-        assert_eq!(normalize_search_filter(None), None);
-    }
-
-    #[test]
-    fn normalize_status_filter_trims_and_uppercases_values() {
-        assert_eq!(
-            normalize_status_filter(Some(" active ".to_string())),
-            Some("ACTIVE".to_string())
-        );
-    }
-
-    #[test]
-    fn normalize_status_filter_drops_blank_values() {
-        assert_eq!(normalize_status_filter(Some("   ".to_string())), None);
-        assert_eq!(normalize_status_filter(None), None);
-    }
-}
-
-#[cfg(test)]
-mod regression_tests {
-    use super::{normalize_optional_trimmed, normalize_status_filter};
-
-    #[test]
-    fn normalize_optional_trimmed_handles_tabs_and_newlines() {
-        assert_eq!(
-            normalize_optional_trimmed(Some(
-                "
-	  inventory  	"
-                    .to_string()
-            )),
-            Some("inventory".to_string())
-        );
-        assert_eq!(
-            normalize_optional_trimmed(Some(
-                "
-	  	"
-                .to_string()
-            )),
-            None
-        );
-    }
-
-    #[test]
-    fn normalize_status_filter_normalizes_mixed_case_and_whitespace() {
-        assert_eq!(
-            normalize_status_filter(Some(
-                "  aRcHiVeD
-"
-                .to_string()
-            )),
-            Some("ARCHIVED".to_string())
-        );
+        assert_eq!(request.token.as_deref(), Some("token"));
+        assert_eq!(request.tenant_slug.as_deref(), Some("tenant-slug"));
+        assert_eq!(request.tenant_id, "tenant-id");
+        assert_eq!(request.id, "product-id");
+        assert_eq!(request.locale.as_deref(), Some("en"));
     }
 }

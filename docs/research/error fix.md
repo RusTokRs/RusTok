@@ -21,12 +21,9 @@
 
 - Wave 1 evidence по `pages -> [content, page_builder]`, Wave 2 channel request context и Wave 3 TTL-cache tenant locale policy уже отражены в коде текущей ветки.
 - В рамках продолжения Wave 4 добавлен первый migration-safety baseline: module-owned `migration_dependencies()` для известных cross-module FK/order boundaries (`channel -> auth`, `pricing/inventory -> product variants`, `commerce collections/categories -> product`, `blog/forum -> taxonomy`) и агрегация этих descriptors в server migrator.
-<<<<<<< codex/continue-implementation-of-error-fix-plan-s7q2jn
 - Добавлен локальный PostgreSQL smoke `scripts/verify/verify-migration-smoke.sh`: он запускает ignored integration test, который сам создаёт временную БД без локального `psql`, применяет мигратор from-zero и проверяет representative module tables.
-- Открытым остатком Wave 4 остаётся стабилизация этого smoke на реальном PostgreSQL окружении и последующее вынесение его в отдельный CI job.
-=======
-- Открытым остатком Wave 4 остаётся полноценный PostgreSQL smoke из пустой БД и последующее вынесение его в отдельный CI job.
->>>>>>> main
+- Начат Wave 5: inventory admin read-side теперь идёт через inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а прямой доступ к текущему commerce GraphQL contract ограничен transitional adapter-ом с compatibility tests на минимальную read model/normalized variables/facade request builders/error mapping и boundary tests на GraphQL isolation.
+- Открытым остатком Wave 4 остаётся стабилизация PostgreSQL smoke на реальном окружении и последующее вынесение его в отдельный CI job; для Wave 5 остаётся выделить dedicated inventory transport/mutations вместо transitional adapter-а.
 
 ## Проверенные факты
 
@@ -221,22 +218,28 @@ flowchart LR
 
 **Цель:** убрать прямую зависимость inventory admin package от commerce GraphQL как от фактического backend contract.
 
+**Статус на 2026-06-02:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL adapter; backend crate дополнительно экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side. Остаётся подключить dedicated native/server-function transport к этому service, сохранив GraphQL как parallel compatibility path до удаления adapter-а.
+
 1. Описать minimal inventory admin read model:
    - product id/slug/title needed for inventory views;
    - variant identifiers;
    - stock/visibility/health fields;
    - localized copy requirements.
-2. Создать inventory-owned facade/transport boundary.
-3. Перенести текущий commerce GraphQL access внутрь временного adapter.
-4. Обновить inventory admin package так, чтобы UI зависел от inventory facade, а не от commerce GraphQL schema напрямую.
-5. Добавить compatibility tests/snapshots для текущего UI read model.
-6. Обновить `crates/rustok-inventory/admin/README.md` и module docs.
+2. Создать inventory-owned backend read service/read DTO.
+3. Создать inventory-owned facade/transport boundary.
+4. Перенести текущий commerce GraphQL access внутрь временного adapter.
+5. Обновить inventory admin package так, чтобы UI зависел от inventory facade, а не от commerce GraphQL schema напрямую.
+6. Добавить compatibility tests/snapshots для текущего UI read model.
+7. Подключить native `#[server]`/dedicated read transport к backend `AdminInventoryReadService`.
+8. Обновить `crates/rustok-inventory/admin/README.md` и module docs.
 
 **Acceptance criteria:**
 
+- Inventory backend crate экспортирует tenant-scoped inventory-owned admin read service/DTO.
 - Inventory UI импортирует/использует inventory-owned contract.
 - Commerce GraphQL больше не является публично описанным read-side contract для inventory admin.
 - Временный adapter явно помечен как transitional и имеет removal criteria.
+- Native/server-function read transport имеет parity tests против transitional adapter перед удалением adapter-а.
 
 ### Wave 6 — CI gates and docs hardening
 
