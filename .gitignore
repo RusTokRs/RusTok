@@ -110,3 +110,4 @@ config.local.toml
 config.*.local.toml
 modules.local.toml
 /target_codex_permissions/
+.github/pull_request_template.md

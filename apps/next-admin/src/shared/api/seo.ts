@@ -1,4 +1,4 @@
-import { graphqlRequest } from './graphql';
+import { GraphqlError, graphqlRequest } from './graphql';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 
@@ -128,6 +128,22 @@ export interface SeoApiOptions {
   apiBaseUrl?: string;
   locale?: string | null;
   preferRest?: boolean;
+}
+
+interface GraphqlLikeErrorRecord {
+  message?: string;
+  extensions?: {
+    code?: string;
+  };
+}
+
+interface SeoRestErrorEnvelope {
+  errors?: GraphqlLikeErrorRecord[];
+  error?: {
+    code?: string;
+    message?: string;
+  };
+  message?: string;
 }
 
 interface SeoTargetsResponse {
@@ -398,6 +414,63 @@ function buildSeoHeaders(options: SeoApiOptions): Record<string, string> {
   return headers;
 }
 
+function statusCodeToGraphqlCode(status: number): string {
+  if (status === 400) return 'BAD_USER_INPUT';
+  if (status === 401) return 'UNAUTHENTICATED';
+  if (status === 403) return 'PERMISSION_DENIED';
+  if (status === 404) return 'NOT_FOUND';
+  return 'HTTP_ERROR';
+}
+
+function parseSeoRestErrorPayload(payload: unknown): GraphqlLikeErrorRecord | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const envelope = payload as SeoRestErrorEnvelope;
+  const graphqlLike = envelope.errors?.[0];
+  if (graphqlLike) {
+    return graphqlLike;
+  }
+
+  if (envelope.error) {
+    return {
+      message: envelope.error.message,
+      extensions: {
+        code: envelope.error.code
+      }
+    };
+  }
+
+  if (envelope.message) {
+    return {
+      message: envelope.message
+    };
+  }
+
+  return null;
+}
+
+async function buildSeoRestError(response: Response): Promise<GraphqlError> {
+  let payload: unknown;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  const parsed = parseSeoRestErrorPayload(payload);
+  const code = parsed?.extensions?.code ?? statusCodeToGraphqlCode(response.status);
+  const normalizedMessage = parsed?.message?.trim();
+  const message =
+    normalizedMessage && normalizedMessage.length > 0
+      ? normalizedMessage
+      : `SEO REST request failed with ${response.status}`;
+
+  return new GraphqlError(message, code);
+}
+
 async function fetchSeoRest<T>(
   path: string,
   options: SeoApiOptions,
@@ -419,7 +492,7 @@ async function fetchSeoRest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`SEO REST request failed with ${response.status}`);
+    throw await buildSeoRestError(response);
   }
 
   const payload = await response.json();
@@ -428,6 +501,14 @@ async function fetchSeoRest<T>(
 
 function shouldPreferRest(options: SeoApiOptions): boolean {
   return options.preferRest === true;
+}
+
+function shouldFallbackToGraphql(error: unknown): boolean {
+  if (!(error instanceof GraphqlError)) {
+    return true;
+  }
+
+  return error.code === 'NOT_FOUND' || error.code === 'HTTP_ERROR';
 }
 
 function recalculateDiagnosticCounts(
@@ -523,7 +604,10 @@ export async function fetchSeoTargets(
         options,
         options.capability ? { capability: options.capability.toLowerCase() } : undefined
       );
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }
@@ -557,7 +641,10 @@ export async function fetchSeoDiagnostics(
         target_kind: options.targetKind,
         limit: options.limit
       });
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }
@@ -585,7 +672,10 @@ export async function fetchSeoSitemapStatus(
   if (shouldPreferRest(options)) {
     try {
       return await fetchSeoRest<SeoSitemapStatusRecord>('/api/seo/sitemaps/status', options);
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }
@@ -611,7 +701,10 @@ export async function fetchSeoSitemapJobs(
       return await fetchSeoRest<SeoSitemapJobRecord[]>('/api/seo/sitemaps/jobs', options, {
         limit
       });
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }
@@ -637,7 +730,10 @@ export async function fetchSeoSitemapJob(
         `/api/seo/sitemaps/jobs/${jobId}`,
         options
       );
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }
@@ -664,7 +760,10 @@ export async function fetchSeoBulkJobs(
         limit,
         status: options.status
       });
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }
@@ -689,7 +788,10 @@ export async function fetchSeoBulkJob(
   if (shouldPreferRest(options)) {
     try {
       return await fetchSeoRest<SeoBulkJobRecord>(`/api/seo/bulk/jobs/${jobId}`, options);
-    } catch {
+    } catch (error) {
+      if (!shouldFallbackToGraphql(error)) {
+        throw error;
+      }
       // REST parity can be rollout-gated; keep GraphQL fallback.
     }
   }

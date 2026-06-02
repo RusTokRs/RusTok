@@ -358,3 +358,65 @@ pub mod seo_event_delivery {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod seo_index_delivery {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "seo_index_deliveries")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub seo_event_type: String,
+        pub idempotency_key: String,
+        pub target_type: String,
+        pub target_id: Option<Uuid>,
+        pub target_scope: String,
+        pub target_scope_key: String,
+        pub status: String,
+        pub attempt_count: i32,
+        pub outbox_event_id: Option<Uuid>,
+        pub next_attempt_at: Option<DateTimeWithTimeZone>,
+        pub last_error: Option<String>,
+        pub dead_lettered_at: Option<DateTimeWithTimeZone>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+        pub dispatched_at: Option<DateTimeWithTimeZone>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod seo_index_cursor {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "seo_index_cursors")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub target_type: String,
+        pub initial_cursor_at: DateTimeWithTimeZone,
+        pub high_water_mark_at: DateTimeWithTimeZone,
+        pub last_repair_cursor_at: Option<DateTimeWithTimeZone>,
+        pub replay_mode: String,
+        pub replay_requested_at: Option<DateTimeWithTimeZone>,
+        pub replay_completed_at: Option<DateTimeWithTimeZone>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}

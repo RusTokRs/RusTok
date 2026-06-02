@@ -9,13 +9,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use loco_rs::{app::AppContext, controller::Routes};
 use rustok_api::{
-    has_any_effective_permission, loco::transactional_event_bus_from_context, AuthContext,
-    RequestContext, TenantContext,
+    graphql::ErrorCode, has_any_effective_permission,
+    loco::transactional_event_bus_from_context, AuthContext, RequestContext, TenantContext,
 };
 use rustok_core::{ModuleRuntimeExtensions, Permission};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -61,12 +61,84 @@ pub struct SeoBulkJobsQuery {
     pub status: Option<SeoBulkJobStatus>,
 }
 
+type SeoHttpResult<T> = std::result::Result<T, SeoHttpError>;
+
+#[derive(Debug)]
+struct SeoHttpError {
+    status: StatusCode,
+    code: ErrorCode,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SeoRestErrorExtensions<'a> {
+    code: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct SeoRestErrorItem<'a> {
+    message: &'a str,
+    extensions: SeoRestErrorExtensions<'a>,
+}
+
+#[derive(Debug, Serialize)]
+struct SeoRestErrorEnvelope<'a> {
+    errors: Vec<SeoRestErrorItem<'a>>,
+}
+
+impl SeoHttpError {
+    fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn bad_user_input(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, ErrorCode::BadUserInput, message)
+    }
+
+    fn internal_error(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::InternalError,
+            message,
+        )
+    }
+
+    fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, message)
+    }
+
+    fn permission_denied(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, ErrorCode::PermissionDenied, message)
+    }
+
+    fn envelope(&self) -> SeoRestErrorEnvelope<'_> {
+        SeoRestErrorEnvelope {
+            errors: vec![SeoRestErrorItem {
+                message: self.message.as_str(),
+                extensions: SeoRestErrorExtensions {
+                    code: self.code.as_str(),
+                },
+            }],
+        }
+    }
+}
+
+impl IntoResponse for SeoHttpError {
+    fn into_response(self) -> Response {
+        (self.status, Json(self.envelope())).into_response()
+    }
+}
+
 pub async fn page_context_json(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     request: RequestContext,
     Query(query): Query<SeoPageContextQuery>,
-) -> Result<Json<SeoPageContext>> {
+) -> SeoHttpResult<Json<SeoPageContext>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     let context = service
         .resolve_page_context_for_channel(
@@ -77,11 +149,14 @@ pub async fn page_context_json(
         )
         .await
         .map_err(map_seo_http_error)?
-        .ok_or(Error::NotFound)?;
+        .ok_or_else(|| SeoHttpError::not_found("SEO page context not found"))?;
     Ok(Json(context))
 }
 
-pub async fn robots_txt(State(ctx): State<AppContext>, tenant: TenantContext) -> Result<Response> {
+pub async fn robots_txt(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+) -> SeoHttpResult<Response> {
     let service = seo_service_from_app_ctx(&ctx)?;
     let body = service
         .render_robots(&tenant)
@@ -93,7 +168,7 @@ pub async fn robots_txt(State(ctx): State<AppContext>, tenant: TenantContext) ->
 pub async fn sitemap_index(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-) -> Result<Response> {
+) -> SeoHttpResult<Response> {
     let service = seo_service_from_app_ctx(&ctx)?;
     if !service
         .load_settings(tenant.id)
@@ -101,7 +176,7 @@ pub async fn sitemap_index(
         .map_err(map_seo_http_error)?
         .sitemap_enabled
     {
-        return Err(Error::NotFound);
+        return Err(SeoHttpError::not_found("SEO sitemap index is disabled"));
     }
 
     let file = match service
@@ -119,7 +194,7 @@ pub async fn sitemap_index(
                 .latest_sitemap_index(tenant.id)
                 .await
                 .map_err(map_seo_http_error)?
-                .ok_or(Error::NotFound)?
+                .ok_or_else(|| SeoHttpError::not_found("SEO sitemap index not found"))?
         }
     };
 
@@ -134,13 +209,13 @@ pub async fn sitemap_file(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     Path(name): Path<String>,
-) -> Result<Response> {
+) -> SeoHttpResult<Response> {
     let service = seo_service_from_app_ctx(&ctx)?;
     let file = service
         .sitemap_file(tenant.id, name.as_str())
         .await
         .map_err(map_seo_http_error)?
-        .ok_or(Error::NotFound)?;
+        .ok_or_else(|| SeoHttpError::not_found("SEO sitemap file not found"))?;
 
     Ok((
         [(CONTENT_TYPE, "application/xml; charset=utf-8")],
@@ -154,7 +229,7 @@ pub async fn diagnostics_json(
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoDiagnosticsQuery>,
-) -> Result<Json<SeoDiagnosticsSummaryRecord>> {
+) -> SeoHttpResult<Json<SeoDiagnosticsSummaryRecord>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
@@ -175,7 +250,7 @@ pub async fn sitemap_status_json(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
-) -> Result<Json<SeoSitemapStatusRecord>> {
+) -> SeoHttpResult<Json<SeoSitemapStatusRecord>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
@@ -196,7 +271,7 @@ pub async fn sitemap_jobs_json(
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoSitemapJobsQuery>,
-) -> Result<Json<Vec<SeoSitemapJobRecord>>> {
+) -> SeoHttpResult<Json<Vec<SeoSitemapJobRecord>>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
@@ -217,7 +292,7 @@ pub async fn sitemap_job_json(
     tenant: TenantContext,
     auth: AuthContext,
     Path(job_id): Path<Uuid>,
-) -> Result<Json<SeoSitemapJobRecord>> {
+) -> SeoHttpResult<Json<SeoSitemapJobRecord>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
@@ -230,7 +305,7 @@ pub async fn sitemap_job_json(
         .sitemap_job(tenant.id, job_id)
         .await
         .map_err(map_seo_http_error)?
-        .ok_or(Error::NotFound)?;
+        .ok_or_else(|| SeoHttpError::not_found("SEO sitemap job not found"))?;
     Ok(Json(job))
 }
 
@@ -239,7 +314,7 @@ pub async fn bulk_jobs_json(
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoBulkJobsQuery>,
-) -> Result<Json<Vec<SeoBulkJobRecord>>> {
+) -> SeoHttpResult<Json<Vec<SeoBulkJobRecord>>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
@@ -261,7 +336,7 @@ pub async fn bulk_job_json(
     tenant: TenantContext,
     auth: AuthContext,
     Path(job_id): Path<Uuid>,
-) -> Result<Json<SeoBulkJobRecord>> {
+) -> SeoHttpResult<Json<SeoBulkJobRecord>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
@@ -270,7 +345,7 @@ pub async fn bulk_job_json(
         .bulk_job(tenant.id, job_id)
         .await
         .map_err(map_seo_http_error)?
-        .ok_or(Error::NotFound)?;
+        .ok_or_else(|| SeoHttpError::not_found("SEO bulk job not found"))?;
 
     Ok(Json(job))
 }
@@ -280,7 +355,7 @@ pub async fn bulk_artifact_download(
     tenant: TenantContext,
     auth: AuthContext,
     Path((job_id, artifact_id)): Path<(Uuid, Uuid)>,
-) -> Result<HttpResponse<axum::body::Body>> {
+) -> SeoHttpResult<HttpResponse<axum::body::Body>> {
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
     let service = seo_service_from_app_ctx(&ctx)?;
@@ -288,7 +363,7 @@ pub async fn bulk_artifact_download(
         .bulk_artifact(tenant.id, job_id, artifact_id)
         .await
         .map_err(map_seo_http_error)?
-        .ok_or(Error::NotFound)?;
+        .ok_or_else(|| SeoHttpError::not_found("SEO bulk artifact not found"))?;
 
     HttpResponse::builder()
         .status(StatusCode::OK)
@@ -298,7 +373,9 @@ pub async fn bulk_artifact_download(
             format!("attachment; filename=\"{}\"", artifact.file_name),
         )
         .body(axum::body::Body::from(artifact.content))
-        .map_err(|err| Error::Message(format!("failed to build SEO bulk artifact response: {err}")))
+        .map_err(|err| {
+            SeoHttpError::internal_error(format!("failed to build SEO bulk artifact response: {err}"))
+        })
 }
 
 pub async fn targets_json(
@@ -306,7 +383,7 @@ pub async fn targets_json(
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoTargetsQuery>,
-) -> Result<Json<Vec<SeoTargetRegistryEntry>>> {
+) -> SeoHttpResult<Json<Vec<SeoTargetRegistryEntry>>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
@@ -318,7 +395,7 @@ pub async fn cross_link_suggestions_json(
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoCrossLinkSuggestionsQuery>,
-) -> Result<Json<Vec<SeoCrossLinkSuggestionRecord>>> {
+) -> SeoHttpResult<Json<Vec<SeoCrossLinkSuggestionRecord>>> {
     let service = seo_service_from_app_ctx(&ctx)?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
@@ -372,14 +449,14 @@ fn ensure_seo_permission(
     auth: &AuthContext,
     permissions: &[Permission],
     message: &str,
-) -> Result<()> {
+) -> SeoHttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(Error::Unauthorized(message.to_string()));
+        return Err(SeoHttpError::permission_denied(message));
     }
     Ok(())
 }
 
-async fn ensure_seo_module_enabled(service: &SeoService, tenant_id: Uuid) -> Result<()> {
+async fn ensure_seo_module_enabled(service: &SeoService, tenant_id: Uuid) -> SeoHttpResult<()> {
     if service
         .is_enabled(tenant_id)
         .await
@@ -387,28 +464,29 @@ async fn ensure_seo_module_enabled(service: &SeoService, tenant_id: Uuid) -> Res
     {
         Ok(())
     } else {
-        Err(Error::NotFound)
+        Err(SeoHttpError::not_found(
+            "SEO module is not enabled for this tenant",
+        ))
     }
 }
 
-fn map_seo_http_error(error: SeoError) -> Error {
+fn map_seo_http_error(error: SeoError) -> SeoHttpError {
     match error {
-        SeoError::Validation(message) => Error::BadRequest(message),
+        SeoError::Validation(message) => SeoHttpError::bad_user_input(message),
         SeoError::Configuration(message) => {
             tracing::warn!(message = %message, "SEO runtime wiring is incomplete");
-            Error::Message(message)
+            SeoHttpError::internal_error(message)
         }
-        SeoError::NotFound => Error::NotFound,
-        SeoError::PermissionDenied => Error::Unauthorized("Permission denied".to_string()),
+        SeoError::NotFound => SeoHttpError::not_found("SEO record not found"),
+        SeoError::PermissionDenied => SeoHttpError::permission_denied("Permission denied"),
         SeoError::Database(error) => {
             tracing::warn!(error = %error, "SEO HTTP handler failed");
-            let _ = StatusCode::INTERNAL_SERVER_ERROR;
-            Error::Message(error.to_string())
+            SeoHttpError::internal_error(error.to_string())
         }
     }
 }
 
-fn seo_service_from_app_ctx(ctx: &AppContext) -> Result<SeoService> {
+fn seo_service_from_app_ctx(ctx: &AppContext) -> SeoHttpResult<SeoService> {
     let extensions = ctx
         .shared_store
         .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
@@ -513,7 +591,9 @@ fn count_issue_keys<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosti
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::to_bytes;
     use crate::{SeoDiagnosticIssueRecord, SeoTargetSlug};
+    use serde_json::json;
 
     #[test]
     fn apply_diagnostics_filters_recomputes_issue_aggregates() {
@@ -575,5 +655,36 @@ mod tests {
         assert_eq!(filtered.issue_counts_by_code[0].key, "missing_title");
         assert_eq!(filtered.issue_counts_by_target_kind.len(), 1);
         assert_eq!(filtered.issue_counts_by_target_kind[0].key, "page");
+    }
+
+    #[tokio::test]
+    async fn seo_http_error_response_uses_graphql_compatible_envelope() {
+        let response = SeoHttpError::permission_denied("seo:manage required").into_response();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("error response body should serialize");
+        let payload: serde_json::Value =
+            serde_json::from_slice(body.as_ref()).expect("error response should be valid json");
+
+        assert_eq!(
+            payload,
+            json!({
+                "errors": [{
+                    "message": "seo:manage required",
+                    "extensions": { "code": "PERMISSION_DENIED" }
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn map_seo_http_error_maps_validation_to_bad_user_input_code() {
+        let error = map_seo_http_error(SeoError::validation("invalid target locale"));
+
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.code.as_str(), ErrorCode::BadUserInput.as_str());
+        assert_eq!(error.message, "invalid target locale");
     }
 }
