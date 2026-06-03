@@ -165,7 +165,7 @@ sea-orm-migration.workspace = true
 
 [dev-dependencies]
 loco-rs = { workspace = true, features = ["testing"] }
-serial_test = "3.4"
+serial_test = "3.5"
 rustok-test-utils.workspace = true
 tempfile = "3.27"
 tower.workspace = true
