@@ -198,3 +198,4 @@
 - `rustok-search` slice #14 evidence: admin tab and diagnostics/consistency badge CSS class mapping moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
 - `rustok-search` slice #15 evidence: admin navigation href, engine option label and rebuild feedback rendering moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
 - `rustok-search` slice #16 evidence: admin relevance editor merge and JSON-array validation moved from Leptos render module to `admin/src/core.rs`; transport split (`native #[server]` + GraphQL fallback) не менялся.
+- `rustok-search` slice #31 evidence: storefront transport split into `transport/native_server_adapter.rs` and `transport/graphql_adapter.rs`; native-first fallback orchestration moved to `transport/mod.rs`, while raw `api.rs` keeps the existing native server-function and GraphQL endpoints.
