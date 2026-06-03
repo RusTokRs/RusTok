@@ -113,3 +113,7 @@
 - [README crate](../README.md)
 - [README admin package](../admin/README.md)
 - [План распила commerce](../../rustok-commerce/docs/implementation-plan.md)
+
+## Разделение FFA для admin и storefront
+
+Пакет admin теперь использует фасад `admin/src/transport.rs` и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `PricingAdmin`. Пакет storefront уже сохраняет разделение `storefront/src/core.rs`, `storefront/src/transport/` и `storefront/src/ui/leptos.rs` с паритетом native-first и GraphQL fallback.

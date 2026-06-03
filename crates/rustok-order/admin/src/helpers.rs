@@ -5,7 +5,7 @@ use crate::model::{OrderDetail, OrderDetailEnvelope, OrderLineItem, OrderListIte
 
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_action_result(
-    result: Result<(), crate::api::ApiError>,
+    result: Result<(), crate::transport::ApiError>,
     token_value: Option<String>,
     tenant_value: Option<String>,
     tenant_id: String,
@@ -27,8 +27,13 @@ pub async fn handle_action_result(
 ) {
     match result {
         Ok(()) => {
-            match crate::api::fetch_order_detail(token_value, tenant_value, tenant_id, order_id)
-                .await
+            match crate::transport::fetch_order_detail(
+                token_value,
+                tenant_value,
+                tenant_id,
+                order_id,
+            )
+            .await
             {
                 Ok(Some(detail)) => {
                     apply_order_detail(
@@ -291,13 +296,4 @@ pub fn text_or_dash(value: Option<&str>) -> String {
         .filter(|item| !item.trim().is_empty())
         .unwrap_or("—")
         .to_string()
-}
-
-pub fn text_or_none(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
 }

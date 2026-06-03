@@ -5,14 +5,15 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
+use crate::core::{order_list_request, text_or_none};
 use crate::helpers::{
     action_hint, apply_order_detail, clear_order_detail, format_order_caption,
     handle_action_result, localized_order_status, order_status_badge, short_order_id,
     summarize_order_header, summarize_order_lines, summarize_order_timeline, text_or_dash,
-    text_or_none,
 };
 use crate::i18n::t;
 use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope};
+use crate::transport;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -51,7 +52,7 @@ pub fn OrderAdmin() -> impl IntoView {
     let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
-            crate::api::fetch_bootstrap(token_value, tenant_value).await
+            transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
@@ -66,12 +67,15 @@ pub fn OrderAdmin() -> impl IntoView {
         },
         move |(token_value, tenant_value, _, status_value)| async move {
             let bootstrap =
-                crate::api::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
-            crate::api::fetch_orders(
+                transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
+            let request = order_list_request(status_value);
+            transport::fetch_orders(
                 token_value,
                 tenant_value,
                 bootstrap.current_tenant.id,
-                text_or_none(status_value),
+                request.status,
+                request.page,
+                request.per_page,
             )
             .await
         },
@@ -199,7 +203,7 @@ pub fn OrderAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            match crate::api::fetch_order_detail(
+            match transport::fetch_order_detail(
                 token_value,
                 tenant_value,
                 current_tenant.id,
@@ -283,7 +287,7 @@ pub fn OrderAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            let result = crate::api::mark_order_paid(
+            let result = transport::mark_order_paid(
                 token_value.clone(),
                 tenant_value.clone(),
                 tenant_id.clone(),
@@ -352,7 +356,7 @@ pub fn OrderAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            let result = crate::api::ship_order(
+            let result = transport::ship_order(
                 token_value.clone(),
                 tenant_value.clone(),
                 tenant_id.clone(),
@@ -415,7 +419,7 @@ pub fn OrderAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            let result = crate::api::deliver_order(
+            let result = transport::deliver_order(
                 token_value.clone(),
                 tenant_value.clone(),
                 tenant_id.clone(),
@@ -477,7 +481,7 @@ pub fn OrderAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            let result = crate::api::cancel_order(
+            let result = transport::cancel_order(
                 token_value.clone(),
                 tenant_value.clone(),
                 tenant_id.clone(),

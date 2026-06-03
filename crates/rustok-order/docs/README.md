@@ -10,7 +10,7 @@
 - `order_changes` для draft/edit preview-apply skeleton без payment/fulfillment side effects;
 - write-side lifecycle заказа: `pending -> confirmed -> paid -> shipped -> delivered/cancelled`;
 - публикация order events через transactional outbox;
-- module-owned admin UI пакет `rustok-order/admin` для order operations.
+- module-owned admin UI пакет `rustok-order/admin` для order operations с разделением `admin/src/core.rs`, `admin/src/transport.rs` и `admin/src/ui/leptos.rs`.
 
 ## Зона ответственности
 
@@ -52,6 +52,10 @@
   уже получает ту же net pricing semantics без повторного скрытого дисконта;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
+
+## Разделение FFA для admin
+
+Пакет admin теперь использует framework-agnostic defaults `admin/src/core.rs`, фасад `admin/src/transport.rs` поверх GraphQL order transport и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `OrderAdmin`.
 
 ## Проверка
 

@@ -113,10 +113,10 @@ Readiness score считается производным от issue set. Summar
 Текущий roadmap зафиксирован в `docs/implementation-plan.md` и выполняется батчами `D1..D9`.
 
 - `D1` закрыт: contract freeze, compatibility policy (`v1 additive only`) и rollout flags.
-- `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam. D2 закрыт: publish path пишет `seo_event_deliveries`, связывает delivery с outbox envelope id и блокирует duplicate emission по idempotency key.
-- `D4-D5`: GraphQL/REST parity completion, migrations/backfill/replay policy (в D4 закрыты REST endpoints `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}` и унифицирован GraphQL-compatible REST error envelope).
-- `D6-D7`: Leptos admin + Next admin control-plane parity, storefront + Next runtime SEO parity.
-- `D8-D9`: verification matrix, runbooks, Definition of Ready/Done для следующего execution wave.
+- `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam — закрыто.
+- `D4-D5`: GraphQL/REST parity completion и migrations/backfill/replay policy — закрыто (включая index tracking/replay endpoints `/api/seo/index/tracking`, `/api/seo/index/repair-replay`, GraphQL `seoIndexDeliveryStatus` + `runSeoIndexRepairReplay`).
+- `D6-D7`: Leptos admin + Next admin control-plane parity, owner-side remediation widgets, storefront + Next runtime SEO parity — в работе.
+- `D8-D9`: verification matrix, runbooks, Definition of Ready/Done для следующего execution wave — в работе.
 
 ## Проверка
 

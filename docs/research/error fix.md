@@ -218,22 +218,28 @@ flowchart LR
 
 **Цель:** убрать прямую зависимость inventory admin package от commerce GraphQL как от фактического backend contract.
 
+**Статус на 2026-06-02:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL adapter; backend crate дополнительно экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side, а admin package подключает primary native/server-function read path к этому service. Остаётся расширить parity coverage и вынести dedicated inventory mutations/write transport, сохранив GraphQL как native-unavailable compatibility fallback до удаления adapter-а.
+
 1. Описать minimal inventory admin read model:
    - product id/slug/title needed for inventory views;
    - variant identifiers;
    - stock/visibility/health fields;
    - localized copy requirements.
-2. Создать inventory-owned facade/transport boundary.
-3. Перенести текущий commerce GraphQL access внутрь временного adapter.
-4. Обновить inventory admin package так, чтобы UI зависел от inventory facade, а не от commerce GraphQL schema напрямую.
-5. Добавить compatibility tests/snapshots для текущего UI read model.
-6. Обновить `crates/rustok-inventory/admin/README.md` и module docs.
+2. Создать inventory-owned backend read service/read DTO.
+3. Создать inventory-owned facade/transport boundary.
+4. Перенести текущий commerce GraphQL access внутрь временного adapter.
+5. Обновить inventory admin package так, чтобы UI зависел от inventory facade, а не от commerce GraphQL schema напрямую.
+6. Добавить compatibility tests/snapshots для текущего UI read model.
+7. Подключить native `#[server]`/dedicated read transport к backend `AdminInventoryReadService`.
+8. Обновить `crates/rustok-inventory/admin/README.md` и module docs.
 
 **Acceptance criteria:**
 
+- Inventory backend crate экспортирует tenant-scoped inventory-owned admin read service/DTO.
 - Inventory UI импортирует/использует inventory-owned contract.
 - Commerce GraphQL больше не является публично описанным read-side contract для inventory admin.
 - Временный adapter явно помечен как transitional и имеет removal criteria.
+- Native/server-function read transport имеет parity tests против transitional adapter перед удалением adapter-а.
 
 ### Wave 6 — CI gates and docs hardening
 

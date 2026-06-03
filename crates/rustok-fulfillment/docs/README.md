@@ -33,6 +33,10 @@
 - transport и GraphQL surface пока публикуются через `rustok-commerce`, а admin UI ownership уже вынесен в module-owned пакет `rustok-fulfillment/admin`;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
 
+## Разделение FFA для admin
+
+Пакет admin теперь использует framework-agnostic настройки по умолчанию `admin/src/core.rs`, фасад `admin/src/transport.rs` поверх GraphQL shipping-option transport и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `FulfillmentAdmin`.
+
 ## Проверка
 
 - cargo xtask module validate fulfillment

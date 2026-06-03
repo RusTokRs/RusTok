@@ -6,7 +6,12 @@ use sea_orm_migration::MigrationTrait;
 pub mod migrations;
 pub mod services;
 
-pub use services::InventoryService;
+pub use rustok_commerce_foundation::entities::product::ProductStatus;
+pub use services::{
+    AdminInventoryPrice, AdminInventoryProductDetail, AdminInventoryProductList,
+    AdminInventoryProductListItem, AdminInventoryProductTranslation, AdminInventoryProductsFilter,
+    AdminInventoryReadService, AdminInventoryVariant, InventoryService,
+};
 
 pub struct InventoryModule;
 

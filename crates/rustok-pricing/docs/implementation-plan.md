@@ -7,18 +7,18 @@ rule и scope write paths, а полный promotions engine и остально
 
 ## Execution checkpoint
 
-- Current phase: phase_b_in_progress
-- Last checkpoint: Storefront pricing получил следующий FFA slice: request normalization/validation (`StorefrontPricingQueryError`, UUID/currency/quantity/channel helpers и resolution context sanitization) перенесены из `api.rs` в framework-agnostic `core`, а API слой только адаптирует ошибки в transport envelope.
-- Next step: Продолжать сокращать `api.rs` до transport adapter implementation: вынести remaining GraphQL/native mapping policy в typed adapter helpers без изменения native-first + GraphQL fallback contract.
+- Current phase: ffa_admin_transport_ui_split
+- Last checkpoint: Admin pricing получил FFA slice: `admin/src/transport.rs` facade над existing native/GraphQL API functions и явный Leptos render adapter `admin/src/ui/leptos.rs`; crate root стал wiring/re-export boundary, а storefront уже сохраняет `core/transport/ui` split.
+- Next step: Продолжать сокращать admin/storefront `api.rs` до transport adapter implementation: вынести remaining GraphQL/native mapping policy в typed adapter helpers без изменения native-first + GraphQL fallback contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-31T04:00:00Z
+- Last updated at (UTC): 2026-06-02T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `docs_boundary`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
   - storefront pricing route теперь использует framework-agnostic `storefront/src/core.rs` для summary/label/effective context formatting, query href building и shared `StorefrontPricingQuery`; Leptos `lib.rs` больше не владеет этой presentation/request policy;
@@ -26,8 +26,9 @@ rule и scope write paths, а полный promotions engine и остально
   - Leptos render/bind adapter выделен в `storefront/src/ui/leptos.rs`, а `storefront/src/lib.rs` стал crate-level composition/re-export boundary;
   - targeted facade tests подтверждают обе ветки orchestration: native success не вызывает GraphQL, native error передаёт исходный `StorefrontPricingQuery` в GraphQL fallback;
   - request normalization/validation перенесены в `storefront/src/core.rs`, включая typed `StorefrontPricingQueryError`; API layer конвертирует core validation errors в existing transport envelope без изменения public behavior;
-  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` подтверждает existing transport validation tests, pure-core route/channel formatting tests, core request validation tests и transport facade fallback tests без изменения native/GraphQL fallback contract.
-- Last verified at (UTC): 2026-05-31T04:00:00Z
+  - parity evidence: `cargo test -p rustok-pricing-storefront --lib` подтверждает existing transport validation tests, pure-core route/channel formatting tests, core request validation tests и transport facade fallback tests без изменения native/GraphQL fallback contract;
+  - admin FFA slice добавил module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `PricingAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered flows.
+- Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-pricing` module team
 
 ## Область работ
@@ -55,7 +56,7 @@ rule и scope write paths, а полный promotions engine и остально
   `core`, transport orchestration вынесен в `storefront/src/transport/`, а
   Leptos render/bind слой живёт в `storefront/src/ui/leptos.rs`;
 - storefront package по-прежнему остаётся read-side surface, но admin package уже
-  использует native-first `#[server]` transport не только для read-side, но и для
+  использует `admin/src/transport.rs` facade поверх native-first `#[server]` transport не только для read-side, но и для
   base-row writes, active `price_list` overrides, typed percentage adjustments и
   `price_list` rule/scope editing, оставляя product GraphQL контракт как fallback
   для чтения.

@@ -17,13 +17,17 @@
 - customer profile хранится отдельно от auth/user домена;
 - связь с пользователем опциональна и не отменяет самостоятельность customer-модели;
 - bridge к `profiles` остаётся опциональным read-contract и не превращает customer в канонический public profile;
-- admin UI ownership теперь живёт в `rustok-customer/admin`, а storefront GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
+- admin UI ownership теперь живёт в `rustok-customer/admin`; list defaults вынесены в `admin/src/core.rs`, Leptos-отрисовка вынесена в `admin/src/ui/leptos.rs`, а CRUD-вызовы идут через `admin/src/transport.rs`; storefront GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
 
 ## Интеграция
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
 - storefront transport и GraphQL по-прежнему публикуются через `rustok-commerce`, но admin UI-поверхность уже зафиксирована как отдельный module-owned surface в `rustok-customer/admin`;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
+
+## Разделение FFA для admin
+
+Пакет admin теперь использует framework-agnostic defaults `admin/src/core.rs`, фасад `admin/src/transport.rs` поверх native Leptos server functions и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `CustomerAdmin`.
 
 ## Проверка
 

@@ -1,6 +1,9 @@
 mod api;
+mod core;
 mod i18n;
 mod model;
+mod transport;
+mod ui;
 
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;

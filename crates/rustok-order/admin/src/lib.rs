@@ -1,7 +1,9 @@
 mod api;
-mod component;
+mod core;
 mod helpers;
 mod i18n;
 mod model;
+mod transport;
+mod ui;
 
-pub use component::OrderAdmin;
+pub use ui::OrderAdmin;

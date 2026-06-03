@@ -7,7 +7,7 @@ Leptos admin UI package for the `rustok-pricing` module.
 - Exposes the pricing operations admin root view used by `apps/admin`.
 - Keeps pricing visibility, price-health UX, and base-price operator actions inside the pricing-owned package.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
-- Uses native `#[server]` functions as the default admin transport and keeps the existing `rustok-commerce` GraphQL facade in parallel.
+- Uses native `#[server]` functions as the default admin transport and keeps the existing `rustok-commerce` GraphQL facade in parallel behind the module-owned `admin/src/transport.rs` facade.
 - Exposes operator-side effective price inspection for `currency + optional region_id + optional price_list_id + optional quantity` without moving pricing ownership back into the host app.
 - Resolves active tenant-scoped price lists through `rustok-pricing::PricingService`
   so operators can select overlays from pricing-owned data instead of typing raw UUIDs.
@@ -28,6 +28,7 @@ Leptos admin UI package for the `rustok-pricing` module.
   pricing operators can return to catalog ownership without deriving identity
   from localized titles, handles, vendors, or other display fields.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
+- Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; `admin/src/lib.rs` only wires modules and re-exports `PricingAdmin`.
 
 ## Entry Points
 

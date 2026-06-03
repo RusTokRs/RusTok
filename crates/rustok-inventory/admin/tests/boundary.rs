@@ -30,6 +30,7 @@ fn graphql_runtime_details_stay_inside_transport_adapter() {
         "src/api.rs",
         "src/core.rs",
         "src/model.rs",
+        "src/native.rs",
         "src/ui/leptos.rs",
         "src/ui/mod.rs",
     ] {
@@ -65,10 +66,32 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
         "pub use transport",
         "pub mod core",
         "pub use core",
+        "pub mod native",
+        "pub use native",
     ] {
         assert!(
             !lib.contains(forbidden_export),
             "crate root must not publicly expose inventory admin implementation boundary `{forbidden_export}`"
+        );
+    }
+}
+
+#[test]
+fn native_read_path_targets_inventory_backend_service() {
+    let native = read_source("src/native.rs");
+
+    for marker in [
+        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/bootstrap\")]",
+        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/products\")]",
+        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/product\")]",
+        "AdminInventoryReadService::new",
+        "assert_requested_tenant",
+        "Permission::INVENTORY_LIST",
+        "Permission::INVENTORY_READ",
+    ] {
+        assert!(
+            native.contains(marker),
+            "src/native.rs must keep native inventory read path marker `{marker}`"
         );
     }
 }

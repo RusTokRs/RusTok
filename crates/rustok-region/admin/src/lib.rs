@@ -1,8 +1,8 @@
 mod api;
-mod component;
 mod core;
 mod i18n;
 mod model;
 mod transport;
+mod ui;
 
-pub use component::RegionAdmin;
+pub use ui::RegionAdmin;

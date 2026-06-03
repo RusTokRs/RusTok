@@ -7,26 +7,27 @@ packages и module metadata синхронизированы.
 
 ## Execution checkpoint
 
-- Current phase: phase_b_in_progress
-- Last checkpoint: FFA slice #74 introduced `BlogStorefrontFetchRequest` so Leptos builds a core-owned request object and transport adapters consume typed core state instead of raw `(slug, locale)` tuples.
-- Next step: Add adapter-level parity evidence around native failure classification or continue one storefront/admin use-case extraction without changing the dual-path contract.
+- Current phase: ffa_admin_storefront_ui_adapter_split
+- Last checkpoint: FFA slice #75 added the admin transport facade and explicit Leptos render adapters: `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`; crate roots now only wire/re-export module layers.
+- Next step: Add adapter-level parity evidence around native failure classification or continue extracting admin render fragments into core view-model helpers without changing the dual-path contract.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-05-31T01:00:00Z
+- Last updated at (UTC): 2026-06-02T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_transport`
+- Structural shape: `core_transport_ui`
 - Evidence:
-  - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples;
+  - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples; admin calls now go through a module-owned `admin/src/transport.rs` facade instead of direct `api::*` calls from the Leptos adapter;
   - native `#[server]` + GraphQL fallback остаются параллельными путями, GraphQL removal/replacement не выполнялся;
-  - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract.
-- Last verified at (UTC): 2026-05-24T18:00:00Z
+  - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract;
+  - FFA slice #75 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а `admin/src/lib.rs` и `storefront/src/lib.rs` стали тонким module wiring/re-export слоем.
+- Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-blog` module team
 
 ## Область работ
@@ -47,7 +48,7 @@ packages и module metadata синхронизированы.
 - customer read paths restricted to published posts;
 - observability уже частично реализована: `metrics::record_read_path_*` на GraphQL/REST read paths,
   `#[instrument]` на всех сервисных методах, span-трекинг для post lifecycle;
-- для storefront UI уже выделен первый FFA core slice: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`, Leptos UI слой использует `core::*` и не меняет transport wiring.
+- для storefront UI уже выделен FFA core/transport/ui split: formatting/fallback helper-логика вынесена в `storefront/src/core.rs`, native/GraphQL adapters живут в `storefront/src/transport/`, а Leptos render adapter — в `storefront/src/ui/leptos.rs`; admin UI использует `admin/src/core.rs`, `admin/src/transport.rs` facade и `admin/src/ui/leptos.rs`.
 
 ## Этапы
 

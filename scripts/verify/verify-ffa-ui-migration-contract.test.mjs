@@ -29,7 +29,7 @@ function withFixture({
   mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "core"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "transport"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
-  mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
 
   writeFileSync(
@@ -125,7 +125,7 @@ function withFixture({
   );
 
   writeFileSync(
-    path.join(root, "crates", "rustok-region", "storefront", "src", "lib.rs"),
+    path.join(root, "crates", "rustok-region", "storefront", "src", "ui", "leptos.rs"),
     "data-region-error-status data-region-error-locale-key data-region-route-query-key data-region-route-query-value",
   );
 

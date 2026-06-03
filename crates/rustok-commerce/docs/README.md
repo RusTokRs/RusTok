@@ -89,3 +89,7 @@
 ## Контракты событий
 
 - [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)
+
+## FFA core/transport/ui slice
+
+Срез 10.6 фиксирует structural shape `core_transport_ui`: admin и storefront получили framework-agnostic `core.rs` helpers, module-owned `transport.rs` facades и явные Leptos render adapters `admin/src/ui/leptos.rs` / `storefront/src/ui/leptos.rs`. Crate roots теперь только подключают module layers и re-export `CommerceAdmin` / `CommerceView`; covered flows обращаются к transport facade, а не к raw `api::*` functions.
