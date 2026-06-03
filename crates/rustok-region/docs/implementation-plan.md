@@ -6,20 +6,19 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_transport_facade_slice
-- Last checkpoint: FFA slice #16 добавила `admin/src/transport/` facade над текущими native server functions и перевела RegionAdmin Leptos adapter на module-owned transport boundary.
-- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer или вынести следующий storefront/admin render fragment из Leptos-only слоя в core view-model.
+- Current phase: ffa_ui_leptos_adapter_split_slice
+- Last checkpoint: FFA slice #17 выделила явные Leptos render adapters: `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs`; crate roots теперь только wiring/re-export слой поверх `core` + `transport`.
+- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer и добрать admin render-fragment view-model helpers в core без изменения native/GraphQL contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
-- Last updated at (UTC): 2026-05-30T07:00:00Z
-- Last updated at (UTC): 2026-06-01T12:10:00Z
+- Last updated at (UTC): 2026-06-02T00:00:00Z
 
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `core_transport`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
@@ -38,8 +37,9 @@
   - FFA slice #13 добавила SSR smoke-тест Leptos rail adapter, который подтверждает rendered href и route/query DOM evidence без полноценного host runtime;
   - FFA slice #14 добавила `SelectedRegionCardViewModel`, чтобы selected-region card presentation data собирались вне Leptos render слоя;
   - FFA slice #15 добавила `RegionRailViewModel` / `RegionRailLabels`, чтобы rail list title, total, empty state, open label и item rows собирались вне Leptos render слоя;
-  - FFA slice #16 добавила admin `transport/` facade для bootstrap/list/detail/create/update operations; Leptos component больше не вызывает `api::*` напрямую, а native server-function adapter остался в `admin/src/api.rs`.
-- Last verified at (UTC): 2026-06-01T12:10:00Z
+  - FFA slice #16 добавила admin `transport/` facade для bootstrap/list/detail/create/update operations; Leptos component больше не вызывает `api::*` напрямую, а native server-function adapter остался в `admin/src/api.rs`;
+  - FFA slice #17 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а `admin/src/lib.rs` и `storefront/src/lib.rs` стали тонким module wiring/re-export слоем; verifier читает storefront DOM evidence из нового adapter path.
+- Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
@@ -56,7 +56,7 @@
 - tenant locale policy остаётся platform-level concern вне `rustok-region`;
 - storefront region transport всё ещё публикуется через `rustok-commerce`;
 - admin route для region list/detail/create/update теперь живёт в `rustok-region/admin` и использует native Leptos server functions поверх `RegionService`.
-- storefront route для region discovery теперь живёт в `rustok-region/storefront` и использует native Leptos server functions с GraphQL fallback поверх существующего `storefrontRegions` transport; route/tax/country presentation helpers, selection resolution, error status classification, error DOM evidence и error view-model живут в framework-agnostic storefront core, transport разделён на facade + native/GraphQL adapters, ошибки transport проходят через typed envelope с fallback evidence, а Leptos component остаётся bind/render слоем.
+- storefront route для region discovery теперь живёт в `rustok-region/storefront` и использует native Leptos server functions с GraphQL fallback поверх существующего `storefrontRegions` transport; route/tax/country presentation helpers, selection resolution, error status classification, error DOM evidence и error view-model живут в framework-agnostic storefront core, transport разделён на facade + native/GraphQL adapters, ошибки transport проходят через typed envelope с fallback evidence, а Leptos render adapter живёт в `storefront/src/ui/leptos.rs` и остаётся bind/render слоем.
 
 ## Этапы
 

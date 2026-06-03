@@ -9,6 +9,7 @@ Leptos storefront UI package for the `rustok-blog` module.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Owns dual-path read access for published posts and selected `?slug=` rendering.
 - Keeps storefront shell copy, selected-post route/query state, fetch request state, and presentation view-model helpers in framework-agnostic `core` so Leptos remains a thin render/host-context adapter.
+- Keeps Leptos render/bind code in `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` only wires modules and re-exports `BlogView`.
 - Native Leptos `#[server]` calls are isolated in `transport/native_server_adapter.rs`, with GraphQL kept as a required parallel fallback in `transport/graphql_adapter.rs` behind the native-first facade.
 
 ## Entry Points

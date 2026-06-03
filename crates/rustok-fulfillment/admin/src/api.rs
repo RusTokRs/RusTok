@@ -214,6 +214,8 @@ pub async fn fetch_shipping_options(
     search: Option<String>,
     currency_code: Option<String>,
     provider_id: Option<String>,
+    page: u64,
+    per_page: u64,
 ) -> Result<ShippingOptionList, ApiError> {
     let response: ShippingOptionsResponse = request(
         SHIPPING_OPTIONS_QUERY,
@@ -225,8 +227,8 @@ pub async fn fetch_shipping_options(
                     currency_code,
                     provider_id,
                     search,
-                    page: Some(1),
-                    per_page: Some(24),
+                    page: Some(page),
+                    per_page: Some(per_page),
                 },
             },
         }),
@@ -260,6 +262,8 @@ pub async fn fetch_shipping_profiles(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
+    page: u64,
+    per_page: u64,
 ) -> Result<Vec<ShippingProfile>, ApiError> {
     let response: ShippingProfilesResponse = request(
         SHIPPING_PROFILES_QUERY,
@@ -269,8 +273,8 @@ pub async fn fetch_shipping_profiles(
                 filter: ShippingProfilesFilter {
                     active: None,
                     search: None,
-                    page: Some(1),
-                    per_page: Some(100),
+                    page: Some(page),
+                    per_page: Some(per_page),
                 },
             },
         }),

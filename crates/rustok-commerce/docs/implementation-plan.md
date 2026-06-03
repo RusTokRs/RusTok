@@ -2,25 +2,27 @@
 
 ## Execution checkpoint
 
-- Current phase: post_order_operator_ux
-- Last checkpoint: Phase 10.4 operator UX продолжен: `rustok-commerce-admin` получил module-owned post-order change operator над `orderChanges` / `applyOrderChange` / `cancelOrderChange`, чтобы exchange/claim changes из return decision tree управлялись через order-owned lifecycle без переноса domain logic в UI.
-- Next step: добавить targeted UI/API coverage для post-order operator workspace и расширить exchange helper semantics поверх уже опубликованного apply/cancel lifecycle.
+- Current phase: ffa_ui_leptos_adapter_split
+- Last checkpoint: FFA slice 10.6 выделил явные Leptos render adapters `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs`; crate roots теперь только wiring/re-export слой поверх `core` + `transport`.
+- Next step: добавить targeted parity coverage для новых transport facades и продолжить вынос admin/storefront render fragments в core view-model helpers без изменения dual-path contract.
 - Open blockers: OpenAPI contract test под default server features ранее блокировался существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `cargo check -p rustok-commerce-admin --features ssr` проходит.
 - Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
-- Last updated at (UTC): 2026-05-31T00:00:00Z
+- Last updated at (UTC): 2026-06-02T00:00:00Z
 
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `docs_boundary`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - admin return decision tree теперь имеет transport parity (`/admin/orders/{id}/returns/decision` ↔ `createOrderReturnDecision`) над единым `PostOrderOrchestrationService`, включая completion semantics для `return_only/refund/exchange/claim`, без дублирования rules в host/UI adapters; live REST и GraphQL parity tests фиксируют claim → completed return + `order_change(change_type=claim)`;
   - module-owned admin UI получил post-order change operator: операторы фильтруют order changes по `order_id/status` и вызывают `applyOrderChange`/`cancelOrderChange` через GraphQL, сохраняя exchange/claim lifecycle внутри `rustok-order`;
+  - FFA slice 10.5 добавил `admin/src/core.rs` с default form policy, `storefront/src/core.rs` с route/shell state, а также admin/storefront `transport` facades; Leptos surfaces обращаются к module-owned transport layer вместо raw `api::*` calls;
+  - FFA slice 10.6 выделил `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а `admin/src/lib.rs` и `storefront/src/lib.rs` стали тонким module wiring/re-export слоем;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-05-31T00:00:00Z
+- Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа

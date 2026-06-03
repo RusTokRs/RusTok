@@ -13,6 +13,7 @@ use crate::model::{
     PricingEffectivePrice, PricingPrice, PricingPriceDraft, PricingPriceListOption,
     PricingProductDetail, PricingProductListItem, PricingResolutionContext, PricingVariant,
 };
+use crate::transport;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -77,7 +78,7 @@ pub fn PricingAdmin() -> impl IntoView {
     let bootstrap = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
-            crate::api::fetch_bootstrap(token_value, tenant_value).await
+            transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
@@ -94,8 +95,8 @@ pub fn PricingAdmin() -> impl IntoView {
         },
         move |(token_value, tenant_value, _, locale_value, search_value, status_value)| async move {
             let bootstrap =
-                crate::api::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
-            crate::api::fetch_products(
+                transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
+            transport::fetch_products(
                 token_value,
                 tenant_value,
                 bootstrap.current_tenant.id,
@@ -118,7 +119,7 @@ pub fn PricingAdmin() -> impl IntoView {
             )
         },
         move |(token_value, tenant_value, _, channel_id, channel_slug)| async move {
-            crate::api::fetch_active_price_lists(
+            transport::fetch_active_price_lists(
                 token_value,
                 tenant_value,
                 normalize_channel_value(&channel_id),
@@ -182,7 +183,7 @@ pub fn PricingAdmin() -> impl IntoView {
                 channel_slug_value.clone(),
                 quantity_value.clone(),
             );
-            match crate::api::fetch_product(
+            match transport::fetch_product(
                 token_value,
                 tenant_value,
                 current_tenant.id,
@@ -1643,7 +1644,7 @@ fn VariantDiscountEditor(
                         set_busy.set(true);
                         set_error.set(None);
                         spawn_local(async move {
-                            match crate::api::preview_variant_discount(variant_id, payload).await {
+                            match transport::preview_variant_discount(variant_id, payload).await {
                                 Ok(value) => set_preview.set(Some(value)),
                                 Err(err) => set_error.set(Some(format!("{preview_error_label}: {err}"))),
                             }
@@ -1678,7 +1679,7 @@ fn VariantDiscountEditor(
                         set_busy.set(true);
                         set_error.set(None);
                         spawn_local(async move {
-                            match crate::api::apply_variant_discount(variant_id, payload).await {
+                            match transport::apply_variant_discount(variant_id, payload).await {
                                 Ok(value) => {
                                     set_preview.set(Some(value));
                                     on_saved.run(product_id);
@@ -1799,7 +1800,7 @@ fn PriceListRuleEditor(
                         set_busy.set(true);
                         set_error.set(None);
                         spawn_local(async move {
-                            match crate::api::update_price_list_rule(price_list_id, payload).await {
+                            match transport::update_price_list_rule(price_list_id, payload).await {
                                 Ok(updated) => {
                                     set_adjustment_percent.set(updated.adjustment_percent.unwrap_or_default());
                                     on_saved.run(());
@@ -1830,7 +1831,7 @@ fn PriceListRuleEditor(
                         set_busy.set(true);
                         set_error.set(None);
                         spawn_local(async move {
-                            match crate::api::update_price_list_rule(price_list_id, payload).await {
+                            match transport::update_price_list_rule(price_list_id, payload).await {
                                 Ok(_) => {
                                     set_adjustment_percent.set(String::new());
                                     on_saved.run(());
@@ -1908,7 +1909,7 @@ fn PriceListRuleEditor(
                         set_busy.set(true);
                         set_error.set(None);
                         spawn_local(async move {
-                            match crate::api::update_price_list_scope(price_list_id, payload).await {
+                            match transport::update_price_list_scope(price_list_id, payload).await {
                                 Ok(updated) => {
                                     set_channel_id.set(updated.channel_id.unwrap_or_default());
                                     set_channel_slug.set(updated.channel_slug.unwrap_or_default());
@@ -2084,7 +2085,7 @@ fn VariantPriceEditor(
                         set_busy.set(true);
                         set_error.set(None);
                         spawn_local(async move {
-                            match crate::api::update_variant_price(variant_id, payload).await {
+                            match transport::update_variant_price(variant_id, payload).await {
                                 Ok(()) => on_saved.run(product_id),
                                 Err(err) => set_error.set(Some(format!("{save_error_label}: {err}"))),
                             }

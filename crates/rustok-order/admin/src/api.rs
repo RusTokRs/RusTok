@@ -183,6 +183,8 @@ pub async fn fetch_orders(
     tenant_slug: Option<String>,
     tenant_id: String,
     status: Option<String>,
+    page: u64,
+    per_page: u64,
 ) -> Result<OrderList, ApiError> {
     let response: OrdersResponse = request(
         ORDERS_QUERY,
@@ -191,8 +193,8 @@ pub async fn fetch_orders(
             extra: OrdersVariables {
                 filter: OrdersFilter {
                     status,
-                    page: Some(1),
-                    per_page: Some(24),
+                    page: Some(page),
+                    per_page: Some(per_page),
                 },
             },
         }),

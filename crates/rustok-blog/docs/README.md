@@ -62,3 +62,7 @@ taxonomy sync подтверждены интеграционными и unit т
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+
+## FFA UI split
+
+Leptos render adapters для admin и storefront живут в `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs`; crate roots только подключают module layers и re-export `BlogAdmin` / `BlogView`. Admin operations проходят через `admin/src/transport.rs`, а storefront сохраняет native/GraphQL adapters за facade в `storefront/src/transport/`.

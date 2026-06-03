@@ -5,10 +5,13 @@ Leptos storefront UI package for the `rustok-commerce` module.
 ## Responsibilities
 
 - Exposes the commerce storefront root view used by `apps/storefront`.
+- Routes storefront checkout orchestration through `storefront/src/transport.rs`; route/query shell state lives in `storefront/src/core.rs` while native server functions and GraphQL fallback stay behind the transport facade.
 - Keeps only aggregate storefront handoff UX that still spans multiple ecommerce modules.
 - Participates in the manifest-driven storefront composition path through `rustok-module.toml`.
 - Uses native Leptos `#[server]` calls to expose effective storefront context plus aggregate checkout workspace state from host request/tenant/channel wiring.
 - Acts as the remaining storefront orchestration surface while read-side ownership already lives in split commerce modules.
+
+- Keeps Leptos render/bind code in `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` only wires modules and re-exports `CommerceView`.
 
 ## Entry Points
 

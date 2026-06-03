@@ -4,8 +4,10 @@ use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
+use crate::core::customer_list_request;
 use crate::i18n::t;
 use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerListItem};
+use crate::transport;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -40,12 +42,15 @@ pub fn CustomerAdmin() -> impl IntoView {
 
     let bootstrap = local_resource(
         move || refresh_nonce.get(),
-        move |_| async move { crate::api::fetch_bootstrap().await },
+        move |_| async move { transport::fetch_bootstrap().await },
     );
 
     let customers = local_resource(
         move || (refresh_nonce.get(), search.get()),
-        move |(_, search_value)| async move { crate::api::fetch_customers(search_value, 1, 24).await },
+        move |(_, search_value)| async move {
+            let request = customer_list_request(search_value);
+            transport::fetch_customers(request.search, request.page, request.per_page).await
+        },
     );
 
     let email_required_label = t(
@@ -91,7 +96,7 @@ pub fn CustomerAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            match crate::api::fetch_customer_detail(customer_id).await {
+            match transport::fetch_customer_detail(customer_id).await {
                 Ok(detail) => apply_customer_detail(
                     &detail,
                     set_editing_id,
@@ -164,8 +169,8 @@ pub fn CustomerAdmin() -> impl IntoView {
         set_error.set(None);
         spawn_local(async move {
             let result = match editing_customer_id {
-                Some(customer_id) => crate::api::update_customer(customer_id, payload).await,
-                None => crate::api::create_customer(payload).await,
+                Some(customer_id) => transport::update_customer(customer_id, payload).await,
+                None => transport::create_customer(payload).await,
             };
 
             match result {
