@@ -7,22 +7,23 @@ SPI и post-order delivery changes ещё остаются в активном b
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
+- Current phase: ffa_admin_transport_ui_split
+- Last checkpoint: Admin fulfillment получил FFA slice: `admin/src/core.rs` настройки по умолчанию для списка и фильтров, `admin/src/transport.rs` facade над existing GraphQL shipping-option transport и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; crate root стал wiring/re-export boundary без изменения shipping-option CRUD behavior.
+- Next step: Продолжать сокращать `admin/src/api.rs` до transport adapter implementation и выносить remaining request/view policy в `core`, затем расширять provider/deliverability scope без host-owned logic.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Last updated at (UTC): 2026-06-02T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: `docs_boundary`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
-  - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
-- Last verified at (UTC): 2026-05-24T00:00:00Z
+  - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
+  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows.
+- Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 
 ## Область работ
@@ -41,7 +42,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - admin/post-order create fulfillment path в `rustok-commerce` уже использует typed `items[]` и валидирует order-line ownership + remaining quantity до вызова `FulfillmentService`;
 - item-level `ship` / `deliver` adjustments уже работают поверх typed fulfillment items и пишут language-agnostic audit trail в metadata fulfillment/item'ов; `delivered_note` не дублируется в audit JSON;
 - explicit `reopen` / `reship` recovery path уже работает поверх того же typed fulfillment boundary: delivered fulfillment можно вернуть в `shipped`, cancelled fulfillment можно вернуть в actionable state, а повторная shipment attempt фиксируется audit-safe без language-dependent metadata;
-- admin/operator surface уже использует typed lifecycle для shipping options, а module-owned route `rustok-fulfillment/admin` забрал ownership shipping-option UI у umbrella `rustok-commerce-admin`.
+- admin/operator surface уже использует typed lifecycle для shipping options, а module-owned route `rustok-fulfillment/admin` забрал ownership shipping-option UI у umbrella `rustok-commerce-admin` и теперь держит `admin/src/core.rs` настройки request по умолчанию, `admin/src/transport.rs` facade и явный `admin/src/ui/leptos.rs` адаптер отрисовки.
 
 ## Этапы
 

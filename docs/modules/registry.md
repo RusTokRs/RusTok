@@ -78,7 +78,7 @@ Structural shape фиксирует глубину code-level FFA split неза
 | `inventory` | admin | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-inventory/docs/implementation-plan.md` (Wave 5: backend `AdminInventoryReadService`/DTO + admin core/read facade + package-private transitional commerce GraphQL adapter + explicit `ui/leptos.rs` adapter, unit/compatibility tests на inventory read model/normalized variables/facade request builders/error mapping + boundary tests на GraphQL isolation) |
 | `order` | admin | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-order/docs/implementation-plan.md` (slice: admin core list/filter defaults + transport facade + explicit `ui/leptos.rs` render adapter over existing GraphQL order transport; lifecycle behavior unchanged) |
 | `payment` | no module-owned UI | `in_progress` | `in_progress` | `no_ui_boundary` | `crates/rustok-payment/docs/implementation-plan.md` |
-| `fulfillment` | admin | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-fulfillment/docs/implementation-plan.md` |
+| `fulfillment` | admin | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-fulfillment/docs/implementation-plan.md` (slice: admin core list/filter policy + transport facade + explicit `ui/leptos.rs` render adapter over existing GraphQL shipping-option transport; CRUD behavior unchanged) |
 | `seo` | admin + storefront contracts | `in_progress` | `in_progress` | `docs_boundary` | `crates/rustok-seo/docs/implementation-plan.md` |
 
 ## Hotspot contract (DOC-12 / H1)
