@@ -38,7 +38,9 @@ fn graphql_runtime_details_stay_inside_transport_adapter() {
         for marker in forbidden_markers {
             assert!(
                 !source.contains(marker),
-                "{source_path} must not depend on GraphQL runtime detail `{marker}`; keep it in src/transport.rs"
+                "{} must not depend on GraphQL runtime detail `{}`; keep it in src/transport.rs",
+                source_path,
+                marker
             );
         }
     }
@@ -47,7 +49,8 @@ fn graphql_runtime_details_stay_inside_transport_adapter() {
     for marker in forbidden_markers {
         assert!(
             transport.contains(marker),
-            "src/transport.rs should own transitional GraphQL runtime detail `{marker}`"
+            "src/transport.rs should own transitional GraphQL runtime detail `{}`",
+            marker
         );
     }
 }
@@ -71,7 +74,8 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
     ] {
         assert!(
             !lib.contains(forbidden_export),
-            "crate root must not publicly expose inventory admin implementation boundary `{forbidden_export}`"
+            "crate root must not publicly expose inventory admin implementation boundary `{}`",
+            forbidden_export
         );
     }
 }
@@ -95,7 +99,77 @@ fn native_read_path_targets_inventory_backend_service() {
     ] {
         assert!(
             native.contains(marker),
-            "src/native.rs must keep native inventory read path marker `{marker}`"
+            "src/native.rs must keep native inventory read path marker `{}`",
+            marker
+        );
+    }
+}
+
+#[test]
+fn set_quantity_write_path_stays_native_without_graphql_fallback() {
+    let api = read_source("src/api.rs");
+    let start = api
+        .find("pub async fn set_variant_quantity")
+        .expect("src/api.rs should expose set_variant_quantity facade");
+    let end = api[start..]
+        .find("#[cfg(test)]")
+        .map(|offset| start + offset)
+        .unwrap_or(api.len());
+    let write_facade = &api[start..end];
+
+    for required in [
+        "set_quantity_request",
+        "crate::native::set_variant_quantity",
+        ".map_err(Into::into)",
+    ] {
+        assert!(
+            write_facade.contains(required),
+            "set_variant_quantity facade must keep native write marker `{}`",
+            required
+        );
+    }
+
+    for forbidden in [
+        "fallback_",
+        "transitional_read_transport",
+        "CommerceGraphqlInventoryReadAdapter",
+        "token",
+        "tenant_slug",
+    ] {
+        assert!(
+            !write_facade.contains(forbidden),
+            "set_variant_quantity facade must not use transitional read/fallback marker `{}`",
+            forbidden
+        );
+    }
+}
+
+#[test]
+fn ui_set_quantity_control_uses_inventory_api_facade_only() {
+    let ui = read_source("src/ui/leptos.rs");
+
+    for required in [
+        "parse_set_quantity",
+        "crate::api::set_variant_quantity",
+        "apply_variant_quantity_update",
+        "set_quantity_input.set(new_quantity.to_string())",
+    ] {
+        assert!(
+            ui.contains(required),
+            "inventory UI set-quantity control must keep marker `{}`",
+            required
+        );
+    }
+
+    for forbidden in [
+        "crate::native::set_variant_quantity",
+        "CommerceGraphqlInventoryReadAdapter",
+        "transitional_read_transport",
+    ] {
+        assert!(
+            !ui.contains(forbidden),
+            "inventory UI must not bypass the API facade or use transitional marker `{}`",
+            forbidden
         );
     }
 }

@@ -24,7 +24,7 @@ admin read-side service, native server-function read transport, первый nat
   - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, первый write split представлен native `inventory/variant/set-quantity` endpoint-ом и UI targeted set-quantity control без GraphQL fallback, а transport boundary держит transitional commerce GraphQL adapter внутри пакета только как native-unavailable read fallback;
   - unit tests покрывают locale fallback, tags extraction, price sale mapping, search normalization и variant title fallback в backend read-side service;
   - compatibility tests фиксируют минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging), сериализацию normalized GraphQL variables, facade request builders и mapping `GraphqlHttpError` → inventory-owned `InventoryTransportError` до выделения dedicated inventory transport;
-  - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `GraphqlHttpError`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model`, `native` или `ui`.
+  - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `GraphqlHttpError`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model`, `native` или `ui`, а set-quantity write facade/UI остаются native-only без transitional GraphQL fallback.
 - Last verified at (UTC): 2026-06-05T00:00:00Z
 - Owner: `rustok-inventory` module team
 
@@ -42,7 +42,7 @@ admin read-side service, native server-function read transport, первый nat
 - read transport уже имеет dedicated native path, первый set-quantity write endpoint вынесен в inventory-owned native facade, оставшийся mutation parity всё ещё дособирается из umbrella `rustok-commerce`;
 - `rustok-inventory/admin` уже публикует inventory-owned admin route для stock visibility,
   low-stock triage и variant-level health inspection;
-- dedicated inventory mutations частично вынесены: `set_variant_quantity` уже идёт через inventory-owned native server function без GraphQL fallback, но UI targeted stock operations и оставшийся mutation parity ещё не завершены;
+- dedicated inventory mutations частично вынесены: `set_variant_quantity` уже идёт через inventory-owned native server function без GraphQL fallback и подключён к initial UI targeted stock operation, но оставшийся mutation parity ещё не завершён;
 - dedicated native/server-function read transport подключён к backend `AdminInventoryReadService`; GraphQL остаётся transitional compatibility fallback-ом только когда native read path недоступен.
 
 ## Этапы
