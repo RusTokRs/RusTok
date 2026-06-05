@@ -88,18 +88,36 @@ fn native_read_path_targets_inventory_backend_service() {
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/bootstrap\")]",
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/products\")]",
         "#[server(prefix = \"/api/fn\", endpoint = \"inventory/product\")]",
-        "#[server(prefix = \"/api/fn\", endpoint = \"inventory/variant/set-quantity\")]",
         "AdminInventoryReadService::new",
         "assert_requested_tenant",
         "Permission::INVENTORY_LIST",
         "Permission::INVENTORY_READ",
+    ] {
+        assert!(
+            native.contains(marker),
+            "src/native.rs must keep native inventory read path marker `{}`",
+            marker
+        );
+    }
+}
+
+#[test]
+fn native_write_path_targets_inventory_service() {
+    let native = read_source("src/native.rs");
+
+    for marker in [
+        r#"#[server(prefix = "/api/fn", endpoint = "inventory/variant/set-quantity")]"#,
+        "INVENTORY_SET_QUANTITY_REQUIRES_SSR_ERROR",
+        "transactional_event_bus_from_context",
+        "assert_requested_tenant",
         "Permission::INVENTORY_UPDATE",
+        "Permission::INVENTORY_MANAGE",
         "InventoryService::new",
         "set_inventory",
     ] {
         assert!(
             native.contains(marker),
-            "src/native.rs must keep native inventory read path marker `{}`",
+            "src/native.rs must keep native inventory write path marker `{}`",
             marker
         );
     }

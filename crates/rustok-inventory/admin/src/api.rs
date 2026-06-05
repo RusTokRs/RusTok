@@ -265,9 +265,12 @@ mod tests {
     }
 
     #[test]
-    fn transitional_graphql_fallback_is_limited_to_native_unavailable_errors() {
+    fn transitional_graphql_fallback_is_limited_to_native_unavailable_read_errors() {
         assert!(native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new(crate::native::INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR)
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new(crate::native::INVENTORY_SET_QUANTITY_REQUIRES_SSR_ERROR)
         ));
         assert!(!native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new("Permission denied: inventory:list required")
