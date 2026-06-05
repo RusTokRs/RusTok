@@ -5,7 +5,8 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    inventory_health_state, parse_set_quantity, summarize_inventory, InventoryHealthState,
+    apply_variant_quantity_update, inventory_health_state, parse_set_quantity, summarize_inventory,
+    InventoryHealthState,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -484,12 +485,10 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                                 Ok(new_quantity) => {
                                                                                     set_selected.update(|selected| {
                                                                                         if let Some(detail) = selected {
-                                                                                            if let Some(variant) = detail.variants.iter_mut().find(|variant| variant.id == variant_id) {
-                                                                                                variant.inventory_quantity = new_quantity;
-                                                                                                variant.in_stock = new_quantity > 0;
-                                                                                            }
+                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), new_quantity);
                                                                                         }
                                                                                     });
+                                                                                    set_quantity_input.set(new_quantity.to_string());
                                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                                 }
                                                                                 Err(err) => {
