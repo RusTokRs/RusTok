@@ -1,4 +1,4 @@
-use crate::model::{SearchFacetGroup, SearchPreviewPayload};
+use crate::model::{SearchFacetGroup, SearchFilterPreset, SearchPreviewPayload, SearchSuggestion};
 
 pub fn parse_csv(value: &str) -> Vec<String> {
     value
@@ -201,7 +201,10 @@ mod tests {
             ranking_profile: "balanced".to_string(),
             facets: vec![SearchFacetGroup {
                 name: "entity_type".to_string(),
-                buckets: vec![],
+                buckets: vec![crate::model::SearchFacetBucket {
+                    value: "product".to_string(),
+                    count: 2,
+                }],
             }],
         };
         let labels = SearchResultsLabels {
@@ -210,28 +213,249 @@ mod tests {
             preset_template: "preset: {preset}".to_string(),
             none_label: "none".to_string(),
             locale_template: "locale: {locale}".to_string(),
+            query_label: "Query".to_string(),
             no_snippet: "No snippet returned.".to_string(),
+            no_target_label: "No target".to_string(),
+            open_result_label: "Open result".to_string(),
+            no_results_title: "No results".to_string(),
+            no_results_body: "Try again".to_string(),
+            engine_title: "Engine".to_string(),
+            engine_body: "Uses FTS".to_string(),
+            facet_title: "Facets".to_string(),
+            facet_body: "Facet details".to_string(),
         };
 
-        let view_model = build_search_results_view_model(payload, "manual", &labels);
+        let view_model = build_search_results_view_model(payload, "manual", "boots", &labels);
 
-        assert_eq!(view_model.query_log_id, Some("log-1".to_string()));
+        assert_eq!(view_model.header.query_label, "Query");
+        assert_eq!(view_model.header.query, "boots");
         assert_eq!(
-            view_model.summary,
+            view_model.header.summary,
             "1 results in 12ms via postgres/balanced"
         );
-        assert_eq!(view_model.preset, "preset: manual");
-        assert_eq!(view_model.locale, "locale: ru");
+        assert_eq!(view_model.header.preset, "preset: manual");
+        assert_eq!(view_model.header.locale, "locale: ru");
         assert!(view_model.has_items);
         assert_eq!(view_model.items[0].id, "doc-1");
         assert_eq!(view_model.items[0].source_label, "product | catalog");
         assert_eq!(view_model.items[0].score_label, "score 0.988");
         assert_eq!(view_model.items[0].snippet, "No snippet returned.");
         assert_eq!(
-            view_model.items[0].href,
-            Some("/products/boots".to_string())
+            view_model.items[0].action,
+            SearchResultActionViewModel::Open {
+                label: "Open result".to_string(),
+                href: "/products/boots".to_string(),
+                query_log_id: Some("log-1".to_string()),
+                document_id: "doc-1".to_string(),
+                position: 1,
+            }
         );
         assert_eq!(view_model.facets.len(), 1);
+        assert_eq!(view_model.facets[0].display_name, "entity type");
+        assert_eq!(view_model.facets[0].buckets[0].label, "product (2)");
+        assert_eq!(view_model.no_results_empty_state.title, "No results");
+        assert_eq!(view_model.feature_cards.len(), 2);
+        assert_eq!(view_model.feature_cards[0].title, "Engine");
+    }
+
+    #[test]
+    fn search_suggestion_view_models_prepare_labels_and_navigation() {
+        let suggestions = vec![
+            crate::model::SearchSuggestion {
+                text: "Boots".to_string(),
+                kind: "document".to_string(),
+                document_id: Some("doc-1".to_string()),
+                entity_type: Some("product".to_string()),
+                source_module: Some("catalog".to_string()),
+                locale: Some("ru".to_string()),
+                url: Some("/products/boots".to_string()),
+                score: 0.9,
+            },
+            crate::model::SearchSuggestion {
+                text: "sneakers".to_string(),
+                kind: "query".to_string(),
+                document_id: None,
+                entity_type: None,
+                source_module: None,
+                locale: None,
+                url: None,
+                score: 0.8,
+            },
+            crate::model::SearchSuggestion {
+                text: "Fallback document".to_string(),
+                kind: "document".to_string(),
+                document_id: Some("doc-2".to_string()),
+                entity_type: Some("blog".to_string()),
+                source_module: Some("blog".to_string()),
+                locale: None,
+                url: None,
+                score: 0.7,
+            },
+        ];
+
+        let view_models = build_search_suggestion_view_models(
+            suggestions,
+            &SearchSuggestionsLabels {
+                open_label: "Open".to_string(),
+                search_label: "Search".to_string(),
+            },
+        );
+
+        assert_eq!(view_models.len(), 3);
+        assert_eq!(view_models[0].text, "Boots");
+        assert_eq!(view_models[0].kind_label, "document • ru");
+        assert_eq!(view_models[0].action_label, "Open");
+        assert_eq!(
+            view_models[0].navigation,
+            SearchSuggestionNavigation::Href("/products/boots".to_string())
+        );
+        assert_eq!(view_models[1].kind_label, "query");
+        assert_eq!(view_models[1].action_label, "Search");
+        assert_eq!(
+            view_models[1].navigation,
+            SearchSuggestionNavigation::SearchQuery("sneakers".to_string())
+        );
+        assert_eq!(
+            view_models[2].navigation,
+            SearchSuggestionNavigation::SearchQuery("Fallback document".to_string())
+        );
+    }
+
+    #[test]
+    fn preset_chip_view_models_prepare_state_and_next_selection() {
+        let presets = vec![
+            crate::model::SearchFilterPreset {
+                key: "featured".to_string(),
+                label: "Featured".to_string(),
+                entity_types: vec!["product".to_string()],
+                source_modules: Vec::new(),
+                statuses: vec!["published".to_string()],
+                ranking_profile: Some("default".to_string()),
+            },
+            crate::model::SearchFilterPreset {
+                key: "content".to_string(),
+                label: "Content".to_string(),
+                entity_types: vec!["page".to_string()],
+                source_modules: vec!["pages".to_string()],
+                statuses: vec!["published".to_string()],
+                ranking_profile: None,
+            },
+        ];
+
+        let view_models = build_search_preset_chip_view_models(presets, "featured");
+
+        assert_eq!(view_models.len(), 2);
+        assert_eq!(view_models[0].key, "featured");
+        assert_eq!(view_models[0].label, "Featured");
+        assert!(view_models[0].is_selected);
+        assert_eq!(view_models[0].class_name, PRESET_CHIP_SELECTED_CLASS);
+        assert_eq!(view_models[0].next_selection, "");
+        assert!(!view_models[1].is_selected);
+        assert_eq!(view_models[1].class_name, PRESET_CHIP_IDLE_CLASS);
+        assert_eq!(view_models[1].next_selection, "content");
+        assert_eq!(
+            preset_chip_class("content", "content"),
+            PRESET_CHIP_SELECTED_CLASS
+        );
+        assert_eq!(preset_chip_class("", "content"), PRESET_CHIP_IDLE_CLASS);
+    }
+
+    #[test]
+    fn facet_view_models_prepare_display_names_and_bucket_labels() {
+        let facets = build_search_facet_view_models(vec![SearchFacetGroup {
+            name: "source_module".to_string(),
+            buckets: vec![
+                crate::model::SearchFacetBucket {
+                    value: "catalog".to_string(),
+                    count: 7,
+                },
+                crate::model::SearchFacetBucket {
+                    value: "pages".to_string(),
+                    count: 3,
+                },
+            ],
+        }]);
+
+        assert_eq!(facets.len(), 1);
+        assert_eq!(facets[0].display_name, "source module");
+        assert_eq!(facets[0].buckets[0].label, "catalog (7)");
+        assert_eq!(facets[0].buckets[1].label, "pages (3)");
+    }
+
+    #[test]
+    fn result_action_view_model_prepares_open_and_no_target_states() {
+        let labels = SearchResultsLabels {
+            summary_template: String::new(),
+            preset_template: String::new(),
+            none_label: String::new(),
+            locale_template: String::new(),
+            query_label: String::new(),
+            no_snippet: String::new(),
+            no_target_label: "No target".to_string(),
+            open_result_label: "Open result".to_string(),
+            no_results_title: "No results".to_string(),
+            no_results_body: "Try again".to_string(),
+            engine_title: "Engine".to_string(),
+            engine_body: "Uses FTS".to_string(),
+            facet_title: "Facets".to_string(),
+            facet_body: "Facet details".to_string(),
+        };
+
+        assert_eq!(
+            build_search_result_action_view_model(
+                Some("log-1".to_string()),
+                "doc-1".to_string(),
+                Some("/products/boots".to_string()),
+                2,
+                &labels,
+            ),
+            SearchResultActionViewModel::Open {
+                label: "Open result".to_string(),
+                href: "/products/boots".to_string(),
+                query_log_id: Some("log-1".to_string()),
+                document_id: "doc-1".to_string(),
+                position: 2,
+            }
+        );
+        assert_eq!(
+            build_search_result_action_view_model(None, "doc-2".to_string(), None, 1, &labels),
+            SearchResultActionViewModel::NoTarget {
+                label: "No target".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn empty_state_and_feature_card_view_models_prepare_render_ready_copy() {
+        let empty = build_search_empty_state_view_model(
+            "No results".to_string(),
+            "Try a different query".to_string(),
+        );
+        assert_eq!(empty.title, "No results");
+        assert_eq!(empty.body, "Try a different query");
+
+        let labels = SearchResultsLabels {
+            summary_template: String::new(),
+            preset_template: String::new(),
+            none_label: String::new(),
+            locale_template: String::new(),
+            query_label: String::new(),
+            no_snippet: String::new(),
+            no_target_label: String::new(),
+            open_result_label: String::new(),
+            no_results_title: String::new(),
+            no_results_body: String::new(),
+            engine_title: "Engine".to_string(),
+            engine_body: "Uses FTS".to_string(),
+            facet_title: "Facet model".to_string(),
+            facet_body: "Facet details".to_string(),
+        };
+        let cards = build_search_results_feature_cards(&labels);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].title, "Engine");
+        assert_eq!(cards[0].body, "Uses FTS");
+        assert_eq!(cards[1].title, "Facet model");
+        assert_eq!(cards[1].body, "Facet details");
     }
 }
 
@@ -321,6 +545,62 @@ pub fn suggestion_action_label(kind: &str, open_label: &str, search_label: &str)
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchSuggestionsLabels {
+    pub open_label: String,
+    pub search_label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchSuggestionNavigation {
+    Href(String),
+    SearchQuery(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchSuggestionItemViewModel {
+    pub text: String,
+    pub kind_label: String,
+    pub action_label: String,
+    pub navigation: SearchSuggestionNavigation,
+}
+
+pub fn build_search_suggestion_view_models(
+    suggestions: Vec<SearchSuggestion>,
+    labels: &SearchSuggestionsLabels,
+) -> Vec<SearchSuggestionItemViewModel> {
+    suggestions
+        .into_iter()
+        .map(|suggestion| {
+            let navigation = if is_document_suggestion(suggestion.kind.as_str()) {
+                suggestion
+                    .url
+                    .clone()
+                    .map(SearchSuggestionNavigation::Href)
+                    .unwrap_or_else(|| {
+                        SearchSuggestionNavigation::SearchQuery(suggestion.text.clone())
+                    })
+            } else {
+                SearchSuggestionNavigation::SearchQuery(suggestion.text.clone())
+            };
+
+            SearchSuggestionItemViewModel {
+                kind_label: suggestion_kind_with_locale(
+                    suggestion.kind.as_str(),
+                    suggestion.locale.as_deref(),
+                ),
+                action_label: suggestion_action_label(
+                    suggestion.kind.as_str(),
+                    labels.open_label.as_str(),
+                    labels.search_label.as_str(),
+                ),
+                text: suggestion.text,
+                navigation,
+            }
+        })
+        .collect()
+}
+
 pub fn next_preset_selection(current: &str, selected_key: &str) -> String {
     if current == selected_key {
         String::new()
@@ -329,13 +609,124 @@ pub fn next_preset_selection(current: &str, selected_key: &str) -> String {
     }
 }
 
+pub const PRESET_CHIP_SELECTED_CLASS: &str = "inline-flex items-center rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary";
+pub const PRESET_CHIP_IDLE_CLASS: &str = "inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchPresetChipViewModel {
+    pub key: String,
+    pub label: String,
+    pub is_selected: bool,
+    pub class_name: &'static str,
+    pub next_selection: String,
+}
+
+pub fn preset_chip_class(current: &str, preset_key: &str) -> &'static str {
+    if current == preset_key {
+        PRESET_CHIP_SELECTED_CLASS
+    } else {
+        PRESET_CHIP_IDLE_CLASS
+    }
+}
+
+pub fn build_search_preset_chip_view_models(
+    presets: Vec<SearchFilterPreset>,
+    selected_preset: &str,
+) -> Vec<SearchPresetChipViewModel> {
+    presets
+        .into_iter()
+        .map(|preset| {
+            let is_selected = selected_preset == preset.key;
+            SearchPresetChipViewModel {
+                next_selection: next_preset_selection(selected_preset, preset.key.as_str()),
+                class_name: preset_chip_class(selected_preset, preset.key.as_str()),
+                is_selected,
+                key: preset.key,
+                label: preset.label,
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchFacetBucketViewModel {
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchFacetGroupViewModel {
+    pub display_name: String,
+    pub buckets: Vec<SearchFacetBucketViewModel>,
+}
+
+pub fn build_search_facet_view_models(
+    facets: Vec<SearchFacetGroup>,
+) -> Vec<SearchFacetGroupViewModel> {
+    facets
+        .into_iter()
+        .map(|facet| SearchFacetGroupViewModel {
+            display_name: facet_display_name(facet.name.as_str()),
+            buckets: facet
+                .buckets
+                .into_iter()
+                .map(|bucket| SearchFacetBucketViewModel {
+                    label: facet_bucket_label(bucket.value.as_str(), bucket.count),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchEmptyStateViewModel {
+    pub title: String,
+    pub body: String,
+}
+
+pub fn build_search_empty_state_view_model(
+    title: String,
+    body: String,
+) -> SearchEmptyStateViewModel {
+    SearchEmptyStateViewModel { title, body }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchFeatureCardViewModel {
+    pub title: String,
+    pub body: String,
+}
+
+pub fn build_search_results_feature_cards(
+    labels: &SearchResultsLabels,
+) -> Vec<SearchFeatureCardViewModel> {
+    vec![
+        SearchFeatureCardViewModel {
+            title: labels.engine_title.clone(),
+            body: labels.engine_body.clone(),
+        },
+        SearchFeatureCardViewModel {
+            title: labels.facet_title.clone(),
+            body: labels.facet_body.clone(),
+        },
+    ]
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchResultsLabels {
     pub summary_template: String,
     pub preset_template: String,
     pub none_label: String,
     pub locale_template: String,
+    pub query_label: String,
     pub no_snippet: String,
+    pub no_target_label: String,
+    pub open_result_label: String,
+    pub no_results_title: String,
+    pub no_results_body: String,
+    pub engine_title: String,
+    pub engine_body: String,
+    pub facet_title: String,
+    pub facet_body: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -345,23 +736,65 @@ pub struct SearchResultItemViewModel {
     pub score_label: String,
     pub title: String,
     pub snippet: String,
-    pub href: Option<String>,
+    pub action: SearchResultActionViewModel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SearchResultActionViewModel {
+    Open {
+        label: String,
+        href: String,
+        query_log_id: Option<String>,
+        document_id: String,
+        position: i32,
+    },
+    NoTarget {
+        label: String,
+    },
+}
+
+pub fn build_search_result_action_view_model(
+    query_log_id: Option<String>,
+    document_id: String,
+    href: Option<String>,
+    position: i32,
+    labels: &SearchResultsLabels,
+) -> SearchResultActionViewModel {
+    href.map(|href| SearchResultActionViewModel::Open {
+        label: labels.open_result_label.clone(),
+        href,
+        query_log_id,
+        document_id,
+        position,
+    })
+    .unwrap_or_else(|| SearchResultActionViewModel::NoTarget {
+        label: labels.no_target_label.clone(),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchResultsHeaderViewModel {
+    pub query_label: String,
+    pub query: String,
+    pub summary: String,
+    pub preset: String,
+    pub locale: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct SearchResultsViewModel {
-    pub query_log_id: Option<String>,
-    pub summary: String,
-    pub preset: String,
-    pub locale: String,
+    pub header: SearchResultsHeaderViewModel,
     pub has_items: bool,
     pub items: Vec<SearchResultItemViewModel>,
-    pub facets: Vec<SearchFacetGroup>,
+    pub facets: Vec<SearchFacetGroupViewModel>,
+    pub no_results_empty_state: SearchEmptyStateViewModel,
+    pub feature_cards: Vec<SearchFeatureCardViewModel>,
 }
 
 pub fn build_search_results_view_model(
     payload: SearchPreviewPayload,
     selected_preset: &str,
+    query: &str,
     labels: &SearchResultsLabels,
 ) -> SearchResultsViewModel {
     let locale = locale_or_all(payload.items.first().and_then(|item| item.locale.clone()));
@@ -379,34 +812,54 @@ pub fn build_search_results_view_model(
     let has_items = has_items(items.as_slice());
     let items = items
         .into_iter()
-        .map(|item| SearchResultItemViewModel {
-            id: item.id,
-            source_label: entity_source_label(&item.entity_type, &item.source_module),
-            score_label: score_label(item.score),
-            title: item.title,
-            snippet: snippet_or_fallback(item.snippet, labels.no_snippet.as_str()),
-            href: item.url,
+        .enumerate()
+        .map(|(index, item)| {
+            let id = item.id;
+            let action = build_search_result_action_view_model(
+                query_log_id.clone(),
+                id.clone(),
+                item.url,
+                (index + 1) as i32,
+                labels,
+            );
+
+            SearchResultItemViewModel {
+                id,
+                source_label: entity_source_label(&item.entity_type, &item.source_module),
+                score_label: score_label(item.score),
+                title: item.title,
+                snippet: snippet_or_fallback(item.snippet, labels.no_snippet.as_str()),
+                action,
+            }
         })
         .collect();
 
     SearchResultsViewModel {
-        query_log_id,
-        summary: render_results_summary(
-            labels.summary_template.as_str(),
-            total,
-            took_ms,
-            engine.as_str(),
-            ranking_profile.as_str(),
-        ),
-        preset: render_preset_label(
-            labels.preset_template.as_str(),
-            applied_preset_or_selected(preset_key, selected_preset, labels.none_label.as_str())
-                .as_str(),
-        ),
-        locale: render_locale_label(labels.locale_template.as_str(), locale.as_str()),
+        header: SearchResultsHeaderViewModel {
+            query_label: labels.query_label.clone(),
+            query: query.to_string(),
+            summary: render_results_summary(
+                labels.summary_template.as_str(),
+                total,
+                took_ms,
+                engine.as_str(),
+                ranking_profile.as_str(),
+            ),
+            preset: render_preset_label(
+                labels.preset_template.as_str(),
+                applied_preset_or_selected(preset_key, selected_preset, labels.none_label.as_str())
+                    .as_str(),
+            ),
+            locale: render_locale_label(labels.locale_template.as_str(), locale.as_str()),
+        },
         has_items,
         items,
-        facets,
+        facets: build_search_facet_view_models(facets),
+        no_results_empty_state: build_search_empty_state_view_model(
+            labels.no_results_title.clone(),
+            labels.no_results_body.clone(),
+        ),
+        feature_cards: build_search_results_feature_cards(labels),
     }
 }
 

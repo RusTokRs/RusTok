@@ -10,18 +10,18 @@ pub async fn fetch_search(
     preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
-    api::fetch_storefront_search(query, locale, preset_key, filters).await
+    api::fetch_storefront_search_server(query, locale, preset_key, filters).await
 }
 
 pub async fn fetch_suggestions(
     query: String,
     locale: Option<String>,
 ) -> Result<Vec<SearchSuggestion>, ApiError> {
-    api::fetch_storefront_suggestions(query, locale).await
+    api::fetch_storefront_suggestions_server(query, locale).await
 }
 
 pub async fn fetch_filter_presets() -> Result<Vec<SearchFilterPreset>, ApiError> {
-    api::fetch_storefront_filter_presets().await
+    api::fetch_storefront_filter_presets_server().await
 }
 
 pub async fn track_search_click(
@@ -30,5 +30,5 @@ pub async fn track_search_click(
     position: Option<i32>,
     href: Option<String>,
 ) -> Result<TrackSearchClickPayload, ApiError> {
-    api::track_search_click(query_log_id, document_id, position, href).await
+    api::track_search_click_server(query_log_id, document_id, position, href).await
 }

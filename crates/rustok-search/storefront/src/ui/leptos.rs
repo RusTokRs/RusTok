@@ -7,8 +7,7 @@ use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{
-    SearchFacetGroup, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
-    SearchSuggestion,
+    SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload, SearchSuggestion,
 };
 use crate::{core, transport};
 
@@ -63,15 +62,17 @@ pub fn SearchView() -> impl IntoView {
         "search.error.loadSuggestions",
         "Failed to load search suggestions",
     );
-    let empty_results_title = t(
-        locale.as_deref(),
-        "search.results.emptyTitle",
-        "Enter a search query",
-    );
-    let empty_results_body = t(
-        locale.as_deref(),
-        "search.results.emptyBody",
-        "Storefront search reads `?q=` from the generic module route and runs the public PostgreSQL FTS pipeline.",
+    let empty_results = core::build_search_empty_state_view_model(
+        t(
+            locale.as_deref(),
+            "search.results.emptyTitle",
+            "Enter a search query",
+        ),
+        t(
+            locale.as_deref(),
+            "search.results.emptyBody",
+            "Storefront search reads `?q=` from the generic module route and runs the public PostgreSQL FTS pipeline.",
+        ),
     );
     let load_results_error = t(
         locale.as_deref(),
@@ -231,8 +232,7 @@ pub fn SearchView() -> impl IntoView {
                     {move || {
                         let query = query_for_view.clone();
                         let preset_key = preset_for_view.clone();
-                        let empty_results_title = empty_results_title.clone();
-                        let empty_results_body = empty_results_body.clone();
+                        let empty_results = empty_results.clone();
                         let load_results_error = load_results_error.clone();
                         Suspend::new(async move {
                             match results.await {
@@ -240,10 +240,7 @@ pub fn SearchView() -> impl IntoView {
                                     <SearchResults query=query.clone() selected_preset=preset_key.clone() payload />
                                 }.into_any(),
                                 Ok(None) => view! {
-                                    <EmptyState
-                                        title=empty_results_title.clone()
-                                        body=empty_results_body.clone()
-                                    />
+                                    <EmptyState state=empty_results.clone() />
                                 }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -281,46 +278,34 @@ fn SearchSuggestionList(suggestions: Vec<SearchSuggestion>) -> impl IntoView {
                 </div>
             </div>
             <div class="mt-3 grid gap-2">
-                {suggestions
+                {core::build_search_suggestion_view_models(
+                    suggestions,
+                    &core::SearchSuggestionsLabels { open_label, search_label },
+                )
                     .into_iter()
                     .map(|suggestion| {
-                        let suggestion_text = suggestion.text.clone();
-                        let suggestion_kind = suggestion.kind.clone();
-                        let suggestion_locale = suggestion.locale.clone();
-                        let href = suggestion.url.clone();
+                        let navigation = suggestion.navigation.clone();
                         view! {
                             <button
                                 class="flex w-full items-start justify-between gap-4 rounded-xl border border-border px-4 py-3 text-left hover:bg-muted/30"
-                                on:click=move |_| {
-                                    if core::is_document_suggestion(suggestion_kind.as_str()) {
-                                        if let Some(href) = href.clone() {
-                                            navigate_to_href(&href);
-                                        } else {
-                                            navigate_to_search_query(&suggestion_text, None);
-                                        }
-                                    } else {
-                                        navigate_to_search_query(&suggestion_text, None);
+                                on:click=move |_| match navigation.clone() {
+                                    core::SearchSuggestionNavigation::Href(href) => navigate_to_href(&href),
+                                    core::SearchSuggestionNavigation::SearchQuery(query) => {
+                                        navigate_to_search_query(&query, None)
                                     }
                                 }
                                 type="button"
                             >
                                 <span class="min-w-0">
                                     <span class="block truncate text-sm font-medium text-card-foreground">
-                                        {suggestion_text.clone()}
+                                        {suggestion.text.clone()}
                                     </span>
                                     <span class="mt-1 block text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                                        {core::suggestion_kind_with_locale(
-                                            suggestion_kind.as_str(),
-                                            suggestion_locale.as_deref(),
-                                        )}
+                                        {suggestion.kind_label.clone()}
                                     </span>
                                 </span>
                                 <span class="shrink-0 text-xs text-muted-foreground">
-                                    {core::suggestion_action_label(
-                                        suggestion_kind.as_str(),
-                                        open_label.as_str(),
-                                        search_label.as_str(),
-                                    )}
+                                    {suggestion.action_label.clone()}
                                 </span>
                             </button>
                         }
@@ -340,32 +325,33 @@ fn PresetChips(
 ) -> impl IntoView {
     view! {
         <div class="mt-3 flex flex-wrap gap-2">
-            {presets.into_iter().map(|preset| {
-                let key = preset.key.clone();
-                let label = preset.label.clone();
-                let class_key = key.clone();
-                let query_value = query.clone();
-                view! {
-                    <button
-                        class=move || if selected_preset.get() == class_key {
-                            "inline-flex items-center rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-                        } else {
-                            "inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                        }
-                        on:click=move |_| {
-                            let next = core::next_preset_selection(
+            {core::build_search_preset_chip_view_models(presets, selected_preset.get().as_str())
+                .into_iter()
+                .map(|chip| {
+                    let key = chip.key.clone();
+                    let class_key = chip.key.clone();
+                    let query_value = query.clone();
+                    view! {
+                        <button
+                            class=move || core::preset_chip_class(
                                 selected_preset.get().as_str(),
-                                key.as_str(),
-                            );
-                            set_selected_preset.set(next.clone());
-                            navigate_to_search_query(&query_value, Some(next));
-                        }
-                        type="button"
-                    >
-                        {label}
-                    </button>
-                }
-            }).collect_view()}
+                                class_key.as_str(),
+                            )
+                            on:click=move |_| {
+                                let next = core::next_preset_selection(
+                                    selected_preset.get().as_str(),
+                                    key.as_str(),
+                                );
+                                set_selected_preset.set(next.clone());
+                                navigate_to_search_query(&query_value, Some(next));
+                            }
+                            type="button"
+                        >
+                            {chip.label.clone()}
+                        </button>
+                    }
+                })
+                .collect_view()}
         </div>
     }
 }
@@ -377,11 +363,6 @@ fn SearchResults(
     payload: SearchPreviewPayload,
 ) -> impl IntoView {
     let locale_context = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let query_label = t(
-        locale_context.as_deref(),
-        "search.results.queryLabel",
-        "Query",
-    );
     let results_summary_template = t(
         locale_context.as_deref(),
         "search.results.summary",
@@ -398,58 +379,67 @@ fn SearchResults(
         "search.results.locale",
         "locale = {locale}",
     );
-    let no_results_title = t(
-        locale_context.as_deref(),
-        "search.results.noResultsTitle",
-        "No results",
-    );
-    let no_results_body = t(
-        locale_context.as_deref(),
-        "search.results.noResultsBody",
-        "Try a different query or relax the storefront filters in the query string.",
-    );
-    let engine_title = t(
-        locale_context.as_deref(),
-        "search.features.engineTitle",
-        "Engine",
-    );
-    let engine_body = t(
-        locale_context.as_deref(),
-        "search.features.engineBody",
-        "Storefront uses the public published-only search surface backed by PostgreSQL FTS.",
-    );
-    let facet_title = t(
-        locale_context.as_deref(),
-        "search.features.facetsTitle",
-        "Facet model",
-    );
-    let facet_body = t(
-        locale_context.as_deref(),
-        "search.features.facetsBody",
-        "Entity type and source module facets come from the same search payload used by admin previews.",
-    );
     let view_model = core::build_search_results_view_model(
         payload,
         selected_preset.as_str(),
+        query.as_str(),
         &core::SearchResultsLabels {
             summary_template: results_summary_template,
             preset_template,
             none_label,
             locale_template,
+            query_label: t(
+                locale_context.as_deref(),
+                "search.results.queryLabel",
+                "Query",
+            ),
             no_snippet: t(
                 locale_context.as_deref(),
                 "search.results.noSnippet",
                 "No snippet returned.",
+            ),
+            no_target_label: t(
+                locale_context.as_deref(),
+                "search.results.noTarget",
+                "No storefront target is available for this result yet.",
+            ),
+            open_result_label: t(
+                locale_context.as_deref(),
+                "search.results.openResult",
+                "Open result",
+            ),
+            no_results_title: t(
+                locale_context.as_deref(),
+                "search.results.noResultsTitle",
+                "No results",
+            ),
+            no_results_body: t(
+                locale_context.as_deref(),
+                "search.results.noResultsBody",
+                "Try a different query or relax the storefront filters in the query string.",
+            ),
+            engine_title: t(locale_context.as_deref(), "search.features.engineTitle", "Engine"),
+            engine_body: t(
+                locale_context.as_deref(),
+                "search.features.engineBody",
+                "Storefront uses the public published-only search surface backed by PostgreSQL FTS.",
+            ),
+            facet_title: t(
+                locale_context.as_deref(),
+                "search.features.facetsTitle",
+                "Facet model",
+            ),
+            facet_body: t(
+                locale_context.as_deref(),
+                "search.features.facetsBody",
+                "Entity type and source module facets come from the same search payload used by admin previews.",
             ),
         },
     );
     let item_views = view_model
         .items
         .iter()
-        .enumerate()
-        .map(|(index, item)| {
-            let query_log_id = view_model.query_log_id.clone();
-            let href = item.href.clone();
+        .map(|item| {
             view! {
                 <article class="rounded-2xl border border-border bg-background p-5">
                     <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -461,7 +451,7 @@ fn SearchResults(
                     <p class="mt-2 text-sm text-muted-foreground">
                         {item.snippet.clone()}
                     </p>
-                    {render_result_action(query_log_id, item.id.clone(), href, index)}
+                    {render_result_action(item.action.clone())}
                 </article>
             }
         })
@@ -471,6 +461,11 @@ fn SearchResults(
         .into_iter()
         .map(|facet| view! { <FacetCard facet /> })
         .collect_view();
+    let feature_card_views = view_model
+        .feature_cards
+        .into_iter()
+        .map(|card| view! { <FeatureCard card /> })
+        .collect_view();
 
     view! {
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -479,18 +474,18 @@ fn SearchResults(
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                                {query_label}
+                                {view_model.header.query_label.clone()}
                             </div>
-                            <h3 class="mt-2 text-xl font-semibold text-foreground">{query}</h3>
+                            <h3 class="mt-2 text-xl font-semibold text-foreground">{view_model.header.query.clone()}</h3>
                             <p class="mt-2 text-sm text-muted-foreground">
-                                {view_model.summary.clone()}
+                                {view_model.header.summary.clone()}
                             </p>
                             <p class="mt-2 text-xs text-muted-foreground">
-                                {view_model.preset.clone()}
+                                {view_model.header.preset.clone()}
                             </p>
                         </div>
                         <div class="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-card-foreground">
-                            {view_model.locale.clone()}
+                            {view_model.header.locale.clone()}
                         </div>
                     </div>
                 </article>
@@ -504,66 +499,51 @@ fn SearchResults(
                     .into_any()
                 } else {
                     view! {
-                        <EmptyState
-                            title=no_results_title
-                            body=no_results_body
-                        />
+                        <EmptyState state=view_model.no_results_empty_state.clone() />
                     }
                     .into_any()
                 }}
             </div>
 
             <aside class="space-y-4">
-                <FeatureCard
-                    title=engine_title
-                    body=engine_body
-                />
-                <FeatureCard
-                    title=facet_title
-                    body=facet_body
-                />
+                {feature_card_views}
                 {facet_views}
             </aside>
         </div>
     }
 }
 
-fn render_result_action(
-    query_log_id: Option<String>,
-    document_id: String,
-    href: Option<String>,
-    index: usize,
-) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let no_target_label = t(
-        locale.as_deref(),
-        "search.results.noTarget",
-        "No storefront target is available for this result yet.",
-    );
-    let open_result_label = t(
-        locale.as_deref(),
-        "search.results.openResult",
-        "Open result",
-    );
-    let Some(href_value) = href else {
-        return view! {
+fn render_result_action(action: core::SearchResultActionViewModel) -> impl IntoView {
+    match action {
+        core::SearchResultActionViewModel::NoTarget { label } => view! {
             <p class="mt-4 text-xs text-muted-foreground">
-                {no_target_label}
+                {label}
             </p>
         }
-        .into_any();
-    };
-
-    view! {
-        <a
-            class="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
-            href=href_value.clone()
-            on:click=move |ev| track_result_click(ev, query_log_id.clone(), document_id.clone(), href_value.clone(), index)
-        >
-            {open_result_label}
-        </a>
+        .into_any(),
+        core::SearchResultActionViewModel::Open {
+            label,
+            href,
+            query_log_id,
+            document_id,
+            position,
+        } => view! {
+            <a
+                class="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
+                href=href.clone()
+                on:click=move |ev| track_result_click(
+                    ev,
+                    query_log_id.clone(),
+                    document_id.clone(),
+                    href.clone(),
+                    position,
+                )
+            >
+                {label}
+            </a>
+        }
+        .into_any(),
     }
-    .into_any()
 }
 
 fn track_result_click(
@@ -571,7 +551,7 @@ fn track_result_click(
     query_log_id: Option<String>,
     document_id: String,
     href: String,
-    index: usize,
+    position: i32,
 ) {
     let Some(window) = web_sys::window() else {
         return;
@@ -586,7 +566,7 @@ fn track_result_click(
         let _ = transport::track_search_click(
             query_log_id,
             document_id,
-            Some((index + 1) as i32),
+            Some(position),
             Some(href.clone()),
         )
         .await;
@@ -596,30 +576,26 @@ fn track_result_click(
 }
 
 #[component]
-fn FeatureCard<T, U>(title: T, body: U) -> impl IntoView
-where
-    T: IntoView + 'static,
-    U: IntoView + 'static,
-{
+fn FeatureCard(card: core::SearchFeatureCardViewModel) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-5">
-            <div class="text-sm font-semibold text-card-foreground">{title}</div>
-            <p class="mt-2 text-sm text-muted-foreground">{body}</p>
+            <div class="text-sm font-semibold text-card-foreground">{card.title}</div>
+            <p class="mt-2 text-sm text-muted-foreground">{card.body}</p>
         </article>
     }
 }
 
 #[component]
-fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
+fn FacetCard(facet: core::SearchFacetGroupViewModel) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-5">
             <div class="text-sm font-semibold capitalize text-card-foreground">
-                {core::facet_display_name(&facet.name)}
+                {facet.display_name}
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
                 {facet.buckets.into_iter().map(|bucket| view! {
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {core::facet_bucket_label(&bucket.value, bucket.count)}
+                        {bucket.label}
                     </span>
                 }).collect_view()}
             </div>
@@ -628,11 +604,11 @@ fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
 }
 
 #[component]
-fn EmptyState(title: String, body: String) -> impl IntoView {
+fn EmptyState(state: core::SearchEmptyStateViewModel) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-dashed border-border p-8 text-center">
-            <h3 class="text-lg font-semibold text-card-foreground">{title}</h3>
-            <p class="mt-2 text-sm text-muted-foreground">{body}</p>
+            <h3 class="text-lg font-semibold text-card-foreground">{state.title}</h3>
+            <p class="mt-2 text-sm text-muted-foreground">{state.body}</p>
         </article>
     }
 }
