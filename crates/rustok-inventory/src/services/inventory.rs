@@ -39,6 +39,11 @@ pub struct InventoryReservationWriteResult {
     pub in_stock: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct InventoryAvailabilityCheckResult {
+    pub available: bool,
+}
+
 impl InventoryQuantityWriteResult {
     fn from_quantity(quantity: i32) -> Self {
         Self {
@@ -253,6 +258,25 @@ impl InventoryService {
     }
 
     #[instrument(skip(self))]
+    pub async fn check_variant_availability(
+        &self,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+        requested_quantity: i32,
+    ) -> CommerceResult<InventoryAvailabilityCheckResult> {
+        if requested_quantity < 0 {
+            return Err(CommerceError::Validation(
+                "Availability check quantity must be non-negative".to_string(),
+            ));
+        }
+
+        let available = self
+            .check_availability(tenant_id, variant_id, requested_quantity)
+            .await?;
+
+        Ok(InventoryAvailabilityCheckResult { available })
+    }
+
     pub async fn check_availability(
         &self,
         tenant_id: Uuid,

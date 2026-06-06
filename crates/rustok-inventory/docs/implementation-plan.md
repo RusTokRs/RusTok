@@ -1,14 +1,14 @@
 # План реализации `rustok-inventory`
 
 Статус: inventory boundary выделен; модуль держит stock/runtime baseline, backend
-admin read-side service, native server-function read transport, первые native write endpoints set-quantity/adjust-quantity/reserve-quantity и module-owned admin UI, а оставшийся write parity
+admin read-side service, native server-function read transport, первые native write endpoints set-quantity/adjust-quantity/reserve-quantity, dedicated availability check endpoint и module-owned admin UI, а оставшийся write parity
 и channel-aware orchestration дособираются через umbrella `rustok-commerce`.
 
 ## Execution checkpoint
 
 - Current phase: wave5_write_transport_split
-- Last checkpoint: Reserve-quantity теперь доведён до admin UI: backend `InventoryService::reserve` возвращает typed `InventoryReservationWriteResult { reserved_quantity, available_quantity, in_stock }`, native endpoint `inventory/variant/reserve-quantity` проходит tenant/permission checks без GraphQL fallback, API facade вызывается из detail UI, а optimistic refresh применяет `available_quantity/in_stock` из module-owned reservation contract. Zero-quantity reservation is treated as a no-op that preserves current available quantity (or the legacy variant snapshot when inventory levels are absent) in the write result instead of reporting synthetic zero availability or creating a reservation item. Set/adjust quantity сохраняют typed `InventoryQuantityWriteResult { quantity, in_stock }`, serde snapshots фиксируют endpoint wire shapes, backend read-side читает reservation-aware availability from inventory levels, а boundary tests закрепляют native-only set/adjust/reserve controls.
-- Next step: Перевести следующий remaining inventory write mutation beyond set/adjust/reserve quantity из umbrella `rustok-commerce` на inventory-owned native/API facade, используя typed write result contract, и добавить targeted mutation semantics test.
+- Last checkpoint: Добавлен следующий небольшой Wave 5 slice для availability boundary: backend `InventoryService::check_variant_availability` возвращает typed `InventoryAvailabilityCheckResult { available }`, admin model фиксирует endpoint wire shape serde snapshot-ом, а native/API facade `inventory/variant/check-availability` проходит tenant/permission checks без GraphQL fallback и вызывает inventory-owned service. Reserve/set/adjust quantity остаются native-only, с typed `InventoryReservationWriteResult { reserved_quantity, available_quantity, in_stock }` и `InventoryQuantityWriteResult { quantity, in_stock }`.
+- Next step: Перевести следующий remaining inventory write mutation beyond set/adjust/reserve/check-availability из umbrella `rustok-commerce` на inventory-owned native/API facade, используя typed result contract, и добавить targeted mutation semantics test.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-06-06T00:00:00Z
@@ -21,10 +21,10 @@ admin read-side service, native server-function read transport, первые nat
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
   - backend crate экспортирует `AdminInventoryReadService` и typed read DTO (`AdminInventoryProductList`, `AdminInventoryProductDetail`, variants/prices/translations) как inventory-owned read-side source для native server-function transport;
-  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, write split представлен native `inventory/variant/set-quantity`, `inventory/variant/adjust-quantity` и `inventory/variant/reserve-quantity` endpoint-ами с typed `InventoryQuantityWriteResult` / `InventoryReservationWriteResult`; UI targeted set-quantity, +/-1 adjustment и reserve controls работают без GraphQL fallback, применяют quantity/in-stock или available-quantity/in-stock state из write result, а transport boundary держит transitional commerce GraphQL adapter внутри пакета только как native-unavailable read fallback;
+  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, write split представлен native `inventory/variant/set-quantity`, `inventory/variant/adjust-quantity`, `inventory/variant/reserve-quantity` и `inventory/variant/check-availability` endpoint-ами с typed `InventoryQuantityWriteResult` / `InventoryReservationWriteResult` / `InventoryAvailabilityCheckResult`; UI targeted set-quantity, +/-1 adjustment и reserve controls работают без GraphQL fallback, применяют quantity/in-stock или available-quantity/in-stock state из write result, а transport boundary держит transitional commerce GraphQL adapter внутри пакета только как native-unavailable read fallback;
   - unit tests покрывают locale fallback, tags extraction, price sale mapping, search normalization и variant title fallback в backend read-side service;
   - compatibility tests фиксируют минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging), model serde snapshots для product list/detail, source-level parity между backend DTO/native mapper/transitional GraphQL adapter, сериализацию normalized GraphQL variables, facade request builders и mapping `GraphqlHttpError` → inventory-owned `InventoryTransportError` до выделения dedicated inventory transport;
-  - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `GraphqlHttpError`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model`, `native` или `ui`, а read/write boundary checks разделяют native read markers, read-only transitional GraphQL adapter/removal criteria и native-only set/adjust/reserve quantity write facades и set-quantity/+/-1/reserve UI без transitional GraphQL fallback.
+  - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `GraphqlHttpError`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model`, `native` или `ui`, а read/write boundary checks разделяют native read markers, read-only transitional GraphQL adapter/removal criteria и native-only set/adjust/reserve quantity plus availability-check facades и set-quantity/+/-1/reserve UI без transitional GraphQL fallback.
 - Last verified at (UTC): 2026-06-06T00:00:00Z
 - Owner: `rustok-inventory` module team
 
@@ -39,10 +39,10 @@ admin read-side service, native server-function read transport, первые nat
 - `InventoryModule`, `InventoryService`, backend `AdminInventoryReadService` и stock-related migrations уже выделены;
 - модуль зависит от `product`, не создавая цикла на umbrella `rustok-commerce`;
 - backend admin read service уже возвращает inventory-owned DTO для product/variant/price/translations read-side и читает available quantity из `inventory_items`/`inventory_levels`, если stock-level state уже создан;
-- read transport уже имеет dedicated native path, первые set-quantity/adjust-quantity/reserve-quantity write endpoints вынесены в inventory-owned native facade, оставшийся mutation parity всё ещё дособирается из umbrella `rustok-commerce`;
+- read transport уже имеет dedicated native path, первые set-quantity/adjust-quantity/reserve-quantity write endpoints и availability-check facade вынесены в inventory-owned native facade, оставшийся mutation parity всё ещё дособирается из umbrella `rustok-commerce`;
 - `rustok-inventory/admin` уже публикует inventory-owned admin route для stock visibility,
   low-stock triage и variant-level health inspection;
-- dedicated inventory mutations частично вынесены: `set_variant_quantity`, `adjust_variant_quantity` и `reserve_variant_quantity` уже идут через inventory-owned native server functions без GraphQL fallback и подключён к initial UI targeted stock operation, но оставшийся mutation parity ещё не завершён;
+- dedicated inventory mutations/validation частично вынесены: `set_variant_quantity`, `adjust_variant_quantity`, `reserve_variant_quantity` и `check_variant_availability` уже идут через inventory-owned native server functions без GraphQL fallback и подключён к initial UI targeted stock operation, но оставшийся mutation parity ещё не завершён;
 - dedicated native/server-function read transport подключён к backend `AdminInventoryReadService`; GraphQL остаётся transitional compatibility fallback-ом только когда native read path недоступен.
 
 ## Этапы
