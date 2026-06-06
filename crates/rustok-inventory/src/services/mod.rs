@@ -1,5 +1,6 @@
 pub mod admin_read;
 pub mod inventory;
+mod policy;
 
 pub use inventory::InventoryService;
 

@@ -22,9 +22,13 @@
   `admin/src/api.rs`, `admin/src/native.rs`, native `#[server]` functions и explicit Leptos adapter
   `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
   transitional adapter-е только как native-unavailable compatibility fallback до удаления umbrella read dependency;
-- dedicated native inventory write endpoints `inventory/variant/set-quantity`,
-  `inventory/variant/adjust-quantity` и `inventory/variant/reserve-quantity` уже вынесены в module-owned surface без GraphQL fallback и возвращают typed `InventoryQuantityWriteResult` / `InventoryReservationWriteResult`; set-quantity трактует requested quantity как целевую available quantity и сохраняет существующий reserved stock;
-  remaining write parity ещё добирается из umbrella `rustok-commerce`;
+- dedicated native inventory write/validation endpoints `inventory/variant/set-quantity`,
+  `inventory/variant/adjust-quantity`, `inventory/variant/reserve-quantity`,
+  `inventory/variant/release-reservation` и `inventory/variant/check-availability` уже вынесены
+  в module-owned surface без GraphQL fallback и возвращают typed write/validation results;
+  set-quantity трактует requested quantity как целевую available quantity и сохраняет
+  существующий reserved stock, а backorder policy `continue` нормализуется case-insensitive
+  в service/read-side semantics; remaining write parity ещё добирается из umbrella `rustok-commerce`;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
 ## Интеграция
@@ -34,7 +38,7 @@
 - inventory-owned backend admin read service экспортируется root crate-ом и является source
   для native server-function read transport;
 - inventory-owned admin UX и read facade публикуются через `rustok-inventory/admin`;
-  underlying commerce GraphQL adapter считается transitional read-only compatibility implementation detail, а native set/adjust/reserve quantity endpoints являются inventory-owned write surface для set-quantity, +/-1 operator и reservation flows;
+  underlying commerce GraphQL adapter считается transitional read-only compatibility implementation detail, а native set/adjust/reserve/release quantity и check-availability endpoints являются inventory-owned write/validation surface для set-quantity, +/-1 operator, reservation и availability flows;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 

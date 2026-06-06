@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::CommerceResult;
+
+use super::policy::inventory_policy_allows_backorder;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -253,7 +255,8 @@ impl AdminInventoryReadService {
                         variant.inventory_quantity,
                         available_quantities_by_variant.get(&variant.id).copied(),
                     );
-                    let in_stock = inventory_quantity > 0 || variant.inventory_policy == "continue";
+                    let in_stock = inventory_quantity > 0
+                        || inventory_policy_allows_backorder(&variant.inventory_policy);
 
                     AdminInventoryVariant {
                         id: variant.id,

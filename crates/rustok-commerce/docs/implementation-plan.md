@@ -31,7 +31,7 @@
 Актуализация этого roadmap выполнена на 8 апреля 2026 года: UI split ecommerce family
 переведён из чисто планового статуса в активную execution-фазу, потому что `product`
 уже получил собственный module-owned admin route, shipping options вынесены в
-`fulfillment`, order operations вынесены в `order`, inventory visibility вынесена
+`fulfillment`, order operations вынесены в `order`, inventory visibility и targeted stock/reservation/availability actions вынесены
 в `inventory`, pricing visibility вынесена в `pricing`, customer operations вынесены
 в `customer`, region CRUD вынесен в `region`, а aggregate `commerce` UI очищен до
 typed shipping-profile registry плюс aggregate cart-promotion operator surface.
@@ -101,7 +101,7 @@ Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
 
 Ближайший execution slice:
 
-- сначала продолжить уже начатый UI split: product admin route вынесен в `rustok-product/admin`, shipping-option admin route вынесен в `rustok-fulfillment/admin`, customer admin route вынесен в `rustok-customer/admin`, order admin route вынесен в `rustok-order/admin`, inventory admin route вынесен в `rustok-inventory/admin`, pricing admin route вынесен в `rustok-pricing/admin`, region admin route вынесен в `rustok-region/admin`, storefront split уже идёт через `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront` и `rustok-cart/storefront`, а aggregate `rustok-commerce-storefront` уже сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection;
+- сначала продолжить уже начатый UI split: product admin route вынесен в `rustok-product/admin`, shipping-option admin route вынесен в `rustok-fulfillment/admin`, customer admin route вынесен в `rustok-customer/admin`, order admin route вынесен в `rustok-order/admin`, inventory admin route вынесен в `rustok-inventory/admin` с native set/adjust/reserve/release quantity и check-availability actions без GraphQL fallback, pricing admin route вынесен в `rustok-pricing/admin`, region admin route вынесен в `rustok-region/admin`, storefront split уже идёт через `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront` и `rustok-cart/storefront`, а aggregate `rustok-commerce-storefront` уже сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection;
 - параллельно закрепить `Marketplace Foundations`: canonical `seller_id` в product/cart/order/checkout/fulfillment contract, seller-aware grouping по `seller_id`, transitional compatibility для legacy `seller_scope` и подготовку seller-owned read model без разворачивания полного marketplace feature set;
 - `Phase 7` теперь уже закрыт до explicit `reopen` / `reship` semantics поверх seller-aware grouping, typed fulfillment-item model, manual post-order create path и partial ship/deliver baseline;
 - и теперь уже идти в channel-aware pricing.
@@ -137,7 +137,7 @@ Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
 | --- | --- | --- |
 | `BL-01` | umbrella module vs дальнейший split | продолжать вынос устойчивых bounded contexts в отдельные crates, оставляя `rustok-commerce` orchestration/root layer |
 | `BL-02` | entities vs migrations vs indexer SQL | держать schema hardening, migration smoke и Postgres-first tests обязательными |
-| `BL-03` | inventory model hardening | выравнивать read/write path вокруг stock locations, levels, reservations и channel-aware availability |
+| `BL-03` | inventory model hardening | выравнивать read/write path вокруг stock locations, levels, reservations, case-insensitive backorder policy и channel-aware availability |
 | `BL-04` | transport parity vs domain completeness | не путать наличие `/store/*` и `/admin/*` transport с фактическим Medusa parity по домену |
 | `BL-05` | `/admin/*` и `/store/*` vs embedded UI routes | держать route precedence, OpenAPI и router smoke tests под постоянной регрессией |
 | `BL-06` | Medusa parity scope | расширять contract tests по официальным Medusa docs, не inventing local semantics |
