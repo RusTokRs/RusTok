@@ -285,9 +285,17 @@ pub(crate) fn parse_set_quantity(value: &str) -> Result<i32, String> {
 }
 
 pub(crate) fn parse_reserve_quantity(value: &str) -> Result<i32, String> {
+    parse_non_negative_quantity(value, "reserve quantity")
+}
+
+pub(crate) fn parse_availability_quantity(value: &str) -> Result<i32, String> {
+    parse_non_negative_quantity(value, "availability quantity")
+}
+
+fn parse_non_negative_quantity(value: &str, label: &str) -> Result<i32, String> {
     let quantity = parse_set_quantity(value)?;
     if quantity < 0 {
-        return Err("reserve quantity must be non-negative".to_string());
+        return Err(format!("{label} must be non-negative"));
     }
 
     Ok(quantity)
@@ -493,7 +501,19 @@ mod tests {
     #[test]
     fn parse_reserve_quantity_rejects_negative_values() {
         assert_eq!(parse_reserve_quantity(" 3 "), Ok(3));
-        assert!(parse_reserve_quantity("-1").is_err());
+        assert_eq!(
+            parse_reserve_quantity("-1"),
+            Err("reserve quantity must be non-negative".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_availability_quantity_rejects_negative_values_with_domain_label() {
+        assert_eq!(parse_availability_quantity(" 4 "), Ok(4));
+        assert_eq!(
+            parse_availability_quantity("-1"),
+            Err("availability quantity must be non-negative".to_string())
+        );
     }
 
     #[test]

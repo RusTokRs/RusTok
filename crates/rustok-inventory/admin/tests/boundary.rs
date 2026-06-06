@@ -232,6 +232,7 @@ fn ui_stock_quantity_controls_use_inventory_api_facade_only() {
 
     for required in [
         "parse_set_quantity",
+        "parse_availability_quantity",
         "crate::api::set_variant_quantity",
         "crate::api::adjust_variant_quantity",
         "crate::api::reserve_variant_quantity",
@@ -296,6 +297,7 @@ fn transitional_graphql_adapter_is_read_only_with_documented_removal_criteria() 
         "adjustVariantQuantity",
         "reserveVariantQuantity",
         "checkVariantAvailability",
+        "releaseReservation",
     ] {
         assert!(
             !transport.contains(forbidden),

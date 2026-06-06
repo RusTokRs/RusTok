@@ -41,6 +41,7 @@
 - Следующий малый Wave 5 evidence-sync slice убрал оставшийся stale UI fallback текст и синхронизировал local/central registry evidence: readiness теперь описывает set/adjust/reserve UI controls, available-quantity optimistic refresh и native-only boundary guardrail одним контрактом.
 - Следующий малый Wave 5 reservation-noop slice уточнил backend semantics для zero-quantity reservation: `InventoryService::reserve(..., 0)` теперь возвращает текущий available quantity / in-stock state из inventory levels или legacy variant snapshot, не создавая synthetic zero-availability result и не создавая reservation item для admin optimistic refresh.
 - Следующий малый Wave 5 reservation-release consistency slice синхронизировал release path с reservation ledger: `InventoryService::release_reservation_quantity` теперь перед списанием levels проверяет active `reservation_items`, списывает release из tracked rows (soft-delete при полном списании строки) и возвращает validation error, если levels показывают reserved quantity, но reservation item rows не покрывают requested release.
+- Следующий малый Wave 5 UI-boundary slice развёл client-side parsing для reservation и availability flows: detail UI вызывает `parse_availability_quantity` для dedicated availability validation, тесты фиксируют domain-labeled non-negative error и source boundary дополнительно запрещает `releaseReservation` в transitional GraphQL adapter-е.
 
 ## Проверенные факты
 
