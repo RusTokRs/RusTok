@@ -227,7 +227,11 @@ fn transitional_graphql_adapter_is_read_only_with_documented_removal_criteria() 
     let transport = read_source("src/transport.rs");
     let readme = read_source("README.md");
 
-    for marker in ["const BOOTSTRAP_QUERY", "const PRODUCTS_QUERY", "const PRODUCT_QUERY"] {
+    for marker in [
+        "const BOOTSTRAP_QUERY",
+        "const PRODUCTS_QUERY",
+        "const PRODUCT_QUERY",
+    ] {
         assert!(
             transport.contains(marker),
             "transitional GraphQL adapter must keep read-only query marker `{marker}`"

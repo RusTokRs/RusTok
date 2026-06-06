@@ -7,7 +7,7 @@ admin read-side service, native server-function read transport, первые nat
 ## Execution checkpoint
 
 - Current phase: wave5_write_transport_split
-- Last checkpoint: Усилен inventory-owned write contract для set/adjust quantity: backend `InventoryService` теперь экспортирует `InventoryQuantityWriteResult { quantity, in_stock }`, native/API write path возвращает typed result вместо bare `i32`, UI optimistic detail refresh применяет both quantity and in-stock state из module-owned contract, а serde snapshot фиксирует endpoint wire shape `quantity` + `inStock`. `tests/boundary.rs` закрепляет, что native/API write path не откатывается к bare integer и не использует GraphQL fallback.
+- Last checkpoint: Усилен inventory-owned write contract для set/adjust quantity: backend `InventoryService` экспортирует `InventoryQuantityWriteResult { quantity, in_stock }`, native/API write path возвращает typed result вместо bare `i32`, UI optimistic detail refresh применяет both quantity and in-stock state из module-owned contract, serde snapshots фиксируют endpoint wire shape `quantity` + `inStock`, а backend unit evidence закрепляет `inStock` derivation from committed quantity. `tests/boundary.rs` закрепляет, что native/API write path не откатывается к bare integer и не использует GraphQL fallback.
 - Next step: Перевести следующий remaining inventory write mutation из umbrella `rustok-commerce` на inventory-owned native/API facade, используя typed write result contract, и добавить targeted mutation semantics test.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.

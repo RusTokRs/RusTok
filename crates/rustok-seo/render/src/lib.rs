@@ -186,8 +186,7 @@ pub fn render_head_html(context: &SeoPageContext) -> String {
 
     let mut meta_tags = document.meta_tags.clone();
     meta_tags.sort_by(|left, right| {
-        left
-            .name
+        left.name
             .cmp(&right.name)
             .then_with(|| left.property.cmp(&right.property))
             .then_with(|| left.http_equiv.cmp(&right.http_equiv))
@@ -609,7 +608,9 @@ mod tests {
             .find(r#"<script type="application/ld+json">{"@type":"Product","name":"A"}</script>"#)
             .expect("product json-ld should exist");
         let script_article_position = head
-            .find(r#"<script type="application/ld+json">{"@type":"Article","headline":"Z"}</script>"#)
+            .find(
+                r#"<script type="application/ld+json">{"@type":"Article","headline":"Z"}</script>"#,
+            )
             .expect("article json-ld should exist");
         assert!(script_product_position < script_article_position);
 

@@ -11,8 +11,8 @@ use axum::{
 };
 use loco_rs::{app::AppContext, controller::Routes};
 use rustok_api::{
-    graphql::ErrorCode, has_any_effective_permission,
-    loco::transactional_event_bus_from_context, AuthContext, RequestContext, TenantContext,
+    graphql::ErrorCode, has_any_effective_permission, loco::transactional_event_bus_from_context,
+    AuthContext, RequestContext, TenantContext,
 };
 use rustok_core::{ModuleRuntimeExtensions, Permission};
 use serde::{Deserialize, Serialize};
@@ -422,7 +422,9 @@ pub async fn bulk_artifact_download(
         )
         .body(axum::body::Body::from(artifact.content))
         .map_err(|err| {
-            SeoHttpError::internal_error(format!("failed to build SEO bulk artifact response: {err}"))
+            SeoHttpError::internal_error(format!(
+                "failed to build SEO bulk artifact response: {err}"
+            ))
         })
 }
 
@@ -641,8 +643,8 @@ fn count_issue_keys<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::to_bytes;
     use crate::{SeoDiagnosticIssueRecord, SeoTargetSlug};
+    use axum::body::to_bytes;
     use serde_json::json;
 
     #[test]

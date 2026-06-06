@@ -476,7 +476,10 @@ pub fn remediation_hint_for_issue_code(issue_code: &str) -> SeoRemediationHint {
         "missing_sitemap_candidate" | "index_delivery_failed" | "index_delivery_dead_letter" => {
             (SeoRemediationAction::RunReindex, "index_sync_required")
         }
-        _ => (SeoRemediationAction::OpenEntityEditor, "entity_metadata_fix"),
+        _ => (
+            SeoRemediationAction::OpenEntityEditor,
+            "entity_metadata_fix",
+        ),
     };
 
     SeoRemediationHint {
@@ -506,8 +509,8 @@ fn non_empty_option(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        remediation_hint_for_issue_code, SeoEntityForm, SeoEventDeliverySummary, SeoMetaTranslationView,
-        SeoMetaView, SeoRecommendation, SeoRemediationAction,
+        remediation_hint_for_issue_code, SeoEntityForm, SeoEventDeliverySummary,
+        SeoMetaTranslationView, SeoMetaView, SeoRecommendation, SeoRemediationAction,
     };
     use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
     use serde_json::json;

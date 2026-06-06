@@ -423,7 +423,8 @@ impl SeoService {
         let mut cursor_query = seo_index_cursor::Entity::find()
             .filter(seo_index_cursor::Column::TenantId.eq(tenant_id));
         if let Some(target_type) = normalized_target_type.as_deref() {
-            cursor_query = cursor_query.filter(seo_index_cursor::Column::TargetType.eq(target_type));
+            cursor_query =
+                cursor_query.filter(seo_index_cursor::Column::TargetType.eq(target_type));
         }
         let mut cursors = cursor_query.all(&self.db).await?;
         cursors.sort_by(|left, right| left.target_type.cmp(&right.target_type));
@@ -920,7 +921,8 @@ impl SeoService {
         delivery: &seo_index_delivery::Model,
         trigger: &SeoIndexReindexTrigger,
     ) {
-        if delivery.status == INDEX_DELIVERY_STATUS_SENT || delivery.status == INDEX_DELIVERY_STATUS_DEAD_LETTER
+        if delivery.status == INDEX_DELIVERY_STATUS_SENT
+            || delivery.status == INDEX_DELIVERY_STATUS_DEAD_LETTER
         {
             return;
         }
@@ -1248,7 +1250,10 @@ impl SeoService {
 
         let mut active: seo_index_cursor::ActiveModel = existing.clone().into();
         active.last_repair_cursor_at = Set(Some(cursor));
-        active.replay_mode = Set(advance_replay_mode(existing.replay_mode.as_str(), replay_mode));
+        active.replay_mode = Set(advance_replay_mode(
+            existing.replay_mode.as_str(),
+            replay_mode,
+        ));
         active.updated_at = Set(Utc::now().fixed_offset());
         active.update(&self.db).await?;
         Ok(())
@@ -1438,9 +1443,11 @@ fn index_reindex_triggers_for_event(event: &DomainEvent) -> Vec<SeoIndexReindexT
             .unwrap_or_default(),
         DomainEvent::SeoBulkCompleted { target_kind, .. }
         | DomainEvent::SeoBulkPartial { target_kind, .. }
-        | DomainEvent::SeoBulkFailed { target_kind, .. } => map_target_type_for_seo_kind(target_kind)
-            .map(|target_type| vec![SeoIndexReindexTrigger::kind(target_type)])
-            .unwrap_or_default(),
+        | DomainEvent::SeoBulkFailed { target_kind, .. } => {
+            map_target_type_for_seo_kind(target_kind)
+                .map(|target_type| vec![SeoIndexReindexTrigger::kind(target_type)])
+                .unwrap_or_default()
+        }
         DomainEvent::SeoRedirectUpserted { .. } | DomainEvent::SeoRedirectDisabled { .. } => {
             vec![
                 SeoIndexReindexTrigger::kind("content"),
@@ -1605,7 +1612,10 @@ mod tests {
         )
     }
 
-    fn service_with_transport(db: DatabaseConnection, transport: Arc<dyn EventTransport>) -> SeoService {
+    fn service_with_transport(
+        db: DatabaseConnection,
+        transport: Arc<dyn EventTransport>,
+    ) -> SeoService {
         SeoService::new(
             db,
             TransactionalEventBus::new(transport),
@@ -1860,12 +1870,7 @@ mod tests {
 
         service
             .publish_seo_meta_upserted_event(
-                tenant_id,
-                "product",
-                target_id,
-                "en-US",
-                "explicit",
-                None,
+                tenant_id, "product", target_id, "en-US", "explicit", None,
             )
             .await;
 
@@ -1909,22 +1914,12 @@ mod tests {
 
         service
             .publish_seo_meta_upserted_event(
-                tenant_id,
-                "product",
-                target_id,
-                "en-US",
-                "explicit",
-                None,
+                tenant_id, "product", target_id, "en-US", "explicit", None,
             )
             .await;
         service
             .publish_seo_meta_upserted_event(
-                tenant_id,
-                "product",
-                target_id,
-                "en-US",
-                "explicit",
-                None,
+                tenant_id, "product", target_id, "en-US", "explicit", None,
             )
             .await;
 
@@ -2107,7 +2102,10 @@ mod tests {
             .await
             .expect("seo index cursor should load")
             .expect("seo index cursor should exist");
-        assert_eq!(cursor.replay_mode, INDEX_CURSOR_REPLAY_MODE_REPLAY_COMPLETED);
+        assert_eq!(
+            cursor.replay_mode,
+            INDEX_CURSOR_REPLAY_MODE_REPLAY_COMPLETED
+        );
         assert!(cursor.replay_requested_at.is_some());
         assert!(cursor.replay_completed_at.is_some());
     }
@@ -2140,7 +2138,10 @@ mod tests {
         assert_eq!(summary.failed_count, 0);
         assert_eq!(summary.dead_letter_count, 0);
         assert_eq!(summary.cursors.len(), 1);
-        assert_eq!(summary.cursors[0].replay_mode, SeoIndexReplayMode::NotStarted);
+        assert_eq!(
+            summary.cursors[0].replay_mode,
+            SeoIndexReplayMode::NotStarted
+        );
     }
 
     #[test]
