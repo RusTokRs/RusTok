@@ -25,7 +25,7 @@
   the admin package now uses native Leptos server functions backed by
   `AdminInventoryReadService` as the primary read transport, keeps the transitional commerce
   GraphQL adapter as a read-only compatibility fallback, and uses native inventory-owned
-  set/adjust/reserve quantity write endpoints for targeted stock corrections, +/-1 adjustments, and reservation flows while remaining write
+  set/adjust/reserve quantity write endpoints for targeted stock corrections, +/-1 adjustments, and reservation flows; set-quantity targets available quantity while preserving reserved units, while remaining write
   parity is split from the umbrella commerce surface.
 
 ## Entry points

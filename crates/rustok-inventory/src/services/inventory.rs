@@ -257,7 +257,10 @@ impl InventoryService {
         }
 
         let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
-        level_active.stocked_quantity = Set(quantity);
+        level_active.stocked_quantity = Set(stocked_quantity_for_available(
+            quantity,
+            state.level.reserved_quantity,
+        ));
         level_active.updated_at = Set(Utc::now().into());
         level_active.update(&txn).await?;
 
@@ -726,6 +729,10 @@ fn insufficient_reservation_items_release_error(requested: i32, tracked: i32) ->
     ))
 }
 
+fn stocked_quantity_for_available(available_quantity: i32, reserved_quantity: i32) -> i32 {
+    available_quantity + reserved_quantity
+}
+
 fn validate_reservation_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -760,11 +767,18 @@ fn validate_availability_request_quantity(requested_quantity: i32) -> CommerceRe
 mod tests {
     use super::{
         insufficient_reservation_items_release_error, insufficient_reserved_release_error,
-        validate_availability_request_quantity, validate_release_quantity,
-        validate_reservation_quantity, InventoryAvailabilityCheckResult,
+        stocked_quantity_for_available, validate_availability_request_quantity,
+        validate_release_quantity, validate_reservation_quantity, InventoryAvailabilityCheckResult,
         InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
         InventoryReservationWriteResult,
     };
+
+    #[test]
+    fn set_quantity_preserves_reserved_units_when_targeting_available_quantity() {
+        assert_eq!(stocked_quantity_for_available(10, 0), 10);
+        assert_eq!(stocked_quantity_for_available(10, 3), 13);
+        assert_eq!(stocked_quantity_for_available(0, 3), 3);
+    }
 
     #[test]
     fn reservation_release_error_reports_current_reserved_quantity_without_creating_state() {
