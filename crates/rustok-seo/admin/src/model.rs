@@ -3,8 +3,8 @@ use rustok_seo::{
     seo_builtin_slug, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkBoolFieldPatch,
     SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkJsonFieldPatch,
     SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkSelectionInput, SeoBulkSelectionMode,
-    SeoBulkSource, SeoBulkStringFieldPatch, SeoModuleSettings, SeoRedirectInput,
-    SeoRedirectMatchType, SeoTargetSlug, SeoTemplateRuleSet,
+    SeoBulkSource, SeoBulkStringFieldPatch, SeoIndexRepairReplayInput, SeoModuleSettings,
+    SeoRedirectInput, SeoRedirectMatchType, SeoTargetSlug, SeoTemplateRuleSet,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -24,6 +24,7 @@ pub const ROBOT_DIRECTIVE_PRESETS: &[&str] = &[
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeoAdminTab {
+    Index,
     Bulk,
     Redirects,
     Sitemaps,
@@ -35,6 +36,7 @@ pub enum SeoAdminTab {
 impl SeoAdminTab {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Index => "index",
             Self::Bulk => "bulk",
             Self::Redirects => "redirects",
             Self::Sitemaps => "sitemaps",
@@ -46,6 +48,7 @@ impl SeoAdminTab {
 
     pub fn from_str(value: &str) -> Option<Self> {
         match value {
+            "index" => Some(Self::Index),
             "bulk" => Some(Self::Bulk),
             "redirects" => Some(Self::Redirects),
             "sitemaps" => Some(Self::Sitemaps),
@@ -54,6 +57,48 @@ impl SeoAdminTab {
             "diagnostics" => Some(Self::Diagnostics),
             _ => None,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SeoIndexReplayForm {
+    pub target_type: String,
+    pub limit: i32,
+    pub confirm_repair_only: bool,
+    pub confirm_replay_historical: bool,
+}
+
+impl Default for SeoIndexReplayForm {
+    fn default() -> Self {
+        Self {
+            target_type: String::new(),
+            limit: 100,
+            confirm_repair_only: false,
+            confirm_replay_historical: false,
+        }
+    }
+}
+
+impl SeoIndexReplayForm {
+    pub fn build_input(&self, replay_historical: bool) -> Result<SeoIndexRepairReplayInput, String> {
+        let target_type = normalize_index_target_type(self.target_type.as_str())?;
+        Ok(SeoIndexRepairReplayInput {
+            target_type,
+            limit: self.limit.clamp(1, 500),
+            replay_historical,
+        })
+    }
+}
+
+fn normalize_index_target_type(value: &str) -> Result<Option<String>, String> {
+    let trimmed = value.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    match trimmed.as_str() {
+        "content" | "product" => Ok(Some(trimmed)),
+        _ => Err("Index target type must be `content` or `product`".to_string()),
     }
 }
 
@@ -512,13 +557,20 @@ fn trim_to_option(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoSettingsForm};
+    use super::{
+        SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm, SeoSettingsForm,
+    };
     use rustok_seo::{
-        seo_builtin_slug, SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings, SeoTargetSlug,
+        seo_builtin_slug, SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings,
+        SeoTargetSlug,
     };
 
     #[test]
     fn seo_admin_tab_roundtrip_covers_control_plane_tabs() {
+        assert_eq!(
+            SeoAdminTab::from_str(SeoAdminTab::Index.as_str()),
+            Some(SeoAdminTab::Index)
+        );
         assert_eq!(
             SeoAdminTab::from_str(SeoAdminTab::Bulk.as_str()),
             Some(SeoAdminTab::Bulk)
@@ -622,5 +674,36 @@ mod tests {
         let input = form.build_apply_input(filter, &[]).expect("apply input");
 
         assert!(!input.publish_after_write);
+    }
+
+    #[test]
+    fn index_replay_form_clamps_limit_and_canonicalizes_target_type() {
+        let form = SeoIndexReplayForm {
+            target_type: " PRODUCT ".to_string(),
+            limit: 900,
+            confirm_repair_only: false,
+            confirm_replay_historical: false,
+        };
+
+        let input = form
+            .build_input(true)
+            .expect("index repair replay input should build");
+
+        assert_eq!(input.target_type.as_deref(), Some("product"));
+        assert_eq!(input.limit, 500);
+        assert!(input.replay_historical);
+    }
+
+    #[test]
+    fn index_replay_form_rejects_unknown_target_type() {
+        let form = SeoIndexReplayForm {
+            target_type: "forum".to_string(),
+            ..SeoIndexReplayForm::default()
+        };
+
+        let err = form
+            .build_input(false)
+            .expect_err("unknown target type should fail");
+        assert_eq!(err, "Index target type must be `content` or `product`");
     }
 }

@@ -164,6 +164,40 @@ export interface SeoIndexRepairReplayResultRecord {
   replayRunId: string | null;
 }
 
+function normalizeSeoIndexTargetType(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return null;
+  }
+  if (normalized !== 'content' && normalized !== 'product') {
+    throw new GraphqlError(
+      'Index target type must be `content` or `product`',
+      'BAD_USER_INPUT'
+    );
+  }
+  return normalized;
+}
+
+export function formatSeoReplayErrorMessage(error: unknown): string {
+  if (error instanceof GraphqlError) {
+    if (error.code === 'BAD_USER_INPUT') {
+      return `Invalid replay input: ${error.message}`;
+    }
+    if (error.code === 'PERMISSION_DENIED' || error.code === 'UNAUTHENTICATED') {
+      return 'You do not have permission to run SEO replay operations.';
+    }
+    if (error.code === 'NOT_FOUND') {
+      return 'Requested SEO resource was not found for this tenant.';
+    }
+    return error.message;
+  }
+
+  return error instanceof Error ? error.message : 'SEO replay request failed';
+}
+
 export interface SeoApiOptions {
   token?: string | null;
   tenantSlug?: string | null;
@@ -970,7 +1004,7 @@ export async function runSeoIndexRepairReplay(
   options: SeoApiOptions = {}
 ): Promise<SeoIndexRepairReplayResultRecord> {
   const normalizedInput = {
-    targetType: input.targetType ?? null,
+    targetType: normalizeSeoIndexTargetType(input.targetType ?? null),
     limit: Math.max(1, Math.min(500, input.limit ?? 100)),
     replayHistorical: input.replayHistorical === true
   };

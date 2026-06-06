@@ -76,6 +76,12 @@ const coreNavItems: NavItem[] = [
         access: { role: 'admin' }
       },
       {
+        title: 'SEO',
+        url: '/dashboard/seo',
+        shortcut: ['s', 'o'],
+        access: { role: 'admin' }
+      },
+      {
         title: 'AI',
         url: '/dashboard/ai',
         i18nKey: 'ai',

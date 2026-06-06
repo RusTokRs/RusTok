@@ -11,8 +11,8 @@ use uuid::Uuid;
 use rustok_core::{simple_hash, DomainEvent};
 
 use crate::dto::{
-    SeoIndexCursorRecord, SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayResultRecord,
-    SeoIndexReplayMode,
+    SeoIndexCursorRecord, SeoIndexDeliveryStatusRecord, SeoIndexFailureSampleRecord,
+    SeoIndexRepairReplayResultRecord, SeoIndexReplayMode,
 };
 use crate::entities::{seo_event_delivery, seo_index_cursor, seo_index_delivery};
 use crate::{SeoError, SeoResult};
@@ -407,7 +407,7 @@ impl SeoService {
             ..SeoIndexDeliveryStatusRecord::default()
         };
 
-        for delivery in deliveries {
+        for delivery in &deliveries {
             match delivery.status.as_str() {
                 INDEX_DELIVERY_STATUS_PENDING => summary.pending_count += 1,
                 INDEX_DELIVERY_STATUS_SENT => summary.sent_count += 1,
@@ -419,6 +419,29 @@ impl SeoService {
                 _ => {}
             }
         }
+
+        let mut failure_samples = deliveries
+            .into_iter()
+            .filter(|delivery| {
+                matches!(
+                    delivery.status.as_str(),
+                    INDEX_DELIVERY_STATUS_FAILED | INDEX_DELIVERY_STATUS_DEAD_LETTER
+                )
+            })
+            .collect::<Vec<_>>();
+        failure_samples.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        summary.failure_samples = failure_samples
+            .into_iter()
+            .take(8)
+            .map(|delivery| SeoIndexFailureSampleRecord {
+                target_type: delivery.target_type,
+                target_id: delivery.target_id,
+                status: delivery.status,
+                attempt_count: delivery.attempt_count,
+                last_error: delivery.last_error,
+                updated_at: delivery.updated_at.with_timezone(&Utc),
+            })
+            .collect();
 
         let mut cursor_query = seo_index_cursor::Entity::find()
             .filter(seo_index_cursor::Column::TenantId.eq(tenant_id));
@@ -2137,11 +2160,71 @@ mod tests {
         assert_eq!(summary.retry_count, 0);
         assert_eq!(summary.failed_count, 0);
         assert_eq!(summary.dead_letter_count, 0);
+        assert!(summary.failure_samples.is_empty());
         assert_eq!(summary.cursors.len(), 1);
         assert_eq!(
             summary.cursors[0].replay_mode,
             SeoIndexReplayMode::NotStarted
         );
+    }
+
+    #[tokio::test]
+    async fn index_delivery_status_includes_dead_letter_failure_samples() {
+        let db = test_db().await;
+        run_migrations(&db).await;
+        let transport = Arc::new(FlakyIndexTransport::with_reindex_failures(16));
+        let service = service_with_transport(db.clone(), transport);
+
+        let tenant_id = Uuid::new_v4();
+        service
+            .publish_seo_meta_upserted_event(
+                tenant_id,
+                "product",
+                Uuid::new_v4(),
+                "en-US",
+                "explicit",
+                None,
+            )
+            .await;
+
+        let summary = service
+            .index_delivery_status(tenant_id, Some("product"))
+            .await
+            .expect("index delivery status should load");
+
+        assert_eq!(summary.dead_letter_count, 1);
+        assert_eq!(summary.failure_samples.len(), 1);
+        assert_eq!(summary.failure_samples[0].target_type, "product");
+        assert_eq!(
+            summary.failure_samples[0].status,
+            INDEX_DELIVERY_STATUS_DEAD_LETTER
+        );
+        assert!(summary.failure_samples[0].last_error.is_some());
+    }
+
+    #[test]
+    fn normalize_index_target_type_accepts_supported_values() {
+        assert_eq!(
+            normalize_index_target_type(Some(" content ")).expect("content target type"),
+            Some("content".to_string())
+        );
+        assert_eq!(
+            normalize_index_target_type(Some("PRODUCT")).expect("product target type"),
+            Some("product".to_string())
+        );
+        assert_eq!(
+            normalize_index_target_type(Some("   ")).expect("empty target type"),
+            None
+        );
+    }
+
+    #[test]
+    fn normalize_index_target_type_rejects_unknown_values() {
+        let err = normalize_index_target_type(Some("forum"))
+            .expect_err("unsupported target type should fail");
+        assert!(err
+            .to_string()
+            .contains("unsupported index target_type `forum`; expected `content` or `product`"));
     }
 
     #[test]

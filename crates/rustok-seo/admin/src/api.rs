@@ -9,7 +9,8 @@ use rustok_seo::SeoTargetCapabilityKind;
 use rustok_seo::{
     SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
     SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoBulkSelectionInput,
-    SeoBulkSelectionPreviewRecord, SeoDiagnosticsSummaryRecord, SeoModuleSettings,
+    SeoBulkSelectionPreviewRecord, SeoDiagnosticsSummaryRecord, SeoIndexDeliveryStatusRecord,
+    SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord, SeoModuleSettings,
     SeoRedirectInput, SeoRedirectRecord, SeoRobotsPreviewRecord, SeoSitemapStatusRecord,
     SeoTargetRegistryEntry,
 };
@@ -111,6 +112,20 @@ pub async fn fetch_bulk_job(job_id: String) -> Result<Option<SeoBulkJobRecord>, 
     seo_bulk_job_native(job_id).await.map_err(Into::into)
 }
 
+pub async fn fetch_index_delivery_status(
+    target_type: Option<String>,
+) -> Result<SeoIndexDeliveryStatusRecord, ApiError> {
+    let target_type = normalize_index_target_type(target_type).map_err(ApiError::ServerFn)?;
+    seo_index_tracking_native(target_type).await.map_err(Into::into)
+}
+
+pub async fn run_index_repair_replay(
+    input: SeoIndexRepairReplayInput,
+) -> Result<SeoIndexRepairReplayResultRecord, ApiError> {
+    let input = normalize_index_repair_replay_input(input).map_err(ApiError::ServerFn)?;
+    seo_index_repair_replay_native(input).await.map_err(Into::into)
+}
+
 pub async fn queue_bulk_apply(input: SeoBulkApplyInput) -> Result<SeoBulkJobRecord, ApiError> {
     let input = normalize_preview_bulk_apply_input(input);
     seo_queue_bulk_apply_native(input).await.map_err(Into::into)
@@ -121,6 +136,30 @@ fn normalize_preview_bulk_apply_input(mut input: SeoBulkApplyInput) -> SeoBulkAp
         input.publish_after_write = false;
     }
     input
+}
+
+fn normalize_index_target_type(target_type: Option<String>) -> Result<Option<String>, String> {
+    let Some(value) = target_type else {
+        return Ok(None);
+    };
+
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+
+    match normalized.as_str() {
+        "content" | "product" => Ok(Some(normalized)),
+        _ => Err("Index target type must be `content` or `product`".to_string()),
+    }
+}
+
+fn normalize_index_repair_replay_input(
+    mut input: SeoIndexRepairReplayInput,
+) -> Result<SeoIndexRepairReplayInput, String> {
+    input.target_type = normalize_index_target_type(input.target_type)?;
+    input.limit = input.limit.clamp(1, 500);
+    Ok(input)
 }
 
 pub async fn queue_bulk_import(input: SeoBulkImportInput) -> Result<SeoBulkJobRecord, ApiError> {
@@ -678,12 +717,74 @@ async fn seo_queue_bulk_export_native(
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "seo/index-tracking")]
+async fn seo_index_tracking_native(
+    target_type: Option<String>,
+) -> Result<SeoIndexDeliveryStatusRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        service
+            .index_delivery_status(tenant.id, target_type.as_deref())
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = target_type;
+        Err(ServerFnError::new(
+            "seo/index-tracking requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "seo/index-repair-replay")]
+async fn seo_index_repair_replay_native(
+    input: SeoIndexRepairReplayInput,
+) -> Result<SeoIndexRepairReplayResultRecord, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (service, auth, tenant) = seo_service_from_context().await?;
+        require_permission(
+            &auth,
+            &[rustok_core::Permission::SEO_MANAGE],
+            "seo:manage required",
+        )?;
+
+        service
+            .run_index_repair_replay(
+                tenant.id,
+                input.target_type.as_deref(),
+                input.limit.clamp(1, 500) as usize,
+                input.replay_historical,
+            )
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "seo/index-repair-replay requires the `ssr` feature",
+        ))
+    }
+}
+
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{persist_seo_settings, require_permission, MODULE_SLUG};
+    use super::{
+        normalize_index_repair_replay_input, normalize_index_target_type, persist_seo_settings,
+        require_permission, MODULE_SLUG,
+    };
     use rustok_api::AuthContext;
     use rustok_core::Permission;
-    use rustok_seo::SeoModuleSettings;
+    use rustok_seo::{SeoIndexRepairReplayInput, SeoModuleSettings};
     use rustok_tenant::entities::tenant_module;
     use sea_orm::prelude::Uuid;
     use sea_orm::{
@@ -881,5 +982,42 @@ mod tests {
             persisted_settings.x_default_locale.as_deref(),
             Some("en-US")
         );
+    }
+
+    #[test]
+    fn normalize_index_target_type_accepts_supported_values() {
+        assert_eq!(
+            normalize_index_target_type(Some(" content ".to_string())).expect("content target"),
+            Some("content".to_string())
+        );
+        assert_eq!(
+            normalize_index_target_type(Some("PRODUCT".to_string())).expect("product target"),
+            Some("product".to_string())
+        );
+        assert_eq!(
+            normalize_index_target_type(Some("   ".to_string())).expect("empty target"),
+            None
+        );
+    }
+
+    #[test]
+    fn normalize_index_target_type_rejects_unknown_values() {
+        let err = normalize_index_target_type(Some("forum".to_string()))
+            .expect_err("unsupported target type must fail");
+        assert_eq!(err, "Index target type must be `content` or `product`");
+    }
+
+    #[test]
+    fn normalize_index_repair_input_clamps_limit_and_normalizes_target_type() {
+        let input = normalize_index_repair_replay_input(SeoIndexRepairReplayInput {
+            target_type: Some(" PRODUCT ".to_string()),
+            limit: 700,
+            replay_historical: true,
+        })
+        .expect("input should normalize");
+
+        assert_eq!(input.target_type.as_deref(), Some("product"));
+        assert_eq!(input.limit, 500);
+        assert!(input.replay_historical);
     }
 }

@@ -480,6 +480,16 @@ pub struct SeoIndexCursorRecord {
     pub replay_completed_at: Option<DateTime<Utc>>,
 }
 
+#[derive(SimpleObject, Serialize, Deserialize, Debug, Clone)]
+pub struct SeoIndexFailureSampleRecord {
+    pub target_type: String,
+    pub target_id: Option<Uuid>,
+    pub status: String,
+    pub attempt_count: i32,
+    pub last_error: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(SimpleObject, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SeoIndexDeliveryStatusRecord {
     pub target_type: Option<String>,
@@ -489,6 +499,7 @@ pub struct SeoIndexDeliveryStatusRecord {
     pub failed_count: i32,
     pub dead_letter_count: i32,
     pub cursors: Vec<SeoIndexCursorRecord>,
+    pub failure_samples: Vec<SeoIndexFailureSampleRecord>,
 }
 
 #[derive(InputObject, Serialize, Deserialize, Debug, Clone)]

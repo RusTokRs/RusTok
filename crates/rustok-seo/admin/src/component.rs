@@ -7,11 +7,12 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::model::{
-    SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoRedirectForm, SeoSettingsForm,
+    SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm, SeoRedirectForm,
+    SeoSettingsForm,
 };
 use crate::sections::{
     SeoAdminHeader, SeoAdminTabs, SeoBulkPane, SeoBusyFooter, SeoDefaultsPane, SeoDiagnosticsPane,
-    SeoRedirectsPane, SeoRobotsPane, SeoSitemapsPane,
+    SeoIndexPane, SeoRedirectsPane, SeoRobotsPane, SeoSitemapsPane,
 };
 use rustok_seo::SeoBulkFieldPatchMode;
 
@@ -26,6 +27,7 @@ pub fn SeoAdmin() -> impl IntoView {
     let settings_form = RwSignal::new(SeoSettingsForm::default());
     let bulk_filter_form = RwSignal::new(SeoBulkFilterForm::new(route_context.locale.as_deref()));
     let bulk_action_form = RwSignal::new(SeoBulkActionForm::default());
+    let index_replay_form = RwSignal::new(SeoIndexReplayForm::default());
     let bulk_selected_ids = RwSignal::new(Vec::<Uuid>::new());
     let bulk_selection_preview = RwSignal::new(None::<i32>);
     let busy_key = RwSignal::new(Option::<String>::None);
@@ -33,6 +35,7 @@ pub fn SeoAdmin() -> impl IntoView {
     let redirects_nonce = RwSignal::new(0_u64);
     let settings_nonce = RwSignal::new(0_u64);
     let sitemap_nonce = RwSignal::new(0_u64);
+    let index_nonce = RwSignal::new(0_u64);
     let bulk_nonce = RwSignal::new(0_u64);
     let bulk_jobs_nonce = RwSignal::new(0_u64);
     let diagnostics_locale = route_context.locale.clone();
@@ -60,6 +63,20 @@ pub fn SeoAdmin() -> impl IntoView {
         move || sitemap_nonce.get(),
         move |_| async move { api::fetch_sitemap_status().await },
     );
+    let index_status = Resource::new(
+        move || (index_nonce.get(), index_replay_form.get().target_type),
+        move |(_, target_type)| async move {
+            let target_type = {
+                let trimmed = target_type.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            };
+            api::fetch_index_delivery_status(target_type).await
+        },
+    );
     let bulk_items = Resource::new(
         move || bulk_nonce.get(),
         move |_| async move {
@@ -82,7 +99,7 @@ pub fn SeoAdmin() -> impl IntoView {
             .get()
             .as_deref()
             .and_then(SeoAdminTab::from_str)
-            .unwrap_or(SeoAdminTab::Redirects)
+            .unwrap_or(SeoAdminTab::Index)
     });
 
     Effect::new(move |_| {
@@ -175,6 +192,82 @@ pub fn SeoAdmin() -> impl IntoView {
                 Ok(_) => {
                     status_message.set(Some("Sitemaps generated".to_string()));
                     sitemap_nonce.update(|value| *value += 1);
+                }
+                Err(err) => status_message.set(Some(err.to_string())),
+            }
+            busy_key.set(None);
+        });
+    });
+
+    let refresh_index = Callback::new(move |_| {
+        index_nonce.update(|value| *value += 1);
+    });
+
+    let run_index_repair_only = Callback::new(move |_| {
+        status_message.set(None);
+        let input = match index_replay_form.get_untracked().build_input(false) {
+            Ok(input) => input,
+            Err(err) => {
+                status_message.set(Some(err));
+                return;
+            }
+        };
+        if !index_replay_form.get_untracked().confirm_repair_only {
+            status_message.set(Some(
+                "Confirm repair-only execution before running the operation.".to_string(),
+            ));
+            return;
+        }
+
+        busy_key.set(Some("index-repair-only".to_string()));
+        spawn_local(async move {
+            match api::run_index_repair_replay(input).await {
+                Ok(result) => {
+                    status_message.set(Some(format!(
+                        "Repair completed: repaired={} replayed={} scanned={}.",
+                        result.repaired_count,
+                        result.replayed_count,
+                        result.historical_events_scanned
+                    )));
+                    index_nonce.update(|value| *value += 1);
+                }
+                Err(err) => status_message.set(Some(err.to_string())),
+            }
+            busy_key.set(None);
+        });
+    });
+
+    let run_index_repair_replay = Callback::new(move |_| {
+        status_message.set(None);
+        let input = match index_replay_form.get_untracked().build_input(true) {
+            Ok(input) => input,
+            Err(err) => {
+                status_message.set(Some(err));
+                return;
+            }
+        };
+        if !index_replay_form.get_untracked().confirm_replay_historical {
+            status_message.set(Some(
+                "Confirm historical replay execution before running the operation.".to_string(),
+            ));
+            return;
+        }
+
+        busy_key.set(Some("index-repair-replay".to_string()));
+        spawn_local(async move {
+            match api::run_index_repair_replay(input).await {
+                Ok(result) => {
+                    status_message.set(Some(format!(
+                        "Replay completed: repaired={} replayed={} scanned={} run_id={}",
+                        result.repaired_count,
+                        result.replayed_count,
+                        result.historical_events_scanned,
+                        result
+                            .replay_run_id
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| "n/a".to_string())
+                    )));
+                    index_nonce.update(|value| *value += 1);
                 }
                 Err(err) => status_message.set(Some(err.to_string())),
             }
@@ -346,6 +439,18 @@ pub fn SeoAdmin() -> impl IntoView {
                 active_tab=active_tab
                 on_select=select_tab
             />
+
+            <Show when=move || active_tab.get() == SeoAdminTab::Index>
+                <SeoIndexPane
+                    ui_locale=ui_locale.get_value()
+                    index_status=index_status
+                    replay_form=index_replay_form
+                    busy_key=busy_key
+                    on_refresh=refresh_index
+                    on_run_repair_only=run_index_repair_only
+                    on_run_repair_replay=run_index_repair_replay
+                />
+            </Show>
 
             <Show when=move || active_tab.get() == SeoAdminTab::Bulk>
                 <SeoBulkPane

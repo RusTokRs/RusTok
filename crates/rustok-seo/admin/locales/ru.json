@@ -4,12 +4,17 @@
     "title": "SEO Hub",
     "subtitle": "Кросс-модульная control-plane поверхность для tenant defaults, bulk jobs, redirects, robots и sitemaps. Entity SEO authoring живёт в owner-module редакторах.",
     "tab": {
+      "index": "Индекс",
       "bulk": "Bulk",
       "redirects": "Редиректы",
       "sitemaps": "Sitemaps",
       "robots": "Robots",
       "defaults": "Defaults",
       "diagnostics": "Diagnostics"
+    },
+    "index": {
+      "title": "Трекинг index delivery",
+      "subtitle": "Operator-facing observability и remediation поверхность для SEO -> index delivery потока."
     },
     "bulk": {
       "title": "Bulk Editor",

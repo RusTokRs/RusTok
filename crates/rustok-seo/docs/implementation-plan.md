@@ -5,8 +5,8 @@
 ## Execution checkpoint
 
 - Current phase: `phase_d6_admin_integrations_observability`
-- Last checkpoint: Закрыт Batch D5: index tracking/replay foundation завершён end-to-end (`seo_index_deliveries`, `seo_index_cursors`, forward-only replay mode, `SeoService::run_index_repair_replay(...)`, GraphQL `seoIndexDeliveryStatus` + `runSeoIndexRepairReplay`, REST `/api/seo/index/tracking` + `/api/seo/index/repair-replay`).
-- Next step: Закрыть D6.1/D6.2 как один execution пакет — operator-facing observability/remediation UI в `rustok-seo-admin` + reusable widgets в `rustok-seo-admin-support` + host wiring (`apps/next-admin`, owner modules).
+- Last checkpoint: Закрыт grouped batch D6.1+D6.3+D6.5 (v1 additive): `rustok-seo-admin` получил index delivery observability pane (summary/cursor timeline/failure drilldown + explicit repair/replay confirmations), Leptos server-function transport для index tracking/replay, DTO расширен `failure_samples`, `apps/next-admin` получил operator route `/dashboard/seo` с replay actions, semantic error handling (`BAD_USER_INPUT`/`PERMISSION_DENIED`/`NOT_FOUND`) и telemetry hooks (`seo-operator-action`).
+- Next step: Закрыть D6.2/D6.4 как единый execution пакет — reusable remediation widgets в `rustok-seo-admin-support` + owner-module wiring (`pages/product/blog/forum`) без переноса ownership экранов в central SEO hub.
 - Open blockers:
   - Нужен согласованный UX flow replay/remediation между `rustok-seo-admin`, `rustok-seo-admin-support` и owner-module admin surfaces (`pages/product/blog/forum`).
   - Для D7 route parity в `apps/next-frontend` нужен явный route ownership список beyond home route.
@@ -198,25 +198,25 @@
   - [x] Добавить control-plane transport parity для tracking/replay: GraphQL + REST.
 
 - [ ] **Batch D6 — Admin integrations (Leptos admin + next-admin + owner panels)**
-  - [ ] **D6.1 `rustok-seo/admin` observability surface**
-    - [ ] Добавить index delivery summary card (`pending/sent/retry/failed/dead_letter`) с tenant/target filter.
-    - [ ] Добавить cursor timeline card (`initial/high_water/last_repair/replay timestamps`) с forward-only replay badge.
-    - [ ] Добавить operator actions: `repair_only` и `repair+historical_replay` с explicit confirmation UX.
-    - [ ] Добавить failure drilldown (last_error sample + retry counters + dead-letter hints).
+  - [x] **D6.1 `rustok-seo/admin` observability surface**
+    - [x] Добавить index delivery summary card (`pending/sent/retry/failed/dead_letter`) с tenant/target filter.
+    - [x] Добавить cursor timeline card (`initial/high_water/last_repair/replay timestamps`) с forward-only replay badge.
+    - [x] Добавить operator actions: `repair_only` и `repair+historical_replay` с explicit confirmation UX.
+    - [x] Добавить failure drilldown (last_error sample + retry counters + dead-letter hints).
   - [ ] **D6.2 `rustok-seo-admin-support` reusable widgets**
-    - [ ] Вынести shared delivery status badges/cards, пригодные для `pages/product/blog/forum`.
+
     - [ ] Добавить typed remediation mapping (`issue_code -> action`), включая `run_reindex` и `open_bulk_job`.
     - [ ] Добавить общий error/permission/empty-state contract для SEO control-plane виджетов.
-  - [ ] **D6.3 host wiring (`apps/next-admin`)**
-    - [ ] Подключить index tracking/replay API в operator UI (используя существующий REST-first helper).
-    - [ ] Добавить semantic error handling для replay flows (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`).
-    - [ ] Добавить telemetry hooks (action started/success/failure) для replay/remediation операций.
+  - [x] **D6.3 host wiring (`apps/next-admin`)**
+    - [x] Подключить index tracking/replay API в operator UI (используя существующий REST-first helper).
+    - [x] Добавить semantic error handling для replay flows (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`).
+    - [x] Добавить telemetry hooks (action started/success/failure) для replay/remediation операций.
   - [ ] **D6.4 owner-module wiring (`pages/product/blog/forum`)**
-    - [ ] Подключить reusable remediation hints без переноса ownership entity screens в central SEO hub.
+
     - [ ] Проверить locale contract: использовать host effective locale, без package-local fallback цепочек.
-  - [ ] **D6.5 transport/contract hardening**
-    - [ ] Зафиксировать DTO limits/validation для replay input (`limit 1..500`, `target_type content|product`).
-    - [ ] Добавить anti-regression checks на idempotency key invariants после operator replay.
+  - [x] **D6.5 transport/contract hardening**
+    - [x] Зафиксировать DTO limits/validation для replay input (`limit 1..500`, `target_type content|product`).
+    - [x] Добавить anti-regression checks на idempotency key invariants после operator replay.
 
 - [ ] **Batch D7 — Storefront + Next frontend runtime parity**
   - [ ] **D7.1 Rust storefront uniform consume flow**
