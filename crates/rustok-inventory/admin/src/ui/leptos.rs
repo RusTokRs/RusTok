@@ -6,8 +6,8 @@ use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     apply_variant_quantity_update, apply_variant_reservation_release_update,
-    apply_variant_reservation_update, inventory_health_state, parse_reserve_quantity,
-    parse_set_quantity, summarize_inventory, InventoryHealthState,
+    apply_variant_reservation_update, inventory_health_state, parse_availability_quantity,
+    parse_reserve_quantity, parse_set_quantity, summarize_inventory, InventoryHealthState,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -168,10 +168,15 @@ pub fn InventoryAdmin() -> impl IntoView {
         "inventory.error.invalidQuantity",
         "Quantity must be a whole number.",
     );
-    let reserve_quantity_invalid_label = t(
+    let reservation_quantity_invalid_label = t(
         ui_locale.as_deref(),
-        "inventory.error.invalidReserveQuantity",
-        "Reserve quantity must be a non-negative whole number.",
+        "inventory.error.invalidReservationQuantity",
+        "Reservation quantity must be a non-negative whole number.",
+    );
+    let availability_quantity_invalid_label = t(
+        ui_locale.as_deref(),
+        "inventory.error.invalidAvailabilityQuantity",
+        "Availability quantity must be a non-negative whole number.",
     );
     let set_quantity_error_label = t(
         ui_locale.as_deref(),
@@ -488,9 +493,9 @@ pub fn InventoryAdmin() -> impl IntoView {
                                             let release_bootstrap_loading_label = set_quantity_bootstrap_loading_label.clone();
                                             let availability_bootstrap_loading_label = set_quantity_bootstrap_loading_label.clone();
                                             let invalid_quantity_label = set_quantity_invalid_label.clone();
-                                            let invalid_reserve_quantity_label = reserve_quantity_invalid_label.clone();
-                                            let invalid_release_quantity_label = reserve_quantity_invalid_label.clone();
-                                            let invalid_availability_quantity_label = reserve_quantity_invalid_label.clone();
+                                            let invalid_reserve_quantity_label = reservation_quantity_invalid_label.clone();
+                                            let invalid_release_quantity_label = reservation_quantity_invalid_label.clone();
+                                            let invalid_availability_quantity_label = availability_quantity_invalid_label.clone();
                                             let save_error_label = set_quantity_error_label.clone();
                                             let decrease_error_label = set_quantity_error_label.clone();
                                             let increase_error_label = set_quantity_error_label.clone();
@@ -660,7 +665,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                             set_notice.set(None);
                                                                             return;
                                                                         };
-                                                                        let quantity = match parse_reserve_quantity(quantity_input.get_untracked().as_str()) {
+                                                                        let quantity = match parse_availability_quantity(quantity_input.get_untracked().as_str()) {
                                                                             Ok(value) => value,
                                                                             Err(_) => {
                                                                                 set_error.set(Some(invalid_availability_quantity_label.clone()));

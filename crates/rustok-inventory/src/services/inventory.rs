@@ -16,6 +16,8 @@ use rustok_commerce_foundation::dto::AdjustInventoryInput;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
+use super::policy::inventory_policy_allows_backorder;
+
 pub struct InventoryService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -72,7 +74,7 @@ impl InventoryReservationWriteResult {
         Self {
             reserved_quantity,
             available_quantity,
-            in_stock: available_quantity > 0 || inventory_policy == "continue",
+            in_stock: available_quantity > 0 || inventory_policy_allows_backorder(inventory_policy),
         }
     }
 }
@@ -86,7 +88,7 @@ impl InventoryReservationReleaseWriteResult {
         Self {
             released_quantity,
             available_quantity,
-            in_stock: available_quantity > 0 || inventory_policy == "continue",
+            in_stock: available_quantity > 0 || inventory_policy_allows_backorder(inventory_policy),
         }
     }
 }
@@ -167,7 +169,7 @@ impl InventoryService {
             .await?;
         let new_quantity = old_quantity + input.adjustment;
 
-        if new_quantity < 0 && variant.inventory_policy == "deny" {
+        if new_quantity < 0 && !inventory_policy_allows_backorder(&variant.inventory_policy) {
             return Err(CommerceError::InsufficientInventory {
                 requested: -input.adjustment,
                 available: old_quantity,
@@ -249,7 +251,7 @@ impl InventoryService {
             .available_quantity(&txn, state.inventory_item.id)
             .await?;
 
-        if quantity < 0 && variant.inventory_policy == "deny" {
+        if quantity < 0 && !inventory_policy_allows_backorder(&variant.inventory_policy) {
             return Err(CommerceError::InsufficientInventory {
                 requested: -quantity,
                 available: old_quantity,
@@ -308,7 +310,7 @@ impl InventoryService {
 
         let variant = self.load_variant(&self.db, tenant_id, variant_id).await?;
 
-        if variant.inventory_policy == "continue" {
+        if inventory_policy_allows_backorder(&variant.inventory_policy) {
             return Ok(true);
         }
 
@@ -362,7 +364,7 @@ impl InventoryService {
             .available_quantity(&txn, state.inventory_item.id)
             .await?;
 
-        if variant.inventory_policy != "continue" && available < quantity {
+        if !inventory_policy_allows_backorder(&variant.inventory_policy) && available < quantity {
             return Err(CommerceError::InsufficientInventory {
                 requested: quantity,
                 available,
