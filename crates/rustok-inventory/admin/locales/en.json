@@ -1,4 +1,5 @@
 {
+  "inventory.action.checkAvailability": "Check availability",
   "inventory.action.decreaseOne": "Decrease by 1",
   "inventory.action.increaseOne": "Increase by 1",
   "inventory.action.open": "Open",
@@ -16,9 +17,10 @@
   "inventory.detail.empty": "Open a product to inspect variant stock, low-stock signals and backorder policy from the inventory route.",
   "inventory.detail.subtitle": "Inspect stock health, backorder policy and per-variant visibility from the inventory-owned route.",
   "inventory.detail.title": "Inventory Detail",
-  "inventory.detail.transportGap": "Dedicated inventory set/adjust/reserve quantity transport is available for targeted stock corrections and reservation flows; remaining inventory mutations are still being split from the umbrella ecommerce surface.",
+  "inventory.detail.transportGap": "Dedicated inventory set/adjust/reserve/check-availability transport is available for targeted stock corrections, validation and reservation flows; remaining inventory mutations are still being split from the umbrella ecommerce surface.",
   "inventory.detail.untitled": "Untitled",
   "inventory.error.bootstrapLoading": "Bootstrap is still loading.",
+  "inventory.error.checkAvailability": "Failed to check variant availability",
   "inventory.error.invalidQuantity": "Quantity must be a whole number.",
   "inventory.error.invalidReserveQuantity": "Reserve quantity must be a non-negative whole number.",
   "inventory.error.loadProduct": "Failed to load inventory detail",
@@ -36,6 +38,8 @@
   "inventory.list.subtitle": "Search the catalog and open a product to inspect variant-level stock data owned by the inventory boundary.",
   "inventory.list.title": "Inventory Feed",
   "inventory.loading": "Loading inventory feed...",
+  "inventory.notice.available": "Requested quantity is available",
+  "inventory.notice.unavailable": "Requested quantity is not available",
   "inventory.section.variants": "Variant stock",
   "inventory.stat.backorder": "Backorder",
   "inventory.stat.backorderHint": "Variants that continue selling below zero.",
@@ -52,6 +56,6 @@
   "inventory.status.active": "Active",
   "inventory.status.archived": "Archived",
   "inventory.status.draft": "Draft",
-  "inventory.subtitle": "Module-owned inventory surface for stock visibility, low-stock triage, variant health signals, targeted set-quantity corrections, +/-1 adjustments and reserve quantity flows while remaining inventory mutations are still being split from the umbrella transport.",
+  "inventory.subtitle": "Module-owned inventory surface for stock visibility, low-stock triage, variant health signals, targeted set-quantity corrections, +/-1 adjustments, reserve quantity and availability-check flows while remaining inventory mutations are still being split from the umbrella transport.",
   "inventory.title": "Inventory Control"
 }

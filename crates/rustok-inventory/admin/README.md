@@ -24,7 +24,7 @@ Leptos admin UI package for the `rustok-inventory` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Reads inventory product, variant, stock-health, reservation-aware available quantity, and localized-copy fields through the inventory-owned facade; native server functions are the primary path, while the underlying commerce GraphQL adapter is transitional, limited to native-unavailable fallback, and must stay private to the package transport boundary.
-- Writes targeted variant stock quantities through the dedicated native inventory facade from the variant detail set-quantity and +/-1 adjustment controls; reserve-quantity is also available as a native inventory-owned write facade for reservation flows, and check-availability is exposed as a native inventory-owned validation facade. These paths return typed stock/reservation/availability results, have no GraphQL fallback and enforce tenant/permission checks server-side.
+- Writes targeted variant stock quantities through the dedicated native inventory facade from the variant detail set-quantity and +/-1 adjustment controls; reserve-quantity is also available as a native inventory-owned write facade for reservation flows, and check-availability is exposed from the detail UI as a native inventory-owned validation facade. These paths return typed stock/reservation/availability results, have no GraphQL fallback and enforce tenant/permission checks server-side.
 - Reads the effective UI locale from `UiRouteContext.locale`; inventory detail cards resolve localized product copy against that host-owned locale and only fall back when that locale is missing.
 
 ## Transitional adapter removal criteria

@@ -1,4 +1,5 @@
 {
+  "inventory.action.checkAvailability": "Проверить доступность",
   "inventory.action.decreaseOne": "Уменьшить на 1",
   "inventory.action.increaseOne": "Увеличить на 1",
   "inventory.action.open": "Открыть",
@@ -16,9 +17,10 @@
   "inventory.detail.empty": "Откройте товар, чтобы посмотреть остатки по variant, low-stock сигналы и backorder policy из inventory route.",
   "inventory.detail.subtitle": "Смотрите stock health, backorder policy и видимость по variant из module-owned inventory route.",
   "inventory.detail.title": "Детали inventory",
-  "inventory.detail.transportGap": "Dedicated inventory transport для set/adjust/reserve quantity уже доступен для точечных корректировок остатков и reservation flows; остальные inventory mutations ещё выделяются из umbrella ecommerce surface.",
+  "inventory.detail.transportGap": "Dedicated inventory transport для set/adjust/reserve/check-availability уже доступен для точечных корректировок, validation и reservation flows; остальные inventory mutations ещё выделяются из umbrella ecommerce surface.",
   "inventory.detail.untitled": "Без названия",
   "inventory.error.bootstrapLoading": "Bootstrap ещё загружается.",
+  "inventory.error.checkAvailability": "Не удалось проверить доступность варианта",
   "inventory.error.invalidQuantity": "Количество должно быть целым числом.",
   "inventory.error.invalidReserveQuantity": "Reserve quantity должно быть неотрицательным целым числом.",
   "inventory.error.loadProduct": "Не удалось загрузить детали inventory",
@@ -36,6 +38,8 @@
   "inventory.list.subtitle": "Ищите товары каталога и открывайте их, чтобы смотреть variant-level stock data, принадлежащие inventory boundary.",
   "inventory.list.title": "Inventory feed",
   "inventory.loading": "Загрузка inventory feed...",
+  "inventory.notice.available": "Запрошенное количество доступно",
+  "inventory.notice.unavailable": "Запрошенное количество недоступно",
   "inventory.section.variants": "Остатки по variant",
   "inventory.stat.backorder": "Backorder",
   "inventory.stat.backorderHint": "Варианты, которые продолжают продаваться ниже нуля.",
@@ -52,6 +56,6 @@
   "inventory.status.active": "Активен",
   "inventory.status.archived": "Архив",
   "inventory.status.draft": "Черновик",
-  "inventory.subtitle": "Module-owned inventory surface для видимости остатков, low-stock triage, variant health signals, точечных set-quantity корректировок, +/-1 adjustments и reserve quantity flows, пока оставшиеся inventory mutations выделяются из umbrella transport.",
+  "inventory.subtitle": "Module-owned inventory surface для видимости остатков, low-stock triage, variant health signals, точечных set-quantity корректировок, +/-1 adjustments, reserve quantity и availability-check flows, пока оставшиеся inventory mutations выделяются из umbrella transport.",
   "inventory.title": "Inventory Control"
 }
