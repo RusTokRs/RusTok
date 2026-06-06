@@ -336,6 +336,7 @@ fn native_write_path_returns_quantity_contract_not_bare_integer() {
         "pub struct InventoryQuantityWriteResult",
         "pub quantity: i32",
         "pub in_stock: bool",
+        r#"#[serde(rename = "inStock")]"#,
     ] {
         assert!(
             model.contains(marker),

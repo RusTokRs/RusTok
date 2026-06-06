@@ -109,7 +109,25 @@ pub struct InventoryQuantityWriteResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{InventoryProductDetail, InventoryProductList};
+    use super::{InventoryProductDetail, InventoryProductList, InventoryQuantityWriteResult};
+
+    #[test]
+    fn quantity_write_result_keeps_native_endpoint_wire_shape() {
+        let value = serde_json::json!({
+            "quantity": 3,
+            "inStock": false
+        });
+
+        let result: InventoryQuantityWriteResult = serde_json::from_value(value.clone())
+            .expect("inventory quantity write result compatibility snapshot should deserialize");
+
+        assert_eq!(result.quantity, 3);
+        assert!(!result.in_stock);
+
+        let serialized = serde_json::to_value(&result)
+            .expect("inventory quantity write result compatibility snapshot should serialize");
+        assert_eq!(serialized, value);
+    }
 
     #[test]
     fn product_list_read_model_keeps_commerce_graphql_compatibility_shape() {

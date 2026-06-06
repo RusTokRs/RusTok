@@ -25,6 +25,7 @@ pub struct InventoryService {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InventoryQuantityWriteResult {
     pub quantity: i32,
+    #[serde(rename = "inStock")]
     pub in_stock: bool,
 }
 
