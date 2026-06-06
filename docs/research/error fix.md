@@ -17,13 +17,13 @@
 5. **Хрупкая агрегация миграций**: серверный migrator вручную собирает миграции множества crate-ов, но dependency descriptors агрегируются только из `rustok_product`.
 6. **CI не закрывает migration-safety и runtime-context invariants отдельными gates**: есть сильные базовые проверки, но нет явного обязательного smoke job на миграции с нуля / incremental apply / dependency graph runtime invariants.
 
-### Обновление реализации на 2026-06-01
+### Обновление реализации на 2026-06-05
 
 - Wave 1 evidence по `pages -> [content, page_builder]`, Wave 2 channel request context и Wave 3 TTL-cache tenant locale policy уже отражены в коде текущей ветки.
 - В рамках продолжения Wave 4 добавлен первый migration-safety baseline: module-owned `migration_dependencies()` для известных cross-module FK/order boundaries (`channel -> auth`, `pricing/inventory -> product variants`, `commerce collections/categories -> product`, `blog/forum -> taxonomy`) и агрегация этих descriptors в server migrator.
 - Добавлен локальный PostgreSQL smoke `scripts/verify/verify-migration-smoke.sh`: он запускает ignored integration test, который сам создаёт временную БД без локального `psql`, применяет мигратор from-zero и проверяет representative module tables.
-- Начат Wave 5: inventory admin read-side теперь идёт через inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а прямой доступ к текущему commerce GraphQL contract ограничен transitional adapter-ом с compatibility tests на минимальную read model/normalized variables/facade request builders/error mapping и boundary tests на GraphQL isolation.
-- Открытым остатком Wave 4 остаётся стабилизация PostgreSQL smoke на реальном окружении и последующее вынесение его в отдельный CI job; для Wave 5 остаётся выделить dedicated inventory transport/mutations вместо transitional adapter-а.
+- Wave 5 продвинут малым write-transport slice: inventory admin read-side остаётся на inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а dedicated native endpoints `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` теперь идут через inventory-owned API/native facade без GraphQL fallback, вызывают inventory-owned service methods после tenant/permission checks, а inventory detail UI получил targeted set-quantity и +/-1 adjustment controls с локальной integer-валидацией и optimistic detail refresh.
+- Открытым остатком Wave 4 остаётся стабилизация PostgreSQL smoke на реальном окружении и последующее вынесение его в отдельный CI job; для Wave 5 остаётся расширить parity coverage и закрыть оставшиеся inventory mutations вместо transitional adapter-а.
 
 ## Проверенные факты
 
@@ -218,7 +218,7 @@ flowchart LR
 
 **Цель:** убрать прямую зависимость inventory admin package от commerce GraphQL как от фактического backend contract.
 
-**Статус на 2026-06-02:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL adapter; backend crate дополнительно экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side, а admin package подключает primary native/server-function read path к этому service. Остаётся расширить parity coverage и вынести dedicated inventory mutations/write transport, сохранив GraphQL как native-unavailable compatibility fallback до удаления adapter-а.
+**Статус на 2026-06-05:** admin package уже имеет inventory-owned core/api/transport/ui boundary и transitional commerce GraphQL read adapter; backend crate экспортирует `AdminInventoryReadService`/DTO для tenant-scoped product/variant/price/translations read-side, admin package подключает primary native/server-function read path к этому service, а первые dedicated native write endpoints `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` вызывают inventory-owned service methods без GraphQL fallback, а targeted set-quantity и +/-1 adjustment controls используются в inventory detail UI. Остаётся расширить parity coverage и вынести оставшиеся dedicated inventory mutations/write transport, сохранив GraphQL только как native-unavailable read compatibility fallback до удаления adapter-а.
 
 1. Описать minimal inventory admin read model:
    - product id/slug/title needed for inventory views;

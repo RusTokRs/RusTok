@@ -9,7 +9,8 @@ Leptos admin UI package for the `rustok-inventory` module.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses the inventory-owned read facade in `src/core.rs`, `src/api.rs`, `src/native.rs`, and `src/transport.rs`, rendered through the explicit `src/ui/leptos.rs` adapter for current admin read-side access.
 - Uses native Leptos server functions backed by `AdminInventoryReadService` as the primary inventory read transport.
-- Keeps the existing commerce GraphQL access isolated inside the transitional `CommerceGraphqlInventoryReadAdapter` as a compatibility fallback only when the native read path is unavailable, until dedicated inventory write transport is available.
+- Starts the dedicated inventory write split with native `inventory/variant/set-quantity` and `inventory/variant/adjust-quantity` server-function endpoints; set-quantity is exposed through the inventory-owned API facade, used by the variant detail set-quantity and +/-1 adjustment controls, and backed by `InventoryService::set_inventory`, while adjust-quantity exposes delta semantics through `InventoryService::adjust_variant_inventory` for the +/-1 operator controls.
+- Keeps the existing commerce GraphQL access isolated inside the transitional `CommerceGraphqlInventoryReadAdapter` as a compatibility fallback only when the native read path is unavailable, while remaining dedicated inventory write parity is completed.
 - Maps transitional GraphQL runtime failures into the inventory-owned `InventoryTransportError` so `ApiError` does not expose `GraphqlHttpError`.
 - Enforces the boundary with `tests/boundary.rs`: GraphQL runtime markers are allowed only in `src/transport.rs`, and the crate root exports only the UI entry point.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
@@ -22,11 +23,12 @@ Leptos admin UI package for the `rustok-inventory` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Reads inventory product, variant, stock-health, and localized-copy fields through the inventory-owned facade; native server functions are the primary path, while the underlying commerce GraphQL adapter is transitional, limited to native-unavailable fallback, and must stay private to the package transport boundary.
+- Writes targeted variant stock quantities through the dedicated native inventory facade from the variant detail set-quantity and +/-1 adjustment controls, and exposes a native adjust-quantity facade for delta-based operator flows; these write paths have no GraphQL fallback and enforce tenant/permission checks server-side.
 - Reads the effective UI locale from `UiRouteContext.locale`; inventory detail cards resolve localized product copy against that host-owned locale and only fall back when that locale is missing.
 
 ## Transitional adapter removal criteria
 
-Remove `CommerceGraphqlInventoryReadAdapter` after inventory has dedicated write transport and native read parity for:
+Remove `CommerceGraphqlInventoryReadAdapter` after inventory has remaining dedicated write transport and native read parity for:
 
 - product id, slug/handle, status, title, and localized copy needed by inventory views;
 - variant identity fields and shipping profile hints;

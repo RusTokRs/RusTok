@@ -36,6 +36,26 @@ impl InventoryService {
     }
 
     #[instrument(skip(self))]
+    pub async fn adjust_variant_inventory(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        adjustment: i32,
+    ) -> CommerceResult<i32> {
+        self.adjust_inventory(
+            tenant_id,
+            actor_id,
+            AdjustInventoryInput {
+                variant_id,
+                adjustment,
+                reason: Some("Inventory admin native adjust endpoint".to_string()),
+            },
+        )
+        .await
+    }
+
+    #[instrument(skip(self))]
     pub async fn adjust_inventory(
         &self,
         tenant_id: Uuid,

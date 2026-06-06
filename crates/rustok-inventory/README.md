@@ -6,13 +6,13 @@
 
 ## Responsibilities
 
-- Own the inventory service, backend admin read-side service, stock-level migrations, and normalized stock and reservation persistence.
+- Own the inventory service, backend admin read-side service, native admin stock write helpers, stock-level migrations, and normalized stock and reservation persistence.
 - Keep `stock_locations`, `inventory_items`, `inventory_levels`, and `reservation_items`
   as the source of truth for ecommerce inventory runtime.
 - Provide `AdminInventoryReadService` as the inventory-owned backend read model for admin
   product, variant, price, stock, and translation visibility.
 - Provide a module-owned Leptos admin UI package in `admin/` for inventory visibility,
-  low-stock triage, and stock-health inspection.
+  low-stock triage, stock-health inspection, and targeted set-quantity corrections and +/-1 adjustments.
 
 ## Interactions
 
@@ -22,8 +22,9 @@
 - `apps/admin` consumes `rustok-inventory-admin` through manifest-driven composition;
   the admin package now uses native Leptos server functions backed by
   `AdminInventoryReadService` as the primary read transport, keeps the transitional commerce
-  GraphQL adapter as a compatibility fallback, and still splits dedicated inventory write
-  transport from the umbrella commerce surface.
+  GraphQL adapter as a read-only compatibility fallback, and uses native inventory-owned
+  set/adjust quantity write endpoints for targeted stock corrections and +/-1 adjustments while remaining write
+  parity is split from the umbrella commerce surface.
 
 ## Entry points
 

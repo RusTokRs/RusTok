@@ -13,6 +13,7 @@ default = []
 hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",
+  "rustok-api/loco-adapter",
   "dep:leptos_axum",
   "dep:loco-rs",
   "dep:rustok-core",

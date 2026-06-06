@@ -1,7 +1,11 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
-use crate::core::{InventoryProductRequest, InventoryProductsRequest};
+use crate::core::{
+    normalized_adjust_quantity_input, normalized_set_quantity_input,
+    InventoryAdjustQuantityRequest, InventoryProductRequest, InventoryProductsRequest,
+    InventorySetQuantityRequest,
+};
 use crate::model::{InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList};
 use crate::transport::{
     CommerceGraphqlInventoryReadAdapter, InventoryReadTransport, InventoryTransportError,
@@ -71,6 +75,32 @@ fn product_request(
         tenant_id,
         id,
         locale,
+    }
+}
+
+fn set_quantity_request(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> InventorySetQuantityRequest {
+    let input = normalized_set_quantity_input(tenant_id, variant_id, quantity);
+    InventorySetQuantityRequest {
+        tenant_id: input.tenant_id,
+        variant_id: input.variant_id,
+        quantity: input.quantity,
+    }
+}
+
+fn adjust_quantity_request(
+    tenant_id: String,
+    variant_id: String,
+    adjustment: i32,
+) -> InventoryAdjustQuantityRequest {
+    let input = normalized_adjust_quantity_input(tenant_id, variant_id, adjustment);
+    InventoryAdjustQuantityRequest {
+        tenant_id: input.tenant_id,
+        variant_id: input.variant_id,
+        adjustment: input.adjustment,
     }
 }
 
@@ -182,13 +212,60 @@ pub async fn fetch_product(
     }
 }
 
+pub async fn set_variant_quantity(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> Result<i32, ApiError> {
+    let request = set_quantity_request(tenant_id, variant_id, quantity);
+    crate::native::set_variant_quantity(request.tenant_id, request.variant_id, request.quantity)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn adjust_variant_quantity(
+    tenant_id: String,
+    variant_id: String,
+    adjustment: i32,
+) -> Result<i32, ApiError> {
+    let request = adjust_quantity_request(tenant_id, variant_id, adjustment);
+    crate::native::adjust_variant_quantity(
+        request.tenant_id,
+        request.variant_id,
+        request.adjustment,
+    )
+    .await
+    .map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
     use leptos::prelude::ServerFnError;
 
     use super::{
-        native_error_allows_transitional_graphql_fallback, product_request, products_request,
+        adjust_quantity_request, native_error_allows_transitional_graphql_fallback,
+        product_request, products_request, set_quantity_request,
     };
+
+    #[test]
+    fn adjust_quantity_request_normalizes_inventory_write_facade_context() {
+        let request =
+            adjust_quantity_request(" tenant-id ".to_string(), " variant-id ".to_string(), -2);
+
+        assert_eq!(request.tenant_id, "tenant-id");
+        assert_eq!(request.variant_id, "variant-id");
+        assert_eq!(request.adjustment, -2);
+    }
+
+    #[test]
+    fn set_quantity_request_normalizes_inventory_write_facade_context() {
+        let request =
+            set_quantity_request(" tenant-id ".to_string(), " variant-id ".to_string(), 12);
+
+        assert_eq!(request.tenant_id, "tenant-id");
+        assert_eq!(request.variant_id, "variant-id");
+        assert_eq!(request.quantity, 12);
+    }
 
     #[test]
     fn products_request_preserves_inventory_facade_context() {
@@ -227,9 +304,15 @@ mod tests {
     }
 
     #[test]
-    fn transitional_graphql_fallback_is_limited_to_native_unavailable_errors() {
+    fn transitional_graphql_fallback_is_limited_to_native_unavailable_read_errors() {
         assert!(native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new(crate::native::INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR)
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new(crate::native::INVENTORY_SET_QUANTITY_REQUIRES_SSR_ERROR)
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new(crate::native::INVENTORY_ADJUST_QUANTITY_REQUIRES_SSR_ERROR)
         ));
         assert!(!native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new("Permission denied: inventory:list required")

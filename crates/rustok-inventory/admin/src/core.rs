@@ -1,4 +1,4 @@
-use crate::model::InventoryVariant;
+use crate::model::{InventoryProductDetail, InventoryVariant};
 
 pub(crate) const DEFAULT_PRODUCT_PAGE: u64 = 1;
 pub(crate) const DEFAULT_PRODUCT_PAGE_SIZE: u64 = 24;
@@ -35,6 +35,34 @@ pub(crate) struct InventoryProductRequest {
 pub(crate) struct InventoryProductSelector {
     pub id: String,
     pub locale: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct InventorySetQuantityRequest {
+    pub tenant_id: String,
+    pub variant_id: String,
+    pub quantity: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct InventorySetQuantityInput {
+    pub tenant_id: String,
+    pub variant_id: String,
+    pub quantity: i32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct InventoryAdjustQuantityRequest {
+    pub tenant_id: String,
+    pub variant_id: String,
+    pub adjustment: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct InventoryAdjustQuantityInput {
+    pub tenant_id: String,
+    pub variant_id: String,
+    pub adjustment: i32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,6 +112,59 @@ pub(crate) fn normalized_product_selector(
         id,
         locale: normalize_locale_filter(locale),
     }
+}
+
+pub(crate) fn normalized_set_quantity_input(
+    tenant_id: String,
+    variant_id: String,
+    quantity: i32,
+) -> InventorySetQuantityInput {
+    InventorySetQuantityInput {
+        tenant_id: tenant_id.trim().to_string(),
+        variant_id: variant_id.trim().to_string(),
+        quantity,
+    }
+}
+
+pub(crate) fn normalized_adjust_quantity_input(
+    tenant_id: String,
+    variant_id: String,
+    adjustment: i32,
+) -> InventoryAdjustQuantityInput {
+    InventoryAdjustQuantityInput {
+        tenant_id: tenant_id.trim().to_string(),
+        variant_id: variant_id.trim().to_string(),
+        adjustment,
+    }
+}
+
+pub(crate) fn apply_variant_quantity_update(
+    detail: &mut InventoryProductDetail,
+    variant_id: &str,
+    new_quantity: i32,
+) -> bool {
+    let Some(variant) = detail
+        .variants
+        .iter_mut()
+        .find(|variant| variant.id == variant_id)
+    else {
+        return false;
+    };
+
+    variant.inventory_quantity = new_quantity;
+    variant.in_stock = new_quantity > 0;
+    true
+}
+
+pub(crate) fn parse_set_quantity(value: &str) -> Result<i32, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("quantity is required".to_string());
+    }
+
+    trimmed
+        .parse::<i32>()
+        .map_err(|_| "quantity must be a signed integer".to_string())
 }
 
 pub(crate) fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
@@ -188,6 +269,93 @@ mod tests {
             inventory_policy: policy.to_string(),
             in_stock,
         }
+    }
+
+    fn detail_with_variants(variants: Vec<InventoryVariant>) -> InventoryProductDetail {
+        InventoryProductDetail {
+            id: "product-1".to_string(),
+            status: "ACTIVE".to_string(),
+            vendor: None,
+            product_type: None,
+            shipping_profile_slug: None,
+            created_at: "2026-06-05T00:00:00Z".to_string(),
+            updated_at: "2026-06-05T00:00:00Z".to_string(),
+            published_at: None,
+            translations: Vec::new(),
+            variants,
+        }
+    }
+
+    #[test]
+    fn normalized_set_quantity_input_trims_route_identifiers_without_changing_quantity() {
+        let input = normalized_set_quantity_input(
+            " tenant-id ".to_string(),
+            " variant-id ".to_string(),
+            -3,
+        );
+
+        assert_eq!(input.tenant_id, "tenant-id");
+        assert_eq!(input.variant_id, "variant-id");
+        assert_eq!(input.quantity, -3);
+    }
+
+    #[test]
+    fn normalized_adjust_quantity_input_trims_route_identifiers_without_changing_adjustment() {
+        let input = normalized_adjust_quantity_input(
+            " tenant-id ".to_string(),
+            " variant-id ".to_string(),
+            -4,
+        );
+
+        assert_eq!(input.tenant_id, "tenant-id");
+        assert_eq!(input.variant_id, "variant-id");
+        assert_eq!(input.adjustment, -4);
+    }
+
+    #[test]
+    fn parse_set_quantity_accepts_signed_integer_with_whitespace() {
+        assert_eq!(parse_set_quantity(" 42 "), Ok(42));
+        assert_eq!(parse_set_quantity("-3"), Ok(-3));
+    }
+
+    #[test]
+    fn parse_set_quantity_rejects_blank_or_non_integer_values() {
+        assert!(parse_set_quantity("   ").is_err());
+        assert!(parse_set_quantity("1.5").is_err());
+        assert!(parse_set_quantity("many").is_err());
+    }
+
+    #[test]
+    fn apply_variant_quantity_update_updates_quantity_and_stock_flag() {
+        let mut detail = detail_with_variants(vec![variant(true, "deny", 2)]);
+
+        assert!(apply_variant_quantity_update(
+            &mut detail,
+            "variant-2-deny",
+            0
+        ));
+        assert_eq!(detail.variants[0].inventory_quantity, 0);
+        assert!(!detail.variants[0].in_stock);
+
+        assert!(apply_variant_quantity_update(
+            &mut detail,
+            "variant-2-deny",
+            7
+        ));
+        assert_eq!(detail.variants[0].inventory_quantity, 7);
+        assert!(detail.variants[0].in_stock);
+    }
+
+    #[test]
+    fn apply_variant_quantity_update_returns_false_for_unknown_variant() {
+        let mut detail = detail_with_variants(vec![variant(true, "deny", 2)]);
+
+        assert!(!apply_variant_quantity_update(
+            &mut detail,
+            "missing-variant",
+            9
+        ));
+        assert_eq!(detail.variants[0].inventory_quantity, 2);
     }
 
     #[test]

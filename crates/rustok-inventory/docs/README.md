@@ -6,7 +6,7 @@
 
 - inventory service logic;
 - stock-related migrations;
-- `InventoryModule`, `InventoryService` и backend `AdminInventoryReadService`;
+- `InventoryModule`, `InventoryService`, backend `AdminInventoryReadService` и native admin stock write endpoints;
 - module-owned admin UI пакет `rustok-inventory/admin` для inventory visibility,
   low-stock triage и variant-level stock inspection.
 
@@ -22,8 +22,9 @@
   `admin/src/api.rs`, `admin/src/native.rs`, native `#[server]` functions и explicit Leptos adapter
   `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
   transitional adapter-е только как native-unavailable compatibility fallback до удаления umbrella read dependency;
-- GraphQL и REST write transport пока остаются в фасаде `rustok-commerce`, а dedicated
-  inventory write transport ещё не вынесен в отдельный module-owned surface;
+- dedicated native inventory write endpoints `inventory/variant/set-quantity` и
+  `inventory/variant/adjust-quantity` уже вынесены в module-owned surface без GraphQL fallback;
+  remaining write parity ещё добирается из umbrella `rustok-commerce`;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
 ## Интеграция
@@ -33,7 +34,7 @@
 - inventory-owned backend admin read service экспортируется root crate-ом и является source
   для native server-function read transport;
 - inventory-owned admin UX и read facade публикуются через `rustok-inventory/admin`;
-  underlying commerce GraphQL adapter считается transitional compatibility implementation detail;
+  underlying commerce GraphQL adapter считается transitional read-only compatibility implementation detail, а native set/adjust quantity endpoints являются inventory-owned write surface для set-quantity и +/-1 operator flows;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 
