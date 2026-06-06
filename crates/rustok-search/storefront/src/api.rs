@@ -113,7 +113,7 @@ struct TrackSearchClickInput {
     href: Option<String>,
 }
 
-fn configured_tenant_slug() -> Option<String> {
+pub(crate) fn configured_tenant_slug() -> Option<String> {
     [
         "RUSTOK_TENANT_SLUG",
         "NEXT_PUBLIC_TENANT_SLUG",
@@ -166,61 +166,6 @@ where
     )
     .await
     .map_err(ApiError::from)
-}
-
-pub async fn fetch_storefront_search(
-    query: String,
-    locale: Option<String>,
-    preset_key: Option<String>,
-    filters: SearchPreviewFilters,
-) -> Result<SearchPreviewPayload, ApiError> {
-    match fetch_storefront_search_server(
-        query.clone(),
-        locale.clone(),
-        preset_key.clone(),
-        filters.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => fetch_storefront_search_graphql(query, locale, preset_key, filters).await,
-    }
-}
-
-pub async fn fetch_storefront_filter_presets() -> Result<Vec<SearchFilterPreset>, ApiError> {
-    match fetch_storefront_filter_presets_server().await {
-        Ok(payload) => Ok(payload),
-        Err(_) => fetch_storefront_filter_presets_graphql().await,
-    }
-}
-
-pub async fn fetch_storefront_suggestions(
-    query: String,
-    locale: Option<String>,
-) -> Result<Vec<SearchSuggestion>, ApiError> {
-    match fetch_storefront_suggestions_server(query.clone(), locale.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => fetch_storefront_suggestions_graphql(query, locale).await,
-    }
-}
-
-pub async fn track_search_click(
-    query_log_id: String,
-    document_id: String,
-    position: Option<i32>,
-    href: Option<String>,
-) -> Result<TrackSearchClickPayload, ApiError> {
-    match track_search_click_server(
-        query_log_id.clone(),
-        document_id.clone(),
-        position,
-        href.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => track_search_click_graphql(query_log_id, document_id, position, href).await,
-    }
 }
 
 pub async fn fetch_storefront_search_server(
