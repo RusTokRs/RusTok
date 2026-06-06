@@ -13,6 +13,7 @@ Leptos admin UI package for the `rustok-inventory` module.
 - Keeps the existing commerce GraphQL access isolated inside the transitional `CommerceGraphqlInventoryReadAdapter` as a compatibility fallback only when the native read path is unavailable, while remaining dedicated inventory write parity is completed.
 - Maps transitional GraphQL runtime failures into the inventory-owned `InventoryTransportError` so `ApiError` does not expose `GraphqlHttpError`.
 - Enforces the boundary with `tests/boundary.rs`: GraphQL runtime markers are allowed only in `src/transport.rs`, and the crate root exports only the UI entry point.
+- Keeps compatibility snapshot tests for the current inventory read model in `src/model.rs`, including list paging fields, localized detail copy, variant inventory fields, and price fields.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
 
 ## Entry Points
@@ -33,7 +34,7 @@ Remove `CommerceGraphqlInventoryReadAdapter` after inventory has remaining dedic
 - product id, slug/handle, status, title, and localized copy needed by inventory views;
 - variant identity fields and shipping profile hints;
 - inventory quantity, policy, availability, and stock-health fields;
-- compatibility coverage for the current inventory admin read model.
+- compatibility coverage for the current inventory admin read model, including the `src/model.rs` serde snapshots.
 
 ## Documentation
 
