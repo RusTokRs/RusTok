@@ -100,6 +100,13 @@ pub struct InventoryPrice {
     pub on_sale: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InventoryQuantityWriteResult {
+    pub quantity: i32,
+    #[serde(rename = "inStock")]
+    pub in_stock: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{InventoryProductDetail, InventoryProductList};

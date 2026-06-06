@@ -6,7 +6,10 @@ use crate::core::{
     InventoryAdjustQuantityRequest, InventoryProductRequest, InventoryProductsRequest,
     InventorySetQuantityRequest,
 };
-use crate::model::{InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList};
+use crate::model::{
+    InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList,
+    InventoryQuantityWriteResult,
+};
 use crate::transport::{
     CommerceGraphqlInventoryReadAdapter, InventoryReadTransport, InventoryTransportError,
 };
@@ -216,7 +219,7 @@ pub async fn set_variant_quantity(
     tenant_id: String,
     variant_id: String,
     quantity: i32,
-) -> Result<i32, ApiError> {
+) -> Result<InventoryQuantityWriteResult, ApiError> {
     let request = set_quantity_request(tenant_id, variant_id, quantity);
     crate::native::set_variant_quantity(request.tenant_id, request.variant_id, request.quantity)
         .await
@@ -227,7 +230,7 @@ pub async fn adjust_variant_quantity(
     tenant_id: String,
     variant_id: String,
     adjustment: i32,
-) -> Result<i32, ApiError> {
+) -> Result<InventoryQuantityWriteResult, ApiError> {
     let request = adjust_quantity_request(tenant_id, variant_id, adjustment);
     crate::native::adjust_variant_quantity(
         request.tenant_id,

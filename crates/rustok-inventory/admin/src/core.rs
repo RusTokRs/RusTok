@@ -1,4 +1,4 @@
-use crate::model::{InventoryProductDetail, InventoryVariant};
+use crate::model::{InventoryProductDetail, InventoryQuantityWriteResult, InventoryVariant};
 
 pub(crate) const DEFAULT_PRODUCT_PAGE: u64 = 1;
 pub(crate) const DEFAULT_PRODUCT_PAGE_SIZE: u64 = 24;
@@ -141,7 +141,7 @@ pub(crate) fn normalized_adjust_quantity_input(
 pub(crate) fn apply_variant_quantity_update(
     detail: &mut InventoryProductDetail,
     variant_id: &str,
-    new_quantity: i32,
+    result: InventoryQuantityWriteResult,
 ) -> bool {
     let Some(variant) = detail
         .variants
@@ -151,8 +151,8 @@ pub(crate) fn apply_variant_quantity_update(
         return false;
     };
 
-    variant.inventory_quantity = new_quantity;
-    variant.in_stock = new_quantity > 0;
+    variant.inventory_quantity = result.quantity;
+    variant.in_stock = result.in_stock;
     true
 }
 
@@ -332,7 +332,10 @@ mod tests {
         assert!(apply_variant_quantity_update(
             &mut detail,
             "variant-2-deny",
-            0
+            InventoryQuantityWriteResult {
+                quantity: 0,
+                in_stock: false,
+            },
         ));
         assert_eq!(detail.variants[0].inventory_quantity, 0);
         assert!(!detail.variants[0].in_stock);
@@ -340,7 +343,10 @@ mod tests {
         assert!(apply_variant_quantity_update(
             &mut detail,
             "variant-2-deny",
-            7
+            InventoryQuantityWriteResult {
+                quantity: 7,
+                in_stock: true,
+            },
         ));
         assert_eq!(detail.variants[0].inventory_quantity, 7);
         assert!(detail.variants[0].in_stock);
@@ -353,7 +359,10 @@ mod tests {
         assert!(!apply_variant_quantity_update(
             &mut detail,
             "missing-variant",
-            9
+            InventoryQuantityWriteResult {
+                quantity: 9,
+                in_stock: true,
+            },
         ));
         assert_eq!(detail.variants[0].inventory_quantity, 2);
     }

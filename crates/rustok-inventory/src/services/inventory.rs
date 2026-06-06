@@ -3,6 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::instrument;
 use uuid::Uuid;
@@ -19,6 +20,21 @@ pub struct InventoryService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     low_stock_threshold: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct InventoryQuantityWriteResult {
+    pub quantity: i32,
+    pub in_stock: bool,
+}
+
+impl InventoryQuantityWriteResult {
+    fn from_quantity(quantity: i32) -> Self {
+        Self {
+            quantity,
+            in_stock: quantity > 0,
+        }
+    }
 }
 
 impl InventoryService {
@@ -43,16 +59,40 @@ impl InventoryService {
         variant_id: Uuid,
         adjustment: i32,
     ) -> CommerceResult<i32> {
-        self.adjust_inventory(
-            tenant_id,
-            actor_id,
-            AdjustInventoryInput {
+        Ok(self
+            .adjust_variant_quantity(
+                tenant_id,
+                actor_id,
                 variant_id,
                 adjustment,
-                reason: Some("Inventory admin native adjust endpoint".to_string()),
-            },
-        )
-        .await
+                Some("Inventory admin native adjust endpoint".to_string()),
+            )
+            .await?
+            .quantity)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn adjust_variant_quantity(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        adjustment: i32,
+        reason: Option<String>,
+    ) -> CommerceResult<InventoryQuantityWriteResult> {
+        let quantity = self
+            .adjust_inventory(
+                tenant_id,
+                actor_id,
+                AdjustInventoryInput {
+                    variant_id,
+                    adjustment,
+                    reason,
+                },
+            )
+            .await?;
+
+        Ok(InventoryQuantityWriteResult::from_quantity(quantity))
     }
 
     #[instrument(skip(self))]
@@ -120,6 +160,21 @@ impl InventoryService {
 
         txn.commit().await?;
         Ok(new_quantity)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn set_variant_quantity(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        quantity: i32,
+    ) -> CommerceResult<InventoryQuantityWriteResult> {
+        let quantity = self
+            .set_inventory(tenant_id, actor_id, variant_id, quantity)
+            .await?;
+
+        Ok(InventoryQuantityWriteResult::from_quantity(quantity))
     }
 
     #[instrument(skip(self))]
