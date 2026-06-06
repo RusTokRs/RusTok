@@ -10,9 +10,11 @@
 - Keep `stock_locations`, `inventory_items`, `inventory_levels`, and `reservation_items`
   as the source of truth for ecommerce inventory runtime.
 - Provide `AdminInventoryReadService` as the inventory-owned backend read model for admin
-  product, variant, price, stock, and translation visibility.
+  product, variant, price, stock, and translation visibility; variant availability is read from
+  `inventory_items`/`inventory_levels` when stock levels exist, with the legacy variant
+  quantity used only as a compatibility fallback.
 - Provide a module-owned Leptos admin UI package in `admin/` for inventory visibility,
-  low-stock triage, stock-health inspection, and targeted set-quantity corrections and +/-1 adjustments.
+  low-stock triage, stock-health inspection, targeted set-quantity corrections, +/-1 adjustments, and reserve-quantity transport coverage.
 
 ## Interactions
 
@@ -23,7 +25,7 @@
   the admin package now uses native Leptos server functions backed by
   `AdminInventoryReadService` as the primary read transport, keeps the transitional commerce
   GraphQL adapter as a read-only compatibility fallback, and uses native inventory-owned
-  set/adjust quantity write endpoints for targeted stock corrections and +/-1 adjustments while remaining write
+  set/adjust/reserve quantity write endpoints for targeted stock corrections, +/-1 adjustments, and reservation flows while remaining write
   parity is split from the umbrella commerce surface.
 
 ## Entry points

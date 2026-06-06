@@ -352,6 +352,9 @@ mod tests {
             &ServerFnError::new(crate::native::INVENTORY_ADJUST_QUANTITY_REQUIRES_SSR_ERROR)
         ));
         assert!(!native_error_allows_transitional_graphql_fallback(
+            &ServerFnError::new(crate::native::INVENTORY_RESERVE_QUANTITY_REQUIRES_SSR_ERROR)
+        ));
+        assert!(!native_error_allows_transitional_graphql_fallback(
             &ServerFnError::new("Permission denied: inventory:list required")
         ));
         assert!(!native_error_allows_transitional_graphql_fallback(

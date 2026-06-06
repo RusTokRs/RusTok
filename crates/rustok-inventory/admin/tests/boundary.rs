@@ -210,8 +210,11 @@ fn ui_stock_quantity_controls_use_inventory_api_facade_only() {
         "parse_set_quantity",
         "crate::api::set_variant_quantity",
         "crate::api::adjust_variant_quantity",
+        "crate::api::reserve_variant_quantity",
         "apply_variant_quantity_update",
+        "apply_variant_reservation_update",
         "set_quantity_input.set(result.quantity.to_string())",
+        "set_quantity_input.set(result.available_quantity.to_string())",
     ] {
         assert!(
             ui.contains(required),
@@ -222,6 +225,7 @@ fn ui_stock_quantity_controls_use_inventory_api_facade_only() {
 
     for forbidden in [
         "crate::native::set_variant_quantity",
+        "crate::native::reserve_variant_quantity",
         "CommerceGraphqlInventoryReadAdapter",
         "transitional_read_transport",
     ] {
@@ -450,6 +454,20 @@ fn native_write_path_returns_quantity_contract_not_bare_integer() {
     );
     assert!(
         ui.contains("apply_variant_quantity_update(detail, variant_id.as_str(), result.clone())"),
-        "UI optimistic detail refresh must apply the full write result contract"
+        "UI optimistic detail refresh must apply the full quantity write result contract"
+    );
+    assert!(
+        core.contains("result: InventoryReservationWriteResult"),
+        "core optimistic update must consume the inventory-owned reservation result contract"
+    );
+    assert!(
+        ui.contains(
+            "apply_variant_reservation_update(detail, variant_id.as_str(), result.clone())"
+        ),
+        "UI optimistic detail refresh must apply the full reservation write result contract"
+    );
+    assert!(
+        ui.contains("set_quantity_input.set(result.available_quantity.to_string())"),
+        "UI must refresh the quantity input from the reservation available quantity contract"
     );
 }

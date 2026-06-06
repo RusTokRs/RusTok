@@ -5,8 +5,8 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    apply_variant_quantity_update, inventory_health_state, parse_set_quantity, summarize_inventory,
-    InventoryHealthState,
+    apply_variant_quantity_update, apply_variant_reservation_update, inventory_health_state,
+    parse_reserve_quantity, parse_set_quantity, summarize_inventory, InventoryHealthState,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -163,10 +163,20 @@ pub fn InventoryAdmin() -> impl IntoView {
         "inventory.error.invalidQuantity",
         "Quantity must be a whole number.",
     );
+    let reserve_quantity_invalid_label = t(
+        ui_locale.as_deref(),
+        "inventory.error.invalidReserveQuantity",
+        "Reserve quantity must be a non-negative whole number.",
+    );
     let set_quantity_error_label = t(
         ui_locale.as_deref(),
         "inventory.error.setQuantity",
         "Failed to update variant quantity",
+    );
+    let reserve_quantity_error_label = t(
+        ui_locale.as_deref(),
+        "inventory.error.reserveQuantity",
+        "Failed to reserve variant quantity",
     );
     let effective_locale_for_detail = effective_locale.clone();
     let initial_open_product = open_product;
@@ -401,7 +411,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground">
-                                    {t(ui_locale_for_detail.as_deref(), "inventory.detail.transportGap", "Dedicated inventory set-quantity transport is available for targeted stock corrections; remaining inventory mutations are still being split from the umbrella ecommerce surface.")}
+                                    {t(ui_locale_for_detail.as_deref(), "inventory.detail.transportGap", "Dedicated inventory set/adjust/reserve quantity transport is available for targeted stock corrections and reservation flows; remaining inventory mutations are still being split from the umbrella ecommerce surface.")}
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5">
@@ -426,17 +436,22 @@ pub fn InventoryAdmin() -> impl IntoView {
                                             let variant_id_for_save = variant.id.clone();
                                             let variant_id_for_decrease = variant.id.clone();
                                             let variant_id_for_increase = variant.id.clone();
+                                            let variant_id_for_reserve = variant.id.clone();
                                             let variant_title_for_save = variant.title.clone();
                                             let variant_title_for_decrease = variant.title.clone();
                                             let variant_title_for_increase = variant.title.clone();
+                                            let variant_title_for_reserve = variant.title.clone();
                                             let (quantity_input, set_quantity_input) = signal(variant.inventory_quantity.to_string());
                                             let save_bootstrap_loading_label = set_quantity_bootstrap_loading_label.clone();
                                             let decrease_bootstrap_loading_label = set_quantity_bootstrap_loading_label.clone();
                                             let increase_bootstrap_loading_label = set_quantity_bootstrap_loading_label.clone();
+                                            let reserve_bootstrap_loading_label = set_quantity_bootstrap_loading_label.clone();
                                             let invalid_quantity_label = set_quantity_invalid_label.clone();
+                                            let invalid_reserve_quantity_label = reserve_quantity_invalid_label.clone();
                                             let save_error_label = set_quantity_error_label.clone();
                                             let decrease_error_label = set_quantity_error_label.clone();
                                             let increase_error_label = set_quantity_error_label.clone();
+                                            let reserve_error_label = reserve_quantity_error_label.clone();
                                             view! {
                                                 <article class="rounded-xl border border-border p-4">
                                                     <div class="flex flex-wrap items-start justify-between gap-3">
@@ -582,6 +597,50 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     }
                                                                 >
                                                                     {t(variant_locale.as_deref(), "inventory.action.setQuantity", "Set")}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                                    title=t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve")
+                                                                    disabled=move || busy.get()
+                                                                    on:click=move |_| {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                            set_error.set(Some(reserve_bootstrap_loading_label.clone()));
+                                                                            return;
+                                                                        };
+                                                                        let quantity = match parse_reserve_quantity(quantity_input.get_untracked().as_str()) {
+                                                                            Ok(value) => value,
+                                                                            Err(_) => {
+                                                                                set_error.set(Some(invalid_reserve_quantity_label.clone()));
+                                                                                return;
+                                                                            }
+                                                                        };
+                                                                        let tenant_id = current_tenant.id;
+                                                                        let variant_id = variant_id_for_reserve.clone();
+                                                                        let variant_title = variant_title_for_reserve.clone();
+                                                                        let error_label = reserve_error_label.clone();
+                                                                        set_busy.set(true);
+                                                                        set_error.set(None);
+                                                                        spawn_local(async move {
+                                                                            match crate::api::reserve_variant_quantity(tenant_id, variant_id.clone(), quantity).await {
+                                                                                Ok(result) => {
+                                                                                    set_selected.update(|selected| {
+                                                                                        if let Some(detail) = selected {
+                                                                                            apply_variant_reservation_update(detail, variant_id.as_str(), result.clone());
+                                                                                        }
+                                                                                    });
+                                                                                    set_quantity_input.set(result.available_quantity.to_string());
+                                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                                }
+                                                                                Err(err) => {
+                                                                                    set_error.set(Some(format!("{error_label} ({variant_title}): {err}")));
+                                                                                }
+                                                                            }
+                                                                            set_busy.set(false);
+                                                                        });
+                                                                    }
+                                                                >
+                                                                    {t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve")}
                                                                 </button>
                                                             </div>
                                                         </div>

@@ -1,4 +1,7 @@
-use crate::model::{InventoryProductDetail, InventoryQuantityWriteResult, InventoryVariant};
+use crate::model::{
+    InventoryProductDetail, InventoryQuantityWriteResult, InventoryReservationWriteResult,
+    InventoryVariant,
+};
 
 pub(crate) const DEFAULT_PRODUCT_PAGE: u64 = 1;
 pub(crate) const DEFAULT_PRODUCT_PAGE_SIZE: u64 = 24;
@@ -182,6 +185,24 @@ pub(crate) fn apply_variant_quantity_update(
     true
 }
 
+pub(crate) fn apply_variant_reservation_update(
+    detail: &mut InventoryProductDetail,
+    variant_id: &str,
+    result: InventoryReservationWriteResult,
+) -> bool {
+    let Some(variant) = detail
+        .variants
+        .iter_mut()
+        .find(|variant| variant.id == variant_id)
+    else {
+        return false;
+    };
+
+    variant.inventory_quantity = result.available_quantity;
+    variant.in_stock = result.in_stock;
+    true
+}
+
 pub(crate) fn parse_set_quantity(value: &str) -> Result<i32, String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -191,6 +212,15 @@ pub(crate) fn parse_set_quantity(value: &str) -> Result<i32, String> {
     trimmed
         .parse::<i32>()
         .map_err(|_| "quantity must be a signed integer".to_string())
+}
+
+pub(crate) fn parse_reserve_quantity(value: &str) -> Result<i32, String> {
+    let quantity = parse_set_quantity(value)?;
+    if quantity < 0 {
+        return Err("reserve quantity must be non-negative".to_string());
+    }
+
+    Ok(quantity)
 }
 
 pub(crate) fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
@@ -365,6 +395,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_reserve_quantity_rejects_negative_values() {
+        assert_eq!(parse_reserve_quantity(" 3 "), Ok(3));
+        assert!(parse_reserve_quantity("-1").is_err());
+    }
+
+    #[test]
     fn apply_variant_quantity_update_updates_quantity_and_stock_flag() {
         let mut detail = detail_with_variants(vec![variant(true, "deny", 2)]);
 
@@ -404,6 +440,24 @@ mod tests {
             },
         ));
         assert_eq!(detail.variants[0].inventory_quantity, 2);
+    }
+
+    #[test]
+    fn apply_variant_reservation_update_uses_available_quantity_and_stock_flag() {
+        let mut detail = detail_with_variants(vec![variant(true, "deny", 10)]);
+
+        assert!(apply_variant_reservation_update(
+            &mut detail,
+            "variant-10-deny",
+            InventoryReservationWriteResult {
+                reserved_quantity: 3,
+                available_quantity: 7,
+                in_stock: true,
+            },
+        ));
+
+        assert_eq!(detail.variants[0].inventory_quantity, 7);
+        assert!(detail.variants[0].in_stock);
     }
 
     #[test]

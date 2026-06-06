@@ -291,14 +291,27 @@ impl InventoryService {
             ));
         }
 
+        let txn = self.db.begin().await?;
+        let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
+
         if quantity == 0 {
+            let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
+                .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+                .one(&txn)
+                .await?
+            {
+                self.available_quantity(&txn, inventory_item.id).await?
+            } else {
+                variant.inventory_quantity
+            };
+            txn.commit().await?;
             return Ok(InventoryReservationWriteResult::from_quantities(
-                0, 0, "deny",
+                0,
+                available,
+                variant.inventory_policy.as_str(),
             ));
         }
 
-        let txn = self.db.begin().await?;
-        let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
         let state = self
             .ensure_inventory_state(&txn, tenant_id, &variant)
             .await?;
@@ -545,6 +558,15 @@ mod tests {
 
         let backorderable = InventoryReservationWriteResult::from_quantities(4, -2, "continue");
         assert!(backorderable.in_stock);
+    }
+
+    #[test]
+    fn reservation_write_result_noop_preserves_available_quantity() {
+        let result = InventoryReservationWriteResult::from_quantities(0, 8, "deny");
+
+        assert_eq!(result.reserved_quantity, 0);
+        assert_eq!(result.available_quantity, 8);
+        assert!(result.in_stock);
     }
 
     #[test]
