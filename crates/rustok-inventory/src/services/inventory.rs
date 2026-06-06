@@ -16,6 +16,8 @@ use rustok_commerce_foundation::dto::AdjustInventoryInput;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
+use super::policy::inventory_policy_allows_backorder;
+
 pub struct InventoryService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -733,10 +735,6 @@ fn stocked_quantity_for_available(available_quantity: i32, reserved_quantity: i3
     available_quantity + reserved_quantity
 }
 
-fn inventory_policy_allows_backorder(inventory_policy: &str) -> bool {
-    inventory_policy.eq_ignore_ascii_case("continue")
-}
-
 fn validate_reservation_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -771,9 +769,8 @@ fn validate_availability_request_quantity(requested_quantity: i32) -> CommerceRe
 mod tests {
     use super::{
         insufficient_reservation_items_release_error, insufficient_reserved_release_error,
-        inventory_policy_allows_backorder, stocked_quantity_for_available,
-        validate_availability_request_quantity, validate_release_quantity,
-        validate_reservation_quantity, InventoryAvailabilityCheckResult,
+        stocked_quantity_for_available, validate_availability_request_quantity,
+        validate_release_quantity, validate_reservation_quantity, InventoryAvailabilityCheckResult,
         InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
         InventoryReservationWriteResult,
     };
@@ -783,14 +780,6 @@ mod tests {
         assert_eq!(stocked_quantity_for_available(10, 0), 10);
         assert_eq!(stocked_quantity_for_available(10, 3), 13);
         assert_eq!(stocked_quantity_for_available(0, 3), 3);
-    }
-
-    #[test]
-    fn inventory_policy_backorder_matching_is_case_insensitive() {
-        assert!(inventory_policy_allows_backorder("continue"));
-        assert!(inventory_policy_allows_backorder("CONTINUE"));
-        assert!(inventory_policy_allows_backorder("Continue"));
-        assert!(!inventory_policy_allows_backorder("deny"));
     }
 
     #[test]

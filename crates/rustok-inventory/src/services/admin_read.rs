@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::CommerceResult;
+
+use super::policy::inventory_policy_allows_backorder;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -373,10 +375,6 @@ fn available_quantity_for_variant(
     inventory_level_available_quantity.unwrap_or(legacy_variant_quantity)
 }
 
-fn inventory_policy_allows_backorder(inventory_policy: &str) -> bool {
-    inventory_policy.eq_ignore_ascii_case("continue")
-}
-
 fn normalized_search(search: Option<String>) -> Option<String> {
     search
         .map(|value| value.trim().to_ascii_lowercase())
@@ -587,13 +585,6 @@ mod tests {
         assert_eq!(available_quantity_for_variant(12, Some(7)), 7);
         assert_eq!(available_quantity_for_variant(12, Some(0)), 0);
         assert_eq!(available_quantity_for_variant(12, None), 12);
-    }
-
-    #[test]
-    fn inventory_policy_backorder_matching_is_case_insensitive() {
-        assert!(inventory_policy_allows_backorder("continue"));
-        assert!(inventory_policy_allows_backorder("CONTINUE"));
-        assert!(!inventory_policy_allows_backorder("deny"));
     }
 
     #[test]
