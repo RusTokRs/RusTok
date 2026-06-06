@@ -485,6 +485,40 @@ impl InventoryService {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::InventoryQuantityWriteResult;
+
+    #[test]
+    fn quantity_write_result_derives_in_stock_from_committed_quantity() {
+        for (quantity, expected_in_stock) in [(7, true), (1, true), (0, false), (-3, false)] {
+            let result = InventoryQuantityWriteResult::from_quantity(quantity);
+
+            assert_eq!(result.quantity, quantity);
+            assert_eq!(
+                result.in_stock, expected_in_stock,
+                "inventory write result must report stock state from the committed quantity"
+            );
+        }
+    }
+
+    #[test]
+    fn quantity_write_result_keeps_backend_wire_shape() {
+        let result = InventoryQuantityWriteResult::from_quantity(0);
+
+        let serialized = serde_json::to_value(&result)
+            .expect("inventory write result should serialize for native endpoint transport");
+
+        assert_eq!(
+            serialized,
+            serde_json::json!({
+                "quantity": 0,
+                "inStock": false
+            })
+        );
+    }
+}
+
 struct InventoryState {
     location: entities::stock_location::Model,
     inventory_item: entities::inventory_item::Model,
