@@ -11,7 +11,7 @@ admin read-side service, native server-function read transport, первые nat
 - Next step: Перевести следующий remaining inventory write mutation beyond set/adjust/reserve/release/check-availability из umbrella `rustok-commerce` на inventory-owned native/API facade, используя typed result contract, и добавить targeted mutation semantics test.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-06T02:00:00Z
+- Last updated at (UTC): 2026-06-06T02:30:00Z
 
 ## FFA/FBA status
 
@@ -76,9 +76,9 @@ admin read-side service, native server-function read transport, первые nat
 ### 4. Operability
 
 - [x] документировать backend admin read-side service одновременно с изменением runtime surface;
-- [ ] документировать новые inventory guarantees одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [ ] обновлять umbrella commerce docs при изменении availability semantics.
+- [x] документировать новые inventory guarantees одновременно с изменением runtime surface;
+- [x] удерживать local docs и `README.md` синхронизированными;
+- [x] обновлять umbrella commerce docs при изменении availability semantics.
 
 ## Проверка
 
