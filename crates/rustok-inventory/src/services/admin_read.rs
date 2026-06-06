@@ -213,6 +213,9 @@ impl AdminInventoryReadService {
             .map(|variant| variant.id)
             .collect::<Vec<_>>();
         let prices_by_variant = self.load_prices_by_variant(variant_ids.clone()).await?;
+        let available_quantities_by_variant = self
+            .load_available_quantities_by_variant(variant_ids.clone())
+            .await?;
         let variant_translations_by_variant = self
             .load_variant_translations_by_variant(variant_ids)
             .await?;
@@ -246,6 +249,12 @@ impl AdminInventoryReadService {
                         .get(&variant.id)
                         .map(|prices| prices.iter().map(map_price).collect())
                         .unwrap_or_default();
+                    let inventory_quantity = available_quantity_for_variant(
+                        variant.inventory_quantity,
+                        available_quantities_by_variant.get(&variant.id).copied(),
+                    );
+                    let in_stock = inventory_quantity > 0 || variant.inventory_policy == "continue";
+
                     AdminInventoryVariant {
                         id: variant.id,
                         sku: variant.sku,
@@ -256,9 +265,9 @@ impl AdminInventoryReadService {
                         option2: variant.option2,
                         option3: variant.option3,
                         prices,
-                        inventory_quantity: variant.inventory_quantity,
+                        inventory_quantity,
                         inventory_policy: variant.inventory_policy,
-                        in_stock: variant.inventory_quantity > 0,
+                        in_stock,
                     }
                 })
                 .collect(),
@@ -293,6 +302,43 @@ impl AdminInventoryReadService {
         Ok(group_by(prices, |price| price.variant_id))
     }
 
+    async fn load_available_quantities_by_variant(
+        &self,
+        variant_ids: Vec<Uuid>,
+    ) -> CommerceResult<HashMap<Uuid, i32>> {
+        if variant_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let items = entities::inventory_item::Entity::find()
+            .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids))
+            .all(&self.db)
+            .await?;
+        if items.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let item_to_variant = items
+            .iter()
+            .map(|item| (item.id, item.variant_id))
+            .collect::<HashMap<_, _>>();
+        let item_ids = item_to_variant.keys().copied().collect::<Vec<_>>();
+        let levels = entities::inventory_level::Entity::find()
+            .filter(entities::inventory_level::Column::InventoryItemId.is_in(item_ids))
+            .all(&self.db)
+            .await?;
+
+        let mut available_by_variant = HashMap::new();
+        for level in levels {
+            if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
+                *available_by_variant.entry(*variant_id).or_insert(0) +=
+                    level.stocked_quantity - level.reserved_quantity;
+            }
+        }
+
+        Ok(available_by_variant)
+    }
+
     async fn load_variant_translations_by_variant(
         &self,
         variant_ids: Vec<Uuid>,
@@ -317,6 +363,13 @@ fn group_by<T>(items: Vec<T>, key: impl Fn(&T) -> Uuid) -> HashMap<Uuid, Vec<T>>
             .push(item);
     }
     grouped
+}
+
+fn available_quantity_for_variant(
+    legacy_variant_quantity: i32,
+    inventory_level_available_quantity: Option<i32>,
+) -> i32 {
+    inventory_level_available_quantity.unwrap_or(legacy_variant_quantity)
 }
 
 fn normalized_search(search: Option<String>) -> Option<String> {
@@ -522,6 +575,13 @@ mod tests {
         );
         assert_eq!(fallback_variant_title(&variant(None, Some("Red"))), "Red");
         assert_eq!(fallback_variant_title(&variant(None, None)), "Variant");
+    }
+
+    #[test]
+    fn available_quantity_prefers_inventory_levels_and_falls_back_to_variant_snapshot() {
+        assert_eq!(available_quantity_for_variant(12, Some(7)), 7);
+        assert_eq!(available_quantity_for_variant(12, Some(0)), 0);
+        assert_eq!(available_quantity_for_variant(12, None), 12);
     }
 
     #[test]

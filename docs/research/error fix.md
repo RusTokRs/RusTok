@@ -36,6 +36,7 @@
 - Следующий малый Wave 5 contract-semantics slice закрепил backend-level semantics для `InventoryQuantityWriteResult`: committed quantity теперь покрыта unit evidence для `inStock` derivation и native endpoint wire shape, чтобы write UI/API не восстанавливали stock state локальной догадкой.
 - Следующий малый Wave 5 reserve-transport slice вынес reservation write path в inventory-owned native/API facade: `InventoryService::reserve` возвращает typed `InventoryReservationWriteResult { reserved_quantity, available_quantity, in_stock }`, endpoint `inventory/variant/reserve-quantity` проходит tenant/permission checks без GraphQL fallback, а backend/admin serde evidence фиксирует reservation wire shape.
 - Следующий малый Wave 5 reserve-hardening slice закрепил reserve endpoint в no-fallback guardrail: API fallback predicate теперь явно не допускает `inventory/variant/reserve-quantity requires the ssr feature`, а admin locale copy больше не описывает dedicated write transport только как set-quantity и отражает set/adjust/reserve scope.
+- Следующий малый Wave 5 availability-read slice синхронизировал native read-side с выделенными stock writes: `AdminInventoryReadService` теперь берёт variant available quantity из `inventory_items`/`inventory_levels` при наличии stock-level state, поэтому set/adjust/reserve mutations не теряются при последующем native detail refresh; legacy `product_variant.inventory_quantity` остаётся fallback-ом для ещё неинициализированных stock levels.
 
 ## Проверенные факты
 

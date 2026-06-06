@@ -38,7 +38,7 @@ admin read-side service, native server-function read transport, первые nat
 
 - `InventoryModule`, `InventoryService`, backend `AdminInventoryReadService` и stock-related migrations уже выделены;
 - модуль зависит от `product`, не создавая цикла на umbrella `rustok-commerce`;
-- backend admin read service уже возвращает inventory-owned DTO для product/variant/price/translations read-side;
+- backend admin read service уже возвращает inventory-owned DTO для product/variant/price/translations read-side и читает available quantity из `inventory_items`/`inventory_levels`, если stock-level state уже создан;
 - read transport уже имеет dedicated native path, первые set-quantity/adjust-quantity/reserve-quantity write endpoints вынесены в inventory-owned native facade, оставшийся mutation parity всё ещё дособирается из umbrella `rustok-commerce`;
 - `rustok-inventory/admin` уже публикует inventory-owned admin route для stock visibility,
   low-stock triage и variant-level health inspection;
@@ -67,6 +67,7 @@ admin read-side service, native server-function read transport, первые nat
 
 ### 3. Availability hardening
 
+- [x] читать reservation-aware available quantity из inventory levels в admin read-side, оставляя legacy variant quantity только compatibility fallback-ом;
 - [ ] развивать stock locations, reservations и availability semantics как module-owned contract;
 - [ ] покрывать channel-aware availability edge-cases targeted tests через integration
   с umbrella;
