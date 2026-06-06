@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 
-use crate::model::{InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList};
+use crate::model::{
+    InventoryAdminBootstrap, InventoryProductDetail, InventoryProductList,
+    InventoryQuantityWriteResult,
+};
 
 pub(crate) const INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR: &str =
     "inventory/bootstrap requires the `ssr` feature";
@@ -38,7 +41,7 @@ pub(crate) async fn set_variant_quantity(
     tenant_id: String,
     variant_id: String,
     quantity: i32,
-) -> Result<i32, ServerFnError> {
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
     inventory_set_quantity_native(tenant_id, variant_id, quantity).await
 }
 
@@ -46,7 +49,7 @@ pub(crate) async fn adjust_variant_quantity(
     tenant_id: String,
     variant_id: String,
     adjustment: i32,
-) -> Result<i32, ServerFnError> {
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
     inventory_adjust_quantity_native(tenant_id, variant_id, adjustment).await
 }
 
@@ -338,7 +341,7 @@ async fn inventory_set_quantity_native(
     tenant_id: String,
     variant_id: String,
     quantity: i32,
-) -> Result<i32, ServerFnError> {
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -364,8 +367,12 @@ async fn inventory_set_quantity_native(
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         InventoryService::new(app_ctx.db.clone(), event_bus)
-            .set_inventory(tenant.id, auth.user_id, variant_id, quantity)
+            .set_variant_quantity(tenant.id, auth.user_id, variant_id, quantity)
             .await
+            .map(|result| InventoryQuantityWriteResult {
+                quantity: result.quantity,
+                in_stock: result.in_stock,
+            })
             .map_err(ServerFnError::new)
     }
     #[cfg(not(feature = "ssr"))]
@@ -382,7 +389,7 @@ async fn inventory_adjust_quantity_native(
     tenant_id: String,
     variant_id: String,
     adjustment: i32,
-) -> Result<i32, ServerFnError> {
+) -> Result<InventoryQuantityWriteResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -408,8 +415,18 @@ async fn inventory_adjust_quantity_native(
 
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         InventoryService::new(app_ctx.db.clone(), event_bus)
-            .adjust_variant_inventory(tenant.id, auth.user_id, variant_id, adjustment)
+            .adjust_variant_quantity(
+                tenant.id,
+                auth.user_id,
+                variant_id,
+                adjustment,
+                Some("Inventory admin native adjust endpoint".to_string()),
+            )
             .await
+            .map(|result| InventoryQuantityWriteResult {
+                quantity: result.quantity,
+                in_stock: result.in_stock,
+            })
             .map_err(ServerFnError::new)
     }
     #[cfg(not(feature = "ssr"))]

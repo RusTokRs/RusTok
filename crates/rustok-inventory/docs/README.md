@@ -23,7 +23,7 @@
   `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
   transitional adapter-е только как native-unavailable compatibility fallback до удаления umbrella read dependency;
 - dedicated native inventory write endpoints `inventory/variant/set-quantity` и
-  `inventory/variant/adjust-quantity` уже вынесены в module-owned surface без GraphQL fallback;
+  `inventory/variant/adjust-quantity` уже вынесены в module-owned surface без GraphQL fallback и возвращают typed `InventoryQuantityWriteResult`;
   remaining write parity ещё добирается из umbrella `rustok-commerce`;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 

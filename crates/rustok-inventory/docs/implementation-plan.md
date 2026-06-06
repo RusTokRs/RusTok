@@ -7,11 +7,11 @@ admin read-side service, native server-function read transport, первые nat
 ## Execution checkpoint
 
 - Current phase: wave5_write_transport_split
-- Last checkpoint: Добавлены первые dedicated native write endpoints `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` в `crates/rustok-inventory/admin/src/native.rs`: endpoints извлекают `AuthContext`/`TenantContext`, проверяют `inventory:update` или `inventory:manage`, валидируют tenant match и вызывают `InventoryService::set_inventory` / `InventoryService::adjust_variant_inventory` через inventory-owned facade без GraphQL fallback. UI variants list теперь показывает targeted set-quantity и +/-1 adjustment controls, валидирует целое количество через inventory core helper и обновляет selected detail после успешной native mutation. Read path остаётся primary native server-function transport с package-private transitional GraphQL fallback только для native-unavailable ошибок.
-- Next step: Расширить parity coverage для native read/write path против transitional read adapter и закрыть remaining write mutations из umbrella `rustok-commerce`.
+- Last checkpoint: Усилен inventory-owned write contract для set/adjust quantity: backend `InventoryService` теперь экспортирует `InventoryQuantityWriteResult { quantity, in_stock }`, native/API write path возвращает typed result вместо bare `i32`, UI optimistic detail refresh применяет both quantity and in-stock state из module-owned contract, а serde snapshot фиксирует endpoint wire shape `quantity` + `inStock`. `tests/boundary.rs` закрепляет, что native/API write path не откатывается к bare integer и не использует GraphQL fallback.
+- Next step: Перевести следующий remaining inventory write mutation из umbrella `rustok-commerce` на inventory-owned native/API facade, используя typed write result contract, и добавить targeted mutation semantics test.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-05T00:00:00Z
+- Last updated at (UTC): 2026-06-06T00:00:00Z
 
 ## FFA/FBA status
 
@@ -21,11 +21,11 @@ admin read-side service, native server-function read transport, первые nat
 - Evidence:
   - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
   - backend crate экспортирует `AdminInventoryReadService` и typed read DTO (`AdminInventoryProductList`, `AdminInventoryProductDetail`, variants/prices/translations) как inventory-owned read-side source для native server-function transport;
-  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, первый write split представлен native `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` endpoint-ами; UI targeted set-quantity и +/-1 adjustment controls работают без GraphQL fallback, а transport boundary держит transitional commerce GraphQL adapter внутри пакета только как native-unavailable read fallback;
+  - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, primary read path идёт через dedicated `admin/src/native.rs` native `#[server]` functions, первый write split представлен native `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` endpoint-ами с typed `InventoryQuantityWriteResult`; UI targeted set-quantity и +/-1 adjustment controls работают без GraphQL fallback и применяют quantity/in-stock state из write result, а transport boundary держит transitional commerce GraphQL adapter внутри пакета только как native-unavailable read fallback;
   - unit tests покрывают locale fallback, tags extraction, price sale mapping, search normalization и variant title fallback в backend read-side service;
-  - compatibility tests фиксируют минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging), сериализацию normalized GraphQL variables, facade request builders и mapping `GraphqlHttpError` → inventory-owned `InventoryTransportError` до выделения dedicated inventory transport;
+  - compatibility tests фиксируют минимальные поля read model (`inventoryQuantity`, `inventoryPolicy`, `inStock`, variants/translations/feed paging), model serde snapshots для product list/detail, source-level parity между backend DTO/native mapper/transitional GraphQL adapter, сериализацию normalized GraphQL variables, facade request builders и mapping `GraphqlHttpError` → inventory-owned `InventoryTransportError` до выделения dedicated inventory transport;
   - `admin/tests/boundary.rs` проверяет, что `leptos_graphql`, `GraphqlRequest`, `GraphqlHttpError`, `/api/graphql` и `RUSTOK_GRAPHQL_URL` не попадают в `api`, `core`, `model`, `native` или `ui`, а read/write boundary checks разделяют native read markers и native-only set/adjust quantity write facades и set-quantity/+/-1 adjustment UI без transitional GraphQL fallback.
-- Last verified at (UTC): 2026-06-05T00:00:00Z
+- Last verified at (UTC): 2026-06-06T00:00:00Z
 - Owner: `rustok-inventory` module team
 
 ## Область работ
@@ -63,7 +63,7 @@ admin read-side service, native server-function read transport, первые nat
 - [ ] вынести dedicated inventory read/write transport из umbrella `rustok-commerce` (read path готов; первый write split: native set-quantity/adjust-quantity endpoints);
 - [x] подключить initial inventory admin UI targeted stock operations к inventory-owned set/adjust quantity mutations;
 - [ ] перевести оставшиеся inventory admin UI stock operations на inventory-owned mutations;
-- [ ] покрывать transport parity и stock mutation semantics targeted tests (первые facade/boundary checks добавлены для set/adjust quantity endpoints).
+- [ ] покрывать transport parity и stock mutation semantics targeted tests (facade/boundary checks и write-result serde snapshot добавлены для typed set/adjust quantity endpoints; product list/detail serde snapshots и source-level backend DTO/native mapper/transitional adapter parity закрепляют текущий read-model shape).
 
 ### 3. Availability hardening
 

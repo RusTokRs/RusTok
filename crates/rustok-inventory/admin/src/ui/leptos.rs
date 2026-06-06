@@ -484,13 +484,13 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                         set_error.set(None);
                                                                         spawn_local(async move {
                                                                             match crate::api::adjust_variant_quantity(tenant_id, variant_id.clone(), -1).await {
-                                                                                Ok(new_quantity) => {
+                                                                                Ok(result) => {
                                                                                     set_selected.update(|selected| {
                                                                                         if let Some(detail) = selected {
-                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), new_quantity);
+                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), result.clone());
                                                                                         }
                                                                                     });
-                                                                                    set_quantity_input.set(new_quantity.to_string());
+                                                                                    set_quantity_input.set(result.quantity.to_string());
                                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                                 }
                                                                                 Err(err) => {
@@ -521,13 +521,13 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                         set_error.set(None);
                                                                         spawn_local(async move {
                                                                             match crate::api::adjust_variant_quantity(tenant_id, variant_id.clone(), 1).await {
-                                                                                Ok(new_quantity) => {
+                                                                                Ok(result) => {
                                                                                     set_selected.update(|selected| {
                                                                                         if let Some(detail) = selected {
-                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), new_quantity);
+                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), result.clone());
                                                                                         }
                                                                                     });
-                                                                                    set_quantity_input.set(new_quantity.to_string());
+                                                                                    set_quantity_input.set(result.quantity.to_string());
                                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                                 }
                                                                                 Err(err) => {
@@ -564,13 +564,13 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                         set_error.set(None);
                                                                         spawn_local(async move {
                                                                             match crate::api::set_variant_quantity(tenant_id, variant_id.clone(), quantity).await {
-                                                                                Ok(new_quantity) => {
+                                                                                Ok(result) => {
                                                                                     set_selected.update(|selected| {
                                                                                         if let Some(detail) = selected {
-                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), new_quantity);
+                                                                                            apply_variant_quantity_update(detail, variant_id.as_str(), result.clone());
                                                                                         }
                                                                                     });
-                                                                                    set_quantity_input.set(new_quantity.to_string());
+                                                                                    set_quantity_input.set(result.quantity.to_string());
                                                                                     set_refresh_nonce.update(|value| *value += 1);
                                                                                 }
                                                                                 Err(err) => {
