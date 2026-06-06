@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
@@ -455,6 +455,24 @@ impl InventoryService {
             ));
         }
 
+        let reservation_items = entities::reservation_item::Entity::find()
+            .filter(entities::reservation_item::Column::InventoryItemId.eq(inventory_item.id))
+            .filter(entities::reservation_item::Column::DeletedAt.is_null())
+            .order_by_asc(entities::reservation_item::Column::CreatedAt)
+            .all(&txn)
+            .await?;
+        let tracked_reservation_quantity = reservation_items
+            .iter()
+            .map(|item| item.quantity.max(0))
+            .sum::<i32>();
+        if quantity > tracked_reservation_quantity {
+            return Err(insufficient_reservation_items_release_error(
+                quantity,
+                tracked_reservation_quantity,
+            ));
+        }
+
+        release_reservation_items(&txn, reservation_items, quantity).await?;
         release_reserved_quantity_from_levels(&txn, levels, quantity).await?;
 
         let available_quantity = self.available_quantity(&txn, inventory_item.id).await?;
@@ -637,6 +655,39 @@ impl InventoryService {
     }
 }
 
+async fn release_reservation_items<C>(
+    conn: &C,
+    reservation_items: Vec<entities::reservation_item::Model>,
+    quantity: i32,
+) -> CommerceResult<()>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let mut remaining_quantity = quantity;
+    for item in reservation_items {
+        if remaining_quantity == 0 {
+            break;
+        }
+        if item.quantity <= 0 {
+            continue;
+        }
+
+        let released_quantity = remaining_quantity.min(item.quantity);
+        let new_quantity = item.quantity - released_quantity;
+        remaining_quantity -= released_quantity;
+
+        let mut item_active: entities::reservation_item::ActiveModel = item.into();
+        item_active.quantity = Set(new_quantity);
+        item_active.updated_at = Set(Utc::now().into());
+        if new_quantity == 0 {
+            item_active.deleted_at = Set(Some(Utc::now().into()));
+        }
+        item_active.update(conn).await?;
+    }
+
+    Ok(())
+}
+
 async fn release_reserved_quantity_from_levels<C>(
     conn: &C,
     levels: Vec<entities::inventory_level::Model>,
@@ -673,6 +724,12 @@ fn insufficient_reserved_release_error(requested: i32, reserved: i32) -> Commerc
     ))
 }
 
+fn insufficient_reservation_items_release_error(requested: i32, tracked: i32) -> CommerceError {
+    CommerceError::Validation(format!(
+        "Cannot release {requested} reservation item units; only {tracked} are tracked"
+    ))
+}
+
 fn validate_release_quantity(quantity: i32) -> CommerceResult<()> {
     if quantity < 0 {
         return Err(CommerceError::Validation(
@@ -696,8 +753,9 @@ fn validate_availability_request_quantity(requested_quantity: i32) -> CommerceRe
 #[cfg(test)]
 mod tests {
     use super::{
-        insufficient_reserved_release_error, validate_availability_request_quantity,
-        validate_release_quantity, InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
+        insufficient_reservation_items_release_error, insufficient_reserved_release_error,
+        validate_availability_request_quantity, validate_release_quantity,
+        InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
         InventoryReservationReleaseWriteResult, InventoryReservationWriteResult,
     };
 
@@ -710,6 +768,18 @@ mod tests {
                 .to_string()
                 .contains("Cannot release 3 reserved units; only 1 are reserved"),
             "reservation release errors should report observed reserved quantity"
+        );
+    }
+
+    #[test]
+    fn reservation_release_error_reports_tracked_reservation_item_quantity() {
+        let error = insufficient_reservation_items_release_error(4, 2);
+
+        assert!(
+            error
+                .to_string()
+                .contains("Cannot release 4 reservation item units; only 2 are tracked"),
+            "reservation item release errors should report tracked item quantity"
         );
     }
 
