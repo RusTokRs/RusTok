@@ -1,5 +1,7 @@
 use crate::i18n::t;
-use crate::model::{ProductDetail, ProductPricingDetail, ProductTranslation, ShippingProfile};
+use crate::model::{
+    ProductDetail, ProductListItem, ProductPricingDetail, ProductTranslation, ShippingProfile,
+};
 
 fn locale_tags_match(left: &str, right: &str) -> bool {
     left.trim()
@@ -342,6 +344,47 @@ pub(crate) fn format_product_shipping_profile(locale: Option<&str>, slug: &str) 
     t(locale, "product.summary.profileChip", "profile {slug}").replace("{slug}", slug)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminListItemViewModel {
+    pub id: String,
+    pub status: String,
+    pub status_label: String,
+    pub status_badge_class: &'static str,
+    pub type_label: String,
+    pub title: String,
+    pub meta_label: String,
+    pub shipping_profile_label: Option<String>,
+    pub timestamp_label: String,
+}
+
+pub(crate) fn build_product_admin_list_item_view_model(
+    locale: Option<&str>,
+    product: &ProductListItem,
+) -> ProductAdminListItemViewModel {
+    ProductAdminListItemViewModel {
+        id: product.id.clone(),
+        status: product.status.clone(),
+        status_label: localized_product_status(locale, product.status.as_str()),
+        status_badge_class: status_badge(product.status.as_str()),
+        type_label: product
+            .product_type
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| t(locale, "product.common.general", "general")),
+        title: product.title.clone(),
+        meta_label: format_product_meta(locale, product.handle.as_str(), product.vendor.as_deref()),
+        shipping_profile_label: product
+            .shipping_profile_slug
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|slug| format_product_shipping_profile(locale, slug)),
+        timestamp_label: product
+            .published_at
+            .clone()
+            .unwrap_or_else(|| product.created_at.clone()),
+    }
+}
+
 pub(crate) fn text_or_none(value: String) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -362,6 +405,35 @@ pub(crate) fn status_badge(status: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn product_admin_list_item_view_model_formats_render_state() {
+        let product = ProductListItem {
+            id: "product-1".to_string(),
+            status: "ACTIVE".to_string(),
+            title: "Winter coat".to_string(),
+            handle: "winter-coat".to_string(),
+            seller_id: None,
+            vendor: Some("Acme".to_string()),
+            product_type: None,
+            shipping_profile_slug: Some("standard".to_string()),
+            tags: Vec::new(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            published_at: Some("2026-01-02T00:00:00Z".to_string()),
+        };
+
+        let view_model = build_product_admin_list_item_view_model(Some("en"), &product);
+
+        assert_eq!(view_model.status_label, "Active");
+        assert_eq!(view_model.type_label, "general");
+        assert_eq!(view_model.meta_label, "handle: winter-coat | vendor: Acme");
+        assert_eq!(
+            view_model.shipping_profile_label,
+            Some("profile standard".to_string())
+        );
+        assert_eq!(view_model.timestamp_label, "2026-01-02T00:00:00Z");
+        assert!(view_model.status_badge_class.contains("emerald"));
+    }
 
     #[test]
     fn text_or_none_trims_empty_admin_filters() {
