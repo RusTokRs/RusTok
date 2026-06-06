@@ -107,6 +107,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 - Python-dependent проверки запускаются через установленный Python.
 - Bash-only scripts допускаются как legacy/perimeter checks, но не как единственный способ подтвердить модульный контракт на этой машине.
 - Быстрые source-level проверки runtime-инвариантов, которые не требуют полной Rust-компиляции, могут жить в `scripts/verify/*.mjs`; текущий пример — `node scripts/verify/verify-runtime-context-invariants.mjs` для channel context/cache-key, locale-cache metrics и evidence `pages -> page_builder`.
+- Migration-safety gate закреплён в CI отдельным job `migration-smoke`: он использует PostgreSQL service и запускает `./scripts/verify/verify-migration-smoke.sh` в apply-from-zero и incremental режимах.
 
 ## Роли `xtask` и `scripts/*` (актуализация 2026-05)
 

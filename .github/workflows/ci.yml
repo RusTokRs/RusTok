@@ -274,6 +274,37 @@ jobs:
           name: nextest-logs
           path: nextest-output.log
 
+  migration-smoke:
+    name: Migration Smoke (PostgreSQL)
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply migrations from zero
+        run: ./scripts/verify/verify-migration-smoke.sh
+      - name: Apply migrations incrementally
+        run: ./scripts/verify/verify-migration-smoke.sh
+        env:
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: 1
+
   doc-tests:
     name: Doc Tests
     runs-on: ubuntu-latest
@@ -394,7 +425,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [fmt, clippy, check, check-msrv, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-server, build-storefront, test, doc-tests, next-apps, loco-docs-snapshot, server-library-docs-snapshot, reference-artifacts]
+    needs: [fmt, clippy, check, check-msrv, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-server, build-storefront, test, migration-smoke, doc-tests, next-apps, loco-docs-snapshot, server-library-docs-snapshot, reference-artifacts]
     if: always()
     steps:
       - name: Check all jobs
@@ -414,6 +445,7 @@ jobs:
              [[ "${{ needs.build-server.result }}" != "success" ]] || \
              [[ "${{ needs.build-storefront.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
+             [[ "${{ needs.migration-smoke.result }}" != "success" ]] || \
              [[ "${{ needs.doc-tests.result }}" != "success" ]] || \
              [[ "${{ needs.next-apps.result }}" != "success" ]] || \
              [[ "${{ needs.loco-docs-snapshot.result }}" != "success" ]] || \

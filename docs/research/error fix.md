@@ -23,11 +23,12 @@
 - В рамках продолжения Wave 4 добавлен первый migration-safety baseline: module-owned `migration_dependencies()` для известных cross-module FK/order boundaries (`channel -> auth`, `pricing/inventory -> product variants`, `commerce collections/categories -> product`, `blog/forum -> taxonomy`) и агрегация этих descriptors в server migrator.
 - Добавлен локальный PostgreSQL smoke `scripts/verify/verify-migration-smoke.sh`: он запускает ignored integration test, который сам создаёт временную БД без локального `psql`, применяет мигратор from-zero и проверяет representative module tables.
 - Wave 5 продвинут малым write-transport slice: inventory admin read-side остаётся на inventory-owned `core` + facade `api` + `transport` + explicit `ui/leptos.rs` adapter, а dedicated native endpoints `inventory/variant/set-quantity` и `inventory/variant/adjust-quantity` теперь идут через inventory-owned API/native facade без GraphQL fallback, вызывают inventory-owned service methods после tenant/permission checks, а inventory detail UI получил targeted set-quantity и +/-1 adjustment controls с локальной integer-валидацией и optimistic detail refresh.
-- Открытым остатком Wave 4 остаётся стабилизация PostgreSQL smoke на реальном окружении и последующее вынесение его в отдельный CI job; для Wave 5 остаётся расширить parity coverage и закрыть оставшиеся inventory mutations вместо transitional adapter-а.
+- Открытым остатком Wave 4 остаётся наблюдать первый CI `migration-smoke` прогон на реальном GitHub Actions окружении и исправить возможные environment-specific failures; для Wave 5 остаётся расширить parity coverage и закрыть оставшиеся inventory mutations вместо transitional adapter-а.
 - Следующий малый Wave 4 slice закрепил dependency descriptors в общем module contract: `MigrationSource` получил default `migration_dependencies()`, известные module crates с cross-module ordering metadata возвращают локальные descriptors через этот trait, а server migrator агрегирует их через module instances вместо прямого доступа к package-local migration modules. Последующий уточняющий slice расширил aggregation list до всех module crates, чьи migrations включены в server migrator, чтобы новые descriptors не требовали отдельного server-side allowlist.
 - Следующий малый Wave 4 smoke slice добавил opt-in incremental mode для PostgreSQL migration smoke (`RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`): тот же fresh DB теперь может проверять не только apply-from-zero целиком, но и последовательный `Migrator::up(..., Some(1))` path без отдельного `psql`; direct Rust test runs теперь валидируют binary smoke flags так же строго, как shell wrapper.
 - Следующий малый Wave 3 observability slice выровнял Prometheus naming для tenant locale cache counters с планом: hit/miss метрики теперь экспортируются как `rustok_tenant_locale_cache_hits_total` и `rustok_tenant_locale_cache_misses_total`, рядом с уже существующими `rustok_tenant_locale_db_queries_total` и `rustok_tenant_locale_cache_invalidations_total`; `rustok_tenant_locale_cache_entries` остаётся gauge.
 - Следующий малый Wave 6 guardrail slice добавил быстрый локальный `node scripts/verify/verify-runtime-context-invariants.mjs` и подключил его к `./scripts/verify/verify-all.sh runtime-context-invariants`: проверка закрепляет OAuth/locale dimensions для channel, source-order contract для фактического порядка middleware, имена locale-cache metrics и evidence `pages -> [content, page_builder]` без полной Rust-компиляции.
+- Следующий малый Wave 4/Wave 6 CI slice добавил отдельный GitHub Actions job `migration-smoke` с PostgreSQL service: CI запускает локальный smoke wrapper сначала в apply-from-zero режиме, затем с `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`, а aggregate `ci-success` теперь ждёт этот migration-safety gate.
 
 ## Проверенные факты
 
@@ -210,7 +211,7 @@ flowchart LR
    - create empty database/schema;
    - apply server migrator from zero;
    - optionally run lightweight schema sanity checks.
-6. После локальной стабилизации добавить отдельный CI job `migration-smoke`.
+6. ✅ Добавить отдельный CI job `migration-smoke`; следующий шаг — отследить первый GitHub Actions прогон и исправить только environment-specific failures, если они появятся.
 
 **Acceptance criteria:**
 

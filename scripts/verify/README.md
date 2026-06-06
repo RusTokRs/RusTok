@@ -40,7 +40,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-read
 | Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` |
 | Добавили новый event | `./scripts/verify/verify-all.sh events` |
 | Проверка anti-bypass drift | `./scripts/verify/verify-all.sh anti-bypass` |
-| Добавили миграцию | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh` |
+| Добавили миграцию | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh`; в CI тот же smoke закреплён отдельным job `migration-smoke` |
 | Подозрение на дыру в RBAC | `./scripts/verify/verify-all.sh rbac-coverage` |
 | Аудит безопасности | `./scripts/verify/verify-security.sh` |
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
