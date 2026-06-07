@@ -80,7 +80,10 @@ impl Default for SeoIndexReplayForm {
 }
 
 impl SeoIndexReplayForm {
-    pub fn build_input(&self, replay_historical: bool) -> Result<SeoIndexRepairReplayInput, String> {
+    pub fn build_input(
+        &self,
+        replay_historical: bool,
+    ) -> Result<SeoIndexRepairReplayInput, String> {
         let target_type = normalize_index_target_type(self.target_type.as_str())?;
         Ok(SeoIndexRepairReplayInput {
             target_type,
@@ -561,8 +564,7 @@ mod tests {
         SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm, SeoSettingsForm,
     };
     use rustok_seo::{
-        seo_builtin_slug, SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings,
-        SeoTargetSlug,
+        seo_builtin_slug, SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings, SeoTargetSlug,
     };
 
     #[test]

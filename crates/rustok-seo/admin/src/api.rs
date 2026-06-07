@@ -116,14 +116,18 @@ pub async fn fetch_index_delivery_status(
     target_type: Option<String>,
 ) -> Result<SeoIndexDeliveryStatusRecord, ApiError> {
     let target_type = normalize_index_target_type(target_type).map_err(ApiError::ServerFn)?;
-    seo_index_tracking_native(target_type).await.map_err(Into::into)
+    seo_index_tracking_native(target_type)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn run_index_repair_replay(
     input: SeoIndexRepairReplayInput,
 ) -> Result<SeoIndexRepairReplayResultRecord, ApiError> {
     let input = normalize_index_repair_replay_input(input).map_err(ApiError::ServerFn)?;
-    seo_index_repair_replay_native(input).await.map_err(Into::into)
+    seo_index_repair_replay_native(input)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn queue_bulk_apply(input: SeoBulkApplyInput) -> Result<SeoBulkJobRecord, ApiError> {

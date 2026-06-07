@@ -16,7 +16,11 @@ pub fn SeoIndexPane(
     on_run_repair_replay: Callback<()>,
 ) -> impl IntoView {
     let busy = Signal::derive(move || busy_key.get().is_some());
-    let title = t(ui_locale.as_deref(), "seo.index.title", "Index delivery tracking");
+    let title = t(
+        ui_locale.as_deref(),
+        "seo.index.title",
+        "Index delivery tracking",
+    );
     let subtitle = t(
         ui_locale.as_deref(),
         "seo.index.subtitle",
