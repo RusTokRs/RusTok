@@ -35,13 +35,13 @@
 
 - `rustok-blog` уже переведён на `rustok-comments` для live comment read/write path;
 - moderation UI публикуется как module-owned Leptos surface `rustok-comments-admin`;
-- transport adapters и host wiring остаются в `apps/server`, но доменная логика и moderation contract принадлежат модулю;
+- runtime transport adapters и host wiring остаются в `apps/server`, а module-owned admin moderation UI ходит через собственный `admin/src/transport/` facade; доменная логика и moderation contract принадлежат модулю;
 - future integrations для page-like surfaces должны оформляться как явный opt-in contract.
 
 ## Module-owned admin UI и transport rule
 
 - `rustok-comments-admin` монтируется в Leptos Admin как module-owned UI на `/modules/comments`.
-- Внутренний data-layer для moderation surface строится через native `#[server]` calls поверх `CommentsService`.
+- Внутренний data-layer для moderation surface строится через `admin/src/transport/mod.rs` facade и `admin/src/transport/native_server_adapter.rs` native `#[server]` calls поверх `CommentsService`.
 - Отдельный GraphQL/REST fallback для этого UI не добавляется: у `rustok-comments` не было собственного legacy transport surface, и это зафиксированное исключение из общего dual-path правила.
 - Существующая интеграция `rustok-blog -> rustok-comments` при этом не меняется.
 

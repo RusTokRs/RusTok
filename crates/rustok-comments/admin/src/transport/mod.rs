@@ -2,19 +2,49 @@
 //!
 //! The current admin surface intentionally exposes a temporary single-adapter
 //! native server-function transport. Keeping this facade between `ui/leptos` and
-//! adapter implementation code prevents render code from owning transport calls
-//! and leaves room for a future GraphQL/headless fallback adapter without
-//! changing UI state wiring.
+//! adapter implementation code prevents render code from owning transport calls.
+//! `rustok-comments` has no legacy GraphQL/REST admin surface, so this package
+//! keeps the native-only exception explicit instead of inventing a local
+//! headless fallback contract.
 
 pub(crate) mod native_server_adapter;
 
-pub(crate) use crate::api::ApiError;
-use crate::api::CommentThreadsPayload;
+use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+
 use crate::core::{
     CommentThreadDetailRequest, CommentThreadsRequest, SetCommentStatusCommand,
     SetThreadStatusCommand,
 };
 use rustok_comments::{CommentRecord, CommentThreadDetail, CommentThreadSummary};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum CommentsAdminTransportError {
+    ServerFn(String),
+}
+
+impl Display for CommentsAdminTransportError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ServerFn(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for CommentsAdminTransportError {}
+
+impl From<ServerFnError> for CommentsAdminTransportError {
+    fn from(value: ServerFnError) -> Self {
+        Self::ServerFn(value.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CommentThreadsPayload {
+    pub items: Vec<CommentThreadSummary>,
+    pub total: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommentsAdminTransportPath {
@@ -26,40 +56,46 @@ pub(crate) const ACTIVE_TRANSPORT_PATH: CommentsAdminTransportPath =
 
 pub(crate) async fn fetch_threads(
     request: CommentThreadsRequest,
-) -> Result<CommentThreadsPayload, ApiError> {
+) -> Result<CommentThreadsPayload, CommentsAdminTransportError> {
     match ACTIVE_TRANSPORT_PATH {
-        CommentsAdminTransportPath::NativeServer => {
-            native_server_adapter::fetch_threads(request).await
-        }
+        CommentsAdminTransportPath::NativeServer => native_server_adapter::fetch_threads(request)
+            .await
+            .map_err(Into::into),
     }
 }
 
 pub(crate) async fn fetch_thread_detail(
     request: CommentThreadDetailRequest,
-) -> Result<CommentThreadDetail, ApiError> {
+) -> Result<CommentThreadDetail, CommentsAdminTransportError> {
     match ACTIVE_TRANSPORT_PATH {
         CommentsAdminTransportPath::NativeServer => {
-            native_server_adapter::fetch_thread_detail(request).await
+            native_server_adapter::fetch_thread_detail(request)
+                .await
+                .map_err(Into::into)
         }
     }
 }
 
 pub(crate) async fn set_thread_status(
     command: SetThreadStatusCommand,
-) -> Result<CommentThreadSummary, ApiError> {
+) -> Result<CommentThreadSummary, CommentsAdminTransportError> {
     match ACTIVE_TRANSPORT_PATH {
         CommentsAdminTransportPath::NativeServer => {
-            native_server_adapter::set_thread_status(command).await
+            native_server_adapter::set_thread_status(command)
+                .await
+                .map_err(Into::into)
         }
     }
 }
 
 pub(crate) async fn set_comment_status(
     command: SetCommentStatusCommand,
-) -> Result<CommentRecord, ApiError> {
+) -> Result<CommentRecord, CommentsAdminTransportError> {
     match ACTIVE_TRANSPORT_PATH {
         CommentsAdminTransportPath::NativeServer => {
-            native_server_adapter::set_comment_status(command).await
+            native_server_adapter::set_comment_status(command)
+                .await
+                .map_err(Into::into)
         }
     }
 }

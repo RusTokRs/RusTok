@@ -150,7 +150,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                             CommentThreadDetailRequest::new(thread_id, locale_value, 1, 100);
                         transport::fetch_thread_detail(request).await
                     }
-                    None => Err(transport::ApiError::ServerFn(t(
+                    None => Err(transport::CommentsAdminTransportError::ServerFn(t(
                         detail_error_locale.as_deref(),
                         "comments.error.selectThread",
                         "Select a thread first",
