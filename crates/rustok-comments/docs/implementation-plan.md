@@ -4,12 +4,24 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Current phase: FFA admin core/transport/ui split
+- Last checkpoint: Comments admin получил первый code-level FFA slice: framework-agnostic `admin/src/core.rs` владеет status filter parsing, `admin/src/transport.rs` стал module-owned facade поверх текущих native server functions, а Leptos render layer вынесен в `admin/src/ui/leptos.rs`; crate root теперь только wires modules и re-export `CommentsAdmin`.
+- Next step: Расширить core view-model helpers для thread/detail cards и подготовить parity plan для будущего GraphQL/headless fallback adapter без изменения текущего native-first admin transport.
+- Open blockers: GraphQL fallback для comments admin пока отсутствует; этот срез зафиксирован как temporary single-adapter native state.
+- Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.
+- Last updated at (UTC): 2026-06-07T00:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - `rustok-comments-admin` теперь имеет явные `admin/src/core.rs`, `admin/src/transport.rs` и `admin/src/ui/leptos.rs`; `admin/src/lib.rs` больше не содержит render/business logic и публикует только `CommentsAdmin`;
+  - covered admin UI больше не вызывает raw `api::*` напрямую из Leptos render layer, а идёт через module-owned transport facade;
+  - status filter parsing вынесен в Leptos-free core и покрыт unit tests;
+  - текущий admin transport остаётся temporary single-adapter native server-function path, GraphQL/headless parity adapter запланирован следующим срезом.
+- Owner: `rustok-comments` module team
 
 ## Область работ
 
