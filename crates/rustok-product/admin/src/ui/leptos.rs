@@ -2,7 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer, RouteQueryWriter};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
@@ -480,10 +480,10 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let item_locale_for_publish = item_locale_for_buttons.clone();
                                         let item_locale_for_draft = item_locale_for_buttons.clone();
                                         let item_locale_for_archive = item_locale_for_buttons.clone();
+                                        let item_locale_for_delete = item_locale_for_buttons.clone();
                                         let change_status_error_label_for_publish = change_status_error_label.clone();
                                         let change_status_error_label_for_draft = change_status_error_label.clone();
                                         let change_status_error_label_for_archive = change_status_error_label.clone();
-                                        let bootstrap_loading_label_for_delete = bootstrap_loading_label.clone();
                                         let delete_returned_false_label_for_delete = delete_returned_false_label.clone();
                                         let delete_product_error_label_for_delete = delete_product_error_label.clone();
                                         view! {
@@ -555,55 +555,36 @@ pub fn ProductAdmin() -> impl IntoView {
                                                         )>
                                                             {t(item_locale_for_buttons.as_deref(), "product.action.archive", "Archive")}
                                                         </button>
-                                                        <button type="button" class="inline-flex rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50" disabled=move || busy.get() on:click=move |_| {
-                                                            let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-                                                                set_error.set(Some(bootstrap_loading_label_for_delete.clone()));
-                                                                return;
-                                                            };
-                                                            set_busy.set(true);
-                                                            set_error.set(None);
-                                                            let token_value = token.get_untracked();
-                                                            let tenant_value = tenant.get_untracked();
-                                                            let delete_id_value = delete_id.clone();
-                                                            let delete_query_writer = delete_query_writer_for_item.clone();
-                                                            let delete_returned_false_label = delete_returned_false_label_for_delete.clone();
-                                                            let delete_product_error_label = delete_product_error_label_for_delete.clone();
-                                                            spawn_local(async move {
-                                                                match transport::delete_product(
-                                                                    token_value,
-                                                                    tenant_value,
-                                                                    bootstrap.current_tenant.id,
-                                                                    bootstrap.me.id,
-                                                                    delete_id_value.clone(),
-                                                                ).await {
-                                                                    Ok(true) => {
-                                                                        if editing_id.get_untracked().as_deref() == Some(delete_id_value.as_str()) {
-                                                                            delete_query_writer.clear_key(AdminQueryKey::ProductId.as_str());
-                                                                            set_editing_id.set(None);
-                                                                            set_selected.set(None);
-                                                                            set_title.set(String::new());
-                                                                            set_handle.set(String::new());
-                                                                            set_description.set(String::new());
-                                                                            set_vendor.set(String::new());
-                                                                            set_product_type.set(String::new());
-                                                                            set_shipping_profile_slug.set(String::new());
-                                                                            set_sku.set(String::new());
-                                                                            set_barcode.set(String::new());
-                                                                            set_currency_code.set("USD".to_string());
-                                                                            set_amount.set("0.00".to_string());
-                                                                            set_compare_at_amount.set(String::new());
-                                                                            set_inventory_quantity.set(0);
-                                                                            set_publish_now.set(false);
-                                                                            set_error.set(None);
-                                                                        }
-                                                                        set_refresh_nonce.update(|value| *value += 1);
-                                                                    }
-                                                                    Ok(false) => set_error.set(Some(delete_returned_false_label)),
-                                                                    Err(err) => set_error.set(Some(format!("{delete_product_error_label}: {err}"))),
-                                                                }
-                                                                set_busy.set(false);
-                                                            });
-                                                        }>
+                                                        <button type="button" class="inline-flex rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50" disabled=move || busy.get() on:click=move |_| mutate_delete(
+                                                            bootstrap.get_untracked().and_then(Result::ok),
+                                                            token.get_untracked(),
+                                                            tenant.get_untracked(),
+                                                            delete_id.clone(),
+                                                            item_locale_for_delete.clone(),
+                                                            delete_query_writer_for_item.clone(),
+                                                            delete_returned_false_label_for_delete.clone(),
+                                                            delete_product_error_label_for_delete.clone(),
+                                                            editing_id,
+                                                            set_editing_id,
+                                                            set_selected,
+                                                            set_title,
+                                                            set_handle,
+                                                            set_description,
+                                                            set_seller_id,
+                                                            set_vendor,
+                                                            set_product_type,
+                                                            set_shipping_profile_slug,
+                                                            set_sku,
+                                                            set_barcode,
+                                                            set_currency_code,
+                                                            set_amount,
+                                                            set_compare_at_amount,
+                                                            set_inventory_quantity,
+                                                            set_publish_now,
+                                                            set_busy,
+                                                            set_error,
+                                                            set_refresh_nonce,
+                                                        )>
                                                             {t(item_locale_for_buttons.as_deref(), "product.action.delete", "Delete")}
                                                         </button>
                                                     </div>
@@ -1006,6 +987,89 @@ fn mutate_status(
         {
             Ok(_) => set_refresh_nonce.update(|value| *value += 1),
             Err(err) => set_error.set(Some(format!("{change_status_error_label}: {err}"))),
+        }
+        set_busy.set(false);
+    });
+}
+
+fn mutate_delete(
+    bootstrap: Option<ProductAdminBootstrap>,
+    token: Option<String>,
+    tenant: Option<String>,
+    product_id: String,
+    locale: Option<String>,
+    query_writer: RouteQueryWriter,
+    delete_returned_false_label: String,
+    delete_product_error_label: String,
+    editing_id: ReadSignal<Option<String>>,
+    set_editing_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<ProductDetail>>,
+    set_title: WriteSignal<String>,
+    set_handle: WriteSignal<String>,
+    set_description: WriteSignal<String>,
+    set_seller_id: WriteSignal<String>,
+    set_vendor: WriteSignal<String>,
+    set_product_type: WriteSignal<String>,
+    set_shipping_profile_slug: WriteSignal<String>,
+    set_sku: WriteSignal<String>,
+    set_barcode: WriteSignal<String>,
+    set_currency_code: WriteSignal<String>,
+    set_amount: WriteSignal<String>,
+    set_compare_at_amount: WriteSignal<String>,
+    set_inventory_quantity: WriteSignal<i32>,
+    set_publish_now: WriteSignal<bool>,
+    set_busy: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    set_refresh_nonce: WriteSignal<u64>,
+) {
+    let command = match build_product_admin_delete_command(bootstrap.as_ref(), product_id) {
+        Ok(command) => command,
+        Err(err) => {
+            set_error.set(Some(err.message(locale.as_deref())));
+            return;
+        }
+    };
+
+    set_busy.set(true);
+    set_error.set(None);
+    spawn_local(async move {
+        let deleted_product_id = command.product_id.clone();
+        match transport::delete_product(
+            token,
+            tenant,
+            command.tenant_id,
+            command.actor_id,
+            command.product_id,
+        )
+        .await
+        {
+            Ok(true) => {
+                if editing_id.get_untracked().as_deref() == Some(deleted_product_id.as_str()) {
+                    query_writer.clear_key(AdminQueryKey::ProductId.as_str());
+                    clear_product_form(
+                        set_editing_id,
+                        set_selected,
+                        set_title,
+                        set_handle,
+                        set_description,
+                        set_seller_id,
+                        set_vendor,
+                        set_product_type,
+                        set_shipping_profile_slug,
+                        set_sku,
+                        set_barcode,
+                        set_currency_code,
+                        set_amount,
+                        set_compare_at_amount,
+                        set_inventory_quantity,
+                        set_publish_now,
+                    );
+                    set_error.set(None);
+                }
+                set_refresh_nonce.update(|value| *value += 1);
+            }
+            Ok(false) => set_error.set(Some(delete_returned_false_label)),
+            Err(err) => set_error.set(Some(format!("{delete_product_error_label}: {err}"))),
         }
         set_busy.set(false);
     });

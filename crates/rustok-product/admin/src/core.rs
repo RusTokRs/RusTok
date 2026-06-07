@@ -542,6 +542,43 @@ pub(crate) fn build_product_admin_status_mutation_command(
     })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminDeleteCommand {
+    pub tenant_id: String,
+    pub actor_id: String,
+    pub product_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProductAdminDeleteValidationError {
+    BootstrapUnavailable,
+}
+
+impl ProductAdminDeleteValidationError {
+    pub(crate) fn message(&self, locale: Option<&str>) -> String {
+        match self {
+            Self::BootstrapUnavailable => t(
+                locale,
+                "product.error.bootstrapLoading",
+                "Bootstrap is still loading.",
+            ),
+        }
+    }
+}
+
+pub(crate) fn build_product_admin_delete_command(
+    bootstrap: Option<&ProductAdminBootstrap>,
+    product_id: String,
+) -> Result<ProductAdminDeleteCommand, ProductAdminDeleteValidationError> {
+    let bootstrap = bootstrap.ok_or(ProductAdminDeleteValidationError::BootstrapUnavailable)?;
+
+    Ok(ProductAdminDeleteCommand {
+        tenant_id: bootstrap.current_tenant.id.clone(),
+        actor_id: bootstrap.me.id.clone(),
+        product_id,
+    })
+}
+
 pub(crate) fn build_product_admin_save_command(
     form: ProductAdminDraftForm,
     editing_product_id: Option<String>,
@@ -738,6 +775,25 @@ mod tests {
             inventory_quantity: 7,
             publish_now: true,
         }
+    }
+
+    #[test]
+    fn product_admin_delete_command_prepares_transport_payload() {
+        let command =
+            build_product_admin_delete_command(Some(&admin_bootstrap()), "product-1".to_string())
+                .expect("delete command");
+
+        assert_eq!(command.tenant_id, "tenant-1");
+        assert_eq!(command.actor_id, "user-1");
+        assert_eq!(command.product_id, "product-1");
+    }
+
+    #[test]
+    fn product_admin_delete_command_validates_bootstrap() {
+        assert_eq!(
+            build_product_admin_delete_command(None, "product-1".to_string()).unwrap_err(),
+            ProductAdminDeleteValidationError::BootstrapUnavailable
+        );
     }
 
     #[test]
