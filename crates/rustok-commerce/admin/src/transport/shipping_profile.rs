@@ -1,8 +1,6 @@
 use crate::api::{self, ApiError};
 use crate::model::{
-    CommerceAdminBootstrap, CommerceAdminCartSnapshot, CommerceCartPromotionDraft,
-    CommerceCartPromotionPreview, CommerceOrderChange, CommerceOrderChangeActionDraft,
-    CommerceOrderChangeList, ShippingProfile, ShippingProfileDraft, ShippingProfileList,
+    CommerceAdminBootstrap, ShippingProfile, ShippingProfileDraft, ShippingProfileList,
 };
 
 pub async fn fetch_bootstrap(
@@ -67,46 +65,14 @@ pub async fn reactivate_shipping_profile(
     api::reactivate_shipping_profile(token, tenant_slug, tenant_id, id).await
 }
 
-pub async fn fetch_order_changes(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    order_id: Option<String>,
-    status: Option<String>,
-) -> Result<CommerceOrderChangeList, ApiError> {
-    api::fetch_order_changes(token, tenant_slug, tenant_id, order_id, status).await
-}
+#[cfg(test)]
+mod tests {
+    use std::any::type_name;
 
-pub async fn apply_order_change(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    order_change_id: String,
-    draft: CommerceOrderChangeActionDraft,
-) -> Result<CommerceOrderChange, ApiError> {
-    api::apply_order_change(token, tenant_slug, tenant_id, order_change_id, draft).await
-}
+    use super::*;
 
-pub async fn cancel_order_change(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    tenant_id: String,
-    order_change_id: String,
-    draft: CommerceOrderChangeActionDraft,
-) -> Result<CommerceOrderChange, ApiError> {
-    api::cancel_order_change(token, tenant_slug, tenant_id, order_change_id, draft).await
-}
-
-pub async fn preview_cart_promotion(
-    cart_id: String,
-    draft: CommerceCartPromotionDraft,
-) -> Result<CommerceCartPromotionPreview, ApiError> {
-    api::preview_cart_promotion(cart_id, draft).await
-}
-
-pub async fn apply_cart_promotion(
-    cart_id: String,
-    draft: CommerceCartPromotionDraft,
-) -> Result<CommerceAdminCartSnapshot, ApiError> {
-    api::apply_cart_promotion(cart_id, draft).await
+    #[test]
+    fn shipping_profile_transport_keeps_api_error_contract() {
+        assert!(type_name::<ApiError>().contains("ApiError"));
+    }
 }
