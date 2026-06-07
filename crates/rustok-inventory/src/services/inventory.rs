@@ -140,12 +140,8 @@ impl InventoryService {
         adjustment: i32,
         reason: Option<String>,
     ) -> CommerceResult<InventoryQuantityWriteResult> {
-        let inventory_policy = self
-            .load_variant(&self.db, tenant_id, variant_id)
-            .await?
-            .inventory_policy;
-        let quantity = self
-            .adjust_inventory(
+        let update = self
+            .adjust_inventory_update(
                 tenant_id,
                 actor_id,
                 AdjustInventoryInput {
@@ -157,8 +153,8 @@ impl InventoryService {
             .await?;
 
         Ok(InventoryQuantityWriteResult::from_quantity_and_policy(
-            quantity,
-            &inventory_policy,
+            update.quantity,
+            &update.inventory_policy,
         ))
     }
 
@@ -169,6 +165,18 @@ impl InventoryService {
         actor_id: Uuid,
         input: AdjustInventoryInput,
     ) -> CommerceResult<i32> {
+        Ok(self
+            .adjust_inventory_update(tenant_id, actor_id, input)
+            .await?
+            .quantity)
+    }
+
+    async fn adjust_inventory_update(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: AdjustInventoryInput,
+    ) -> CommerceResult<InventoryQuantityUpdate> {
         let txn = self.db.begin().await?;
 
         let variant = self.load_variant(&txn, tenant_id, input.variant_id).await?;
@@ -225,8 +233,13 @@ impl InventoryService {
                 .await?;
         }
 
+        let inventory_policy = variant.inventory_policy.clone();
+
         txn.commit().await?;
-        Ok(new_quantity)
+        Ok(InventoryQuantityUpdate {
+            quantity: new_quantity,
+            inventory_policy,
+        })
     }
 
     #[instrument(skip(self))]
@@ -237,17 +250,13 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<InventoryQuantityWriteResult> {
-        let inventory_policy = self
-            .load_variant(&self.db, tenant_id, variant_id)
-            .await?
-            .inventory_policy;
-        let quantity = self
-            .set_inventory(tenant_id, actor_id, variant_id, quantity)
+        let update = self
+            .set_inventory_update(tenant_id, actor_id, variant_id, quantity)
             .await?;
 
         Ok(InventoryQuantityWriteResult::from_quantity_and_policy(
-            quantity,
-            &inventory_policy,
+            update.quantity,
+            &update.inventory_policy,
         ))
     }
 
@@ -259,6 +268,19 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<i32> {
+        Ok(self
+            .set_inventory_update(tenant_id, actor_id, variant_id, quantity)
+            .await?
+            .quantity)
+    }
+
+    async fn set_inventory_update(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        quantity: i32,
+    ) -> CommerceResult<InventoryQuantityUpdate> {
         let txn = self.db.begin().await?;
 
         let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
@@ -300,8 +322,13 @@ impl InventoryService {
             .publish_in_tx(&txn, tenant_id, Some(actor_id), event)
             .await?;
 
+        let inventory_policy = variant.inventory_policy.clone();
+
         txn.commit().await?;
-        Ok(quantity)
+        Ok(InventoryQuantityUpdate {
+            quantity,
+            inventory_policy,
+        })
     }
 
     #[instrument(skip(self))]
@@ -994,6 +1021,11 @@ mod tests {
             })
         );
     }
+}
+
+struct InventoryQuantityUpdate {
+    quantity: i32,
+    inventory_policy: String,
 }
 
 struct InventoryState {
