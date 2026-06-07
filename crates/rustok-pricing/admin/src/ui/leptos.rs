@@ -1,9 +1,20 @@
-use crate::core::*;
+use crate::core::{
+    apply_selected_channel_option, build_discount_draft, build_price_draft,
+    build_price_list_rule_draft, build_price_list_scope_draft, build_product_admin_href,
+    build_resolution_context, clear_price_list_rule_draft, empty_price_draft,
+    format_adjustment_preview, format_channel_option_label, format_channel_scope_text,
+    format_effective_context, format_effective_price, format_price_list_option_label,
+    format_price_scope, format_product_meta, format_variant_identity, format_variant_prices,
+    localized_product_status, normalize_channel_value, normalized_currency_code,
+    normalized_price_list_id, normalized_quantity, normalized_region_id, price_draft_from_price,
+    pricing_health_badge, pricing_health_label, pricing_translation_for_locale,
+    selected_channel_key, status_badge, summarize_pricing, text_or_none, GLOBAL_CHANNEL_KEY,
+    LEGACY_CHANNEL_KEY,
+};
 use crate::i18n::t;
 use crate::model::{
-    PricingAdjustmentPreview, PricingAdminBootstrap, PricingChannelOption, PricingDiscountDraft,
-    PricingPriceDraft, PricingPriceListOption, PricingProductDetail, PricingResolutionContext,
-    PricingVariant,
+    PricingAdjustmentPreview, PricingAdminBootstrap, PricingChannelOption, PricingPriceDraft,
+    PricingPriceListOption, PricingProductDetail, PricingResolutionContext, PricingVariant,
 };
 use crate::transport;
 use leptos::prelude::*;
@@ -884,10 +895,13 @@ fn VariantPriceEditors(
         .iter()
         .cloned()
         .map(|price| {
-            let compare_at_amount = price.compare_at_amount.clone().unwrap_or_default();
             let title = format!(
                 "{} ({})",
-                t(locale.as_deref(), "pricing.edit.updatePrice", "Update price"),
+                t(
+                    locale.as_deref(),
+                    "pricing.edit.updatePrice",
+                    "Update price"
+                ),
                 format_price_scope(locale.as_deref(), price.min_quantity, price.max_quantity)
             );
             view! {
@@ -896,16 +910,7 @@ fn VariantPriceEditors(
                     product_id=product_id.clone()
                     variant_id=variant.id.clone()
                     available_channels=available_channels.clone()
-                    draft=PricingPriceDraft {
-                        currency_code: price.currency_code,
-                        amount: price.amount,
-                        compare_at_amount,
-                        price_list_id: price.price_list_id.clone().unwrap_or_default(),
-                        channel_id: price.channel_id.clone().unwrap_or_default(),
-                        channel_slug: price.channel_slug.clone().unwrap_or_default(),
-                        min_quantity: price.min_quantity.map(|value| value.to_string()).unwrap_or_default(),
-                        max_quantity: price.max_quantity.map(|value| value.to_string()).unwrap_or_default(),
-                    }
+                    draft=price_draft_from_price(price)
                     title=title
                     on_saved=on_saved
                 />
@@ -937,16 +942,7 @@ fn VariantPriceEditors(
                 product_id=product_id
                 variant_id=variant.id
                 available_channels=available_channels
-                draft=PricingPriceDraft {
-                    currency_code: add_currency,
-                    amount: String::new(),
-                    compare_at_amount: String::new(),
-                    price_list_id: selected_price_list_id.unwrap_or_default(),
-                    channel_id: String::new(),
-                    channel_slug: String::new(),
-                    min_quantity: String::new(),
-                    max_quantity: String::new(),
-                }
+                draft=empty_price_draft(add_currency, selected_price_list_id)
                 title=add_price_title
                 on_saved=on_saved
             />
@@ -1118,15 +1114,13 @@ fn VariantDiscountEditor(
                     class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                     disabled=move || busy.get()
                     on:click=move |_| {
-                        let payload = PricingDiscountDraft {
-                            currency_code: currency_code.get_untracked(),
-                            discount_percent: discount_percent.get_untracked(),
-                            price_list_id: preview_selected_price_list_id
-                                .clone()
-                                .unwrap_or_default(),
-                            channel_id: channel_id.get_untracked(),
-                            channel_slug: channel_slug.get_untracked(),
-                        };
+                        let payload = build_discount_draft(
+                            currency_code.get_untracked(),
+                            discount_percent.get_untracked(),
+                            preview_selected_price_list_id.clone(),
+                            channel_id.get_untracked(),
+                            channel_slug.get_untracked(),
+                        );
                         let variant_id = preview_variant_id.clone();
                         let preview_error_label = t(locale_for_preview.as_deref(), "pricing.adjustment.previewError", "Failed to preview discount");
                         set_busy.set(true);
@@ -1151,15 +1145,13 @@ fn VariantDiscountEditor(
                     class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                     disabled=move || busy.get()
                     on:click=move |_| {
-                        let payload = PricingDiscountDraft {
-                            currency_code: currency_code.get_untracked(),
-                            discount_percent: discount_percent.get_untracked(),
-                            price_list_id: apply_selected_price_list_id
-                                .clone()
-                                .unwrap_or_default(),
-                            channel_id: channel_id.get_untracked(),
-                            channel_slug: channel_slug.get_untracked(),
-                        };
+                        let payload = build_discount_draft(
+                            currency_code.get_untracked(),
+                            discount_percent.get_untracked(),
+                            apply_selected_price_list_id.clone(),
+                            channel_id.get_untracked(),
+                            channel_slug.get_untracked(),
+                        );
                         let variant_id = apply_variant_id.clone();
                         let product_id = product_id.clone();
                         let on_saved = on_saved;
@@ -1279,9 +1271,7 @@ fn PriceListRuleEditor(
                     class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                     disabled=move || busy.get()
                     on:click=move |_| {
-                        let payload = crate::model::PricingPriceListRuleDraft {
-                            adjustment_percent: adjustment_percent.get_untracked(),
-                        };
+                        let payload = build_price_list_rule_draft(adjustment_percent.get_untracked());
                         let price_list_id = save_price_list_id.clone();
                         let on_saved = on_saved;
                         let save_error_label = t(locale_for_save.as_deref(), "pricing.rule.saveError", "Failed to save price-list rule");
@@ -1310,9 +1300,7 @@ fn PriceListRuleEditor(
                     class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                     disabled=move || busy.get()
                     on:click=move |_| {
-                        let payload = crate::model::PricingPriceListRuleDraft {
-                            adjustment_percent: String::new(),
-                        };
+                        let payload = clear_price_list_rule_draft();
                         let price_list_id = clear_price_list_id.clone();
                         let on_saved = on_saved;
                         let save_error_label = t(locale_for_clear.as_deref(), "pricing.rule.saveError", "Failed to save price-list rule");
@@ -1387,10 +1375,10 @@ fn PriceListRuleEditor(
                     class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                     disabled=move || busy.get()
                     on:click=move |_| {
-                        let payload = crate::model::PricingPriceListScopeDraft {
-                            channel_id: channel_id.get_untracked(),
-                            channel_slug: channel_slug.get_untracked(),
-                        };
+                        let payload = build_price_list_scope_draft(
+                            channel_id.get_untracked(),
+                            channel_slug.get_untracked(),
+                        );
                         let price_list_id = save_scope_price_list_id.clone();
                         let on_saved = on_saved;
                         let save_error_label = t(locale_for_scope_save.as_deref(), "pricing.rule.scopeSaveError", "Failed to save price-list scope");
@@ -1558,16 +1546,16 @@ fn VariantPriceEditor(
                     on:click=move |_| {
                         let variant_id = variant_id.clone();
                         let product_id = product_id.clone();
-                        let payload = PricingPriceDraft {
-                            currency_code: currency_code.get_untracked(),
-                            amount: amount.get_untracked(),
-                            compare_at_amount: compare_at_amount.get_untracked(),
-                            price_list_id: price_list_id.clone(),
-                            channel_id: channel_id.get_untracked(),
-                            channel_slug: channel_slug.get_untracked(),
-                            min_quantity: min_quantity.get_untracked(),
-                            max_quantity: max_quantity.get_untracked(),
-                        };
+                        let payload = build_price_draft(
+                            currency_code.get_untracked(),
+                            amount.get_untracked(),
+                            compare_at_amount.get_untracked(),
+                            price_list_id.clone(),
+                            channel_id.get_untracked(),
+                            channel_slug.get_untracked(),
+                            min_quantity.get_untracked(),
+                            max_quantity.get_untracked(),
+                        );
                         let on_saved = on_saved;
                         let save_error_label = t(locale_for_save.as_deref(), "pricing.edit.saveError", "Failed to save price");
                         set_busy.set(true);

@@ -4,8 +4,9 @@ use uuid::Uuid;
 
 use crate::i18n::t;
 use crate::model::{
-    PricingAdjustmentPreview, PricingChannelOption, PricingEffectivePrice, PricingPrice,
-    PricingPriceListOption, PricingProductListItem, PricingProductTranslation,
+    PricingAdjustmentPreview, PricingChannelOption, PricingDiscountDraft, PricingEffectivePrice,
+    PricingPrice, PricingPriceDraft, PricingPriceListOption, PricingPriceListRuleDraft,
+    PricingPriceListScopeDraft, PricingProductListItem, PricingProductTranslation,
     PricingResolutionContext, PricingVariant,
 };
 
@@ -522,6 +523,97 @@ pub(crate) fn build_resolution_context(
     })
 }
 
+pub(crate) fn price_draft_from_price(price: PricingPrice) -> PricingPriceDraft {
+    PricingPriceDraft {
+        currency_code: price.currency_code,
+        amount: price.amount,
+        compare_at_amount: price.compare_at_amount.unwrap_or_default(),
+        price_list_id: price.price_list_id.unwrap_or_default(),
+        channel_id: price.channel_id.unwrap_or_default(),
+        channel_slug: price.channel_slug.unwrap_or_default(),
+        min_quantity: price
+            .min_quantity
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+        max_quantity: price
+            .max_quantity
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+    }
+}
+
+pub(crate) fn empty_price_draft(
+    currency_code: String,
+    selected_price_list_id: Option<String>,
+) -> PricingPriceDraft {
+    PricingPriceDraft {
+        currency_code,
+        amount: String::new(),
+        compare_at_amount: String::new(),
+        price_list_id: selected_price_list_id.unwrap_or_default(),
+        channel_id: String::new(),
+        channel_slug: String::new(),
+        min_quantity: String::new(),
+        max_quantity: String::new(),
+    }
+}
+
+pub(crate) fn build_price_draft(
+    currency_code: String,
+    amount: String,
+    compare_at_amount: String,
+    price_list_id: String,
+    channel_id: String,
+    channel_slug: String,
+    min_quantity: String,
+    max_quantity: String,
+) -> PricingPriceDraft {
+    PricingPriceDraft {
+        currency_code,
+        amount,
+        compare_at_amount,
+        price_list_id,
+        channel_id,
+        channel_slug,
+        min_quantity,
+        max_quantity,
+    }
+}
+
+pub(crate) fn build_discount_draft(
+    currency_code: String,
+    discount_percent: String,
+    selected_price_list_id: Option<String>,
+    channel_id: String,
+    channel_slug: String,
+) -> PricingDiscountDraft {
+    PricingDiscountDraft {
+        currency_code,
+        discount_percent,
+        price_list_id: selected_price_list_id.unwrap_or_default(),
+        channel_id,
+        channel_slug,
+    }
+}
+
+pub(crate) fn build_price_list_rule_draft(adjustment_percent: String) -> PricingPriceListRuleDraft {
+    PricingPriceListRuleDraft { adjustment_percent }
+}
+
+pub(crate) fn clear_price_list_rule_draft() -> PricingPriceListRuleDraft {
+    build_price_list_rule_draft(String::new())
+}
+
+pub(crate) fn build_price_list_scope_draft(
+    channel_id: String,
+    channel_slug: String,
+) -> PricingPriceListScopeDraft {
+    PricingPriceListScopeDraft {
+        channel_id,
+        channel_slug,
+    }
+}
+
 pub(crate) fn status_badge(status: &str) -> &'static str {
     match status {
         "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -657,6 +749,49 @@ mod tests {
         assert_eq!(
             selected_channel_key("unknown", "", &channels),
             LEGACY_CHANNEL_KEY
+        );
+    }
+
+    #[test]
+    fn draft_builders_keep_request_policy_out_of_render_adapter() {
+        let price_draft = price_draft_from_price(PricingPrice {
+            currency_code: "usd".to_string(),
+            amount: "12.50".to_string(),
+            compare_at_amount: Some("15.00".to_string()),
+            discount_percent: None,
+            on_sale: true,
+            price_list_id: Some("price-list".to_string()),
+            channel_id: Some("channel-id".to_string()),
+            channel_slug: Some("web".to_string()),
+            min_quantity: Some(2),
+            max_quantity: Some(5),
+        });
+
+        assert_eq!(price_draft.currency_code, "usd");
+        assert_eq!(price_draft.compare_at_amount, "15.00");
+        assert_eq!(price_draft.price_list_id, "price-list");
+        assert_eq!(price_draft.channel_id, "channel-id");
+        assert_eq!(price_draft.channel_slug, "web");
+        assert_eq!(price_draft.min_quantity, "2");
+        assert_eq!(price_draft.max_quantity, "5");
+
+        let discount_draft = build_discount_draft(
+            "EUR".to_string(),
+            "10".to_string(),
+            Some("list-1".to_string()),
+            "channel-id".to_string(),
+            "web".to_string(),
+        );
+        assert_eq!(discount_draft.price_list_id, "list-1");
+        assert_eq!(discount_draft.channel_slug, "web");
+
+        let scope_draft = build_price_list_scope_draft("channel-id".to_string(), "web".to_string());
+        assert_eq!(scope_draft.channel_id, "channel-id");
+        assert_eq!(scope_draft.channel_slug, "web");
+
+        assert_eq!(
+            clear_price_list_rule_draft().adjustment_percent,
+            String::new()
         );
     }
 }

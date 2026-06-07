@@ -57,6 +57,7 @@ pub struct InventoryReservationReleaseWriteResult {
 }
 
 impl InventoryQuantityWriteResult {
+    #[cfg(test)]
     fn from_quantity(quantity: i32) -> Self {
         Self::from_quantity_and_policy(quantity, "deny")
     }
