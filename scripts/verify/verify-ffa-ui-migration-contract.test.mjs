@@ -31,6 +31,7 @@ function withFixture({
   mkdirSync(path.join(root, "crates", "rustok-cart", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-pages", "storefront", "src", "ui"), { recursive: true });
 
   writeFileSync(
     path.join(root, "docs", "research", "dioxus-ffa-ui-migration-plan.md"),
@@ -109,6 +110,27 @@ function withFixture({
 
 
   writeFileSync(
+    path.join(root, "crates", "rustok-pages", "storefront", "src", "lib.rs"),
+    [
+      "mod core;",
+      "mod transport;",
+      "mod ui;",
+      "pub use ui::leptos::PagesView;",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-pages", "storefront", "src", "ui", "leptos.rs"),
+    "#[component] fn PagesView() { Resource::new_blocking(); transport::fetch_pages(); }",
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-pages", "storefront", "README.md"),
+    "src/ui/leptos.rs core.rs transport.rs",
+  );
+
+
+  writeFileSync(
     path.join(root, "crates", "rustok-region", "storefront", "src", "core.rs"),
     [
       "pub enum RegionErrorStatusCode { NativeUnavailable, FallbackUnavailable }",
@@ -159,6 +181,8 @@ function withFixture({
             contractCommand ?? "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
           "verify:ffa:ui:migration:docs":
             docsCommand ?? "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
+          "verify:channel:admin-boundary":
+            "node scripts/verify/verify-channel-admin-boundary.mjs",
         },
       },
       null,
@@ -189,7 +213,7 @@ function runVerifier(root, options = {}) {
 
 test("passes when migration pipeline includes contract and docs commands", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
   });
 
   try {
@@ -212,10 +236,24 @@ test("fails when migration pipeline misses docs command", () => {
   }
 });
 
+test("fails when migration pipeline misses channel boundary command", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+  });
+
+  try {
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected FAIL fixture to fail");
+    assert.match(result.stderr, /verify:channel:admin-boundary/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 
 test("passes when pipeline uses extra whitespace", () => {
   const fixture = withFixture({
-    pipeline: "npm   run verify:ffa:ui:migration:contract   &&   npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm   run verify:ffa:ui:migration:contract   &&   npm run verify:ffa:ui:migration:docs   &&   npm   run verify:channel:admin-boundary",
   });
 
   try {
@@ -230,7 +268,7 @@ ${result.stderr}`);
 
 test("fails when contract script command is drifted", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
     contractCommand: "node scripts/verify/some-other-command.mjs",
   });
 
@@ -246,7 +284,7 @@ test("fails when contract script command is drifted", () => {
 
 test("fails when registry structural shape drifts from local module plan", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_only",
   });
@@ -262,7 +300,7 @@ test("fails when registry structural shape drifts from local module plan", () =>
 
 test("fails when structural shape has no matching code layout", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_transport_ui",
   });
@@ -279,7 +317,7 @@ test("fails when structural shape has no matching code layout", () => {
 
 test("passes when a temporary single-adapter native transport is documented as native.rs", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_transport_ui",
   });
@@ -304,7 +342,7 @@ ${result.stderr}`);
 
 test("passes when docs script uses sh variant", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
     docsCommand: "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
   });
 
@@ -321,7 +359,7 @@ ${result.stderr}`);
 
 test("passes when root is provided via --root argument", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
   });
 
   try {
@@ -337,7 +375,7 @@ ${result.stderr}`);
 
 test("passes when root is provided via --root <path> arguments", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
   });
 
   try {

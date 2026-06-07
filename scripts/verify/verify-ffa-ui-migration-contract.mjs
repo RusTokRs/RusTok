@@ -197,11 +197,15 @@ const requiredNpmScriptCommands = {
     "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
     "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
   ],
+  "verify:channel:admin-boundary": [
+    "node scripts/verify/verify-channel-admin-boundary.mjs",
+  ],
 };
 
 const requiredMigrationPipelineCommands = [
   "npm run verify:ffa:ui:migration:contract",
   "npm run verify:ffa:ui:migration:docs",
+  "npm run verify:channel:admin-boundary",
 ];
 
 function assertFileExists(relPath) {

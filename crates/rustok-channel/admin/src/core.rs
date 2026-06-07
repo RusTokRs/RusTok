@@ -1,7 +1,7 @@
 //! Framework-agnostic helpers for the channel admin FFA boundary.
 //!
 //! This module owns small state/query policies that should stay reusable by
-//! future host adapters instead of being embedded in the Leptos render layer.
+//! future host adapters instead of being embedded in a framework render layer.
 
 use crate::model::ChannelAdminBootstrap;
 
