@@ -99,7 +99,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/mod.rs", transportModSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/rest_adapter.rs", restAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/rest_adapter.rs", restAdapterSource({ includeServerEndpoint: options.restServerEndpoint }));
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/rustok-channel/admin/src/api.rs", "pub async fn fetch_bootstrap() {}");
   }
@@ -167,6 +167,51 @@ test("channel admin boundary verifier rejects Leptos-specific core", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected Leptos core fixture to fail");
     assert.match(result.stderr, /core must stay Leptos\/server-function free/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("channel admin boundary verifier rejects server functions in transport facade", () => {
+  const root = withFixture({ includeServerEndpoint: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected facade server-function fixture to fail");
+    assert.match(result.stderr, /server-function endpoints belong in native_server_adapter\.rs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects raw REST calls in transport facade", () => {
+  const root = withFixture({ includeRawRest: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected facade raw REST fixture to fail");
+    assert.match(result.stderr, /raw REST client belongs in rest_adapter\.rs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects REST calls in native adapter", () => {
+  const root = withFixture({ includeRest: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected native adapter REST fixture to fail");
+    assert.match(result.stderr, /native adapter must not own REST fallback HTTP calls/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects server functions in REST adapter", () => {
+  const root = withFixture({ restServerEndpoint: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected REST adapter server-function fixture to fail");
+    assert.match(result.stderr, /REST adapter must not contain server-function endpoints/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
