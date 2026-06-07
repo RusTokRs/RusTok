@@ -1024,17 +1024,19 @@ fn clear_shipping_profile_form(
 }
 
 fn summarize_shipping_profile(locale: Option<&str>, profile: &ShippingProfile) -> String {
-    format!(
-        "{} ({}) | {} | {}",
-        profile.name,
-        profile.slug,
-        localized_active_label(locale, profile.active),
-        profile.description.clone().unwrap_or_else(|| t(
-            locale,
-            "commerce.summary.shippingProfile.noDescription",
-            "no description"
-        ))
+    let active_label = localized_active_label(locale, profile.active);
+    let no_description_label = t(
+        locale,
+        "commerce.summary.shippingProfile.noDescription",
+        "no description",
+    );
+
+    core::shipping_profile_summary_view_model(
+        profile,
+        active_label.as_str(),
+        no_description_label.as_str(),
     )
+    .value
 }
 
 fn localized_active_label(locale: Option<&str>, active: bool) -> String {
@@ -1053,7 +1055,7 @@ fn render_promotion_preview(
         <div class="mt-3 grid gap-3 md:grid-cols-2">
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.kind", "Kind") value=localized_promotion_kind(locale, &preview.kind) />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.scope", "Scope") value=localized_promotion_scope(locale, &preview.scope) />
-            <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=preview.line_item_id.unwrap_or_else(|| "-".to_string()) />
+            <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=core::promotion_preview_view_model(&preview).line_item />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.currency", "Currency") value=preview.currency_code />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.base", "Base") value=preview.base_amount />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.adjustment", "Adjustment") value=preview.adjustment_amount />
@@ -1120,10 +1122,10 @@ fn render_order_changes(
                         </div>
                         <Show when=move || has_resolution_summary>
                             <div class="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                                <MetricCard title=resolution_return_label.clone() value=resolution_summary.order_return_id.clone().unwrap_or_else(|| "-".to_string()) />
-                                <MetricCard title=resolution_action_label.clone() value=resolution_summary.return_decision_action.clone().unwrap_or_else(|| "-".to_string()) />
-                                <MetricCard title=resolution_source_label.clone() value=resolution_summary.return_decision_source.clone().unwrap_or_else(|| "-".to_string()) />
-                                <MetricCard title=resolution_cancel_reason_label.clone() value=resolution_summary.cancellation_reason.clone().unwrap_or_else(|| "-".to_string()) />
+                                <MetricCard title=resolution_return_label.clone() value=resolution_summary.order_return_value() />
+                                <MetricCard title=resolution_action_label.clone() value=resolution_summary.return_decision_action_value() />
+                                <MetricCard title=resolution_source_label.clone() value=resolution_summary.return_decision_source_value() />
+                                <MetricCard title=resolution_cancel_reason_label.clone() value=resolution_summary.cancellation_reason_value() />
                             </div>
                         </Show>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
@@ -1152,12 +1154,17 @@ fn render_cart_snapshot(locale: Option<&str>, cart: CommerceAdminCartSnapshot) -
             <div class="space-y-3">
                 {cart.adjustments.into_iter().map(|adjustment| view! {
                     <article class="rounded-xl border border-border p-4">
-                        <div class="grid gap-3 md:grid-cols-2">
-                            <MetricCard title=t(locale, "commerce.cartPromotion.metric.source", "Source") value=format!("{} / {}", adjustment.source_type, adjustment.source_id.unwrap_or_else(|| "-".to_string())) />
-                            <MetricCard title=t(locale, "commerce.cartPromotion.metric.scope", "Scope") value=localized_promotion_scope_value(locale, adjustment.scope.as_deref()) />
-                            <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=adjustment.line_item_id.unwrap_or_else(|| "-".to_string()) />
-                            <MetricCard title=t(locale, "commerce.field.amount", "Amount") value=format!("{} {}", adjustment.currency_code, adjustment.amount) />
-                        </div>
+                        {
+                            let adjustment_view = core::cart_adjustment_view_model(&adjustment);
+                            view! {
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    <MetricCard title=t(locale, "commerce.cartPromotion.metric.source", "Source") value=adjustment_view.source />
+                                    <MetricCard title=t(locale, "commerce.cartPromotion.metric.scope", "Scope") value=localized_promotion_scope_value(locale, Some(adjustment_view.scope.as_str())) />
+                                    <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=adjustment_view.line_item />
+                                    <MetricCard title=t(locale, "commerce.field.amount", "Amount") value=adjustment_view.amount />
+                                </div>
+                            }
+                        }
                         <pre class="mt-3 overflow-x-auto rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{adjustment.metadata}</pre>
                     </article>
                 }).collect_view()}
