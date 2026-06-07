@@ -7,9 +7,9 @@ use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{
-    CommerceAdminBootstrap, CommerceAdminCartSnapshot, CommerceCartPromotionDraft,
-    CommerceCartPromotionKind, CommerceCartPromotionPreview, CommerceCartPromotionScope,
-    CommerceOrderChange, CommerceOrderChangeActionDraft, ShippingProfile, ShippingProfileDraft,
+    CommerceAdminBootstrap, CommerceAdminCartSnapshot, CommerceCartPromotionKind,
+    CommerceCartPromotionPreview, CommerceCartPromotionScope, CommerceOrderChange, ShippingProfile,
+    ShippingProfileDraft,
 };
 use crate::{core, transport};
 
@@ -659,25 +659,22 @@ pub fn CommerceAdmin() -> impl IntoView {
     let preview_required_label = promotion_required_label.clone();
     let preview_query_writer = query_writer.clone();
     let preview_promotion = Callback::new(move |_| {
-        let cart_id = promotion_cart_id.get_untracked().trim().to_string();
-        let source_id = promotion_source_id.get_untracked().trim().to_string();
-        if cart_id.is_empty() || source_id.is_empty() {
+        let Some(command) = core::prepare_cart_promotion_command(
+            promotion_cart_id.get_untracked().as_str(),
+            promotion_kind.get_untracked().as_str(),
+            promotion_scope.get_untracked().as_str(),
+            promotion_line_item_id.get_untracked().as_str(),
+            promotion_source_id.get_untracked().as_str(),
+            promotion_discount_percent.get_untracked().as_str(),
+            promotion_amount.get_untracked().as_str(),
+            promotion_metadata_json.get_untracked().as_str(),
+        ) else {
             set_promotion_error.set(Some(preview_required_label.clone()));
             return;
-        }
-        preview_query_writer.replace_value(AdminQueryKey::CartId.as_str(), cart_id.clone());
-        let draft = CommerceCartPromotionDraft {
-            kind: parse_promotion_kind(promotion_kind.get_untracked().as_str()),
-            scope: parse_promotion_scope(promotion_scope.get_untracked().as_str()),
-            line_item_id: promotion_line_item_id.get_untracked().trim().to_string(),
-            source_id,
-            discount_percent: promotion_discount_percent
-                .get_untracked()
-                .trim()
-                .to_string(),
-            amount: promotion_amount.get_untracked().trim().to_string(),
-            metadata_json: promotion_metadata_json.get_untracked().trim().to_string(),
         };
+        preview_query_writer.replace_value(AdminQueryKey::CartId.as_str(), command.cart_id.clone());
+        let cart_id = command.cart_id;
+        let draft = command.draft;
         let preview_error_label = preview_error_label.clone();
         set_promotion_busy.set(true);
         set_promotion_error.set(None);
@@ -696,25 +693,22 @@ pub fn CommerceAdmin() -> impl IntoView {
     let apply_required_label = promotion_required_label.clone();
     let apply_query_writer = query_writer.clone();
     let apply_promotion = Callback::new(move |_| {
-        let cart_id = promotion_cart_id.get_untracked().trim().to_string();
-        let source_id = promotion_source_id.get_untracked().trim().to_string();
-        if cart_id.is_empty() || source_id.is_empty() {
+        let Some(command) = core::prepare_cart_promotion_command(
+            promotion_cart_id.get_untracked().as_str(),
+            promotion_kind.get_untracked().as_str(),
+            promotion_scope.get_untracked().as_str(),
+            promotion_line_item_id.get_untracked().as_str(),
+            promotion_source_id.get_untracked().as_str(),
+            promotion_discount_percent.get_untracked().as_str(),
+            promotion_amount.get_untracked().as_str(),
+            promotion_metadata_json.get_untracked().as_str(),
+        ) else {
             set_promotion_error.set(Some(apply_required_label.clone()));
             return;
-        }
-        apply_query_writer.replace_value(AdminQueryKey::CartId.as_str(), cart_id.clone());
-        let draft = CommerceCartPromotionDraft {
-            kind: parse_promotion_kind(promotion_kind.get_untracked().as_str()),
-            scope: parse_promotion_scope(promotion_scope.get_untracked().as_str()),
-            line_item_id: promotion_line_item_id.get_untracked().trim().to_string(),
-            source_id,
-            discount_percent: promotion_discount_percent
-                .get_untracked()
-                .trim()
-                .to_string(),
-            amount: promotion_amount.get_untracked().trim().to_string(),
-            metadata_json: promotion_metadata_json.get_untracked().trim().to_string(),
         };
+        apply_query_writer.replace_value(AdminQueryKey::CartId.as_str(), command.cart_id.clone());
+        let cart_id = command.cart_id;
+        let draft = command.draft;
         let apply_error_label = apply_error_label.clone();
         set_promotion_busy.set(true);
         set_promotion_error.set(None);
@@ -741,10 +735,14 @@ pub fn CommerceAdmin() -> impl IntoView {
     });
     let clear_order_query_writer = query_writer.clone();
     let order_change_action = Callback::new(move |(change_id, apply): (String, bool)| {
-        if change_id.trim().is_empty() {
+        let Some(command) = core::prepare_order_change_action_command(
+            change_id.as_str(),
+            order_change_metadata_json.get_untracked().as_str(),
+            order_change_cancel_reason.get_untracked().as_str(),
+        ) else {
             set_order_change_error.set(Some(order_change_required_label.clone()));
             return;
-        }
+        };
         let Some(CommerceAdminBootstrap { current_tenant }) =
             bootstrap.get_untracked().and_then(Result::ok)
         else {
@@ -754,16 +752,8 @@ pub fn CommerceAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let action_error_label = order_change_action_error_label.clone();
-        let draft = CommerceOrderChangeActionDraft {
-            metadata_json: order_change_metadata_json
-                .get_untracked()
-                .trim()
-                .to_string(),
-            reason: order_change_cancel_reason
-                .get_untracked()
-                .trim()
-                .to_string(),
-        };
+        let change_id = command.change_id;
+        let draft = command.draft;
         set_order_change_busy.set(true);
         set_order_change_error.set(None);
         spawn_local(async move {
@@ -838,7 +828,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                             <div class="space-y-2">
                                                 <div class="flex flex-wrap items-center gap-2">
-                                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", active_badge(profile.active))>{active_label}</span>
+                                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", core::active_badge_class(profile.active))>{active_label}</span>
                                                     <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{profile.slug.clone()}</span>
                                                 </div>
                                                 <h4 class="text-base font-semibold text-card-foreground">{profile.name.clone()}</h4>
@@ -1064,29 +1054,6 @@ fn text_or_none(value: String) -> Option<String> {
     }
 }
 
-fn active_badge(active: bool) -> &'static str {
-    if active {
-        "border-emerald-200 bg-emerald-50 text-emerald-700"
-    } else {
-        "border-slate-200 bg-slate-100 text-slate-700"
-    }
-}
-
-fn parse_promotion_kind(value: &str) -> CommerceCartPromotionKind {
-    match value {
-        "percentage_discount" => CommerceCartPromotionKind::PercentageDiscount,
-        _ => CommerceCartPromotionKind::FixedDiscount,
-    }
-}
-
-fn parse_promotion_scope(value: &str) -> CommerceCartPromotionScope {
-    match value {
-        "cart" => CommerceCartPromotionScope::Cart,
-        "line_item" => CommerceCartPromotionScope::LineItem,
-        _ => CommerceCartPromotionScope::Shipping,
-    }
-}
-
 fn render_promotion_preview(
     locale: Option<&str>,
     preview: CommerceCartPromotionPreview,
@@ -1145,7 +1112,7 @@ fn render_order_changes(
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div class="space-y-2">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", order_change_status_badge(change.status.as_str()))>{change.status.clone()}</span>
+                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", core::order_change_status_badge_class(change.status.as_str()))>{change.status.clone()}</span>
                                     <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{change.change_type.clone()}</span>
                                 </div>
                                 <h4 class="break-all text-base font-semibold text-card-foreground">{change.id.clone()}</h4>
@@ -1178,14 +1145,6 @@ fn render_order_changes(
         </div>
     }
     .into_any()
-}
-
-fn order_change_status_badge(status: &str) -> &'static str {
-    match status {
-        "applied" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "cancelled" => "border-rose-200 bg-rose-50 text-rose-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
-    }
 }
 
 fn render_cart_snapshot(locale: Option<&str>, cart: CommerceAdminCartSnapshot) -> AnyView {
