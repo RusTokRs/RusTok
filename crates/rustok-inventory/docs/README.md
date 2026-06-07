@@ -30,7 +30,7 @@
   существующий reserved stock, а backorder policy `continue` нормализуется case-insensitive
   в service/read-side и commerce checkout/storefront compatibility semantics через exported
   inventory-owned policy helper; remaining write parity ещё добирается из umbrella `rustok-commerce`;
-- public-channel inventory visibility helpers (`normalize_public_channel_slug`, metadata allowlist parsing, channel-visible available quantity loaders) принадлежат inventory crate-у и переиспользуются umbrella `rustok-commerce` для storefront/checkout compatibility;
+- public-channel inventory visibility/projection helpers (`normalize_public_channel_slug`, metadata allowlist parsing, channel-visible available quantity loaders, `PublicChannelInventoryProjection` и `load_inventory_projection_by_variant_for_public_channel`) принадлежат inventory crate-у и переиспользуются umbrella `rustok-commerce` для storefront/checkout compatibility без дублирования backorder policy branching в commerce DTO adapter-е;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
 ## Интеграция

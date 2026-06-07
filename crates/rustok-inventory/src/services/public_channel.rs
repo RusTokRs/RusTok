@@ -103,6 +103,53 @@ pub async fn check_variant_availability_for_public_channel(
     Ok(available_inventory >= requested_quantity)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublicChannelInventoryProjection {
+    pub available_quantity: i32,
+    pub in_stock: bool,
+}
+
+pub fn public_channel_inventory_projection(
+    available_quantity: i32,
+    inventory_policy: &str,
+) -> PublicChannelInventoryProjection {
+    PublicChannelInventoryProjection {
+        available_quantity,
+        in_stock: available_quantity > 0
+            || super::inventory_policy_allows_backorder(inventory_policy),
+    }
+}
+
+pub async fn load_inventory_projection_by_variant_for_public_channel(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    variant_policies: &[(Uuid, String)],
+    public_channel_slug: Option<&str>,
+) -> Result<HashMap<Uuid, PublicChannelInventoryProjection>, sea_orm::DbErr> {
+    let variant_ids = variant_policies
+        .iter()
+        .map(|(variant_id, _)| *variant_id)
+        .collect::<Vec<_>>();
+    let available_by_variant = load_available_inventory_by_variant_for_public_channel(
+        db,
+        tenant_id,
+        &variant_ids,
+        public_channel_slug,
+    )
+    .await?;
+
+    Ok(variant_policies
+        .iter()
+        .map(|(variant_id, inventory_policy)| {
+            let available_quantity = available_by_variant.get(variant_id).copied().unwrap_or(0);
+            (
+                *variant_id,
+                public_channel_inventory_projection(available_quantity, inventory_policy),
+            )
+        })
+        .collect())
+}
+
 pub async fn load_available_inventory_by_variant_for_public_channel(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -187,7 +234,7 @@ mod tests {
     use super::{
         check_public_channel_inventory_request, extract_allowed_channel_slugs,
         is_allowlist_visible_for_public_channel, is_metadata_visible_for_public_channel,
-        normalize_public_channel_slug,
+        normalize_public_channel_slug, public_channel_inventory_projection,
     };
 
     #[test]

@@ -685,14 +685,10 @@ mod tests {
         })
         .into();
 
-        let left = normalize_snapshot_tokens(
-            render_head_html(&base),
-            &["run-a", "2026-06-07T10:00:00Z"],
-        );
-        let right = normalize_snapshot_tokens(
-            render_head_html(&next),
-            &["run-b", "2026-06-07T10:05:00Z"],
-        );
+        let left =
+            normalize_snapshot_tokens(render_head_html(&base), &["run-a", "2026-06-07T10:00:00Z"]);
+        let right =
+            normalize_snapshot_tokens(render_head_html(&next), &["run-b", "2026-06-07T10:05:00Z"]);
 
         assert_eq!(left, right);
     }

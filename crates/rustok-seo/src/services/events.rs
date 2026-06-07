@@ -2198,7 +2198,6 @@ mod tests {
         assert!(cursor.replay_completed_at.is_some());
     }
 
-
     #[tokio::test]
     async fn historical_replay_deduplicates_repeat_runs() {
         let db = test_db().await;

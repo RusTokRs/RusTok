@@ -239,6 +239,24 @@ function assertCommercePublicChannelAvailabilityBoundary() {
       `${relativePath}: must not duplicate backorder policy branching outside the inventory facade`,
     );
   }
+
+  const storefrontChannelPath = "crates/rustok-commerce/src/storefront_channel.rs";
+  const storefrontChannel = readRepo(storefrontChannelPath);
+  assertContains(
+    storefrontChannel,
+    "load_inventory_projection_by_variant_for_public_channel",
+    `${storefrontChannelPath}: storefront product projection must use the inventory-owned projection facade`,
+  );
+  assertNotContains(
+    storefrontChannel,
+    "load_available_inventory_by_variant_for_public_channel",
+    `${storefrontChannelPath}: storefront product projection must not assemble availability quantities directly`,
+  );
+  assertNotContains(
+    storefrontChannel,
+    "inventory_policy_allows_backorder",
+    `${storefrontChannelPath}: storefront product projection must not duplicate backorder policy branching`,
+  );
 }
 
 

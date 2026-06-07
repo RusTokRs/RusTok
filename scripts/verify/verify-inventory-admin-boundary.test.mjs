@@ -160,6 +160,25 @@ async fn validate_storefront_variant_inventory() {
 `;
 }
 
+function commerceStorefrontChannelSource({ includeDirectProjection = false } = {}) {
+  if (includeDirectProjection) {
+    return `
+use rustok_inventory::{inventory_policy_allows_backorder, load_available_inventory_by_variant_for_public_channel};
+async fn apply_public_channel_inventory_to_product() {
+    let available_inventory = load_available_inventory_by_variant_for_public_channel().await;
+    let in_stock = available_inventory > 0 || inventory_policy_allows_backorder("continue");
+}
+`;
+  }
+
+  return `
+use rustok_inventory::load_inventory_projection_by_variant_for_public_channel;
+async fn apply_public_channel_inventory_to_product() {
+    let projections = load_inventory_projection_by_variant_for_public_channel().await;
+}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-inventory-boundary-"));
   writeFixtureFile(root, "crates/rustok-inventory/src/services/inventory.rs", inventorySource(options));
@@ -180,6 +199,7 @@ function withFixture(options = {}) {
   ]) {
     writeFixtureFile(root, relativePath, commerceAvailabilityCallerSource(options));
   }
+  writeFixtureFile(root, "crates/rustok-commerce/src/storefront_channel.rs", commerceStorefrontChannelSource(options));
   return root;
 }
 
@@ -238,7 +258,7 @@ test("inventory admin boundary verifier rejects transitional write fallback", ()
 
 
 test("inventory admin boundary verifier rejects direct commerce public-channel availability lookup", () => {
-  const root = withFixture({ includeDirectLookup: true });
+  const root = withFixture({ includeDirectLookup: true, includeDirectProjection: true });
   try {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected direct commerce availability lookup fixture to fail");
