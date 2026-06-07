@@ -10401,8 +10401,6 @@ name = "rustok-inventory-admin"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.19",
- "leptos-auth",
- "leptos-graphql",
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",

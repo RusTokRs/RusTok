@@ -2,7 +2,7 @@
 // RusTok inventory admin boundary guardrails.
 // Fast source-level checks for Wave 5 inventory-owned transport/write semantics.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -134,26 +134,47 @@ function assertInventoryServiceWriteResults() {
 }
 
 function assertInventoryAdminTransportBoundary() {
-  const transportPath = "crates/rustok-inventory/admin/src/transport.rs";
-  const transport = readRepo(transportPath);
   const apiPath = "crates/rustok-inventory/admin/src/api.rs";
   const api = readRepo(apiPath);
   const nativePath = "crates/rustok-inventory/admin/src/native.rs";
   const native = readRepo(nativePath);
+  const libPath = "crates/rustok-inventory/admin/src/lib.rs";
+  const lib = readRepo(libPath);
+  const cargoPath = "crates/rustok-inventory/admin/Cargo.toml";
+  const cargo = readRepo(cargoPath);
+  const transportPath = "crates/rustok-inventory/admin/src/transport.rs";
+  const removedGraphqlMarkers = [
+    "leptos_graphql",
+    "leptos-graphql",
+    "GraphqlRequest",
+    "GraphqlHttpError",
+    "execute_graphql",
+    "/api/graphql",
+    "RUSTOK_GRAPHQL_URL",
+    "CommerceGraphqlInventoryReadAdapter",
+    "transitional_read_transport",
+    "fallback_",
+  ];
 
-  for (const marker of ["const BOOTSTRAP_QUERY", "const PRODUCTS_QUERY", "const PRODUCT_QUERY"]) {
-    assertContains(transport, marker, `${transportPath}: transitional adapter must remain read-capable via ${marker}`);
+  if (existsSync(path.join(repoRoot, transportPath))) {
+    fail(`${transportPath}: remove the transitional GraphQL adapter file after native read parity`);
   }
-  for (const forbidden of [
-    "mutation ",
-    "setVariantQuantity",
-    "adjustVariantQuantity",
-    "reserveVariantQuantity",
-    "releaseReservation",
-    "checkVariantAvailability",
+
+  for (const [relativePath, source] of [
+    [apiPath, api],
+    [nativePath, native],
+    [libPath, lib],
+    [cargoPath, cargo],
+    ["crates/rustok-inventory/admin/src/core.rs", readRepo("crates/rustok-inventory/admin/src/core.rs")],
+    ["crates/rustok-inventory/admin/src/model.rs", readRepo("crates/rustok-inventory/admin/src/model.rs")],
+    ["crates/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/rustok-inventory/admin/src/ui/leptos.rs")],
   ]) {
-    assertNotContains(transport, forbidden, `${transportPath}: transitional GraphQL adapter must remain read-only and not contain ${forbidden}`);
+    for (const marker of removedGraphqlMarkers) {
+      assertNotContains(source, marker, `${relativePath}: removed GraphQL fallback marker must stay absent: ${marker}`);
+    }
   }
+
+  assertNotContains(lib, "mod transport", `${libPath}: removed transport module must not be wired into the crate root`);
 
   for (const [functionName, nativeCall] of [
     ["set_variant_quantity", "crate::native::set_variant_quantity"],
@@ -164,11 +185,25 @@ function assertInventoryAdminTransportBoundary() {
   ]) {
     const body = functionBody(api, functionName);
     assertContains(body, nativeCall, `${apiPath}: ${functionName} must use the inventory-owned native facade`);
-    assertNotContains(body, "fallback_", `${apiPath}: ${functionName} must not use transitional GraphQL fallback`);
-    assertNotContains(body, "transitional_read_transport", `${apiPath}: ${functionName} must not use transitional read transport`);
+    assertNotContains(body, "token", `${apiPath}: ${functionName} must not accept auth tokens for a GraphQL fallback path`);
+    assertNotContains(body, "tenant_slug", `${apiPath}: ${functionName} must not accept tenant slugs for a GraphQL fallback path`);
+  }
+
+  for (const [functionName, nativeCall] of [
+    ["fetch_bootstrap", "crate::native::fetch_bootstrap"],
+    ["fetch_products", "crate::native::fetch_products"],
+    ["fetch_product", "crate::native::fetch_product"],
+  ]) {
+    const body = functionBody(api, functionName);
+    assertContains(body, nativeCall, `${apiPath}: ${functionName} must use the inventory-owned native read facade`);
+    assertNotContains(body, "token", `${apiPath}: ${functionName} must not accept auth tokens for a GraphQL fallback path`);
+    assertNotContains(body, "tenant_slug", `${apiPath}: ${functionName} must not accept tenant slugs for a GraphQL fallback path`);
   }
 
   for (const endpoint of [
+    'endpoint = "inventory/bootstrap"',
+    'endpoint = "inventory/products"',
+    'endpoint = "inventory/product"',
     'endpoint = "inventory/variant/set-quantity"',
     'endpoint = "inventory/variant/adjust-quantity"',
     'endpoint = "inventory/variant/reserve-quantity"',
@@ -178,6 +213,7 @@ function assertInventoryAdminTransportBoundary() {
     assertContains(native, endpoint, `${nativePath}: missing native server-function endpoint ${endpoint}`);
   }
 }
+
 
 assertInventoryServiceWriteResults();
 assertInventoryAdminTransportBoundary();

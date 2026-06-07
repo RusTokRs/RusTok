@@ -117,9 +117,9 @@ node scripts/verify/verify-runtime-context-invariants.mjs
 Что проверяет:
 - `InventoryQuantityWriteResult` строит `inStock` из committed quantity и backorder policy;
 - native `set_variant_quantity`/`adjust_variant_quantity` используют internal mutation update result и не делают отдельный pre-read variant policy;
-- transitional `CommerceGraphqlInventoryReadAdapter` остаётся read-only и не содержит inventory mutations;
-- admin API write facades set/adjust/reserve/release/check-availability идут через inventory-owned native facade без GraphQL fallback;
-- native server-function endpoints для inventory write/validation surface остаются объявлены.
+- removed GraphQL fallback stays removed: no `src/transport.rs`, `leptos-graphql`, `CommerceGraphqlInventoryReadAdapter`, GraphQL runtime markers, token/tenant-slug fallback inputs or `mod transport`;
+- admin API read facades fetch-bootstrap/products/product and write facades set/adjust/reserve/release/check-availability go through inventory-owned native facades without GraphQL fallback;
+- native server-function endpoints for inventory read/write/validation surfaces remain declared.
 
 Пример:
 

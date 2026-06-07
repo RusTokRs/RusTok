@@ -1,16 +1,13 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
-
 use rustok_api::RequestContext;
 use rustok_channel::{error::ChannelError, ChannelService};
-use rustok_inventory::inventory_policy_allows_backorder;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use serde_json::Value;
+use rustok_inventory::{
+    inventory_policy_allows_backorder, load_available_inventory_by_variant_for_public_channel,
+    normalize_public_channel_slug,
+};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{
-    dto::ProductResponse,
-    entities::{inventory_item, inventory_level, stock_location},
-};
+use crate::dto::ProductResponse;
 
 pub(crate) async fn is_module_enabled_for_request_channel(
     db: &DatabaseConnection,
@@ -28,141 +25,6 @@ pub(crate) async fn is_module_enabled_for_request_channel(
 
 pub(crate) fn public_channel_slug_from_request(request_context: &RequestContext) -> Option<String> {
     normalize_public_channel_slug(request_context.channel_slug.as_deref())
-}
-
-pub(crate) fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
-    channel_slug
-        .map(str::trim)
-        .filter(|slug| !slug.is_empty())
-        .map(|slug| slug.to_ascii_lowercase())
-}
-
-pub(crate) fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
-    let Some(values) = metadata
-        .as_object()
-        .and_then(|object| object.get("channel_visibility"))
-        .and_then(|value| value.as_object())
-        .and_then(|object| object.get("allowed_channel_slugs"))
-        .and_then(|value| value.as_array())
-    else {
-        return Vec::new();
-    };
-
-    let mut normalized = BTreeSet::new();
-    for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
-        }
-    }
-
-    normalized.into_iter().collect()
-}
-
-pub(crate) fn is_allowlist_visible_for_public_channel(
-    allowed_channel_slugs: &[String],
-    public_channel_slug: Option<&str>,
-) -> bool {
-    if allowed_channel_slugs.is_empty() {
-        return true;
-    }
-
-    let Some(public_channel_slug) = normalize_public_channel_slug(public_channel_slug) else {
-        return false;
-    };
-
-    allowed_channel_slugs
-        .iter()
-        .any(|slug| slug == &public_channel_slug)
-}
-
-pub(crate) fn is_metadata_visible_for_public_channel(
-    metadata: &Value,
-    public_channel_slug: Option<&str>,
-) -> bool {
-    let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
-    is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
-}
-
-pub(crate) async fn load_available_inventory_by_variant_for_public_channel(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    variant_ids: &[Uuid],
-    public_channel_slug: Option<&str>,
-) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
-    if variant_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let inventory_items = inventory_item::Entity::find()
-        .filter(inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-        .all(db)
-        .await?;
-    if inventory_items.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-        .iter()
-        .map(|item| (item.id, item.variant_id))
-        .collect();
-
-    let levels = inventory_level::Entity::find()
-        .filter(inventory_level::Column::InventoryItemId.is_in(item_to_variant.keys().copied()))
-        .all(db)
-        .await?;
-    if levels.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let locations = stock_location::Entity::find()
-        .filter(stock_location::Column::TenantId.eq(tenant_id))
-        .filter(stock_location::Column::DeletedAt.is_null())
-        .filter(stock_location::Column::Id.is_in(levels.iter().map(|level| level.location_id)))
-        .all(db)
-        .await?;
-
-    let visible_location_ids: HashSet<Uuid> = locations
-        .into_iter()
-        .filter(|location| {
-            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
-        })
-        .map(|location| location.id)
-        .collect();
-
-    let mut available_by_variant = HashMap::new();
-    for level in levels {
-        if !visible_location_ids.contains(&level.location_id) {
-            continue;
-        }
-
-        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            *available_by_variant.entry(*variant_id).or_insert(0) +=
-                level.stocked_quantity - level.reserved_quantity;
-        }
-    }
-
-    Ok(available_by_variant)
-}
-
-pub(crate) async fn load_available_inventory_for_variant_in_public_channel(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    public_channel_slug: Option<&str>,
-) -> Result<i32, sea_orm::DbErr> {
-    Ok(load_available_inventory_by_variant_for_public_channel(
-        db,
-        tenant_id,
-        &[variant_id],
-        public_channel_slug,
-    )
-    .await?
-    .get(&variant_id)
-    .copied()
-    .unwrap_or(0))
 }
 
 pub(crate) async fn apply_public_channel_inventory_to_product(
@@ -196,7 +58,7 @@ pub(crate) async fn apply_public_channel_inventory_to_product(
 
 #[cfg(test)]
 mod tests {
-    use super::{
+    use rustok_inventory::{
         extract_allowed_channel_slugs, is_allowlist_visible_for_public_channel,
         is_metadata_visible_for_public_channel, normalize_public_channel_slug,
     };

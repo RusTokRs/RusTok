@@ -84,8 +84,25 @@ struct InventoryQuantityUpdate {
 `;
 }
 
-function apiSource() {
+function apiSource({ includeWriteFallback = false } = {}) {
+  if (includeWriteFallback) {
+    return `
+pub async fn set_variant_quantity(token: Option<String>, tenant_slug: Option<String>) {
+    fallback_products(token, tenant_slug, "tenant".to_string(), None, None, None).await;
+    transitional_read_transport().fetch_products().await;
+    CommerceGraphqlInventoryReadAdapter;
+}
+pub async fn adjust_variant_quantity() { crate::native::adjust_variant_quantity().await; }
+pub async fn reserve_variant_quantity() { crate::native::reserve_variant_quantity().await; }
+pub async fn release_reservation_quantity() { crate::native::release_reservation_quantity().await; }
+pub async fn check_variant_availability() { crate::native::check_variant_availability().await; }
+`;
+  }
+
   return `
+pub async fn fetch_bootstrap() { crate::native::fetch_bootstrap().await; }
+pub async fn fetch_products() { crate::native::fetch_products().await; }
+pub async fn fetch_product() { crate::native::fetch_product().await; }
 pub async fn set_variant_quantity() { crate::native::set_variant_quantity().await; }
 pub async fn adjust_variant_quantity() { crate::native::adjust_variant_quantity().await; }
 pub async fn reserve_variant_quantity() { crate::native::reserve_variant_quantity().await; }
@@ -94,17 +111,22 @@ pub async fn check_variant_availability() { crate::native::check_variant_availab
 `;
 }
 
-function transportSource({ includeMutation = false } = {}) {
+function transportSource() {
   return `
-const BOOTSTRAP_QUERY: &str = "query Bootstrap";
-const PRODUCTS_QUERY: &str = "query Products";
-const PRODUCT_QUERY: &str = "query Product";
-${includeMutation ? 'const BAD_MUTATION: &str = "mutation setVariantQuantity";' : ''}
+use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+pub struct CommerceGraphqlInventoryReadAdapter;
+const BOOTSTRAP_QUERY: &str = "query Bootstrap /api/graphql RUSTOK_GRAPHQL_URL";
 `;
 }
 
 function nativeSource() {
   return `
+#[server(prefix = "/api/fn", endpoint = "inventory/bootstrap")]
+async fn inventory_bootstrap_native() {}
+#[server(prefix = "/api/fn", endpoint = "inventory/products")]
+async fn inventory_products_native() {}
+#[server(prefix = "/api/fn", endpoint = "inventory/product")]
+async fn inventory_product_native() {}
 #[server(prefix = "/api/fn", endpoint = "inventory/variant/set-quantity")]
 async fn inventory_set_quantity_native() {}
 #[server(prefix = "/api/fn", endpoint = "inventory/variant/adjust-quantity")]
@@ -121,9 +143,16 @@ async fn inventory_check_availability_native() {}
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-inventory-boundary-"));
   writeFixtureFile(root, "crates/rustok-inventory/src/services/inventory.rs", inventorySource(options));
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/api.rs", apiSource());
-  writeFixtureFile(root, "crates/rustok-inventory/admin/src/transport.rs", transportSource(options));
+  writeFixtureFile(root, "crates/rustok-inventory/admin/src/api.rs", apiSource(options));
+  if (options.includeTransportFile) {
+    writeFixtureFile(root, "crates/rustok-inventory/admin/src/transport.rs", transportSource());
+  }
   writeFixtureFile(root, "crates/rustok-inventory/admin/src/native.rs", nativeSource());
+  writeFixtureFile(root, "crates/rustok-inventory/admin/src/lib.rs", "mod api;\nmod core;\nmod native;\n");
+  writeFixtureFile(root, "crates/rustok-inventory/admin/src/core.rs", "");
+  writeFixtureFile(root, "crates/rustok-inventory/admin/src/model.rs", "");
+  writeFixtureFile(root, "crates/rustok-inventory/admin/src/ui/leptos.rs", "");
+  writeFixtureFile(root, "crates/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
   return root;
 }
 
@@ -157,12 +186,24 @@ test("inventory admin boundary verifier rejects duplicate variant pre-read", () 
   }
 });
 
-test("inventory admin boundary verifier rejects GraphQL mutation drift", () => {
-  const root = withFixture({ includeMutation: true });
+test("inventory admin boundary verifier rejects leftover GraphQL transport file", () => {
+  const root = withFixture({ includeTransportFile: true });
   try {
     const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected GraphQL mutation fixture to fail");
-    assert.match(result.stderr, /transitional GraphQL adapter must remain read-only/);
+    assert.notEqual(result.status, 0, "Expected leftover transport fixture to fail");
+    assert.match(result.stderr, /remove the transitional GraphQL adapter file/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("inventory admin boundary verifier rejects transitional write fallback", () => {
+  const root = withFixture({ includeWriteFallback: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected transitional write fallback fixture to fail");
+    assert.match(result.stderr, /removed GraphQL fallback marker must stay absent/);
+    assert.match(result.stderr, /must not accept auth tokens for a GraphQL fallback path/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
