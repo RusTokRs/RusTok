@@ -2,9 +2,9 @@
 
 ## Execution checkpoint
 
-- Current phase: post_order_operator_resolution_summary
+- Current phase: post_order_operator_resolution_summary + FBA readiness hardening gate
 - Last checkpoint: Phase 10.4 operator UX продолжен: `rustok-commerce-admin` сохранил GraphQL fallback для post-order operator на случай недоступного native server-function transport и добавил resolution summary cards над return-bound exchange/claim order changes (`order_return_id`, `return_decision_action/source`, cancel reason) без host-owned rules.
-- Next step: добавить end-to-end parity evidence для REST/GraphQL/native operator paths и связать refund/exchange/claim summary с completed return resolution links.
+- Next step: сначала зафиксировать FBA-readiness evidence для уже готовых ecommerce slices (service contract first, typed context/errors, explicit ports/events, transport adapters second), затем добавить end-to-end parity evidence для REST/GraphQL/native operator paths и только после этого расширять roadmap новыми marketplace/provider фазами.
 - Open blockers: OpenAPI contract test под default server features ранее блокировался существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `cargo test -p rustok-commerce-admin --features ssr` проходит.
 - Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
 - Last updated at (UTC): 2026-06-02T00:00:00Z
@@ -13,14 +13,15 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress` (readiness hardening для уже готовых slices; remote transport/runtime profile ещё не считается включённым)
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - admin return decision tree теперь имеет transport parity (`/admin/orders/{id}/returns/decision` ↔ `createOrderReturnDecision`) над единым `PostOrderOrchestrationService`, включая completion semantics для `return_only/refund/exchange/claim`, без дублирования rules в host/UI adapters; live REST и GraphQL parity tests фиксируют claim → completed return + `order_change(change_type=claim)`;
   - module-owned admin UI получил native-first post-order change operator: операторы фильтруют order changes по `order_id/status` и вызывают `OrderService::apply_order_change` / `cancel_order_change` через module-owned `#[server]` functions с targeted SSR coverage, при этом GraphQL `orderChanges` / `applyOrderChange` / `cancelOrderChange` сохранены как fallback transport, когда native server-function transport недоступен;
   - exchange/claim return-decision helper metadata теперь помечает создаваемые order changes `return_decision_action` и `return_decision_source`, а admin operator workspace показывает resolution summary cards из preview/metadata без переноса domain rules в UI;
-  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
+  - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
+  - FBA-readiness gate включён для уже готовых ecommerce slices до расширения roadmap новыми marketplace/provider модулями: проверяются service-contract ownership, typed request context/errors, explicit cross-module ports/events и отсутствие business logic в transport/UI adapters.
 - Last verified at (UTC): 2026-06-02T00:00:00Z
 - Owner: `rustok-commerce` module team
 
@@ -49,6 +50,13 @@ typed shipping-profile registry плюс aggregate cart-promotion operator surfa
 
 Статус: `in progress`
 
+> **Жёсткий gate для новых модулей и крупных ecommerce slices:** новый ecommerce/marketplace модуль
+> нельзя начинать как host-owned UI, ad-hoc REST/GraphQL handler или storage appendage внутри
+> `rustok-commerce`. Сначала фиксируются module slug/ownership, canonical service contract,
+> typed request context/errors, data ownership, explicit ports/events для cross-module зависимостей
+> и FFA/FBA status block в local docs + central registry. Только после этого добавляются
+> transport adapters (`#[server]`, GraphQL, REST/RPC) и module-owned UI как thin adapter.
+
 С этого среза ecommerce roadmap официально синхронизирован с переходом платформы на
 Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
 
@@ -60,16 +68,21 @@ Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
   topology исполнения (embedded vs remote);
 - umbrella слой не возвращает ownership уже выделенных bounded contexts и продолжает
   выступать orchestration root для cross-domain сценариев checkout/post-order;
-- все новые Phase 8/9/10/11 инкременты должны сразу проходить FFA check и future-FBA guardrail:
-  transport-neutral service semantics, channel-aware boundaries, и отсутствие
-  duplicated business rules в UI/transport adapters.
+- все новые Phase 8/9/10/11 инкременты должны сразу проходить FFA check и FBA-readiness guardrail:
+  transport-neutral service semantics, channel-aware boundaries, typed context/error mapping,
+  explicit module ports/events и отсутствие duplicated business rules в UI/transport adapters;
+- перед расширением roadmap новыми marketplace/provider modules нужно довести FBA evidence для уже
+  готовых ecommerce slices до уровня `in_progress -> boundary_ready candidate`: service contract first,
+  transport adapters second, без host-owned business semantics.
 
 Обязательные действия в ближайших итерациях:
 
 1. для каждого нового ecommerce endpoint фиксировать FFA parity (`#[server]` ↔ GraphQL/REST);
-2. для каждого нового post-order сценария фиксировать future-FBA boundary placeholder
-   (service contract first, transport adapters second);
-3. при обновлении execution checkpoint явно отмечать, какие FFA invariants и future-FBA guardrails были
+2. для каждого нового post-order сценария фиксировать FBA boundary evidence
+   (service contract first, transport adapters second, typed context/errors, explicit ports/events);
+3. для каждого нового ecommerce/marketplace модуля до первого UI/transport PR заводить
+   module-local `docs/implementation-plan.md` с FFA/FBA status block и строку в central readiness board;
+4. при обновлении execution checkpoint явно отмечать, какие FFA invariants и FBA guardrails были
    проверены в конкретном срезе.
 
 ## Область работ
@@ -91,18 +104,23 @@ Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
 
 Порядок дальнейшей разработки фиксируется так:
 
+0. восстановить FBA-first stabilization gate для уже готовых ecommerce slices: зафиксировать boundary evidence
+   по `product/cart/order/checkout/fulfillment/pricing/inventory` и post-order orchestration, убрать
+   host/transport-owned business semantics, описать explicit ports/events и только затем расширять
+   функциональный roadmap;
 1. выполнить UI split по module ownership: вынести domain UI из aggregate `rustok-commerce-admin` / `rustok-commerce-storefront` в соответствующие split-модули (`product`, `order`, `inventory`, `pricing`, `fulfillment`, `customer`, `region`), оставив `rustok-commerce` только orchestration/cross-domain surfaces;
 2. продолжить `Phase 7` от уже внедрённого seller-aware grouping и typed fulfillment-item model к post-order delivery changes;
 3. перевести `Phase 8` в Pricing 2.0 с channel-aware price resolution, price lists, rules и promotions;
 4. вынести `Phase 9` в отдельный tax domain с tax lines и provider seam;
 5. закрыть `Phase 10` post-order surface (`returns/refunds/exchanges/claims/order changes`);
-6. стабилизировать `Phase 11` provider architecture для payment/fulfillment;
-7. зафиксировать `Phase 12` как Medusa parity matrix и release discipline.
+6. стабилизировать `Phase 11` provider architecture для payment/fulfillment только после FBA-readiness evidence для уже готовых payment/fulfillment/order boundaries;
+7. зафиксировать `Phase 12` как Medusa parity matrix и release discipline;
+8. после foundation + backfill + FBA gate открыть отдельный marketplace/seller-platform phase, а не наращивать seller portal/RBAC/payouts внутри umbrella `commerce`.
 
 Ближайший execution slice:
 
 - сначала продолжить уже начатый UI split: product admin route вынесен в `rustok-product/admin`, shipping-option admin route вынесен в `rustok-fulfillment/admin`, customer admin route вынесен в `rustok-customer/admin`, order admin route вынесен в `rustok-order/admin`, inventory admin route вынесен в `rustok-inventory/admin` с native set/adjust/reserve/release quantity и check-availability actions без GraphQL fallback, pricing admin route вынесен в `rustok-pricing/admin`, region admin route вынесен в `rustok-region/admin`, storefront split уже идёт через `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront` и `rustok-cart/storefront`, а aggregate `rustok-commerce-storefront` уже сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection;
-- параллельно закрепить `Marketplace Foundations`: canonical `seller_id` в product/cart/order/checkout/fulfillment contract, seller-aware grouping по `seller_id`, transitional compatibility для legacy `seller_scope` и подготовку seller-owned read model без разворачивания полного marketplace feature set;
+- параллельно закрепить `Marketplace Foundations`: canonical `seller_id` в product/cart/order/checkout/fulfillment contract, seller-aware grouping по `seller_id`, transitional compatibility для legacy `seller_scope` и подготовку seller-owned read model без разворачивания полного marketplace feature set; marketplace/seller-platform surface открывается только как новый FFA/FBA-first module boundary после foundation/backfill;
 - `Phase 7` теперь уже закрыт до explicit `reopen` / `reship` semantics поверх seller-aware grouping, typed fulfillment-item model, manual post-order create path и partial ship/deliver baseline;
 - и теперь уже идти в channel-aware pricing.
 
@@ -443,7 +461,8 @@ Deliverables:
 
 - подготовить seller-owned read model/resolver для display label по `seller_id` и effective locale;
 - сделать отдельный migration/backfill slice, после которого можно будет вычищать compatibility-path для legacy `seller_scope`;
-- не расширять текущий scope в merchant RBAC, seller portal, payouts, commissions и disputes до завершения foundation + backfill.
+- перед seller portal, merchant RBAC, commissions, payouts, settlement и disputes завести отдельный marketplace/seller-platform module plan с FFA/FBA status block, canonical service contract, data ownership, typed context/errors, explicit ports/events и transport parity DoD;
+- не расширять текущий scope в merchant RBAC, seller portal, payouts, commissions и disputes до завершения foundation + backfill + FBA-readiness gate для уже готовых ecommerce boundaries.
 
 ### Phase 8. Pricing 2.0 и promotions
 

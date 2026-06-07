@@ -47,9 +47,14 @@ capability crate-ов и host-приложений в RusToK.
 - FFA: `not_started | in_progress | phase_b_ready | parity_verified`
 - FBA: `not_started | in_progress | boundary_ready | transport_verified`
 
-Текущий rollout намеренно ведётся как FFA-first: пока FFA phase-gate не закрыт,
-FBA-колонка остаётся `not_started`, даже если код уже содержит backend/boundary
-подготовку или future-FBA guardrails.
+Текущий rollout намеренно ведётся как FFA-first, но готовые slices могут переходить в
+FBA-hardening только при явном local evidence. Пока FFA phase-gate не закрыт и в local plan
+нет FBA-readiness evidence, FBA-колонка остаётся `not_started`, даже если код уже содержит
+backend/boundary подготовку или future-FBA guardrails.
+
+Для новых модулей и крупных module splits строка в readiness board заводится до первого
+transport/UI PR. Минимальный gate: module ownership, canonical service contract, typed
+request context/errors, data ownership, explicit ports/events и local FFA/FBA status block.
 
 Правило синхронизации:
 
@@ -73,7 +78,7 @@ Structural shape фиксирует глубину code-level FFA split неза
 | `forum` | admin + storefront | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-forum/docs/implementation-plan.md` (admin+storefront slices: `core` helpers + thin `transport` facades + explicit `ui/leptos` adapters; REST/native-first + GraphQL fallback contracts unchanged) |
 | `search` | admin + storefront | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-search/docs/implementation-plan.md` (slice #37: storefront results header renders core-owned header view-model; GraphQL fallback unchanged) |
 | `cart` | storefront | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-cart/docs/implementation-plan.md` (slice: storefront `core/` policy/view-model helpers + `ui/leptos` render adapter + thin `transport` facade with validation-aware fallback policy introduced without dropping native/GraphQL parity) |
-| `commerce` | admin + storefront | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.4: native-first post-order order-change operator with module-owned transport, GraphQL fallback, and resolution summary cards) |
+| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (slice 10.4 + FBA-readiness hardening gate: native-first post-order order-change operator with module-owned transport, GraphQL fallback, resolution summary cards, and service-contract-first evidence before new marketplace/provider modules) |
 | `workflow` | admin | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-workflow/docs/implementation-plan.md` (slice: admin core helpers + thin `transport/` facade + explicit `ui/leptos` adapter; внешний GraphQL contract не изменялся) |
 | `region` | admin + storefront | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-region/docs/implementation-plan.md` (slice #17: admin/storefront crate roots wire module layers and re-export explicit `ui/leptos.rs` render adapters; storefront keeps native/GraphQL transport split) |
 | `product` | admin + storefront | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-product/docs/implementation-plan.md` (slice: storefront native/GraphQL + Leptos adapter split; product admin core helpers, `SelectedProductSummaryViewModel`, transport facade and `admin/src/ui/leptos.rs` adapter) |

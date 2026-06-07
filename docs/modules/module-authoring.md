@@ -51,6 +51,29 @@ Support/crate/capability слой может жить рядом с модуле
 
 Если target участвует в bulk SEO, provider должен давать стабильные summaries и fields, достаточные для safe remediation: `preview_only`, `apply_missing_only`, `overwrite_generated_only` и `force_overwrite_explicit` выполняются в `rustok-seo`, а не в owner module.
 
+## FFA/FBA-first gate для новых модулей
+
+Новый модуль или крупный module split нельзя начинать с host-owned UI, ad-hoc transport
+handler-а или прямого добавления таблиц в umbrella-модуль. До первого transport/UI PR
+обязателен FFA/FBA gate:
+
+1. Зафиксировать `slug`, ownership, runtime role и local `docs/implementation-plan.md` с
+   FFA/FBA status block.
+2. Описать canonical domain/application service contract до REST, GraphQL, `#[server]` или
+   host wiring.
+3. Описать typed request context для tenant/auth/locale/channel/policy/trace data и stable
+   error mapping между domain errors и transport errors.
+4. Описать data ownership, consistency model, migrations и i18n storage contract.
+5. Выразить cross-module dependencies через explicit ports/events/provider seams, а не через
+   доступ к чужим repository internals или host-specific globals.
+6. Добавить строку в central FFA/FBA readiness board до появления module-owned UI, а при
+   отсутствии UI оставить surface как `no module-owned UI` / `no_ui_boundary` с FBA статусом.
+7. Только после этого добавлять transport adapters (`#[server]`, GraphQL, REST/RPC) и
+   module-owned UI как thin adapter через module-owned `transport/` facade.
+
+Если уже готовый функциональный slice не проходит этот gate, следующий change set сначала
+доводит его до FBA-ready boundary evidence и только потом расширяет функциональность.
+
 ## Backend
 
 ### 1. Сначала зафиксируйте runtime contract
