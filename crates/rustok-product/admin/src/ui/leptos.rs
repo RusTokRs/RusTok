@@ -9,12 +9,13 @@ use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::core::{
     build_product_admin_editor_view_model, build_product_admin_list_item_view_model,
-    build_selected_product_summary_view_model, format_known_shipping_profiles,
-    primary_catalog_currency, shipping_profile_choice_label, text_or_none, translation_for_locale,
-    ProductAdminPricingPreviewState, SelectedProductSummaryViewModel,
+    build_product_admin_save_command, build_selected_product_summary_view_model,
+    format_known_shipping_profiles, primary_catalog_currency, shipping_profile_choice_label,
+    text_or_none, translation_for_locale, ProductAdminDraftForm, ProductAdminPricingPreviewState,
+    ProductAdminSaveMode, SelectedProductSummaryViewModel,
 };
 use crate::i18n::t;
-use crate::model::{ProductAdminBootstrap, ProductDetail, ProductDraft, ProductPricingDetail};
+use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -161,16 +162,6 @@ pub fn ProductAdmin() -> impl IntoView {
         "product.error.productNotFound",
         "Product not found.",
     );
-    let title_required_label = t(
-        ui_locale.as_deref(),
-        "product.error.titleRequired",
-        "Title is required.",
-    );
-    let locale_unavailable_label = t(
-        ui_locale.as_deref(),
-        "product.error.localeUnavailable",
-        "Host locale is unavailable.",
-    );
     let save_product_error_label = t(
         ui_locale.as_deref(),
         "product.error.saveProduct",
@@ -266,73 +257,70 @@ pub fn ProductAdmin() -> impl IntoView {
         set_error.set(None);
     };
 
-    let title_required_label_for_submit = title_required_label.clone();
     let submit_ui_locale = ui_locale.clone();
-    let locale_unavailable_label_for_submit = locale_unavailable_label.clone();
-    let bootstrap_loading_label_for_submit = bootstrap_loading_label.clone();
     let submit_query_writer = query_writer.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
-        if title.get_untracked().trim().is_empty() {
-            set_error.set(Some(title_required_label_for_submit.clone()));
-            return;
-        }
-        let Some(submit_locale) = submit_ui_locale.clone() else {
-            set_error.set(Some(locale_unavailable_label_for_submit.clone()));
-            return;
-        };
+        let submit_locale = submit_ui_locale.clone();
+        let command = build_product_admin_save_command(
+            ProductAdminDraftForm {
+                locale: submit_locale.clone(),
+                title: title.get_untracked(),
+                handle: handle.get_untracked(),
+                description: description.get_untracked(),
+                seller_id: seller_id.get_untracked(),
+                vendor: vendor.get_untracked(),
+                product_type: product_type.get_untracked(),
+                shipping_profile_slug: shipping_profile_slug.get_untracked(),
+                sku: sku.get_untracked(),
+                barcode: barcode.get_untracked(),
+                currency_code: currency_code.get_untracked(),
+                amount: amount.get_untracked(),
+                compare_at_amount: compare_at_amount.get_untracked(),
+                inventory_quantity: inventory_quantity.get_untracked(),
+                publish_now: publish_now.get_untracked(),
+            },
+            editing_id.get_untracked(),
+            bootstrap.get_untracked().and_then(Result::ok).as_ref(),
+        );
 
-        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
-            set_error.set(Some(bootstrap_loading_label_for_submit.clone()));
-            return;
+        let command = match command {
+            Ok(command) => command,
+            Err(err) => {
+                set_error.set(Some(err.message(submit_ui_locale.as_deref())));
+                return;
+            }
         };
 
         set_busy.set(true);
         set_error.set(None);
 
-        let draft = ProductDraft {
-            locale: submit_locale.clone(),
-            title: title.get_untracked(),
-            handle: handle.get_untracked(),
-            description: description.get_untracked(),
-            seller_id: seller_id.get_untracked(),
-            vendor: vendor.get_untracked(),
-            product_type: product_type.get_untracked(),
-            shipping_profile_slug: text_or_none(shipping_profile_slug.get_untracked()),
-            sku: sku.get_untracked(),
-            barcode: barcode.get_untracked(),
-            currency_code: currency_code.get_untracked(),
-            amount: amount.get_untracked(),
-            compare_at_amount: compare_at_amount.get_untracked(),
-            inventory_quantity: inventory_quantity.get_untracked(),
-            publish_now: publish_now.get_untracked(),
-        };
-        let product_id = editing_id.get_untracked();
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
 
         let save_product_error_label = save_product_error_label.clone();
         spawn_local(async move {
-            let result = match product_id {
-                Some(id) => {
+            let submit_locale = command.draft.locale.clone();
+            let result = match command.mode {
+                ProductAdminSaveMode::Update { product_id } => {
                     transport::update_product(
                         token_value,
                         tenant_value,
-                        bootstrap.current_tenant.id,
-                        bootstrap.me.id,
-                        id,
-                        draft,
+                        command.tenant_id,
+                        command.actor_id,
+                        product_id,
+                        command.draft,
                     )
                     .await
                 }
-                None => {
+                ProductAdminSaveMode::Create => {
                     transport::create_product(
                         token_value,
                         tenant_value,
-                        bootstrap.current_tenant.id,
-                        bootstrap.me.id,
-                        draft,
+                        command.tenant_id,
+                        command.actor_id,
+                        command.draft,
                     )
                     .await
                 }

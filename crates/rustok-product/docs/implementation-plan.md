@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_product_admin_editor_view_model_slice
-- Last checkpoint: Product admin editor shell presentation now builds through `ProductAdminEditorViewModel` in `admin/src/core.rs`; Leptos editor headings and submit copy consume prepared create/edit mode labels instead of owning editor mode display policy.
-- Next step: Continue FFA-first sequencing by extracting submit validation/draft command preparation into typed core helpers without changing the current GraphQL transport contract.
+- Current phase: ffa_product_admin_save_command_slice
+- Last checkpoint: Product admin submit validation and draft command preparation now build through `ProductAdminSaveCommand` / `ProductAdminDraftForm` in `admin/src/core.rs`; the Leptos adapter only collects signal values, dispatches the prepared create/update mode through `admin/src/transport.rs`, and preserves the existing GraphQL transport contract.
+- Next step: Continue FFA-first sequencing by extracting remaining editor form reset/apply state mapping into typed core helpers without changing the current GraphQL transport contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-06T00:00:00Z
+- Last updated at (UTC): 2026-06-07T00:00:00Z
 
 
 ## FFA/FBA status
@@ -30,8 +30,9 @@
   - FFA slice: selected product admin summary labels, pricing preview state and pricing deep-link are composed by `SelectedProductSummaryViewModel` in `admin/src/core.rs`, keeping Leptos summary rendering as markup-only;
   - FFA slice: product admin list-card display state (status label/badge, type fallback, meta label, shipping profile chip and published/created timestamp) is composed by `ProductAdminListItemViewModel` in `admin/src/core.rs`, keeping Leptos list rendering as markup/action binding only;
   - FFA slice: product admin editor shell state (create/edit mode, title, subtitle and submit label) is composed by `ProductAdminEditorViewModel` in `admin/src/core.rs`, keeping Leptos editor rendering as markup/action binding only;
+  - FFA slice: product admin submit validation, locale/bootstrap guardrails, create/update mode selection and `ProductDraft` command preparation are composed by `ProductAdminSaveCommand` / `ProductAdminDraftForm` in `admin/src/core.rs`; Leptos submit handling remains a thin signal/effect adapter over `admin/src/transport.rs`;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-06-06T00:00:00Z
+- Last verified at (UTC): 2026-06-07T00:00:00Z
 - Owner: `rustok-product` module team
 
 ## Область работ
@@ -53,7 +54,8 @@
   `admin/src/transport.rs`, selected-product summary собирается через
   `SelectedProductSummaryViewModel`, list-card display state собирается через
   `ProductAdminListItemViewModel`, editor shell state собирается через
-  `ProductAdminEditorViewModel` в `admin/src/core.rs`, а Leptos слой
+  `ProductAdminEditorViewModel`, а submit command/validation state собирается через
+  `ProductAdminSaveCommand` / `ProductAdminDraftForm` в `admin/src/core.rs`; Leptos слой
   изолирован в `admin/src/ui/leptos.rs` как render/effect adapter;
 - module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
   подключён в manifest-driven storefront composition для published catalog

@@ -1,6 +1,7 @@
 use crate::i18n::t;
 use crate::model::{
-    ProductDetail, ProductListItem, ProductPricingDetail, ProductTranslation, ShippingProfile,
+    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductListItem, ProductPricingDetail,
+    ProductTranslation, ShippingProfile,
 };
 
 fn locale_tags_match(left: &str, right: &str) -> bool {
@@ -334,6 +335,107 @@ pub(crate) fn build_product_admin_editor_view_model(
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminDraftForm {
+    pub locale: Option<String>,
+    pub title: String,
+    pub handle: String,
+    pub description: String,
+    pub seller_id: String,
+    pub vendor: String,
+    pub product_type: String,
+    pub shipping_profile_slug: String,
+    pub sku: String,
+    pub barcode: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: String,
+    pub inventory_quantity: i32,
+    pub publish_now: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProductAdminSaveMode {
+    Create,
+    Update { product_id: String },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ProductAdminSaveCommand {
+    pub mode: ProductAdminSaveMode,
+    pub tenant_id: String,
+    pub actor_id: String,
+    pub draft: ProductDraft,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProductAdminSaveValidationError {
+    TitleRequired,
+    LocaleUnavailable,
+    BootstrapUnavailable,
+}
+
+impl ProductAdminSaveValidationError {
+    pub(crate) fn message(&self, locale: Option<&str>) -> String {
+        match self {
+            Self::TitleRequired => t(locale, "product.error.titleRequired", "Title is required."),
+            Self::LocaleUnavailable => t(
+                locale,
+                "product.error.localeUnavailable",
+                "Host locale is unavailable.",
+            ),
+            Self::BootstrapUnavailable => t(
+                locale,
+                "product.error.bootstrapLoading",
+                "Bootstrap is still loading.",
+            ),
+        }
+    }
+}
+
+pub(crate) fn build_product_admin_save_command(
+    form: ProductAdminDraftForm,
+    editing_product_id: Option<String>,
+    bootstrap: Option<&ProductAdminBootstrap>,
+) -> Result<ProductAdminSaveCommand, ProductAdminSaveValidationError> {
+    if form.title.trim().is_empty() {
+        return Err(ProductAdminSaveValidationError::TitleRequired);
+    }
+
+    let locale = form
+        .locale
+        .filter(|value| !value.trim().is_empty())
+        .ok_or(ProductAdminSaveValidationError::LocaleUnavailable)?;
+
+    let bootstrap = bootstrap.ok_or(ProductAdminSaveValidationError::BootstrapUnavailable)?;
+
+    Ok(ProductAdminSaveCommand {
+        mode: editing_product_id
+            .filter(|id| !id.trim().is_empty())
+            .map(|product_id| ProductAdminSaveMode::Update { product_id })
+            .unwrap_or(ProductAdminSaveMode::Create),
+        tenant_id: bootstrap.current_tenant.id.clone(),
+        actor_id: bootstrap.me.id.clone(),
+        draft: ProductDraft {
+            locale,
+            title: form.title,
+            handle: form.handle,
+            description: form.description,
+            seller_id: form.seller_id,
+            vendor: form.vendor,
+            product_type: form.product_type,
+            shipping_profile_slug: text_or_none(form.shipping_profile_slug),
+            sku: form.sku,
+            barcode: form.barcode,
+            currency_code: form.currency_code,
+            amount: form.amount,
+            compare_at_amount: form.compare_at_amount,
+            inventory_quantity: form.inventory_quantity,
+            publish_now: form.publish_now,
+        },
+    })
+}
+
 pub(crate) fn format_known_shipping_profiles(
     locale: Option<&str>,
     profiles: &[ShippingProfile],
@@ -452,6 +554,96 @@ pub(crate) fn status_badge(status: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{CurrentTenant, CurrentUser};
+
+    fn admin_bootstrap() -> ProductAdminBootstrap {
+        ProductAdminBootstrap {
+            current_tenant: CurrentTenant {
+                id: "tenant-1".to_string(),
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+            },
+            me: CurrentUser {
+                id: "user-1".to_string(),
+                email: "operator@example.test".to_string(),
+                name: None,
+            },
+        }
+    }
+
+    fn draft_form() -> ProductAdminDraftForm {
+        ProductAdminDraftForm {
+            locale: Some("en".to_string()),
+            title: "Winter coat".to_string(),
+            handle: "winter-coat".to_string(),
+            description: "Warm coat".to_string(),
+            seller_id: "seller-1".to_string(),
+            vendor: "Acme".to_string(),
+            product_type: "coat".to_string(),
+            shipping_profile_slug: " standard ".to_string(),
+            sku: "COAT-1".to_string(),
+            barcode: "123".to_string(),
+            currency_code: "USD".to_string(),
+            amount: "10.00".to_string(),
+            compare_at_amount: String::new(),
+            inventory_quantity: 7,
+            publish_now: true,
+        }
+    }
+
+    #[test]
+    fn product_admin_save_command_prepares_create_draft_in_core() {
+        let command =
+            build_product_admin_save_command(draft_form(), None, Some(&admin_bootstrap()))
+                .expect("save command");
+
+        assert!(matches!(command.mode, ProductAdminSaveMode::Create));
+        assert_eq!(command.tenant_id, "tenant-1");
+        assert_eq!(command.actor_id, "user-1");
+        assert_eq!(command.draft.locale, "en");
+        assert_eq!(command.draft.title, "Winter coat");
+        assert_eq!(
+            command.draft.shipping_profile_slug,
+            Some("standard".to_string())
+        );
+        assert!(command.draft.publish_now);
+    }
+
+    #[test]
+    fn product_admin_save_command_prepares_update_mode_and_validation() {
+        let command = build_product_admin_save_command(
+            draft_form(),
+            Some("product-1".to_string()),
+            Some(&admin_bootstrap()),
+        )
+        .expect("save command");
+
+        assert!(matches!(
+            command.mode,
+            ProductAdminSaveMode::Update { ref product_id } if product_id == "product-1"
+        ));
+
+        let mut missing_title = draft_form();
+        missing_title.title = "  ".to_string();
+        assert_eq!(
+            build_product_admin_save_command(missing_title, None, Some(&admin_bootstrap()))
+                .unwrap_err(),
+            ProductAdminSaveValidationError::TitleRequired
+        );
+
+        let mut missing_locale = draft_form();
+        missing_locale.locale = None;
+        assert_eq!(
+            build_product_admin_save_command(missing_locale, None, Some(&admin_bootstrap()))
+                .unwrap_err(),
+            ProductAdminSaveValidationError::LocaleUnavailable
+        );
+
+        assert_eq!(
+            build_product_admin_save_command(draft_form(), None, None).unwrap_err(),
+            ProductAdminSaveValidationError::BootstrapUnavailable
+        );
+    }
 
     #[test]
     fn product_admin_editor_view_model_tracks_create_and_edit_modes() {
