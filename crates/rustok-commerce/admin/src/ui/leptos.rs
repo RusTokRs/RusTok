@@ -1113,6 +1113,19 @@ fn render_order_changes(
     cancel_label: String,
     busy: ReadSignal<bool>,
 ) -> AnyView {
+    let resolution_return_label = t(locale, "commerce.orderChanges.resolution.return", "Return");
+    let resolution_action_label = t(
+        locale,
+        "commerce.orderChanges.resolution.action",
+        "Decision",
+    );
+    let resolution_source_label = t(locale, "commerce.orderChanges.resolution.source", "Source");
+    let resolution_cancel_reason_label = t(
+        locale,
+        "commerce.orderChanges.resolution.cancelReason",
+        "Cancel reason",
+    );
+
     view! {
         <div class="space-y-3">
             {changes.into_iter().map(|change| {
@@ -1121,6 +1134,12 @@ fn render_order_changes(
                 let can_update = change.status == "pending";
                 let description = change.description.clone();
                 let has_description = description.is_some();
+                let resolution_summary = core::order_change_resolution_summary(&change);
+                let has_resolution_summary = resolution_summary.has_any();
+                let resolution_return_label = resolution_return_label.clone();
+                let resolution_action_label = resolution_action_label.clone();
+                let resolution_source_label = resolution_source_label.clone();
+                let resolution_cancel_reason_label = resolution_cancel_reason_label.clone();
                 view! {
                     <article class="rounded-2xl border border-border bg-background p-5">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1141,6 +1160,14 @@ fn render_order_changes(
                                 <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() || !can_update on:click=move |_| action.run((cancel_id.clone(), false))>{cancel_label.clone()}</button>
                             </div>
                         </div>
+                        <Show when=move || has_resolution_summary>
+                            <div class="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                                <MetricCard title=resolution_return_label.clone() value=resolution_summary.order_return_id.clone().unwrap_or_else(|| "-".to_string()) />
+                                <MetricCard title=resolution_action_label.clone() value=resolution_summary.return_decision_action.clone().unwrap_or_else(|| "-".to_string()) />
+                                <MetricCard title=resolution_source_label.clone() value=resolution_summary.return_decision_source.clone().unwrap_or_else(|| "-".to_string()) />
+                                <MetricCard title=resolution_cancel_reason_label.clone() value=resolution_summary.cancellation_reason.clone().unwrap_or_else(|| "-".to_string()) />
+                            </div>
+                        </Show>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <pre class="overflow-x-auto rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{change.preview.clone()}</pre>
                             <pre class="overflow-x-auto rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{change.metadata.clone()}</pre>
