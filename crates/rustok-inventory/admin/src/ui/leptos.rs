@@ -1,6 +1,5 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
@@ -39,9 +38,6 @@ pub fn InventoryAdmin() -> impl IntoView {
     let effective_locale = ui_locale.clone();
     let selected_product_query = use_route_query_value(AdminQueryKey::ProductId.as_str());
     let query_writer = use_route_query_writer();
-    let token = use_token();
-    let tenant = use_tenant();
-
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (selected_id, set_selected_id) = signal(Option::<String>::None);
     let (selected, set_selected) = signal(Option::<InventoryProductDetail>::None);
@@ -54,29 +50,22 @@ pub fn InventoryAdmin() -> impl IntoView {
     let effective_locale_for_open = effective_locale.clone();
 
     let bootstrap = local_resource(
-        move || (token.get(), tenant.get()),
-        move |(token_value, tenant_value)| async move {
-            crate::api::fetch_bootstrap(token_value, tenant_value).await
-        },
+        move || (),
+        move |()| async move { crate::api::fetch_bootstrap().await },
     );
 
     let products = local_resource(
         move || {
             (
-                token.get(),
-                tenant.get(),
                 refresh_nonce.get(),
                 effective_locale_for_products.clone(),
                 search.get(),
                 status_filter.get(),
             )
         },
-        move |(token_value, tenant_value, _, locale_value, search_value, status_value)| async move {
-            let bootstrap =
-                crate::api::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
+        move |(_, locale_value, search_value, status_value)| async move {
+            let bootstrap = crate::api::fetch_bootstrap().await?;
             crate::api::fetch_products(
-                token_value,
-                tenant_value,
                 bootstrap.current_tenant.id,
                 locale_value,
                 text_or_none(search_value),
@@ -118,8 +107,6 @@ pub fn InventoryAdmin() -> impl IntoView {
             return;
         };
 
-        let token_value = token.get_untracked();
-        let tenant_value = tenant.get_untracked();
         let locale_value = effective_locale_for_open.clone();
         let not_found_label = open_product_not_found_label.clone();
         let load_error_label = open_load_product_error_label.clone();
@@ -127,15 +114,7 @@ pub fn InventoryAdmin() -> impl IntoView {
         set_error.set(None);
         set_notice.set(None);
         spawn_local(async move {
-            match crate::api::fetch_product(
-                token_value,
-                tenant_value,
-                current_tenant.id,
-                product_id,
-                locale_value,
-            )
-            .await
-            {
+            match crate::api::fetch_product(current_tenant.id, product_id, locale_value).await {
                 Ok(Some(product)) => {
                     set_selected_id.set(Some(product.id.clone()));
                     set_selected.set(Some(product));

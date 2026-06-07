@@ -18,10 +18,10 @@
 - backend read-side для админки теперь имеет inventory-owned service/DTO в
   `src/services/admin_read.rs`, который отдаёт tenant-scoped product/variant/price/translations
   model для native server-function read transport;
-- admin UI read-side теперь проходит через inventory-owned core/facade в `admin/src/core.rs`,
+- admin UI read-side теперь проходит только через inventory-owned core/facade в `admin/src/core.rs`,
   `admin/src/api.rs`, `admin/src/native.rs`, native `#[server]` functions и explicit Leptos adapter
-  `admin/src/ui/leptos.rs`; текущий доступ к commerce GraphQL изолирован в
-  transitional adapter-е только как native-unavailable compatibility fallback до удаления umbrella read dependency;
+  `admin/src/ui/leptos.rs`; прежний commerce GraphQL transitional adapter удалён вместе с
+  `admin/src/transport.rs`, `leptos-graphql` и token/tenant-slug fallback параметрами;
 - dedicated native inventory write/validation endpoints `inventory/variant/set-quantity`,
   `inventory/variant/adjust-quantity`, `inventory/variant/reserve-quantity`,
   `inventory/variant/release-reservation` и `inventory/variant/check-availability` уже вынесены
@@ -39,7 +39,7 @@
 - inventory-owned backend admin read service экспортируется root crate-ом и является source
   для native server-function read transport;
 - inventory-owned admin UX и read facade публикуются через `rustok-inventory/admin`;
-  underlying commerce GraphQL adapter считается transitional read-only compatibility implementation detail, а native set/adjust/reserve/release quantity и check-availability endpoints являются inventory-owned write/validation surface для set-quantity, +/-1 operator, reservation и availability flows;
+  read-side и targeted set/adjust/reserve/release quantity plus check-availability flows идут через native inventory-owned server-function surface без commerce GraphQL fallback;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 

@@ -16,7 +16,7 @@ fn read_source(path: impl AsRef<Path>) -> String {
 }
 
 #[test]
-fn graphql_runtime_details_stay_inside_transport_adapter() {
+fn graphql_runtime_details_are_removed_from_inventory_admin_package() {
     let forbidden_markers = [
         "leptos_graphql",
         "GraphqlRequest",
@@ -24,6 +24,9 @@ fn graphql_runtime_details_stay_inside_transport_adapter() {
         "execute_graphql",
         "/api/graphql",
         "RUSTOK_GRAPHQL_URL",
+        "CommerceGraphqlInventoryReadAdapter",
+        "transitional_read_transport",
+        "fallback_",
     ];
 
     for source_path in [
@@ -33,26 +36,24 @@ fn graphql_runtime_details_stay_inside_transport_adapter() {
         "src/native.rs",
         "src/ui/leptos.rs",
         "src/ui/mod.rs",
+        "src/lib.rs",
+        "Cargo.toml",
     ] {
         let source = read_source(source_path);
         for marker in forbidden_markers {
             assert!(
                 !source.contains(marker),
-                "{} must not depend on GraphQL runtime detail `{}`; keep it in src/transport.rs",
+                "{} must not depend on removed GraphQL fallback detail `{}`",
                 source_path,
                 marker
             );
         }
     }
 
-    let transport = read_source("src/transport.rs");
-    for marker in forbidden_markers {
-        assert!(
-            transport.contains(marker),
-            "src/transport.rs should own transitional GraphQL runtime detail `{}`",
-            marker
-        );
-    }
+    assert!(
+        !manifest_dir().join("src/transport.rs").exists(),
+        "src/transport.rs must be removed after native read parity replaces the transitional GraphQL adapter"
+    );
 }
 
 #[test]
@@ -67,6 +68,7 @@ fn package_root_exports_ui_only_without_exposing_transport_adapter() {
     for forbidden_export in [
         "pub mod transport",
         "pub use transport",
+        "mod transport",
         "pub mod core",
         "pub use core",
         "pub mod native",
@@ -275,130 +277,98 @@ fn ui_stock_quantity_controls_use_inventory_api_facade_only() {
 }
 
 #[test]
-fn transitional_graphql_adapter_is_read_only_with_documented_removal_criteria() {
-    let transport = read_source("src/transport.rs");
+fn transitional_graphql_adapter_removal_is_documented() {
     let readme = read_source("README.md");
 
     for marker in [
-        "const BOOTSTRAP_QUERY",
-        "const PRODUCTS_QUERY",
-        "const PRODUCT_QUERY",
+        "Native-only transport status",
+        "CommerceGraphqlInventoryReadAdapter has been removed",
+        "No GraphQL fallback remains",
     ] {
         assert!(
-            transport.contains(marker),
-            "transitional GraphQL adapter must keep read-only query marker `{marker}`"
+            readme.contains(marker),
+            "admin README must document native-only transport marker `{marker}`"
         );
     }
 
     for forbidden in [
-        "mutation ",
-        "Mutation",
-        "setQuantity",
-        "adjustQuantity",
-        "setVariantQuantity",
-        "adjustVariantQuantity",
-        "reserveVariantQuantity",
-        "checkVariantAvailability",
-        "releaseReservation",
-    ] {
-        assert!(
-            !transport.contains(forbidden),
-            "transitional GraphQL adapter must remain read-only and not contain `{forbidden}`"
-        );
-    }
-
-    for marker in [
         "Transitional adapter removal criteria",
         "limited to native-unavailable fallback",
-        "no GraphQL fallback",
         "remaining dedicated write transport",
     ] {
         assert!(
-            readme.contains(marker),
-            "admin README must document transitional adapter removal marker `{marker}`"
+            !readme.contains(forbidden),
+            "admin README must not keep stale transitional adapter marker `{forbidden}`"
         );
     }
 }
 
 #[test]
-fn native_read_mapper_and_transitional_adapter_keep_read_model_parity() {
+fn native_read_mapper_keeps_backend_read_model_parity() {
     let model = read_source("src/model.rs");
     let native = read_source("src/native.rs");
-    let transport = read_source("src/transport.rs");
     let backend = read_source("../src/services/admin_read.rs");
 
-    for (model_marker, backend_marker, native_marker, transport_marker) in [
+    for (model_marker, backend_marker, native_marker) in [
         (
             "pub per_page: u64",
             "pub per_page: u64",
             "per_page: value.per_page",
-            "perPage",
         ),
         (
             "pub has_next: bool",
             "pub has_next: bool",
             "has_next: value.has_next",
-            "hasNext",
         ),
         (
             "pub shipping_profile_slug: Option<String>",
             "pub shipping_profile_slug: Option<String>",
             "shipping_profile_slug: value.shipping_profile_slug",
-            "shippingProfileSlug",
         ),
         (
             "pub translations: Vec<InventoryProductTranslation>",
             "pub translations: Vec<AdminInventoryProductTranslation>",
             "translations: value",
-            "translations",
         ),
         (
             "pub variants: Vec<InventoryVariant>",
             "pub variants: Vec<AdminInventoryVariant>",
             "variants: value.variants.into_iter().map(map_variant).collect()",
-            "variants",
         ),
         (
             "pub prices: Vec<InventoryPrice>",
             "pub prices: Vec<AdminInventoryPrice>",
             "prices: value",
-            "prices",
         ),
         (
             "pub inventory_quantity: i32",
             "pub inventory_quantity: i32",
             "inventory_quantity: value.inventory_quantity",
-            "inventoryQuantity",
         ),
         (
             "pub inventory_policy: String",
             "pub inventory_policy: String",
             "inventory_policy: value.inventory_policy",
-            "inventoryPolicy",
         ),
         (
             "pub in_stock: bool",
             "pub in_stock: bool",
             "in_stock: value.in_stock",
-            "inStock",
         ),
         (
             "pub currency_code: String",
             "pub currency_code: String",
             "currency_code: price.currency_code",
-            "currencyCode",
         ),
         (
             "pub compare_at_amount: Option<String>",
             "pub compare_at_amount: Option<String>",
             "compare_at_amount: price.compare_at_amount",
-            "compareAtAmount",
         ),
         (
             "pub on_sale: bool",
             "pub on_sale: bool",
             "on_sale: price.on_sale",
-            "onSale",
         ),
     ] {
         assert!(
@@ -412,10 +382,6 @@ fn native_read_mapper_and_transitional_adapter_keep_read_model_parity() {
         assert!(
             native.contains(native_marker),
             "native read mapper must keep DTO-to-admin-model marker `{native_marker}`"
-        );
-        assert!(
-            transport.contains(transport_marker),
-            "transitional GraphQL adapter must keep read-model marker `{transport_marker}`"
         );
     }
 }

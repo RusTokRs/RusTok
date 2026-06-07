@@ -8,8 +8,6 @@ pub(crate) const DEFAULT_PRODUCT_PAGE_SIZE: u64 = 24;
 
 #[derive(Clone, Debug)]
 pub(crate) struct InventoryProductsRequest {
-    pub token: Option<String>,
-    pub tenant_slug: Option<String>,
     pub tenant_id: String,
     pub locale: Option<String>,
     pub search: Option<String>,
@@ -27,8 +25,6 @@ pub(crate) struct InventoryProductsFilter {
 
 #[derive(Clone, Debug)]
 pub(crate) struct InventoryProductRequest {
-    pub token: Option<String>,
-    pub tenant_slug: Option<String>,
     pub tenant_id: String,
     pub id: String,
     pub locale: Option<String>,
