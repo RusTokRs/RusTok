@@ -85,14 +85,15 @@
 ### Что уже сделано в `rustok-pages`
 
 - добавлен `crates/rustok-pages/storefront/src/core.rs`;
-- `SelectedPageCard` в `crates/rustok-pages/storefront/src/lib.rs` переведён на `core::*` функции;
+- `SelectedPageCard` переведён на `core::*` функции;
+- Leptos storefront render/bind слой перенесён в `crates/rustok-pages/storefront/src/ui/leptos.rs`, а crate root только wires modules/re-export `PagesView`;
 - dual-path transport контракт (`native #[server]` + GraphQL fallback) не менялся.
 
 
 ### Перепроверка после выполненного (double-check)
 
 - [x] Проход №1 (code/docs consistency):
-  - `rustok-pages/storefront` фактически использует выделенный `core` слой для selected-page logic;
+  - `rustok-pages/storefront` фактически использует выделенный `core` слой для selected-page logic и explicit `ui/leptos.rs` adapter для render/bind;
   - dual-path transport (`native #[server]` + GraphQL fallback) сохранён без удаления fallback surface.
 - [x] Проход №2 (устранение устаревших формулировок):
   - в текущих central docs для этого шага не осталось формулировок, противоречащих `core`-срезу в `rustok-pages`.

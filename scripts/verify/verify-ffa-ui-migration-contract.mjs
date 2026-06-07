@@ -174,6 +174,10 @@ const requiredRegionRouteDomAttributes = [
   "data-region-route-query-value",
 ];
 
+const pagesStorefrontRootPath = "crates/rustok-pages/storefront/src/lib.rs";
+const pagesStorefrontLeptosUiPath = "crates/rustok-pages/storefront/src/ui/leptos.rs";
+const pagesStorefrontReadmePath = "crates/rustok-pages/storefront/README.md";
+
 const regionStorefrontCorePath = "crates/rustok-region/storefront/src/core.rs";
 const regionStorefrontLeptosUiPath = "crates/rustok-region/storefront/src/ui/leptos.rs";
 const regionStorefrontReadmePath = "crates/rustok-region/storefront/README.md";
@@ -302,6 +306,37 @@ function parsePackageJson() {
 
 function normalizeCommand(command) {
   return command.replace(/\s+/g, " ").trim();
+}
+
+function collectPagesStorefrontUiSplitErrors() {
+  const errors = [];
+  const root = readText(pagesStorefrontRootPath);
+  const leptosUi = readText(pagesStorefrontLeptosUiPath);
+  const storefrontReadme = readText(pagesStorefrontReadmePath);
+
+  ["mod core;", "mod transport;", "mod ui;", "pub use ui::leptos::PagesView;"].forEach((requiredSnippet) => {
+    if (!root.includes(requiredSnippet)) {
+      errors.push(`Pages storefront crate root должен wire/re-export FFA module snippet: ${requiredSnippet}`);
+    }
+  });
+
+  ["#[component]", "Resource::new_blocking", "transport::fetch_pages"].forEach((requiredSnippet) => {
+    if (!leptosUi.includes(requiredSnippet)) {
+      errors.push(`Pages storefront Leptos adapter должен содержать render/bind snippet: ${requiredSnippet}`);
+    }
+  });
+
+  ["src/ui/leptos.rs", "core.rs", "transport.rs"].forEach((requiredSnippet) => {
+    if (!storefrontReadme.includes(requiredSnippet)) {
+      errors.push(`Pages storefront README должен документировать FFA split snippet: ${requiredSnippet}`);
+    }
+  });
+
+  if (root.includes("use leptos") || root.includes("#[component]") || root.includes("Resource::new_blocking")) {
+    errors.push("Pages storefront crate root не должен содержать Leptos render/runtime код после ui/leptos split");
+  }
+
+  return errors;
 }
 
 function collectRegionErrorStatusContractErrors() {
@@ -559,6 +594,7 @@ function collectValidationErrors({ plan, connectivity, checklist, registry, docs
   errors.push(...collectStructuralShapeErrors(registry));
   errors.push(...collectRegistryLocalShapeErrors(registry));
   errors.push(...collectStructuralShapeFilesystemErrors(registry));
+  errors.push(...collectPagesStorefrontUiSplitErrors());
   errors.push(...collectRegionErrorStatusContractErrors());
 
   return errors.sort((a, b) => a.localeCompare(b, "ru"));

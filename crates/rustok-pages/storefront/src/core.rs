@@ -49,6 +49,7 @@ fn summarize_legacy_blocks(blocks: &[PageBlock]) -> String {
     )
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StorefrontBuilderFallbackReadContract {
     pub profile: &'static str,
@@ -57,6 +58,7 @@ pub struct StorefrontBuilderFallbackReadContract {
     pub render_requires_builder_capability: bool,
 }
 
+#[allow(dead_code)]
 pub fn storefront_builder_fallback_read_contract(
     profile: &str,
 ) -> Option<StorefrontBuilderFallbackReadContract> {

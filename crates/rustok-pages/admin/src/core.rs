@@ -142,6 +142,7 @@ pub fn is_builder_feature_disabled_issue(issue: &WritePathIssue) -> bool {
         || normalized.contains("builder.publish.enabled")
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderHostFallbackSurface {
     pub profile: &'static str,
@@ -153,6 +154,7 @@ pub struct BuilderHostFallbackSurface {
     pub disabled_capabilities: &'static [&'static str],
 }
 
+#[allow(dead_code)]
 pub fn builder_host_fallback_surface(profile: &str) -> Option<BuilderHostFallbackSurface> {
     match profile {
         "all_on" => Some(BuilderHostFallbackSurface {
@@ -195,6 +197,7 @@ pub fn builder_host_fallback_surface(profile: &str) -> Option<BuilderHostFallbac
     }
 }
 
+#[allow(dead_code)]
 pub fn builder_disabled_capability_error_key(capability: &str) -> &'static str {
     match capability {
         "preview" | "tree" | "properties" | "publish" => "feature-disabled",
