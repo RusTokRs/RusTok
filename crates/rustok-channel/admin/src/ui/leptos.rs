@@ -1,0 +1,2915 @@
+use leptos::ev::SubmitEvent;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::context::{
+    ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
+};
+use rustok_api::{AdminQueryKey, UiRouteContext};
+
+use crate::core::channel_selection_exists;
+use crate::i18n::t;
+use crate::model::{
+    BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,
+    ChannelResolutionPolicySetDetail, CreateChannelPayload, CreateChannelTargetPayload,
+    CreateResolutionPolicySetPayload, CreateResolutionRulePayload, ReorderResolutionRulesPayload,
+    UpdateResolutionRulePayload,
+};
+use crate::transport;
+
+fn local_resource<S, Fut, T>(
+    source: impl Fn() -> S + 'static,
+    fetcher: impl Fn(S) -> Fut + 'static,
+) -> LocalResource<T>
+where
+    S: 'static,
+    Fut: std::future::Future<Output = T> + 'static,
+    T: 'static,
+{
+    LocalResource::new(move || fetcher(source()))
+}
+
+#[component]
+pub fn ChannelAdmin() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let ui_locale = route_context.locale.clone();
+    let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
+    let query_writer = use_route_query_writer();
+    let token = leptos_auth::hooks::use_token();
+    let tenant = leptos_auth::hooks::use_tenant();
+    let badge_label = t(ui_locale.as_deref(), "channel.badge", "Experimental Core");
+    let title_label = t(ui_locale.as_deref(), "channel.title", "Channel Management");
+    let subtitle_label = t(
+        ui_locale.as_deref(),
+        "channel.subtitle",
+        "Channels define platform-level external delivery context, targets, enabled module surfaces, and bound OAuth apps.",
+    );
+    let route_label = t(ui_locale.as_deref(), "channel.route", "Route: {route}");
+    let create_title = t(
+        ui_locale.as_deref(),
+        "channel.create.title",
+        "Create Channel",
+    );
+    let create_subtitle = t(
+        ui_locale.as_deref(),
+        "channel.create.subtitle",
+        "Start small: create the channel first, then attach targets and bindings below.",
+    );
+    let slug_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.create.slugPlaceholder",
+        "slug",
+    );
+    let name_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.create.namePlaceholder",
+        "name",
+    );
+    let creating_label = t(
+        ui_locale.as_deref(),
+        "channel.create.creating",
+        "Creating...",
+    );
+    let create_label = t(ui_locale.as_deref(), "channel.create.submit", "Create");
+    let empty_channels_label = t(
+        ui_locale.as_deref(),
+        "channel.empty.channels",
+        "No channels configured yet.",
+    );
+    let load_bootstrap_error = t(
+        ui_locale.as_deref(),
+        "channel.error.loadBootstrap",
+        "Failed to load channel bootstrap",
+    );
+
+    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (feedback, set_feedback) = signal(Option::<String>::None);
+    let (error, set_error) = signal(Option::<String>::None);
+    let create_slug = RwSignal::new(String::new());
+    let create_name = RwSignal::new(String::new());
+    let create_busy = RwSignal::new(false);
+
+    let bootstrap = local_resource(
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
+            transport::fetch_bootstrap(token_value, tenant_value).await
+        },
+    );
+    let create_channel_query_writer = query_writer.clone();
+
+    Effect::new(move |_| {
+        let selected_channel_id = selected_channel_query.get();
+        match (selected_channel_id.as_deref(), bootstrap.get()) {
+            (Some(channel_id), Some(Ok(bootstrap)))
+                if !channel_selection_exists(bootstrap, channel_id) =>
+            {
+                query_writer.clear_key(AdminQueryKey::ChannelId.as_str());
+            }
+            _ => {}
+        }
+    });
+
+    let on_create = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        create_busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        let ui_locale = ui_locale.clone();
+        let create_channel_query_writer = create_channel_query_writer.clone();
+
+        spawn_local({
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            let slug = create_slug.get_untracked();
+            let name = create_name.get_untracked();
+            async move {
+                let result = transport::create_channel(
+                    token_value,
+                    tenant_value,
+                    &CreateChannelPayload {
+                        tenant_id: None,
+                        slug,
+                        name,
+                        settings: Some(serde_json::json!({})),
+                    },
+                )
+                .await;
+
+                match result {
+                    Ok(channel) => {
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.created",
+                                "Channel `{slug}` created.",
+                            )
+                            .replace("{slug}", channel.slug.as_str()),
+                        ));
+                        create_slug.set(String::new());
+                        create_name.set(String::new());
+                        create_channel_query_writer
+                            .replace_value(AdminQueryKey::ChannelId.as_str(), channel.id.clone());
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+
+                create_busy.set(false);
+            }
+        });
+    };
+
+    let route_segment = route_context
+        .route_segment
+        .clone()
+        .unwrap_or_else(|| "channels".to_string());
+
+    view! {
+        <div class="space-y-6">
+            <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="space-y-2">
+                        <span class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            {badge_label.clone()}
+                        </span>
+                        <h1 class="text-2xl font-semibold text-card-foreground">{title_label.clone()}</h1>
+                        <p class="max-w-3xl text-sm text-muted-foreground">
+                            {subtitle_label.clone()}
+                        </p>
+                    </div>
+                    <div class="rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+                        {route_label.replace("{route}", format!("/modules/{route_segment}").as_str())}
+                    </div>
+                </div>
+            </header>
+
+            <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div class="space-y-1">
+                    <h2 class="text-lg font-semibold text-card-foreground">{create_title.clone()}</h2>
+                    <p class="text-sm text-muted-foreground">
+                        {create_subtitle.clone()}
+                    </p>
+                </div>
+                <form class="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]" on:submit=on_create>
+                    <input
+                        type="text"
+                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        placeholder=slug_placeholder.clone()
+                        prop:value=create_slug
+                        on:input=move |ev| create_slug.set(event_target_value(&ev))
+                    />
+                    <input
+                        type="text"
+                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        placeholder=name_placeholder.clone()
+                        prop:value=create_name
+                        on:input=move |ev| create_name.set(event_target_value(&ev))
+                    />
+                    <button
+                        type="submit"
+                        class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                        disabled=move || create_busy.get()
+                    >
+                        {move || if create_busy.get() { creating_label.clone() } else { create_label.clone() }}
+                    </button>
+                </form>
+                <Show when=move || feedback.get().is_some()>
+                    <div class="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                        {move || feedback.get().unwrap_or_default()}
+                    </div>
+                </Show>
+                <Show when=move || error.get().is_some()>
+                    <div class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                        {move || error.get().unwrap_or_default()}
+                    </div>
+                </Show>
+            </section>
+
+            <Suspense fallback=move || view! { <div class="h-48 animate-pulse rounded-2xl bg-muted"></div> }>
+                {move || {
+                    bootstrap.get().map(|result| match result {
+                        Ok(bootstrap) => view! {
+                            <div class="space-y-6">
+                                <RuntimeContext bootstrap=bootstrap.clone() />
+                                <PolicyWorkbench
+                                    policy_sets=bootstrap.policy_sets.clone()
+                                    channels=bootstrap.channels.clone()
+                                    oauth_apps=bootstrap.oauth_apps.clone()
+                                    token=token.get()
+                                    tenant=tenant.get()
+                                    set_feedback=set_feedback
+                                    set_error=set_error
+                                    set_refresh_nonce=set_refresh_nonce
+                                />
+                                {if bootstrap.channels.is_empty() {
+                                    view! {
+                                        <div class="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                                            {empty_channels_label.clone()}
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="space-y-4">
+                                            {bootstrap.channels.into_iter().map(|channel| view! {
+                                                <ChannelCard
+                                                    channel=channel
+                                                    available_modules=bootstrap.available_modules.clone()
+                                                    oauth_apps=bootstrap.oauth_apps.clone()
+                                                    token=token.get()
+                                                    tenant=tenant.get()
+                                                    set_feedback=set_feedback
+                                                    set_error=set_error
+                                                    set_refresh_nonce=set_refresh_nonce
+                                                />
+                                            }).collect_view()}
+                                        </div>
+                                    }.into_any()
+                                }}
+                            </div>
+                        }.into_any(),
+                        Err(err) => view! {
+                            <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-4 text-sm text-destructive">
+                                {format!("{}: {err}", load_bootstrap_error.clone())}
+                            </div>
+                        }.into_any(),
+                    })
+                }}
+            </Suspense>
+        </div>
+    }
+}
+
+#[component]
+fn RuntimeContext(bootstrap: ChannelAdminBootstrap) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    view! {
+        <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div class="space-y-1">
+                <h2 class="text-lg font-semibold text-card-foreground">
+                    {t(ui_locale.as_deref(), "channel.runtime.title", "Runtime Context")}
+                </h2>
+                <p class="text-sm text-muted-foreground">
+                    {t(
+                        ui_locale.as_deref(),
+                        "channel.runtime.subtitle",
+                        "Channel resolved by middleware for the current request.",
+                    )}
+                </p>
+            </div>
+            {match bootstrap.current_channel {
+                Some(current) => view! {
+                    <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.slug", "Slug") value=current.slug />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.name", "Name") value=current.name />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.source", "Source") value=resolution_source_label(&current.resolution_source, ui_locale.as_deref()) />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.target", "Target") value=current.target_value.unwrap_or_else(|| t(ui_locale.as_deref(), "channel.runtime.na", "n/a")) />
+                        <InfoPill label=t(ui_locale.as_deref(), "channel.runtime.type", "Type") value=current.target_type.unwrap_or_else(|| t(ui_locale.as_deref(), "channel.runtime.na", "n/a")) />
+                    </div>
+                    <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                        {resolution_source_description(&current.resolution_source, ui_locale.as_deref())}
+                    </div>
+                    <div class="mt-4 space-y-2">
+                        <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            {t(
+                                ui_locale.as_deref(),
+                                "channel.runtime.traceTitle",
+                                "Resolution Trace",
+                            )}
+                        </div>
+                        <div class="space-y-2">
+                            {current
+                                .resolution_trace
+                                .into_iter()
+                                .map(|step| {
+                                    let badge_class = resolution_outcome_badge_class(&step.outcome);
+                                    let stage = resolution_stage_label(&step.stage, ui_locale.as_deref());
+                                    let outcome = resolution_outcome_label(&step.outcome, ui_locale.as_deref());
+                                    view! {
+                                        <div class="rounded-xl border border-border bg-background px-4 py-3">
+                                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                                <span class="inline-flex items-center rounded-full border border-border px-2 py-1 font-medium text-muted-foreground">
+                                                    {stage}
+                                                </span>
+                                                <span class=badge_class>
+                                                    {outcome}
+                                                </span>
+                                            </div>
+                                            <div class="mt-2 text-sm text-card-foreground">{step.detail}</div>
+                                        </div>
+                                    }
+                                })
+                                .collect_view()}
+                        </div>
+                    </div>
+                }.into_any(),
+                None => view! {
+                    <div class="mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                        {t(
+                            ui_locale.as_deref(),
+                            "channel.runtime.empty",
+                            "No channel was resolved for the current request yet.",
+                        )}
+                    </div>
+                }.into_any(),
+            }}
+        </section>
+    }
+}
+
+#[component]
+fn PolicyWorkbench(
+    policy_sets: Vec<ChannelResolutionPolicySetDetail>,
+    channels: Vec<ChannelDetail>,
+    oauth_apps: Vec<crate::model::AvailableOauthAppItem>,
+    token: Option<String>,
+    tenant: Option<String>,
+    set_feedback: WriteSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    set_refresh_nonce: WriteSignal<u64>,
+) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let create_slug = RwSignal::new(String::new());
+    let create_name = RwSignal::new(String::new());
+    let create_is_active = RwSignal::new(policy_sets.is_empty());
+    let create_busy = RwSignal::new(false);
+    let section_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.title",
+        "Resolution Policies",
+    );
+    let section_subtitle = t(
+        ui_locale.as_deref(),
+        "channel.policies.subtitle",
+        "Tenant-scoped typed rules run after built-in host resolution and before the explicit default channel.",
+    );
+    let empty_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.emptyTitle",
+        "No policy sets yet.",
+    );
+    let empty_body = t(
+        ui_locale.as_deref(),
+        "channel.policies.emptyBody",
+        "Create the first policy set when channel selection should depend on locale, OAuth app, or richer host matching instead of only explicit selectors and host targets.",
+    );
+    let selected_policy_set_query = use_route_query_value(AdminQueryKey::PolicySetId.as_str());
+    let selected_policy_rule_query = use_route_query_value(AdminQueryKey::PolicyRuleId.as_str());
+    let policy_query_writer = use_route_query_writer();
+    let policy_sets_for_selection = policy_sets.clone();
+    let create_policy_ctx = StoredValue::new((token.clone(), tenant.clone(), ui_locale.clone()));
+
+    Effect::new(move |_| {
+        let selected_policy_set_id = selected_policy_set_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+        let selected_policy_rule_id = selected_policy_rule_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+
+        match selected_policy_set_id {
+            Some(policy_set_id) => {
+                let maybe_policy_set = policy_sets_for_selection
+                    .iter()
+                    .find(|policy_set| policy_set.policy_set.id == policy_set_id);
+                match maybe_policy_set {
+                    Some(policy_set) => {
+                        if let Some(rule_id) = selected_policy_rule_id.as_deref() {
+                            if !policy_set.rules.iter().any(|rule| rule.id == rule_id) {
+                                policy_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                            }
+                        }
+                    }
+                    None => {
+                        policy_query_writer.update(
+                            vec![
+                                (AdminQueryKey::PolicySetId.as_str().to_string(), None),
+                                (AdminQueryKey::PolicyRuleId.as_str().to_string(), None),
+                            ],
+                            false,
+                        );
+                    }
+                }
+            }
+            None => {
+                if selected_policy_rule_id.is_some() {
+                    policy_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                }
+            }
+        }
+    });
+
+    let on_create = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        create_busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        let (token, tenant, ui_locale) = create_policy_ctx.get_value();
+
+        spawn_local({
+            async move {
+                let result = transport::create_resolution_policy_set(
+                    token,
+                    tenant,
+                    &CreateResolutionPolicySetPayload {
+                        slug: create_slug.get_untracked(),
+                        name: create_name.get_untracked(),
+                        is_active: create_is_active.get_untracked(),
+                    },
+                )
+                .await;
+
+                match result {
+                    Ok(policy_set) => {
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.policies.feedback.created",
+                                "Policy set `{slug}` created.",
+                            )
+                            .replace("{slug}", policy_set.slug.as_str()),
+                        ));
+                        create_slug.set(String::new());
+                        create_name.set(String::new());
+                        create_is_active.set(false);
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+
+                create_busy.set(false);
+            }
+        });
+    };
+
+    view! {
+        <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div class="space-y-1">
+                <h2 class="text-lg font-semibold text-card-foreground">{section_title}</h2>
+                <p class="text-sm text-muted-foreground">{section_subtitle}</p>
+            </div>
+
+            <div class="mt-5 space-y-4">
+                {if policy_sets.is_empty() {
+                    view! {
+                        <EmptyState title=empty_title body=empty_body />
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="space-y-4">
+                            {policy_sets.into_iter().map(|policy_set| view! {
+                                <PolicySetCard
+                                    policy_set=policy_set
+                                    channels=channels.clone()
+                                    oauth_apps=oauth_apps.clone()
+                                    token=token.clone()
+                                    tenant=tenant.clone()
+                                    set_feedback=set_feedback
+                                    set_error=set_error
+                                    set_refresh_nonce=set_refresh_nonce
+                                />
+                            }).collect_view()}
+                        </div>
+                    }.into_any()
+                }}
+            </div>
+
+            <form class="mt-6 grid gap-3 rounded-xl border border-border bg-background p-4 lg:grid-cols-[1fr_1fr_auto_auto]" on:submit=on_create>
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.slugPlaceholder", "policy slug")
+                    prop:value=create_slug
+                    on:input=move |ev| create_slug.set(event_target_value(&ev))
+                />
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.namePlaceholder", "policy set name")
+                    prop:value=create_name
+                    on:input=move |ev| create_name.set(event_target_value(&ev))
+                />
+                <label class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                        type="checkbox"
+                        prop:checked=create_is_active
+                        on:change=move |ev| create_is_active.set(event_target_checked(&ev))
+                    />
+                    {t(ui_locale.as_deref(), "channel.policies.active", "Activate now")}
+                </label>
+                <button
+                    type="submit"
+                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    disabled=move || create_busy.get()
+                >
+                    {move || if create_busy.get() {
+                        t(ui_locale.as_deref(), "channel.policies.creating", "Creating...")
+                    } else {
+                        t(ui_locale.as_deref(), "channel.policies.create", "Create Policy Set")
+                    }}
+                </button>
+            </form>
+        </section>
+    }
+}
+
+#[component]
+fn PolicySetCard(
+    policy_set: ChannelResolutionPolicySetDetail,
+    channels: Vec<ChannelDetail>,
+    oauth_apps: Vec<crate::model::AvailableOauthAppItem>,
+    token: Option<String>,
+    tenant: Option<String>,
+    set_feedback: WriteSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    set_refresh_nonce: WriteSignal<u64>,
+) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let selected_policy_set_query = use_route_query_value(AdminQueryKey::PolicySetId.as_str());
+    let selected_policy_rule_query = use_route_query_value(AdminQueryKey::PolicyRuleId.as_str());
+    let query_writer = use_route_query_writer();
+    let policy_selection_query_writer = query_writer.clone();
+    let has_channels = !channels.is_empty();
+    let busy = RwSignal::new(false);
+    let editing_rule_id = RwSignal::new(Option::<String>::None);
+    let policy_rules = policy_set.rules.clone();
+    let rule_order = policy_rules
+        .iter()
+        .map(|rule| rule.id.clone())
+        .collect::<Vec<_>>();
+    let create_form_state = policy_rule_create_form_state(&policy_rules, &channels);
+    let policy_rules_for_selection = policy_rules.clone();
+    let channels_for_selection = channels.clone();
+    let create_form_state_for_selection = create_form_state.clone();
+    let priority = RwSignal::new(create_form_state.priority);
+    let is_active = RwSignal::new(create_form_state.is_active);
+    let action_channel_id = RwSignal::new(create_form_state.action_channel_id.clone());
+    let host_equals = RwSignal::new(create_form_state.host_equals.clone());
+    let host_suffix = RwSignal::new(create_form_state.host_suffix.clone());
+    let locale = RwSignal::new(create_form_state.locale.clone());
+    let surface = RwSignal::new(create_form_state.surface.clone());
+    let oauth_app_id = RwSignal::new(create_form_state.oauth_app_id.clone());
+    let policy_set_id = policy_set.policy_set.id.clone();
+    let policy_set_slug = policy_set.policy_set.slug.clone();
+    let activate_ctx = StoredValue::new((
+        token.clone(),
+        tenant.clone(),
+        policy_set_id.clone(),
+        policy_set_slug.clone(),
+        ui_locale.clone(),
+    ));
+    let submit_rule_ctx = StoredValue::new((
+        token.clone(),
+        tenant.clone(),
+        policy_set_id.clone(),
+        policy_set_slug.clone(),
+        ui_locale.clone(),
+    ));
+
+    let active_badge_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.activeBadge",
+        "Active",
+    );
+    let schema_label = t(ui_locale.as_deref(), "channel.policies.schema", "Schema");
+    let activate_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.activate",
+        "Activate",
+    );
+    let empty_rules_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.rules.emptyTitle",
+        "No rules yet.",
+    );
+    let empty_rules_body = t(
+        ui_locale.as_deref(),
+        "channel.policies.rules.emptyBody",
+        "Add the first rule to connect request facts to a specific channel.",
+    );
+    let edit_rule_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.editRuleTitle",
+        "Edit Rule",
+    );
+    let add_rule_title = t(
+        ui_locale.as_deref(),
+        "channel.policies.addRuleTitle",
+        "Add Rule",
+    );
+    let save_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.saveRule",
+        "Save Rule",
+    );
+    let add_rule_label = t(ui_locale.as_deref(), "channel.policies.addRule", "Add Rule");
+    let edit_rule_label = t(ui_locale.as_deref(), "channel.policies.editRule", "Edit");
+    let delete_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.deleteRule",
+        "Delete",
+    );
+    let move_up_label = t(ui_locale.as_deref(), "channel.policies.moveUp", "Move Up");
+    let move_down_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.moveDown",
+        "Move Down",
+    );
+    let enable_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.enableRule",
+        "Enable",
+    );
+    let disable_rule_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.disableRule",
+        "Disable",
+    );
+    let inactive_rule_badge = t(
+        ui_locale.as_deref(),
+        "channel.policies.inactiveBadge",
+        "Inactive",
+    );
+    let cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
+    let any_surface_label = t(
+        ui_locale.as_deref(),
+        "channel.policies.surfaceAny",
+        "any surface",
+    );
+    let rules_ui_locale = ui_locale.clone();
+
+    Effect::new(move |_| {
+        let selected_policy_set_id = selected_policy_set_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+        let selected_policy_rule_id = selected_policy_rule_query
+            .get()
+            .filter(|value| !value.trim().is_empty());
+
+        if selected_policy_set_id.as_deref() != Some(policy_set_id.as_str()) {
+            editing_rule_id.set(None);
+            apply_policy_rule_form_state(
+                priority,
+                is_active,
+                action_channel_id,
+                host_equals,
+                host_suffix,
+                locale,
+                surface,
+                oauth_app_id,
+                &create_form_state_for_selection,
+            );
+            return;
+        }
+
+        match selected_policy_rule_id {
+            Some(rule_id) => {
+                if let Some(rule) = policy_rules_for_selection
+                    .iter()
+                    .find(|rule| rule.id == rule_id)
+                {
+                    editing_rule_id.set(Some(rule.id.clone()));
+                    let edit_form_state =
+                        policy_rule_edit_form_state(rule, &channels_for_selection);
+                    apply_policy_rule_form_state(
+                        priority,
+                        is_active,
+                        action_channel_id,
+                        host_equals,
+                        host_suffix,
+                        locale,
+                        surface,
+                        oauth_app_id,
+                        &edit_form_state,
+                    );
+                } else {
+                    policy_selection_query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                    editing_rule_id.set(None);
+                    apply_policy_rule_form_state(
+                        priority,
+                        is_active,
+                        action_channel_id,
+                        host_equals,
+                        host_suffix,
+                        locale,
+                        surface,
+                        oauth_app_id,
+                        &create_form_state_for_selection,
+                    );
+                }
+            }
+            None => {
+                editing_rule_id.set(None);
+                apply_policy_rule_form_state(
+                    priority,
+                    is_active,
+                    action_channel_id,
+                    host_equals,
+                    host_suffix,
+                    locale,
+                    surface,
+                    oauth_app_id,
+                    &create_form_state_for_selection,
+                );
+            }
+        }
+    });
+
+    let submit_query_writer = query_writer.clone();
+    let submit_create_form_state = create_form_state.clone();
+    let on_submit_rule = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+
+        spawn_local({
+            let (token, tenant, policy_set_id, policy_set_slug, ui_locale) =
+                submit_rule_ctx.get_value();
+            let editing_rule_id_value = editing_rule_id.get_untracked();
+            let query_writer = submit_query_writer.clone();
+            let create_form_state = submit_create_form_state.clone();
+            async move {
+                match editing_rule_id_value {
+                    Some(rule_id) => {
+                        let result = transport::update_resolution_rule(
+                            token,
+                            tenant,
+                            policy_set_id.as_str(),
+                            rule_id.as_str(),
+                            &UpdateResolutionRulePayload {
+                                priority: Some(priority.get_untracked()),
+                                is_active: Some(is_active.get_untracked()),
+                                action_channel_id: Some(action_channel_id.get_untracked()),
+                                host_equals: Some(host_equals.get_untracked()),
+                                host_suffix: Some(host_suffix.get_untracked()),
+                                oauth_app_id: Some(oauth_app_id.get_untracked()),
+                                surface: Some(surface.get_untracked()),
+                                locale: Some(locale.get_untracked()),
+                            },
+                        )
+                        .await;
+
+                        match result {
+                            Ok(rule) => {
+                                set_feedback.set(Some(
+                                    t(
+                                        ui_locale.as_deref(),
+                                        "channel.policies.feedback.ruleUpdated",
+                                        "Rule `{rule}` updated in policy set `{slug}`.",
+                                    )
+                                    .replace("{rule}", short_id(rule.id.as_str()).as_str())
+                                    .replace("{slug}", policy_set_slug.as_str()),
+                                ));
+                                query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                                editing_rule_id.set(None);
+                                apply_policy_rule_form_state(
+                                    priority,
+                                    is_active,
+                                    action_channel_id,
+                                    host_equals,
+                                    host_suffix,
+                                    locale,
+                                    surface,
+                                    oauth_app_id,
+                                    &create_form_state,
+                                );
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                            Err(err) => set_error.set(Some(err.to_string())),
+                        }
+                    }
+                    None => {
+                        let payload = CreateResolutionRulePayload {
+                            priority: priority.get_untracked(),
+                            is_active: is_active.get_untracked(),
+                            action_channel_id: action_channel_id.get_untracked(),
+                            host_equals: optional_text(host_equals.get_untracked()),
+                            host_suffix: optional_text(host_suffix.get_untracked()),
+                            oauth_app_id: optional_text(oauth_app_id.get_untracked()),
+                            surface: optional_text(surface.get_untracked()),
+                            locale: optional_text(locale.get_untracked()),
+                        };
+                        let result = transport::create_resolution_rule(
+                            token,
+                            tenant,
+                            policy_set_id.as_str(),
+                            &payload,
+                        )
+                        .await;
+
+                        match result {
+                            Ok(rule) => {
+                                set_feedback.set(Some(
+                                    t(
+                                        ui_locale.as_deref(),
+                                        "channel.policies.feedback.ruleCreated",
+                                        "Rule `{rule}` added to policy set `{slug}`.",
+                                    )
+                                    .replace("{rule}", short_id(rule.id.as_str()).as_str())
+                                    .replace("{slug}", policy_set_slug.as_str()),
+                                ));
+                                host_equals.set(String::new());
+                                host_suffix.set(String::new());
+                                locale.set(String::new());
+                                oauth_app_id.set(String::new());
+                                priority.update(|value| *value += 10);
+                                query_writer.replace_value(
+                                    AdminQueryKey::PolicySetId.as_str(),
+                                    policy_set_id.clone(),
+                                );
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                            Err(err) => set_error.set(Some(err.to_string())),
+                        }
+                    }
+                }
+
+                busy.set(false);
+            }
+        });
+    };
+
+    view! {
+        <section class="space-y-4 rounded-xl border border-border bg-background p-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {policy_set.policy_set.name.clone()}
+                        </h3>
+                        <span class="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                            {policy_set.policy_set.slug.clone()}
+                        </span>
+                        <Show when=move || policy_set.policy_set.is_active>
+                            <span class="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                                {active_badge_label.clone()}
+                            </span>
+                        </Show>
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        {format!("{} {}", schema_label.clone(), policy_set.policy_set.schema_version)}
+                    </p>
+                </div>
+                <Show when=move || !policy_set.policy_set.is_active>
+                    <button
+                        type="button"
+                        class="rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click=move |_| {
+                            busy.set(true);
+                            set_feedback.set(None);
+                            set_error.set(None);
+                            let (token, tenant, policy_set_id, policy_set_slug, ui_locale) =
+                                activate_ctx.get_value();
+
+                            spawn_local(async move {
+                                let result = transport::activate_resolution_policy_set(
+                                    token,
+                                    tenant,
+                                    policy_set_id.as_str(),
+                                )
+                                .await;
+                                match result {
+                                    Ok(_) => {
+                                        set_feedback.set(Some(
+                                            t(
+                                                ui_locale.as_deref(),
+                                                "channel.policies.feedback.activated",
+                                                "Policy set `{slug}` is now active.",
+                                            )
+                                            .replace("{slug}", policy_set_slug.as_str()),
+                                        ));
+                                        set_refresh_nonce.update(|value| *value += 1);
+                                    }
+                                    Err(err) => set_error.set(Some(err.to_string())),
+                                }
+                                busy.set(false);
+                            });
+                        }
+                    >
+                        {activate_label.clone()}
+                    </button>
+                </Show>
+            </div>
+
+            {if policy_rules.is_empty() {
+                view! {
+                    <EmptyState
+                        title=empty_rules_title.clone()
+                        body=empty_rules_body.clone()
+                    />
+                }.into_any()
+            } else {
+                view! {
+                    <div class="space-y-2">
+                        {policy_rules.into_iter().enumerate().map(|(index, rule)| {
+                            let summary = policy_rule_summary(&rule, &channels);
+                            let rule_is_active = rule.is_active;
+                            let is_editing_rule = Signal::derive({
+                                let rule_id = rule.id.clone();
+                                move || editing_rule_id.get().as_deref() == Some(rule_id.as_str())
+                            });
+                            let rule_ids_for_reorder_up = rule_order.clone();
+                            let rule_ids_for_reorder_down = rule_order.clone();
+                            let inactive_rule_badge = inactive_rule_badge.clone();
+                            let can_move_up = index > 0;
+                            let can_move_down = index + 1 < rule_order.len();
+                            let token_for_up = token.clone();
+                            let tenant_for_up = tenant.clone();
+                            let token_for_down = token.clone();
+                            let tenant_for_down = tenant.clone();
+                            let token_for_toggle = token.clone();
+                            let tenant_for_toggle = tenant.clone();
+                            let token_for_delete = token.clone();
+                            let tenant_for_delete = tenant.clone();
+                            let policy_set_id_for_up = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_down = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_toggle = policy_set.policy_set.id.clone();
+                            let policy_set_id_for_delete = policy_set.policy_set.id.clone();
+                            let policy_set_slug_for_up = policy_set.policy_set.slug.clone();
+                            let policy_set_slug_for_down = policy_set.policy_set.slug.clone();
+                            let ui_locale_for_up = rules_ui_locale.clone();
+                            let ui_locale_for_down = rules_ui_locale.clone();
+                            let ui_locale_for_toggle = rules_ui_locale.clone();
+                            let ui_locale_for_delete = rules_ui_locale.clone();
+                            let query_writer_for_edit = query_writer.clone();
+                            let query_writer_for_delete = query_writer.clone();
+                            let rule_id_for_toggle = rule.id.clone();
+                            let rule_id_for_delete = rule.id.clone();
+                            let rule_id_for_feedback = rule.id.clone();
+                            view! {
+                                <div
+                                    class="rounded-lg border border-border px-3 py-3 text-sm"
+                                    class=("ring-2 ring-primary/30", move || is_editing_rule.get())
+                                >
+                                    <div class="flex flex-wrap items-start justify-between gap-3">
+                                        <div class="space-y-1">
+                                            <div class="flex items-center gap-2 font-medium text-card-foreground">
+                                                <span>{format!("#{} · {}", rule.priority, short_id(rule.id.as_str()))}</span>
+                                                <Show when=move || !rule_is_active>
+                                                    <span class="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                                        {inactive_rule_badge.clone()}
+                                                    </span>
+                                                </Show>
+                                            </div>
+                                            <div class="text-muted-foreground">{summary}</div>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let policy_set_id = policy_set.policy_set.id.clone();
+                                                    let rule_id = rule.id.clone();
+                                                    let query_writer = query_writer_for_edit.clone();
+                                                    move |_| {
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::PolicySetId.as_str().to_string(),
+                                                                    Some(policy_set_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::PolicyRuleId.as_str().to_string(),
+                                                                    Some(rule_id.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
+                                                    }
+                                                }
+                                            >
+                                                {edit_rule_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get() || !can_move_up
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_up.clone();
+                                                        let tenant = tenant_for_up.clone();
+                                                        let policy_set_id = policy_set_id_for_up.clone();
+                                                        let policy_set_slug = policy_set_slug_for_up.clone();
+                                                        let ui_locale = ui_locale_for_up.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder_up.clone();
+                                                        async move {
+                                                            let Some(rule_ids) = reorder_rule_ids(rule_ids_for_reorder.as_slice(), index, true) else {
+                                                                busy.set(false);
+                                                                return;
+                                                            };
+                                                            let result = transport::reorder_resolution_rules(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                &ReorderResolutionRulesPayload { rule_ids },
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    set_feedback.set(Some(
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleReordered",
+                                                                            "Rule order updated for policy set `{slug}`.",
+                                                                        )
+                                                                        .replace("{slug}", policy_set_slug.as_str()),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {move_up_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get() || !can_move_down
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_down.clone();
+                                                        let tenant = tenant_for_down.clone();
+                                                        let policy_set_id = policy_set_id_for_down.clone();
+                                                        let policy_set_slug = policy_set_slug_for_down.clone();
+                                                        let ui_locale = ui_locale_for_down.clone();
+                                                        let rule_ids_for_reorder = rule_ids_for_reorder_down.clone();
+                                                        async move {
+                                                            let Some(rule_ids) = reorder_rule_ids(rule_ids_for_reorder.as_slice(), index, false) else {
+                                                                busy.set(false);
+                                                                return;
+                                                            };
+                                                            let result = transport::reorder_resolution_rules(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                &ReorderResolutionRulesPayload { rule_ids },
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    set_feedback.set(Some(
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleReordered",
+                                                                            "Rule order updated for policy set `{slug}`.",
+                                                                        )
+                                                                        .replace("{slug}", policy_set_slug.as_str()),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {move_down_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_toggle.clone();
+                                                        let tenant = tenant_for_toggle.clone();
+                                                        let policy_set_id = policy_set_id_for_toggle.clone();
+                                                        let rule_id = rule_id_for_toggle.clone();
+                                                        let rule_id_for_feedback = rule_id_for_feedback.clone();
+                                                        let ui_locale = ui_locale_for_toggle.clone();
+                                                        async move {
+                                                            let next_is_active = !rule_is_active;
+                                                            let result = transport::update_resolution_rule(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                rule_id.as_str(),
+                                                                &UpdateResolutionRulePayload {
+                                                                    priority: None,
+                                                                    is_active: Some(next_is_active),
+                                                                    action_channel_id: None,
+                                                                    host_equals: None,
+                                                                    host_suffix: None,
+                                                                    oauth_app_id: None,
+                                                                    surface: None,
+                                                                    locale: None,
+                                                                },
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    let message = if next_is_active {
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleEnabled",
+                                                                            "Rule `{rule}` enabled.",
+                                                                        )
+                                                                    } else {
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleDisabled",
+                                                                            "Rule `{rule}` disabled.",
+                                                                        )
+                                                                    };
+                                                                    set_feedback.set(Some(
+                                                                        message.replace(
+                                                                            "{rule}",
+                                                                            short_id(rule_id_for_feedback.as_str()).as_str(),
+                                                                        ),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {if rule_is_active {
+                                                    disable_rule_label.clone()
+                                                } else {
+                                                    enable_rule_label.clone()
+                                                }}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click=move |_| {
+                                                    busy.set(true);
+                                                    set_feedback.set(None);
+                                                    set_error.set(None);
+                                                    spawn_local({
+                                                        let token = token_for_delete.clone();
+                                                        let tenant = tenant_for_delete.clone();
+                                                        let policy_set_id = policy_set_id_for_delete.clone();
+                                                        let rule_id = rule_id_for_delete.clone();
+                                                        let ui_locale = ui_locale_for_delete.clone();
+                                                        let query_writer = query_writer_for_delete.clone();
+                                                        async move {
+                                                            let result = transport::delete_resolution_rule(
+                                                                token,
+                                                                tenant,
+                                                                policy_set_id.as_str(),
+                                                                rule_id.as_str(),
+                                                            )
+                                                            .await;
+                                                            match result {
+                                                                Ok(_) => {
+                                                                    if editing_rule_id
+                                                                        .get_untracked()
+                                                                        .as_deref()
+                                                                        == Some(rule_id.as_str())
+                                                                    {
+                                                                        query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                                                                    }
+                                                                    set_feedback.set(Some(
+                                                                        t(
+                                                                            ui_locale.as_deref(),
+                                                                            "channel.policies.feedback.ruleDeleted",
+                                                                            "Rule `{rule}` removed.",
+                                                                        )
+                                                                        .replace("{rule}", short_id(rule_id.as_str()).as_str()),
+                                                                    ));
+                                                                    set_refresh_nonce.update(|value| *value += 1);
+                                                                }
+                                                                Err(err) => set_error.set(Some(err.to_string())),
+                                                            }
+                                                            busy.set(false);
+                                                        }
+                                                    });
+                                                }
+                                            >
+                                                {delete_rule_label.clone()}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }}
+
+            <form class="grid gap-3 rounded-lg border border-border bg-card p-4 lg:grid-cols-2" on:submit=on_submit_rule>
+                <div class="flex items-center justify-between gap-3 lg:col-span-2">
+                    <h4 class="text-sm font-semibold text-card-foreground">
+                        {move || if editing_rule_id.get().is_some() {
+                            edit_rule_title.clone()
+                        } else {
+                            add_rule_title.clone()
+                        }}
+                    </h4>
+                    <Show when=move || editing_rule_id.get().is_some()>
+                        <button
+                            type="button"
+                            class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                            on:click={
+                                let query_writer = query_writer.clone();
+                                let create_form_state = create_form_state.clone();
+                                move |_| {
+                                    query_writer.clear_key(AdminQueryKey::PolicyRuleId.as_str());
+                                    editing_rule_id.set(None);
+                                    apply_policy_rule_form_state(
+                                        priority,
+                                        is_active,
+                                        action_channel_id,
+                                        host_equals,
+                                        host_suffix,
+                                        locale,
+                                        surface,
+                                        oauth_app_id,
+                                        &create_form_state,
+                                    );
+                                }
+                            }
+                        >
+                            {cancel_label.clone()}
+                        </button>
+                    </Show>
+                </div>
+                <input
+                    type="number"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    prop:value=move || priority.get().to_string()
+                    on:input=move |ev| {
+                        if let Ok(value) = event_target_value(&ev).parse::<i32>() {
+                            priority.set(value);
+                        }
+                    }
+                />
+                <select
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    prop:value=action_channel_id
+                    on:change=move |ev| action_channel_id.set(event_target_value(&ev))
+                >
+                    {channels.iter().map(|channel| {
+                        let channel_id = channel.channel.id.clone();
+                        let label = format!("{} ({})", channel.channel.name, channel.channel.slug);
+                        view! { <option value=channel_id.clone()>{label}</option> }
+                    }).collect_view()}
+                </select>
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.hostEquals", "host equals")
+                    prop:value=host_equals
+                    on:input=move |ev| host_equals.set(event_target_value(&ev))
+                />
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.hostSuffix", "host suffix")
+                    prop:value=host_suffix
+                    on:input=move |ev| host_suffix.set(event_target_value(&ev))
+                />
+                <input
+                    type="text"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    placeholder=t(ui_locale.as_deref(), "channel.policies.locale", "locale")
+                    prop:value=locale
+                    on:input=move |ev| locale.set(event_target_value(&ev))
+                />
+                <select
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    prop:value=surface
+                    on:change=move |ev| surface.set(event_target_value(&ev))
+                >
+                    <option value="">{any_surface_label.clone()}</option>
+                    <option value="http">"http"</option>
+                </select>
+                <select
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm lg:col-span-2"
+                    prop:value=oauth_app_id
+                    on:change=move |ev| oauth_app_id.set(event_target_value(&ev))
+                >
+                    <option value="">{t(ui_locale.as_deref(), "channel.policies.oauthAny", "any OAuth app")}</option>
+                    {oauth_apps.iter().map(|app| {
+                        let app_id = app.id.clone();
+                        let label = format!("{} ({})", app.name, app.slug);
+                        view! { <option value=app_id.clone()>{label}</option> }
+                    }).collect_view()}
+                </select>
+                <label class="flex items-center gap-2 text-sm text-muted-foreground lg:col-span-2">
+                    <input
+                        type="checkbox"
+                        prop:checked=is_active
+                        on:change=move |ev| is_active.set(event_target_checked(&ev))
+                    />
+                    {t(ui_locale.as_deref(), "channel.policies.ruleActive", "Rule is active")}
+                </label>
+                <button
+                    type="submit"
+                    class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 lg:col-span-2"
+                    disabled=move || busy.get() || !has_channels
+                >
+                    {move || if editing_rule_id.get().is_some() {
+                        save_rule_label.clone()
+                    } else {
+                        add_rule_label.clone()
+                    }}
+                </button>
+            </form>
+        </section>
+    }
+}
+
+#[component]
+fn ChannelCard(
+    channel: ChannelDetail,
+    available_modules: Vec<crate::model::AvailableModuleItem>,
+    oauth_apps: Vec<crate::model::AvailableOauthAppItem>,
+    token: Option<String>,
+    tenant: Option<String>,
+    set_feedback: WriteSignal<Option<String>>,
+    set_error: WriteSignal<Option<String>>,
+    set_refresh_nonce: WriteSignal<u64>,
+) -> impl IntoView {
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
+    let selected_target_query = use_route_query_value(AdminQueryKey::TargetId.as_str());
+    let selected_module_query = use_route_query_value(AdminQueryKey::ModuleSlug.as_str());
+    let selected_oauth_query = use_route_query_value(AdminQueryKey::OauthAppId.as_str());
+    let query_writer = use_route_query_writer();
+    let common_cancel_label = t(ui_locale.as_deref(), "common.cancel", "Cancel");
+    let targets_cancel_label = common_cancel_label.clone();
+    let modules_cancel_label = common_cancel_label.clone();
+    let oauth_cancel_label = common_cancel_label.clone();
+    let common_edit_label = t(ui_locale.as_deref(), "common.edit", "Edit");
+    let common_delete_label = t(ui_locale.as_deref(), "common.delete", "Delete");
+    let targets_edit_title = t(
+        ui_locale.as_deref(),
+        "channel.targets.editTitle",
+        "Edit Target",
+    );
+    let targets_title_label = t(ui_locale.as_deref(), "channel.targets.title", "Targets");
+    let targets_empty_title = t(
+        ui_locale.as_deref(),
+        "channel.targets.emptyTitle",
+        "No targets yet.",
+    );
+    let targets_empty_body = t(
+        ui_locale.as_deref(),
+        "channel.targets.emptyBody",
+        "Add the first target to make this channel discoverable through a concrete delivery surface.",
+    );
+    let targets_value_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.targets.valuePlaceholder",
+        "example.com or app id",
+    );
+    let targets_primary_label = t(
+        ui_locale.as_deref(),
+        "channel.targets.primary",
+        "Primary target",
+    );
+    let targets_save_label = t(ui_locale.as_deref(), "channel.targets.save", "Save Target");
+    let targets_add_label = t(ui_locale.as_deref(), "channel.targets.add", "Add Target");
+    let _targets_primary_summary_template = t(
+        ui_locale.as_deref(),
+        "channel.targets.primarySummary",
+        "{type} · primary",
+    );
+    let target_removed_template = t(
+        ui_locale.as_deref(),
+        "channel.feedback.targetRemoved",
+        "Target `{target}` removed from channel `{channel}`.",
+    );
+    let modules_edit_title = t(
+        ui_locale.as_deref(),
+        "channel.modules.editTitle",
+        "Edit Module Binding",
+    );
+    let modules_title_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.title",
+        "Module Bindings",
+    );
+    let modules_empty_title = t(
+        ui_locale.as_deref(),
+        "channel.modules.emptyTitle",
+        "No module bindings yet.",
+    );
+    let modules_empty_body = t(
+        ui_locale.as_deref(),
+        "channel.modules.emptyBody",
+        "Bindings are optional in v0. Add one when this channel should explicitly enable or disable a module surface.",
+    );
+    let modules_enabled_label = t(ui_locale.as_deref(), "channel.modules.enabled", "enabled");
+    let modules_disabled_label = t(ui_locale.as_deref(), "channel.modules.disabled", "disabled");
+    let modules_no_descriptors_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.noDescriptors",
+        "No module descriptors are currently available for binding.",
+    );
+    let modules_enabled_for_channel_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.enabledForChannel",
+        "Enabled for this channel",
+    );
+    let modules_update_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.update",
+        "Update Module Binding",
+    );
+    let modules_save_label = t(
+        ui_locale.as_deref(),
+        "channel.modules.save",
+        "Save Module Binding",
+    );
+    let module_removed_template = t(
+        ui_locale.as_deref(),
+        "channel.feedback.moduleRemoved",
+        "Module binding `{module}` removed from channel `{channel}`.",
+    );
+    let oauth_edit_title = t(
+        ui_locale.as_deref(),
+        "channel.oauth.editTitle",
+        "Edit OAuth App Binding",
+    );
+    let oauth_title_label = t(ui_locale.as_deref(), "channel.oauth.title", "OAuth Apps");
+    let oauth_empty_title = t(
+        ui_locale.as_deref(),
+        "channel.oauth.emptyTitle",
+        "No OAuth app bindings yet.",
+    );
+    let oauth_empty_body = t(
+        ui_locale.as_deref(),
+        "channel.oauth.emptyBody",
+        "Bind an existing OAuth app when this channel needs an integration-level relationship without introducing a second credential subsystem.",
+    );
+    let oauth_no_role_label = t(ui_locale.as_deref(), "channel.oauth.noRole", "no role");
+    let oauth_revoke_label = t(ui_locale.as_deref(), "channel.oauth.revoke", "Revoke");
+    let oauth_no_apps_label = t(
+        ui_locale.as_deref(),
+        "channel.oauth.noApps",
+        "No active OAuth apps are available for this tenant yet.",
+    );
+    let oauth_role_placeholder = t(
+        ui_locale.as_deref(),
+        "channel.oauth.rolePlaceholder",
+        "role (optional)",
+    );
+    let oauth_update_label = t(
+        ui_locale.as_deref(),
+        "channel.oauth.update",
+        "Update OAuth App Binding",
+    );
+    let oauth_bind_label = t(ui_locale.as_deref(), "channel.oauth.bind", "Bind OAuth App");
+    let oauth_revoked_template = t(
+        ui_locale.as_deref(),
+        "channel.feedback.oauthRevoked",
+        "OAuth app binding `{app}` revoked for channel `{channel}`.",
+    );
+    let has_available_modules = !available_modules.is_empty();
+    let has_available_oauth_apps = !oauth_apps.is_empty();
+    let is_default_channel = channel.channel.is_default;
+    let editing_target_id = RwSignal::new(Option::<String>::None);
+    let editing_module_slug = RwSignal::new(Option::<String>::None);
+    let editing_oauth_app_id = RwSignal::new(Option::<String>::None);
+    let initial_module_slug = RwSignal::new(
+        available_modules
+            .first()
+            .map(|item| item.slug.clone())
+            .unwrap_or_default(),
+    );
+    let initial_oauth_app_id = RwSignal::new(
+        oauth_apps
+            .first()
+            .map(|item| item.id.clone())
+            .unwrap_or_default(),
+    );
+    let target_type = RwSignal::new("web_domain".to_string());
+    let target_value = RwSignal::new(String::new());
+    let target_primary = RwSignal::new(true);
+    let bind_module_slug = RwSignal::new(initial_module_slug.get_untracked());
+    let bind_module_enabled = RwSignal::new(true);
+    let bind_oauth_app_id = RwSignal::new(initial_oauth_app_id.get_untracked());
+    let bind_oauth_role = RwSignal::new(String::new());
+    let busy = RwSignal::new(false);
+    let channel_id = channel.channel.id.clone();
+    let channel_slug = channel.channel.slug.clone();
+    let channel_targets = channel.targets.clone();
+    let channel_module_bindings = channel.module_bindings.clone();
+    let channel_oauth_bindings = channel.oauth_apps.clone();
+    let is_selected_channel = Signal::derive({
+        let channel_id = channel_id.clone();
+        move || selected_channel_query.get().as_deref() == Some(channel_id.as_str())
+    });
+    let cancel_target_query_writer = query_writer.clone();
+    let cancel_module_query_writer = query_writer.clone();
+    let cancel_oauth_query_writer = query_writer.clone();
+    let select_channel_query_writer = query_writer.clone();
+    let create_target_query_writer = query_writer.clone();
+    let bind_module_query_writer = query_writer.clone();
+    let bind_oauth_query_writer = query_writer.clone();
+    let target_edit_query_writer = query_writer.clone();
+    let target_delete_query_writer = query_writer.clone();
+    let module_edit_query_writer = query_writer.clone();
+    let module_delete_query_writer = query_writer.clone();
+    let oauth_edit_query_writer = query_writer.clone();
+    let oauth_delete_query_writer = query_writer.clone();
+    let token_for_target = token.clone();
+    let tenant_for_target = tenant.clone();
+    let channel_id_for_target = channel_id.clone();
+    let channel_slug_for_target = channel_slug.clone();
+    let token_for_default = token.clone();
+    let tenant_for_default = tenant.clone();
+    let channel_id_for_default = channel_id.clone();
+    let token_for_target_delete = token.clone();
+    let tenant_for_target_delete = tenant.clone();
+    let channel_id_for_target_delete = channel_id.clone();
+    let channel_slug_for_target_delete = channel_slug.clone();
+    let token_for_module = token.clone();
+    let tenant_for_module = tenant.clone();
+    let channel_id_for_module = channel_id.clone();
+    let channel_slug_for_module = channel_slug.clone();
+    let token_for_module_delete = token.clone();
+    let tenant_for_module_delete = tenant.clone();
+    let channel_id_for_module_delete = channel_id.clone();
+    let channel_slug_for_module_delete = channel_slug.clone();
+    let token_for_app = token;
+    let tenant_for_app = tenant;
+    let channel_id_for_app = channel_id;
+    let channel_slug_for_app = channel_slug;
+    let token_for_app_delete = token_for_app.clone();
+    let tenant_for_app_delete = tenant_for_app.clone();
+    let channel_id_for_app_delete = channel_id_for_app.clone();
+    let channel_slug_for_app_delete = channel_slug_for_app.clone();
+    let select_channel_button_writer = select_channel_query_writer.clone();
+    let select_channel_button_id = channel_id_for_default.clone();
+    let select_button_locale = ui_locale.clone();
+    let target_edit_channel_id = channel_id_for_target.clone();
+    let module_edit_channel_id = channel_id_for_module.clone();
+    let oauth_edit_channel_id = channel_id_for_app.clone();
+    let selection_query_writer = query_writer.clone();
+    Effect::new(move |_| {
+        if !is_selected_channel.get() {
+            editing_target_id.set(None);
+            editing_module_slug.set(None);
+            editing_oauth_app_id.set(None);
+            target_type.set("web_domain".to_string());
+            target_value.set(String::new());
+            target_primary.set(true);
+            bind_module_slug.set(initial_module_slug.get_untracked());
+            bind_module_enabled.set(true);
+            bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+            bind_oauth_role.set(String::new());
+            return;
+        }
+
+        match selected_target_query
+            .get()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(target_id) => {
+                if let Some(target) = channel_targets.iter().find(|target| target.id == target_id) {
+                    editing_target_id.set(Some(target.id.clone()));
+                    target_type.set(target.target_type.clone());
+                    target_value.set(target.value.clone());
+                    target_primary.set(target.is_primary);
+                } else {
+                    editing_target_id.set(None);
+                    target_type.set("web_domain".to_string());
+                    target_value.set(String::new());
+                    target_primary.set(true);
+                    selection_query_writer.clear_key(AdminQueryKey::TargetId.as_str());
+                }
+            }
+            None => {
+                editing_target_id.set(None);
+                target_type.set("web_domain".to_string());
+                target_value.set(String::new());
+                target_primary.set(true);
+            }
+        }
+
+        match selected_module_query
+            .get()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(module_slug) => {
+                if let Some(binding) = channel_module_bindings
+                    .iter()
+                    .find(|binding| binding.module_slug == module_slug)
+                {
+                    editing_module_slug.set(Some(binding.module_slug.clone()));
+                    bind_module_slug.set(binding.module_slug.clone());
+                    bind_module_enabled.set(binding.is_enabled);
+                } else {
+                    editing_module_slug.set(None);
+                    bind_module_slug.set(initial_module_slug.get_untracked());
+                    bind_module_enabled.set(true);
+                    selection_query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
+                }
+            }
+            None => {
+                editing_module_slug.set(None);
+                bind_module_slug.set(initial_module_slug.get_untracked());
+                bind_module_enabled.set(true);
+            }
+        }
+
+        match selected_oauth_query
+            .get()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(oauth_app_id) => {
+                if let Some(binding) = channel_oauth_bindings
+                    .iter()
+                    .find(|binding| binding.oauth_app_id == oauth_app_id)
+                {
+                    editing_oauth_app_id.set(Some(binding.oauth_app_id.clone()));
+                    bind_oauth_app_id.set(binding.oauth_app_id.clone());
+                    bind_oauth_role.set(binding.role.clone().unwrap_or_default());
+                } else {
+                    editing_oauth_app_id.set(None);
+                    bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                    bind_oauth_role.set(String::new());
+                    selection_query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
+                }
+            }
+            None => {
+                editing_oauth_app_id.set(None);
+                bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                bind_oauth_role.set(String::new());
+            }
+        }
+    });
+
+    let make_default_locale = ui_locale.clone();
+    let make_default = move |_| {
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        select_channel_query_writer.replace_value(
+            AdminQueryKey::ChannelId.as_str(),
+            channel_id_for_default.clone(),
+        );
+        spawn_local({
+            let token = token_for_default.clone();
+            let tenant = tenant_for_default.clone();
+            let channel_id = channel_id_for_default.clone();
+            let ui_locale = make_default_locale.clone();
+            async move {
+                let result = transport::make_default_channel(token, tenant, &channel_id).await;
+                match result {
+                    Ok(channel) => {
+                        set_feedback.set(Some(
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.default",
+                                "Channel `{slug}` is now the tenant default channel.",
+                            )
+                            .replace("{slug}", channel.slug.as_str()),
+                        ));
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                busy.set(false);
+            }
+        });
+    };
+
+    let create_target_locale = ui_locale.clone();
+    let create_target = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        let create_target_query_writer = create_target_query_writer.clone();
+        spawn_local({
+            let token = token_for_target.clone();
+            let tenant = tenant_for_target.clone();
+            let channel_id = channel_id_for_target.clone();
+            let channel_slug = channel_slug_for_target.clone();
+            let editing_target_id_value = editing_target_id.get_untracked();
+            let ui_locale = create_target_locale.clone();
+            async move {
+                let payload = CreateChannelTargetPayload {
+                    target_type: target_type.get_untracked(),
+                    value: target_value.get_untracked(),
+                    is_primary: target_primary.get_untracked(),
+                    settings: Some(serde_json::json!({})),
+                };
+                let result = match editing_target_id_value.as_deref() {
+                    Some(target_id) => {
+                        transport::update_target(token, tenant, &channel_id, target_id, &payload)
+                            .await
+                    }
+                    None => transport::create_target(token, tenant, &channel_id, &payload).await,
+                };
+                match result {
+                    Ok(target) => {
+                        let message = if editing_target_id_value.is_some() {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.targetUpdated",
+                                "Target `{target}` updated for channel `{channel}`.",
+                            )
+                        } else {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.targetAdded",
+                                "Target `{target}` added to channel `{channel}`.",
+                            )
+                        };
+                        set_feedback.set(Some(
+                            message
+                                .replace("{target}", target.value.as_str())
+                                .replace("{channel}", channel_slug.as_str()),
+                        ));
+                        create_target_query_writer.update(
+                            vec![
+                                (
+                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                    Some(channel_id.clone()),
+                                ),
+                                (
+                                    AdminQueryKey::TargetId.as_str().to_string(),
+                                    Some(target.id.clone()),
+                                ),
+                            ],
+                            true,
+                        );
+                        editing_target_id.set(None);
+                        target_type.set("web_domain".to_string());
+                        target_value.set(String::new());
+                        target_primary.set(true);
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                busy.set(false);
+            }
+        });
+    };
+
+    let bind_module_locale = ui_locale.clone();
+    let bind_module_submit = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        let bind_module_query_writer = bind_module_query_writer.clone();
+        spawn_local({
+            let token = token_for_module.clone();
+            let tenant = tenant_for_module.clone();
+            let channel_id = channel_id_for_module.clone();
+            let channel_slug = channel_slug_for_module.clone();
+            let ui_locale = bind_module_locale.clone();
+            async move {
+                let result = transport::bind_module(
+                    token,
+                    tenant,
+                    &channel_id,
+                    &BindChannelModulePayload {
+                        module_slug: bind_module_slug.get_untracked(),
+                        is_enabled: bind_module_enabled.get_untracked(),
+                        settings: Some(serde_json::json!({})),
+                    },
+                )
+                .await;
+                match result {
+                    Ok(_) => {
+                        let message = if editing_module_slug.get_untracked().is_some() {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.moduleUpdated",
+                                "Module binding updated for channel `{channel}`.",
+                            )
+                        } else {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.moduleSaved",
+                                "Module binding saved for channel `{channel}`.",
+                            )
+                        };
+                        set_feedback.set(Some(message.replace("{channel}", channel_slug.as_str())));
+                        bind_module_query_writer.update(
+                            vec![
+                                (
+                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                    Some(channel_id.clone()),
+                                ),
+                                (
+                                    AdminQueryKey::ModuleSlug.as_str().to_string(),
+                                    Some(bind_module_slug.get_untracked()),
+                                ),
+                            ],
+                            true,
+                        );
+                        editing_module_slug.set(None);
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                busy.set(false);
+            }
+        });
+    };
+
+    let bind_oauth_locale = ui_locale.clone();
+    let bind_oauth_submit = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        busy.set(true);
+        set_feedback.set(None);
+        set_error.set(None);
+        let bind_oauth_query_writer = bind_oauth_query_writer.clone();
+        spawn_local({
+            let token = token_for_app.clone();
+            let tenant = tenant_for_app.clone();
+            let channel_id = channel_id_for_app.clone();
+            let channel_slug = channel_slug_for_app.clone();
+            let ui_locale = bind_oauth_locale.clone();
+            async move {
+                let result = transport::bind_oauth_app(
+                    token,
+                    tenant,
+                    &channel_id,
+                    &BindChannelOauthAppPayload {
+                        oauth_app_id: bind_oauth_app_id.get_untracked(),
+                        role: optional_text(bind_oauth_role.get_untracked()),
+                    },
+                )
+                .await;
+                match result {
+                    Ok(_) => {
+                        let message = if editing_oauth_app_id.get_untracked().is_some() {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.oauthUpdated",
+                                "OAuth app binding updated for channel `{channel}`.",
+                            )
+                        } else {
+                            t(
+                                ui_locale.as_deref(),
+                                "channel.feedback.oauthSaved",
+                                "OAuth app binding saved for channel `{channel}`.",
+                            )
+                        };
+                        set_feedback.set(Some(message.replace("{channel}", channel_slug.as_str())));
+                        bind_oauth_query_writer.update(
+                            vec![
+                                (
+                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                    Some(channel_id.clone()),
+                                ),
+                                (
+                                    AdminQueryKey::OauthAppId.as_str().to_string(),
+                                    Some(bind_oauth_app_id.get_untracked()),
+                                ),
+                            ],
+                            true,
+                        );
+                        editing_oauth_app_id.set(None);
+                        bind_oauth_role.set(String::new());
+                        set_refresh_nonce.update(|value| *value += 1);
+                    }
+                    Err(err) => set_error.set(Some(err.to_string())),
+                }
+                busy.set(false);
+            }
+        });
+    };
+
+    view! {
+        <article
+            class="rounded-2xl border border-border bg-card p-6 shadow-sm"
+            class=("ring-2 ring-primary/30", move || is_selected_channel.get())
+        >
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="space-y-2">
+                    <div class="flex flex-wrap gap-2">
+                        <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                            {channel.channel.slug.clone()}
+                        </span>
+                        <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                            {channel.channel.status.clone()}
+                        </span>
+                        {if is_default_channel {
+                            view! {
+                                <span class="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+                                    {t(ui_locale.as_deref(), "channel.card.default", "Default")}
+                                </span>
+                            }.into_any()
+                        } else {
+                            ().into_any()
+                        }}
+                    </div>
+                    <h2 class="text-xl font-semibold text-card-foreground">{channel.channel.name.clone()}</h2>
+                    <p class="text-sm text-muted-foreground">
+                        {t(
+                            ui_locale.as_deref(),
+                            "channel.card.summary",
+                            "{targets} target(s), {modules} module binding(s), {apps} app binding(s)",
+                        )
+                        .replace("{targets}", channel.targets.len().to_string().as_str())
+                        .replace("{modules}", channel.module_bindings.len().to_string().as_str())
+                        .replace("{apps}", channel.oauth_apps.len().to_string().as_str())}
+                    </p>
+                </div>
+                <div class="space-y-3">
+                    <button
+                        type="button"
+                        class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-card-foreground transition hover:bg-muted disabled:opacity-50"
+                        disabled=move || busy.get()
+                        on:click={
+                            let channel_id = select_channel_button_id.clone();
+                            let query_writer = select_channel_button_writer.clone();
+                            move |_| {
+                                query_writer.replace_value(
+                                    AdminQueryKey::ChannelId.as_str(),
+                                    channel_id.clone(),
+                                );
+                            }
+                        }
+                    >
+                        {move || if is_selected_channel.get() {
+                            t(select_button_locale.as_deref(), "channel.card.selected", "Selected")
+                        } else {
+                            t(select_button_locale.as_deref(), "channel.card.select", "Select")
+                        }}
+                    </button>
+                    {if is_default_channel {
+                        view! {
+                            <div class="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                                {t(
+                                    ui_locale.as_deref(),
+                                    "channel.card.defaultDescription",
+                                    "Used as the tenant's explicit default channel when no header, query or host selector matches.",
+                                )}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! {
+                            <button
+                                type="button"
+                                class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-card-foreground transition hover:bg-muted disabled:opacity-50"
+                                disabled=move || busy.get()
+                                on:click=make_default
+                            >
+                                {t(ui_locale.as_deref(), "channel.card.makeDefault", "Make Default")}
+                            </button>
+                        }.into_any()
+                    }}
+                    <div class="grid gap-2 md:grid-cols-2">
+                    <InfoPill label=t(ui_locale.as_deref(), "channel.card.id", "ID") value=short_id(&channel.channel.id) />
+                    <InfoPill label=t(ui_locale.as_deref(), "channel.card.updated", "Updated") value=channel.channel.updated_at.clone() />
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 grid gap-6 xl:grid-cols-3">
+                <section class="space-y-4 rounded-xl border border-border bg-background p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {move || if editing_target_id.get().is_some() {
+                                targets_edit_title.clone()
+                            } else {
+                                targets_title_label.clone()
+                            }}
+                        </h3>
+                        <Show when=move || editing_target_id.get().is_some()>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                on:click={
+                                    let query_writer = cancel_target_query_writer.clone();
+                                    move |_| {
+                                        query_writer.clear_key(AdminQueryKey::TargetId.as_str());
+                                        editing_target_id.set(None);
+                                        target_type.set("web_domain".to_string());
+                                        target_value.set(String::new());
+                                        target_primary.set(true);
+                                    }
+                                }
+                            >
+                                {targets_cancel_label.clone()}
+                            </button>
+                        </Show>
+                    </div>
+                    {if channel.targets.is_empty() {
+                        view! {
+                            <EmptyState
+                                title=targets_empty_title.clone()
+                                body=targets_empty_body.clone()
+                            />
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-2">
+                                {channel.targets.iter().map(|target| view! {
+                                    <div class="rounded-lg border border-border px-3 py-2 text-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-card-foreground">{target.value.clone()}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">
+                                                    {format!("{}{}", target.target_type, if target.is_primary { " · primary" } else { "" })}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let target = target.clone();
+                                                    let channel_id = target_edit_channel_id.clone();
+                                                    let query_writer = target_edit_query_writer.clone();
+                                                    move |_| {
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                                                    Some(channel_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::TargetId.as_str().to_string(),
+                                                                    Some(target.id.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
+                                                    }
+                                                }
+                                            >
+                                                {common_edit_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let target = target.clone();
+                                                    let token = token_for_target_delete.clone();
+                                                    let tenant = tenant_for_target_delete.clone();
+                                                    let channel_id = channel_id_for_target_delete.clone();
+                                                    let channel_slug = channel_slug_for_target_delete.clone();
+                                                    let target_removed_template = target_removed_template.clone();
+                                                    let query_writer = target_delete_query_writer.clone();
+                                                    move |_| {
+                                                        let target_removed_template = target_removed_template.clone();
+                                                        let query_writer = query_writer.clone();
+                                                        busy.set(true);
+                                                        set_feedback.set(None);
+                                                        set_error.set(None);
+                                                        spawn_local({
+                                                            let target = target.clone();
+                                                            let token = token.clone();
+                                                            let tenant = tenant.clone();
+                                                            let channel_id = channel_id.clone();
+                                                            let channel_slug = channel_slug.clone();
+                                                            let target_removed_template = target_removed_template.clone();
+                                                            async move {
+                                                                let result = transport::delete_target(
+                                                                    token,
+                                                                    tenant,
+                                                                    &channel_id,
+                                                                    &target.id,
+                                                                )
+                                                                .await;
+                                                                match result {
+                                                                    Ok(deleted) => {
+                                                                        if editing_target_id
+                                                                            .get_untracked()
+                                                                            .as_deref()
+                                                                            == Some(target.id.as_str())
+                                                                        {
+                                                                            query_writer.clear_key(AdminQueryKey::TargetId.as_str());
+                                                                            editing_target_id.set(None);
+                                                                            target_type.set("web_domain".to_string());
+                                                                            target_value.set(String::new());
+                                                                            target_primary.set(true);
+                                                                        }
+                                                                        set_feedback.set(Some(
+                                                                            target_removed_template
+                                                                                .replace("{target}", deleted.value.as_str())
+                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                        ));
+                                                                        set_refresh_nonce.update(|value| *value += 1);
+                                                                    }
+                                                                    Err(err) => set_error.set(Some(err.to_string())),
+                                                                }
+                                                                busy.set(false);
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                {common_delete_label.clone()}
+                                            </button>
+                                        </div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
+                    <form class="space-y-3" on:submit=create_target>
+                        <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" on:change=move |ev| target_type.set(event_target_value(&ev))>
+                            <option value="web_domain">"web_domain"</option>
+                            <option value="mobile_app">"mobile_app"</option>
+                            <option value="api_client">"api_client"</option>
+                            <option value="embedded">"embedded"</option>
+                            <option value="external">"external"</option>
+                        </select>
+                        <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder=targets_value_placeholder.clone() prop:value=target_value on:input=move |ev| target_value.set(event_target_value(&ev)) />
+                        <label class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <input type="checkbox" prop:checked=target_primary on:change=move |ev| target_primary.set(event_target_checked(&ev)) />
+                            {targets_primary_label.clone()}
+                        </label>
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
+                            {move || if editing_target_id.get().is_some() {
+                                targets_save_label.clone()
+                            } else {
+                                targets_add_label.clone()
+                            }}
+                        </button>
+                    </form>
+                </section>
+
+                <section class="space-y-4 rounded-xl border border-border bg-background p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {move || if editing_module_slug.get().is_some() {
+                                modules_edit_title.clone()
+                            } else {
+                                modules_title_label.clone()
+                            }}
+                        </h3>
+                        <Show when=move || editing_module_slug.get().is_some()>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                on:click={
+                                    let query_writer = cancel_module_query_writer.clone();
+                                    move |_| {
+                                        query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
+                                        editing_module_slug.set(None);
+                                        bind_module_slug.set(initial_module_slug.get_untracked());
+                                        bind_module_enabled.set(true);
+                                    }
+                                }
+                            >
+                                {modules_cancel_label.clone()}
+                            </button>
+                        </Show>
+                    </div>
+                    {if channel.module_bindings.is_empty() {
+                        view! {
+                            <EmptyState
+                                title=modules_empty_title.clone()
+                                body=modules_empty_body.clone()
+                            />
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-2">
+                                {channel.module_bindings.iter().map(|binding| view! {
+                                    <div class="rounded-lg border border-border px-3 py-2 text-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-card-foreground">{binding.module_slug.clone()}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">
+                                                    {if binding.is_enabled {
+                                                        modules_enabled_label.clone()
+                                                    } else {
+                                                        modules_disabled_label.clone()
+                                                    }}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    let channel_id = module_edit_channel_id.clone();
+                                                    let query_writer = module_edit_query_writer.clone();
+                                                    move |_| {
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                                                    Some(channel_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::ModuleSlug.as_str().to_string(),
+                                                                    Some(binding.module_slug.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
+                                                    }
+                                                }
+                                            >
+                                                {common_edit_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    let token = token_for_module_delete.clone();
+                                                    let tenant = tenant_for_module_delete.clone();
+                                                    let channel_id = channel_id_for_module_delete.clone();
+                                                    let channel_slug = channel_slug_for_module_delete.clone();
+                                                    let module_removed_template = module_removed_template.clone();
+                                                    let query_writer = module_delete_query_writer.clone();
+                                                    move |_| {
+                                                        let module_removed_template = module_removed_template.clone();
+                                                        let query_writer = query_writer.clone();
+                                                        busy.set(true);
+                                                        set_feedback.set(None);
+                                                        set_error.set(None);
+                                                        spawn_local({
+                                                            let binding = binding.clone();
+                                                            let token = token.clone();
+                                                            let tenant = tenant.clone();
+                                                            let channel_id = channel_id.clone();
+                                                            let channel_slug = channel_slug.clone();
+                                                            let module_removed_template = module_removed_template.clone();
+                                                            async move {
+                                                                let result = transport::delete_module_binding(
+                                                                    token,
+                                                                    tenant,
+                                                                    &channel_id,
+                                                                    &binding.id,
+                                                                )
+                                                                .await;
+                                                                match result {
+                                                                    Ok(deleted) => {
+                                                                        if editing_module_slug
+                                                                            .get_untracked()
+                                                                            .as_deref()
+                                                                            == Some(binding.module_slug.as_str())
+                                                                        {
+                                                                            query_writer.clear_key(AdminQueryKey::ModuleSlug.as_str());
+                                                                            editing_module_slug.set(None);
+                                                                            bind_module_slug.set(initial_module_slug.get_untracked());
+                                                                            bind_module_enabled.set(true);
+                                                                        }
+                                                                        set_feedback.set(Some(
+                                                                            module_removed_template
+                                                                                .replace("{module}", deleted.module_slug.as_str())
+                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                        ));
+                                                                        set_refresh_nonce.update(|value| *value += 1);
+                                                                    }
+                                                                    Err(err) => set_error.set(Some(err.to_string())),
+                                                                }
+                                                                busy.set(false);
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                {common_delete_label.clone()}
+                                            </button>
+                                        </div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
+                    <form class="space-y-3" on:submit=bind_module_submit>
+                        {if has_available_modules {
+                            view! {
+                                <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" prop:value=bind_module_slug on:change=move |ev| bind_module_slug.set(event_target_value(&ev))>
+                                    {available_modules.clone().into_iter().map(|item| {
+                                        let label = format!("{} ({})", item.name, item.kind);
+                                        let slug = item.slug;
+                                        view! {
+                                            <option value=slug.clone()>{label}</option>
+                                        }
+                                    }).collect_view()}
+                                </select>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                                    {modules_no_descriptors_label.clone()}
+                                </div>
+                            }.into_any()
+                        }}
+                        <label class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <input type="checkbox" prop:checked=bind_module_enabled on:change=move |ev| bind_module_enabled.set(event_target_checked(&ev)) />
+                            {modules_enabled_for_channel_label.clone()}
+                        </label>
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get() || !has_available_modules>
+                            {move || if editing_module_slug.get().is_some() {
+                                modules_update_label.clone()
+                            } else {
+                                modules_save_label.clone()
+                            }}
+                        </button>
+                    </form>
+                </section>
+
+                <section class="space-y-4 rounded-xl border border-border bg-background p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {move || if editing_oauth_app_id.get().is_some() {
+                                oauth_edit_title.clone()
+                            } else {
+                                oauth_title_label.clone()
+                            }}
+                        </h3>
+                        <Show when=move || editing_oauth_app_id.get().is_some()>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                on:click={
+                                    let query_writer = cancel_oauth_query_writer.clone();
+                                    move |_| {
+                                        query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
+                                        editing_oauth_app_id.set(None);
+                                        bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                                        bind_oauth_role.set(String::new());
+                                    }
+                                }
+                            >
+                                {oauth_cancel_label.clone()}
+                            </button>
+                        </Show>
+                    </div>
+                    {if channel.oauth_apps.is_empty() {
+                        view! {
+                            <EmptyState
+                                title=oauth_empty_title.clone()
+                                body=oauth_empty_body.clone()
+                            />
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-2">
+                                {channel.oauth_apps.iter().map(|binding| view! {
+                                    <div class="rounded-lg border border-border px-3 py-2 text-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-card-foreground">{binding.oauth_app_id.clone()}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">{binding.role.clone().unwrap_or_else(|| oauth_no_role_label.clone())}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    let channel_id = oauth_edit_channel_id.clone();
+                                                    let query_writer = oauth_edit_query_writer.clone();
+                                                    move |_| {
+                                                        query_writer.update(
+                                                            vec![
+                                                                (
+                                                                    AdminQueryKey::ChannelId.as_str().to_string(),
+                                                                    Some(channel_id.clone()),
+                                                                ),
+                                                                (
+                                                                    AdminQueryKey::OauthAppId.as_str().to_string(),
+                                                                    Some(binding.oauth_app_id.clone()),
+                                                                ),
+                                                            ],
+                                                            false,
+                                                        );
+                                                    }
+                                                }
+                                            >
+                                                {common_edit_label.clone()}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    let token = token_for_app_delete.clone();
+                                                    let tenant = tenant_for_app_delete.clone();
+                                                    let channel_id = channel_id_for_app_delete.clone();
+                                                    let channel_slug = channel_slug_for_app_delete.clone();
+                                                    let oauth_revoked_template = oauth_revoked_template.clone();
+                                                    let query_writer = oauth_delete_query_writer.clone();
+                                                    move |_| {
+                                                        let oauth_revoked_template = oauth_revoked_template.clone();
+                                                        let query_writer = query_writer.clone();
+                                                        busy.set(true);
+                                                        set_feedback.set(None);
+                                                        set_error.set(None);
+                                                        spawn_local({
+                                                            let binding = binding.clone();
+                                                            let token = token.clone();
+                                                            let tenant = tenant.clone();
+                                                            let channel_id = channel_id.clone();
+                                                            let channel_slug = channel_slug.clone();
+                                                            let oauth_revoked_template = oauth_revoked_template.clone();
+                                                            async move {
+                                                                let result = transport::delete_oauth_app_binding(
+                                                                    token,
+                                                                    tenant,
+                                                                    &channel_id,
+                                                                    &binding.id,
+                                                                )
+                                                                .await;
+                                                                match result {
+                                                                    Ok(deleted) => {
+                                                                        if editing_oauth_app_id
+                                                                            .get_untracked()
+                                                                            .as_deref()
+                                                                            == Some(binding.oauth_app_id.as_str())
+                                                                        {
+                                                                            query_writer.clear_key(AdminQueryKey::OauthAppId.as_str());
+                                                                            editing_oauth_app_id.set(None);
+                                                                            bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                                                                            bind_oauth_role.set(String::new());
+                                                                        }
+                                                                        set_feedback.set(Some(
+                                                                            oauth_revoked_template
+                                                                                .replace("{app}", deleted.oauth_app_id.as_str())
+                                                                                .replace("{channel}", channel_slug.as_str()),
+                                                                        ));
+                                                                        set_refresh_nonce.update(|value| *value += 1);
+                                                                    }
+                                                                    Err(err) => set_error.set(Some(err.to_string())),
+                                                                }
+                                                                busy.set(false);
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                {oauth_revoke_label.clone()}
+                                            </button>
+                                        </div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
+                    <form class="space-y-3" on:submit=bind_oauth_submit>
+                        {if has_available_oauth_apps {
+                            view! {
+                                <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" prop:value=bind_oauth_app_id on:change=move |ev| bind_oauth_app_id.set(event_target_value(&ev))>
+                                    {oauth_apps.clone().into_iter().map(|item| {
+                                        let label = format!("{} ({})", item.name, item.app_type);
+                                        let id = item.id;
+                                        view! {
+                                            <option value=id.clone()>{label}</option>
+                                        }
+                                    }).collect_view()}
+                                </select>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                                    {oauth_no_apps_label.clone()}
+                                </div>
+                            }.into_any()
+                        }}
+                        <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder=oauth_role_placeholder.clone() prop:value=bind_oauth_role on:input=move |ev| bind_oauth_role.set(event_target_value(&ev)) />
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get() || !has_available_oauth_apps>
+                            {move || if editing_oauth_app_id.get().is_some() {
+                                oauth_update_label.clone()
+                            } else {
+                                oauth_bind_label.clone()
+                            }}
+                        </button>
+                    </form>
+                </section>
+            </div>
+        </article>
+    }
+}
+
+#[component]
+fn InfoPill(label: String, value: String) -> impl IntoView {
+    view! {
+        <div class="rounded-xl border border-border bg-background px-4 py-3">
+            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+            <div class="mt-1 text-sm font-medium text-card-foreground">{value}</div>
+        </div>
+    }
+}
+
+#[component]
+fn EmptyState(title: String, body: String) -> impl IntoView {
+    view! {
+        <div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm">
+            <div class="font-medium text-card-foreground">{title}</div>
+            <div class="mt-1 text-muted-foreground">{body}</div>
+        </div>
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PolicyRuleFormState {
+    priority: i32,
+    is_active: bool,
+    action_channel_id: String,
+    host_equals: String,
+    host_suffix: String,
+    oauth_app_id: String,
+    surface: String,
+    locale: String,
+}
+
+fn policy_rule_create_form_state(
+    rules: &[crate::model::ChannelResolutionRuleRecord],
+    channels: &[ChannelDetail],
+) -> PolicyRuleFormState {
+    PolicyRuleFormState {
+        priority: rules.last().map(|rule| rule.priority + 10).unwrap_or(10),
+        is_active: true,
+        action_channel_id: channels
+            .first()
+            .map(|channel| channel.channel.id.clone())
+            .unwrap_or_default(),
+        host_equals: String::new(),
+        host_suffix: String::new(),
+        oauth_app_id: String::new(),
+        surface: "http".to_string(),
+        locale: String::new(),
+    }
+}
+
+fn policy_rule_edit_form_state(
+    rule: &crate::model::ChannelResolutionRuleRecord,
+    channels: &[ChannelDetail],
+) -> PolicyRuleFormState {
+    let fallback_action_channel_id = channels
+        .first()
+        .map(|channel| channel.channel.id.clone())
+        .unwrap_or_else(|| rule.action_channel_id.clone());
+
+    let mut host_equals = String::new();
+    let mut host_suffix = String::new();
+    let mut oauth_app_id = String::new();
+    let mut surface = String::new();
+    let mut locale = String::new();
+
+    for predicate in &rule.definition.predicates {
+        match predicate {
+            crate::model::ChannelResolutionPredicateRecord::HostEquals(value) => {
+                host_equals = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::HostSuffix(value) => {
+                host_suffix = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::OAuthAppEquals(value) => {
+                oauth_app_id = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::SurfaceIs(value) => {
+                surface = value.clone()
+            }
+            crate::model::ChannelResolutionPredicateRecord::LocaleEquals(value) => {
+                locale = value.clone()
+            }
+        }
+    }
+
+    PolicyRuleFormState {
+        priority: rule.priority,
+        is_active: rule.is_active,
+        action_channel_id: if channels
+            .iter()
+            .any(|channel| channel.channel.id == rule.action_channel_id)
+        {
+            rule.action_channel_id.clone()
+        } else {
+            fallback_action_channel_id
+        },
+        host_equals,
+        host_suffix,
+        oauth_app_id,
+        surface,
+        locale,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_policy_rule_form_state(
+    priority: RwSignal<i32>,
+    is_active: RwSignal<bool>,
+    action_channel_id: RwSignal<String>,
+    host_equals: RwSignal<String>,
+    host_suffix: RwSignal<String>,
+    locale: RwSignal<String>,
+    surface: RwSignal<String>,
+    oauth_app_id: RwSignal<String>,
+    state: &PolicyRuleFormState,
+) {
+    priority.set(state.priority);
+    is_active.set(state.is_active);
+    action_channel_id.set(state.action_channel_id.clone());
+    host_equals.set(state.host_equals.clone());
+    host_suffix.set(state.host_suffix.clone());
+    locale.set(state.locale.clone());
+    surface.set(state.surface.clone());
+    oauth_app_id.set(state.oauth_app_id.clone());
+}
+
+fn reorder_rule_ids(rule_ids: &[String], index: usize, move_up: bool) -> Option<Vec<String>> {
+    if move_up {
+        if index == 0 || index >= rule_ids.len() {
+            return None;
+        }
+    } else if index + 1 >= rule_ids.len() {
+        return None;
+    }
+
+    let mut reordered = rule_ids.to_vec();
+    if move_up {
+        reordered.swap(index, index - 1);
+    } else {
+        reordered.swap(index, index + 1);
+    }
+    Some(reordered)
+}
+
+fn policy_rule_summary(
+    rule: &crate::model::ChannelResolutionRuleRecord,
+    channels: &[ChannelDetail],
+) -> String {
+    let action_channel = channels
+        .iter()
+        .find(|channel| channel.channel.id == rule.action_channel_id)
+        .map(|channel| channel.channel.slug.clone())
+        .unwrap_or_else(|| short_id(rule.action_channel_id.as_str()));
+    let predicates = rule
+        .definition
+        .predicates
+        .iter()
+        .map(|predicate| match predicate {
+            crate::model::ChannelResolutionPredicateRecord::HostEquals(value) => {
+                format!("host = {value}")
+            }
+            crate::model::ChannelResolutionPredicateRecord::HostSuffix(value) => {
+                format!("host suffix = {value}")
+            }
+            crate::model::ChannelResolutionPredicateRecord::OAuthAppEquals(value) => {
+                format!("oauth app = {}", short_id(value.as_str()))
+            }
+            crate::model::ChannelResolutionPredicateRecord::SurfaceIs(value) => {
+                format!("surface = {value}")
+            }
+            crate::model::ChannelResolutionPredicateRecord::LocaleEquals(value) => {
+                format!("locale = {value}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" + ");
+
+    format!("{predicates} -> {action_channel}")
+}
+
+fn short_id(value: &str) -> String {
+    value.chars().take(8).collect()
+}
+
+fn optional_text(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn resolution_source_label(source: &ChannelResolutionSource, locale: Option<&str>) -> String {
+    match source {
+        ChannelResolutionSource::HeaderId => t(locale, "channel.source.headerId", "Header ID"),
+        ChannelResolutionSource::HeaderSlug => {
+            t(locale, "channel.source.headerSlug", "Header Slug")
+        }
+        ChannelResolutionSource::Query => t(locale, "channel.source.query", "Query"),
+        ChannelResolutionSource::Host => t(locale, "channel.source.host", "Host"),
+        ChannelResolutionSource::Policy => t(locale, "channel.source.policy", "Policy"),
+        ChannelResolutionSource::Default => t(locale, "channel.source.default", "Default"),
+    }
+}
+
+fn resolution_source_description(source: &ChannelResolutionSource, locale: Option<&str>) -> String {
+    match source {
+        ChannelResolutionSource::HeaderId => t(
+            locale,
+            "channel.sourceDescription.headerId",
+            "The current request explicitly selected this channel through the X-Channel-ID header.",
+        ),
+        ChannelResolutionSource::HeaderSlug => t(
+            locale,
+            "channel.sourceDescription.headerSlug",
+            "The current request explicitly selected this channel through the X-Channel-Slug header.",
+        ),
+        ChannelResolutionSource::Query => t(
+            locale,
+            "channel.sourceDescription.query",
+            "The current request selected this channel through the query parameter fallback.",
+        ),
+        ChannelResolutionSource::Host => t(
+            locale,
+            "channel.sourceDescription.host",
+            "The current request matched this channel through host-based target resolution.",
+        ),
+        ChannelResolutionSource::Policy => t(
+            locale,
+            "channel.sourceDescription.policy",
+            "The current request matched a tenant-scoped typed channel resolution policy.",
+        ),
+        ChannelResolutionSource::Default => t(
+            locale,
+            "channel.sourceDescription.default",
+            "No explicit channel selector matched, so the tenant's explicit default channel was used.",
+        ),
+    }
+}
+
+fn resolution_stage_label(stage: &ChannelResolutionStage, locale: Option<&str>) -> String {
+    match stage {
+        ChannelResolutionStage::HeaderId => t(locale, "channel.trace.stage.headerId", "Header ID"),
+        ChannelResolutionStage::HeaderSlug => {
+            t(locale, "channel.trace.stage.headerSlug", "Header Slug")
+        }
+        ChannelResolutionStage::Query => t(locale, "channel.trace.stage.query", "Query"),
+        ChannelResolutionStage::Host => t(locale, "channel.trace.stage.host", "Host"),
+        ChannelResolutionStage::Policy => t(locale, "channel.trace.stage.policy", "Policy"),
+        ChannelResolutionStage::Default => t(locale, "channel.trace.stage.default", "Default"),
+    }
+}
+
+fn resolution_outcome_label(outcome: &ChannelResolutionOutcome, locale: Option<&str>) -> String {
+    match outcome {
+        ChannelResolutionOutcome::Matched => t(locale, "channel.trace.outcome.matched", "Matched"),
+        ChannelResolutionOutcome::Miss => t(locale, "channel.trace.outcome.miss", "Miss"),
+        ChannelResolutionOutcome::Rejected => {
+            t(locale, "channel.trace.outcome.rejected", "Rejected")
+        }
+    }
+}
+
+fn resolution_outcome_badge_class(outcome: &ChannelResolutionOutcome) -> &'static str {
+    match outcome {
+        ChannelResolutionOutcome::Matched => {
+            "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-medium text-emerald-700"
+        }
+        ChannelResolutionOutcome::Miss => {
+            "inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-medium text-amber-700"
+        }
+        ChannelResolutionOutcome::Rejected => {
+            "inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-1 font-medium text-rose-700"
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{policy_rule_edit_form_state, reorder_rule_ids};
+    use crate::model::{
+        ChannelDetail, ChannelRecord, ChannelResolutionActionRecord,
+        ChannelResolutionPredicateRecord, ChannelResolutionRuleDefinitionRecord,
+        ChannelResolutionRuleRecord,
+    };
+
+    #[test]
+    fn policy_rule_edit_form_state_prefills_predicates_and_action_channel() {
+        let rule = ChannelResolutionRuleRecord {
+            id: "rule_01".to_string(),
+            policy_set_id: "policy_set_01".to_string(),
+            priority: 30,
+            is_active: false,
+            action_channel_id: "channel_01".to_string(),
+            definition: ChannelResolutionRuleDefinitionRecord {
+                predicates: vec![
+                    ChannelResolutionPredicateRecord::HostEquals("shop.example.test".to_string()),
+                    ChannelResolutionPredicateRecord::OAuthAppEquals(
+                        "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                    ),
+                    ChannelResolutionPredicateRecord::SurfaceIs("http".to_string()),
+                    ChannelResolutionPredicateRecord::LocaleEquals("ru-by".to_string()),
+                ],
+                action: ChannelResolutionActionRecord::ResolveToChannel {
+                    channel_id: "channel_01".to_string(),
+                },
+            },
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        let channels = vec![ChannelDetail {
+            channel: ChannelRecord {
+                id: "channel_01".to_string(),
+                tenant_id: "tenant_01".to_string(),
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                is_active: true,
+                is_default: true,
+                status: "experimental".to_string(),
+                settings: serde_json::json!({}),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            targets: Vec::new(),
+            module_bindings: Vec::new(),
+            oauth_apps: Vec::new(),
+        }];
+
+        let form_state = policy_rule_edit_form_state(&rule, &channels);
+
+        assert_eq!(form_state.priority, 30);
+        assert!(!form_state.is_active);
+        assert_eq!(form_state.action_channel_id, "channel_01");
+        assert_eq!(form_state.host_equals, "shop.example.test");
+        assert_eq!(
+            form_state.oauth_app_id,
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert_eq!(form_state.surface, "http");
+        assert_eq!(form_state.locale, "ru-by");
+    }
+
+    #[test]
+    fn reorder_rule_ids_swaps_neighbors_and_guards_bounds() {
+        let base = vec![
+            "rule_01".to_string(),
+            "rule_02".to_string(),
+            "rule_03".to_string(),
+        ];
+
+        assert_eq!(
+            reorder_rule_ids(base.as_slice(), 1, true),
+            Some(vec![
+                "rule_02".to_string(),
+                "rule_01".to_string(),
+                "rule_03".to_string(),
+            ])
+        );
+        assert_eq!(
+            reorder_rule_ids(base.as_slice(), 1, false),
+            Some(vec![
+                "rule_01".to_string(),
+                "rule_03".to_string(),
+                "rule_02".to_string(),
+            ])
+        );
+        assert_eq!(reorder_rule_ids(base.as_slice(), 0, true), None);
+        assert_eq!(reorder_rule_ids(base.as_slice(), 2, false), None);
+    }
+}

@@ -1,9 +1,4 @@
 use leptos::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use leptos::web_sys;
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -14,519 +9,11 @@ use crate::model::{
 };
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap,
-    ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord, ChannelTargetRecord,
-    CreateChannelPayload, CreateChannelTargetPayload, CreateResolutionPolicySetPayload,
-    CreateResolutionRulePayload, ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
+    ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord,
+    ChannelResolutionPolicySetDetail, ChannelTargetRecord, CreateChannelPayload,
+    CreateChannelTargetPayload, CreateResolutionPolicySetPayload, CreateResolutionRulePayload,
+    ReorderResolutionRulesPayload, UpdateResolutionRulePayload,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ApiError {
-    Rest(String),
-    ServerFn(String),
-}
-
-impl Display for ApiError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Rest(error) => write!(f, "{error}"),
-            Self::ServerFn(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for ApiError {}
-
-impl From<ServerFnError> for ApiError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorPayload {
-    error: Option<String>,
-    message: Option<String>,
-}
-
-fn api_url(path: &str) -> String {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}{path}")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}{path}")
-    }
-}
-
-async fn get_json<T>(
-    path: &str,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    T: DeserializeOwned,
-{
-    let client = reqwest::Client::new();
-    let mut request = client.get(api_url(path));
-    if let Some(token) = token {
-        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
-    }
-    if let Some(tenant_slug) = tenant_slug {
-        request = request.header("X-Tenant-ID", tenant_slug);
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|err| ApiError::Rest(format!("request failed: {err}")))?;
-    if !response.status().is_success() {
-        return Err(ApiError::Rest(extract_api_error(response).await));
-    }
-
-    response
-        .json::<T>()
-        .await
-        .map_err(|err| ApiError::Rest(format!("invalid response payload: {err}")))
-}
-
-async fn post_json<B, T>(
-    path: &str,
-    body: &B,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    B: Serialize + ?Sized,
-    T: DeserializeOwned,
-{
-    let client = reqwest::Client::new();
-    let mut request = client
-        .post(api_url(path))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .json(body);
-    if let Some(token) = token {
-        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
-    }
-    if let Some(tenant_slug) = tenant_slug {
-        request = request.header("X-Tenant-ID", tenant_slug);
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|err| ApiError::Rest(format!("request failed: {err}")))?;
-    if !response.status().is_success() {
-        return Err(ApiError::Rest(extract_api_error(response).await));
-    }
-
-    response
-        .json::<T>()
-        .await
-        .map_err(|err| ApiError::Rest(format!("invalid response payload: {err}")))
-}
-
-async fn patch_json<B, T>(
-    path: &str,
-    body: &B,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    B: Serialize + ?Sized,
-    T: DeserializeOwned,
-{
-    let client = reqwest::Client::new();
-    let mut request = client
-        .patch(api_url(path))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .json(body);
-    if let Some(token) = token {
-        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
-    }
-    if let Some(tenant_slug) = tenant_slug {
-        request = request.header("X-Tenant-ID", tenant_slug);
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|err| ApiError::Rest(format!("request failed: {err}")))?;
-    if !response.status().is_success() {
-        return Err(ApiError::Rest(extract_api_error(response).await));
-    }
-
-    response
-        .json::<T>()
-        .await
-        .map_err(|err| ApiError::Rest(format!("invalid response payload: {err}")))
-}
-
-async fn delete_json<T>(
-    path: &str,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<T, ApiError>
-where
-    T: DeserializeOwned,
-{
-    let client = reqwest::Client::new();
-    let mut request = client.delete(api_url(path));
-    if let Some(token) = token {
-        request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
-    }
-    if let Some(tenant_slug) = tenant_slug {
-        request = request.header("X-Tenant-ID", tenant_slug);
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|err| ApiError::Rest(format!("request failed: {err}")))?;
-    if !response.status().is_success() {
-        return Err(ApiError::Rest(extract_api_error(response).await));
-    }
-
-    response
-        .json::<T>()
-        .await
-        .map_err(|err| ApiError::Rest(format!("invalid response payload: {err}")))
-}
-
-pub async fn fetch_bootstrap(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<ChannelAdminBootstrap, ApiError> {
-    match channel_bootstrap_native().await {
-        Ok(payload) => Ok(payload),
-        Err(_) => get_json("/api/channels/bootstrap", token, tenant_slug).await,
-    }
-}
-
-pub async fn create_channel(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    payload: &CreateChannelPayload,
-) -> Result<ChannelRecord, ApiError> {
-    match channel_create_native(payload.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => post_json("/api/channels/", payload, token, tenant_slug).await,
-    }
-}
-
-pub async fn make_default_channel(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-) -> Result<ChannelRecord, ApiError> {
-    match channel_set_default_native(channel_id.to_string()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/{channel_id}/default"),
-                &serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn create_resolution_policy_set(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    payload: &CreateResolutionPolicySetPayload,
-) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
-    match channel_create_resolution_policy_set_native(payload.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => post_json("/api/channels/policies", payload, token, tenant_slug).await,
-    }
-}
-
-pub async fn activate_resolution_policy_set(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    policy_set_id: &str,
-) -> Result<crate::model::ChannelResolutionPolicySetRecord, ApiError> {
-    match channel_activate_resolution_policy_set_native(policy_set_id.to_string()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/policies/{policy_set_id}/activate"),
-                &serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn create_resolution_rule(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    policy_set_id: &str,
-    payload: &CreateResolutionRulePayload,
-) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    match channel_create_resolution_rule_native(policy_set_id.to_string(), payload.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn update_resolution_rule(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    policy_set_id: &str,
-    rule_id: &str,
-    payload: &UpdateResolutionRulePayload,
-) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    match channel_update_resolution_rule_native(
-        policy_set_id.to_string(),
-        rule_id.to_string(),
-        payload.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            patch_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn reorder_resolution_rules(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    policy_set_id: &str,
-    payload: &ReorderResolutionRulesPayload,
-) -> Result<Vec<crate::model::ChannelResolutionRuleRecord>, ApiError> {
-    match channel_reorder_resolution_rules_native(policy_set_id.to_string(), payload.clone()).await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules/reorder"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn delete_resolution_rule(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    policy_set_id: &str,
-    rule_id: &str,
-) -> Result<crate::model::ChannelResolutionRuleRecord, ApiError> {
-    match channel_delete_resolution_rule_native(policy_set_id.to_string(), rule_id.to_string())
-        .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            delete_json(
-                &format!("/api/channels/policies/{policy_set_id}/rules/{rule_id}"),
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn create_target(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    payload: &CreateChannelTargetPayload,
-) -> Result<ChannelTargetRecord, ApiError> {
-    match channel_create_target_native(channel_id.to_string(), payload.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/{channel_id}/targets"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn update_target(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    target_id: &str,
-    payload: &CreateChannelTargetPayload,
-) -> Result<ChannelTargetRecord, ApiError> {
-    match channel_update_target_native(
-        channel_id.to_string(),
-        target_id.to_string(),
-        payload.clone(),
-    )
-    .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            patch_json(
-                &format!("/api/channels/{channel_id}/targets/{target_id}"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn bind_module(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    payload: &BindChannelModulePayload,
-) -> Result<ChannelModuleBindingRecord, ApiError> {
-    match channel_bind_module_native(channel_id.to_string(), payload.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/{channel_id}/modules"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn bind_oauth_app(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    payload: &BindChannelOauthAppPayload,
-) -> Result<ChannelOauthAppRecord, ApiError> {
-    match channel_bind_oauth_app_native(channel_id.to_string(), payload.clone()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            post_json(
-                &format!("/api/channels/{channel_id}/oauth-apps"),
-                payload,
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn delete_target(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    target_id: &str,
-) -> Result<ChannelTargetRecord, ApiError> {
-    match channel_delete_target_native(channel_id.to_string(), target_id.to_string()).await {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            delete_json(
-                &format!("/api/channels/{channel_id}/targets/{target_id}"),
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn delete_module_binding(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    binding_id: &str,
-) -> Result<ChannelModuleBindingRecord, ApiError> {
-    match channel_delete_module_binding_native(channel_id.to_string(), binding_id.to_string()).await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            delete_json(
-                &format!("/api/channels/{channel_id}/modules/{binding_id}"),
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-pub async fn delete_oauth_app_binding(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    channel_id: &str,
-    binding_id: &str,
-) -> Result<ChannelOauthAppRecord, ApiError> {
-    match channel_delete_oauth_app_binding_native(channel_id.to_string(), binding_id.to_string())
-        .await
-    {
-        Ok(payload) => Ok(payload),
-        Err(_) => {
-            delete_json(
-                &format!("/api/channels/{channel_id}/oauth-apps/{binding_id}"),
-                token,
-                tenant_slug,
-            )
-            .await
-        }
-    }
-}
-
-async fn extract_api_error(response: reqwest::Response) -> String {
-    let status = response.status();
-    let text = response.text().await.unwrap_or_default();
-    let trimmed = text.trim();
-
-    if trimmed.is_empty() {
-        return format!("request failed with status {status}");
-    }
-
-    if let Ok(payload) = serde_json::from_str::<ApiErrorPayload>(trimmed) {
-        if let Some(message) = payload
-            .message
-            .as_deref()
-            .or(payload.error.as_deref())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            return message.to_string();
-        }
-    }
-
-    trimmed.to_string()
-}
 
 #[cfg(feature = "ssr")]
 fn ensure_manage_permission(permissions: &[rustok_core::Permission]) -> Result<(), ServerFnError> {
@@ -771,7 +258,7 @@ fn map_oauth_app_record(value: rustok_channel::ChannelOauthAppResponse) -> Chann
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/bootstrap")]
-async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, ServerFnError> {
+pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -887,7 +374,7 @@ async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, ServerFnErr
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/create-channel")]
-async fn channel_create_native(
+pub(super) async fn channel_create_native(
     payload: CreateChannelPayload,
 ) -> Result<ChannelRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -930,7 +417,9 @@ async fn channel_create_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/set-default")]
-async fn channel_set_default_native(channel_id: String) -> Result<ChannelRecord, ServerFnError> {
+pub(super) async fn channel_set_default_native(
+    channel_id: String,
+) -> Result<ChannelRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -968,7 +457,7 @@ async fn channel_set_default_native(channel_id: String) -> Result<ChannelRecord,
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/create-target")]
-async fn channel_create_target_native(
+pub(super) async fn channel_create_target_native(
     channel_id: String,
     payload: CreateChannelTargetPayload,
 ) -> Result<ChannelTargetRecord, ServerFnError> {
@@ -1017,7 +506,7 @@ async fn channel_create_target_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/update-target")]
-async fn channel_update_target_native(
+pub(super) async fn channel_update_target_native(
     channel_id: String,
     target_id: String,
     payload: CreateChannelTargetPayload,
@@ -1069,7 +558,7 @@ async fn channel_update_target_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/bind-module")]
-async fn channel_bind_module_native(
+pub(super) async fn channel_bind_module_native(
     channel_id: String,
     payload: BindChannelModulePayload,
 ) -> Result<ChannelModuleBindingRecord, ServerFnError> {
@@ -1117,7 +606,7 @@ async fn channel_bind_module_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/bind-oauth-app")]
-async fn channel_bind_oauth_app_native(
+pub(super) async fn channel_bind_oauth_app_native(
     channel_id: String,
     payload: BindChannelOauthAppPayload,
 ) -> Result<ChannelOauthAppRecord, ServerFnError> {
@@ -1192,7 +681,7 @@ async fn channel_bind_oauth_app_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/delete-target")]
-async fn channel_delete_target_native(
+pub(super) async fn channel_delete_target_native(
     channel_id: String,
     target_id: String,
 ) -> Result<ChannelTargetRecord, ServerFnError> {
@@ -1234,7 +723,7 @@ async fn channel_delete_target_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/delete-module-binding")]
-async fn channel_delete_module_binding_native(
+pub(super) async fn channel_delete_module_binding_native(
     channel_id: String,
     binding_id: String,
 ) -> Result<ChannelModuleBindingRecord, ServerFnError> {
@@ -1276,7 +765,7 @@ async fn channel_delete_module_binding_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/delete-oauth-app-binding")]
-async fn channel_delete_oauth_app_binding_native(
+pub(super) async fn channel_delete_oauth_app_binding_native(
     channel_id: String,
     binding_id: String,
 ) -> Result<ChannelOauthAppRecord, ServerFnError> {
@@ -1318,7 +807,7 @@ async fn channel_delete_oauth_app_binding_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/create-resolution-policy-set")]
-async fn channel_create_resolution_policy_set_native(
+pub(super) async fn channel_create_resolution_policy_set_native(
     payload: CreateResolutionPolicySetPayload,
 ) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -1364,7 +853,7 @@ async fn channel_create_resolution_policy_set_native(
     prefix = "/api/fn",
     endpoint = "channel/activate-resolution-policy-set"
 )]
-async fn channel_activate_resolution_policy_set_native(
+pub(super) async fn channel_activate_resolution_policy_set_native(
     policy_set_id: String,
 ) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -1404,7 +893,7 @@ async fn channel_activate_resolution_policy_set_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/create-resolution-rule")]
-async fn channel_create_resolution_rule_native(
+pub(super) async fn channel_create_resolution_rule_native(
     policy_set_id: String,
     payload: CreateResolutionRulePayload,
 ) -> Result<ChannelResolutionRuleRecord, ServerFnError> {
@@ -1458,7 +947,7 @@ async fn channel_create_resolution_rule_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/update-resolution-rule")]
-async fn channel_update_resolution_rule_native(
+pub(super) async fn channel_update_resolution_rule_native(
     policy_set_id: String,
     rule_id: String,
     payload: UpdateResolutionRulePayload,
@@ -1524,7 +1013,7 @@ async fn channel_update_resolution_rule_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/reorder-resolution-rules")]
-async fn channel_reorder_resolution_rules_native(
+pub(super) async fn channel_reorder_resolution_rules_native(
     policy_set_id: String,
     payload: ReorderResolutionRulesPayload,
 ) -> Result<Vec<ChannelResolutionRuleRecord>, ServerFnError> {
@@ -1574,7 +1063,7 @@ async fn channel_reorder_resolution_rules_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "channel/delete-resolution-rule")]
-async fn channel_delete_resolution_rule_native(
+pub(super) async fn channel_delete_resolution_rule_native(
     policy_set_id: String,
     rule_id: String,
 ) -> Result<ChannelResolutionRuleRecord, ServerFnError> {
