@@ -8,9 +8,9 @@ use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::core::{
-    build_selected_product_summary_view_model, format_known_shipping_profiles, format_product_meta,
-    format_product_shipping_profile, localized_product_status, primary_catalog_currency,
-    shipping_profile_choice_label, status_badge, text_or_none, translation_for_locale,
+    build_product_admin_editor_view_model, build_product_admin_list_item_view_model,
+    build_selected_product_summary_view_model, format_known_shipping_profiles,
+    primary_catalog_currency, shipping_profile_choice_label, text_or_none, translation_for_locale,
     ProductAdminPricingPreviewState, SelectedProductSummaryViewModel,
 };
 use crate::i18n::t;
@@ -375,8 +375,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let ui_locale_for_list = ui_locale.clone();
     let ui_locale_for_profiles = ui_locale.clone();
     let ui_locale_for_summary = ui_locale.clone();
-    let ui_locale_for_editor_title = ui_locale.clone();
-    let ui_locale_for_editor_subtitle = ui_locale.clone();
+    let ui_locale_for_editor = ui_locale.clone();
     let ui_locale_for_submit = ui_locale.clone();
     let ui_locale_for_profile_panel = ui_locale.clone();
     let ui_locale_for_summary_title = ui_locale.clone();
@@ -465,7 +464,6 @@ pub fn ProductAdmin() -> impl IntoView {
                                 <>
                                     {list.items.into_iter().map(|product| {
                                         let item_locale = ui_locale_for_list.clone();
-                                        let item_locale_for_chip = item_locale.clone();
                                         let item_locale_for_buttons = item_locale.clone();
                                         let item_locale_for_edit = item_locale.clone();
                                         let item_query_writer = list_query_writer.clone();
@@ -475,15 +473,18 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let archive_id = product.id.clone();
                                         let delete_id = product.id.clone();
                                         let delete_query_writer_for_item = delete_query_writer.clone();
-                                        let status = product.status.clone();
-                                        let shipping_profile_label = product.shipping_profile_slug.clone();
-                                        let show_shipping_profile = shipping_profile_label.is_some();
-                                        let shipping_profile_value = shipping_profile_label.clone().unwrap_or_default();
-                                        let meta = format_product_meta(
+                                        let item_view_model = build_product_admin_list_item_view_model(
                                             item_locale.as_deref(),
-                                            product.handle.as_str(),
-                                            product.vendor.as_deref(),
+                                            &product,
                                         );
+                                        let item_status_badge_class = item_view_model.status_badge_class;
+                                        let item_status_label = item_view_model.status_label.clone();
+                                        let item_type_label = item_view_model.type_label.clone();
+                                        let item_title = item_view_model.title.clone();
+                                        let item_meta_label = item_view_model.meta_label.clone();
+                                        let item_shipping_profile_label = item_view_model.shipping_profile_label.clone();
+                                        let show_shipping_profile = item_shipping_profile_label.is_some();
+                                        let item_timestamp_label = item_view_model.timestamp_label.clone();
                                         let bootstrap_loading_label_for_publish = bootstrap_loading_label.clone();
                                         let change_status_error_label_for_publish = change_status_error_label.clone();
                                         let bootstrap_loading_label_for_draft = bootstrap_loading_label.clone();
@@ -498,22 +499,22 @@ pub fn ProductAdmin() -> impl IntoView {
                                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                                     <div class="space-y-2">
                                                         <div class="flex flex-wrap items-center gap-2">
-                                                            <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", status_badge(status.as_str()))>
-                                                                {localized_product_status(item_locale.as_deref(), status.as_str())}
+                                                            <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", item_status_badge_class)>
+                                                                {item_status_label.clone()}
                                                             </span>
                                                             <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                                {product.product_type.clone().unwrap_or_else(|| t(item_locale.as_deref(), "product.common.general", "general"))}
+                                                                {item_type_label.clone()}
                                                             </span>
                                                         </div>
-                                                        <h4 class="text-base font-semibold text-card-foreground">{product.title.clone()}</h4>
-                                                        <p class="text-sm text-muted-foreground">{meta}</p>
+                                                        <h4 class="text-base font-semibold text-card-foreground">{item_title.clone()}</h4>
+                                                        <p class="text-sm text-muted-foreground">{item_meta_label.clone()}</p>
                                                         <Show when=move || show_shipping_profile>
                                                             <span class="inline-flex rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-                                                                {format_product_shipping_profile(item_locale_for_chip.as_deref(), shipping_profile_value.as_str())}
+                                                                {item_shipping_profile_label.clone().unwrap_or_default()}
                                                             </span>
                                                         </Show>
                                                         <p class="text-xs text-muted-foreground">
-                                                            {product.published_at.clone().unwrap_or(product.created_at.clone())}
+                                                            {item_timestamp_label.clone()}
                                                         </p>
                                                     </div>
                                                     <div class="flex flex-wrap gap-2">
@@ -629,14 +630,22 @@ pub fn ProductAdmin() -> impl IntoView {
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <h3 class="text-lg font-semibold text-card-foreground">
-                                    {move || if editing_id.get().is_some() {
-                                        t(ui_locale_for_editor_title.as_deref(), "product.editor.editTitle", "Product Editor")
-                                    } else {
-                                        t(ui_locale_for_editor_title.as_deref(), "product.editor.createTitle", "Create Product")
-                                    }}
+                                    {
+                                        let ui_locale_for_editor = ui_locale_for_editor.clone();
+                                        move || build_product_admin_editor_view_model(
+                                            ui_locale_for_editor.as_deref(),
+                                            editing_id.get().as_deref(),
+                                        ).title
+                                    }
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
-                                    {t(ui_locale_for_editor_subtitle.as_deref(), "product.editor.subtitle", "Single-SKU catalog editor backed by the existing commerce GraphQL contract.")}
+                                    {
+                                        let ui_locale_for_editor = ui_locale_for_editor.clone();
+                                        move || build_product_admin_editor_view_model(
+                                            ui_locale_for_editor.as_deref(),
+                                            editing_id.get().as_deref(),
+                                        ).subtitle
+                                    }
                                 </p>
                             </div>
                             <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() on:click=move |_| reset_current_product.run(())>
@@ -691,11 +700,10 @@ pub fn ProductAdmin() -> impl IntoView {
                                 {t(ui_locale.as_deref(), "product.field.keepPublished", "Keep published after save")}
                             </label>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
-                                {move || if editing_id.get().is_some() {
-                                    t(ui_locale_for_submit.as_deref(), "product.action.saveProduct", "Save product")
-                                } else {
-                                    t(ui_locale_for_submit.as_deref(), "product.action.createProduct", "Create product")
-                                }}
+                                {move || build_product_admin_editor_view_model(
+                                    ui_locale_for_submit.as_deref(),
+                                    editing_id.get().as_deref(),
+                                ).submit_label}
                             </button>
                         </form>
 
