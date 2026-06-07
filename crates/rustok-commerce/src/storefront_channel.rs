@@ -1,7 +1,9 @@
 use rustok_api::RequestContext;
 use rustok_channel::{error::ChannelError, ChannelService};
 use rustok_inventory::{
-    load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
+    is_metadata_visible_for_public_channel as inventory_metadata_visible_for_public_channel,
+    load_inventory_projection_by_variant_for_public_channel,
+    normalize_public_channel_slug as inventory_normalize_public_channel_slug,
     PublicChannelInventoryVariantProjectionInput,
 };
 use sea_orm::DatabaseConnection;
@@ -21,6 +23,17 @@ pub(crate) async fn is_module_enabled_for_request_channel(
     ChannelService::new(db.clone())
         .is_module_enabled(channel_id, module_slug)
         .await
+}
+
+pub(crate) fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
+    inventory_normalize_public_channel_slug(value)
+}
+
+pub(crate) fn is_metadata_visible_for_public_channel(
+    metadata: &serde_json::Value,
+    public_channel_slug: Option<&str>,
+) -> bool {
+    inventory_metadata_visible_for_public_channel(metadata, public_channel_slug)
 }
 
 pub(crate) fn public_channel_slug_from_request(request_context: &RequestContext) -> Option<String> {

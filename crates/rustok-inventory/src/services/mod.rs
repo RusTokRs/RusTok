@@ -3,7 +3,10 @@ pub mod inventory;
 mod policy;
 pub mod public_channel;
 
-pub use inventory::InventoryService;
+pub use inventory::{
+    InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
+    InventoryReservationReleaseWriteResult, InventoryReservationWriteResult, InventoryService,
+};
 pub use policy::inventory_policy_allows_backorder;
 pub use public_channel::{
     check_public_channel_inventory_request, check_variant_availability_for_public_channel,
