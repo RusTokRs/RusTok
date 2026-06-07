@@ -616,4 +616,84 @@ mod tests {
 
         assert!(head.contains(r#"<meta name="robots" content="noindex, follow" />"#));
     }
+
+    fn normalize_snapshot_tokens(mut html: String, tokens: &[&str]) -> String {
+        for token in tokens {
+            html = html.replace(token, "<dynamic>");
+        }
+        html
+    }
+
+    #[test]
+    fn renderer_snapshot_matches_expected_primary_fixture() {
+        let context = SeoPageContext {
+            route: SeoRouteContext {
+                canonical_url: "https://example.com/page".to_string(),
+                alternates: vec![SeoAlternateLink {
+                    locale: "en-US".to_string(),
+                    href: "https://example.com/en/page".to_string(),
+                    x_default: false,
+                }],
+                ..SeoRouteContext::default()
+            },
+            document: SeoDocument {
+                description: Some("Primary description".to_string()),
+                robots: SeoRobots {
+                    index: true,
+                    follow: true,
+                    ..SeoRobots::default()
+                },
+                ..SeoDocument::default()
+            },
+        };
+
+        let snapshot = render_head_html(&context);
+        assert_eq!(
+            snapshot,
+            concat!(
+                r#"<meta name="description" content="Primary description" />"#,
+                r#"<link rel="canonical" href="https://example.com/page" />"#,
+                r#"<meta name="robots" content="index, follow" />"#,
+                r#"<link rel="alternate" hreflang="en-US" href="https://example.com/en/page" />"#,
+            )
+        );
+    }
+
+    #[test]
+    fn parity_snapshot_comparison_can_ignore_non_deterministic_payload_values() {
+        let mut base = SeoPageContext::default();
+        base.route.canonical_url = "https://example.com/page".to_string();
+        base.document.structured_data_blocks = vec![SeoStructuredDataBlock {
+            id: Some("dynamic".to_string()),
+            schema_kind: SeoSchemaBlockKind::Article,
+            schema_type: Some("Article".to_string()),
+            kind: Some("Article".to_string()),
+            source: SeoFieldSource::Generated,
+            payload: serde_json::json!({
+                "@type": "Article",
+                "runId": "run-a",
+                "generatedAt": "2026-06-07T10:00:00Z"
+            })
+            .into(),
+        }];
+
+        let mut next = base.clone();
+        next.document.structured_data_blocks[0].payload = serde_json::json!({
+            "@type": "Article",
+            "runId": "run-b",
+            "generatedAt": "2026-06-07T10:05:00Z"
+        })
+        .into();
+
+        let left = normalize_snapshot_tokens(
+            render_head_html(&base),
+            &["run-a", "2026-06-07T10:00:00Z"],
+        );
+        let right = normalize_snapshot_tokens(
+            render_head_html(&next),
+            &["run-b", "2026-06-07T10:05:00Z"],
+        );
+
+        assert_eq!(left, right);
+    }
 }

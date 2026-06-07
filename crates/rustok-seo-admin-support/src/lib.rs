@@ -6,7 +6,8 @@ mod model;
 mod panel;
 
 pub use components::{
-    SeoRecommendationsCard, SeoSchemaPreviewCard, SeoSnippetPreviewCard, SeoSummaryTile,
+    SeoDeliveryStatusCards, SeoRecommendationsCard, SeoRemediationHintCard, SeoSchemaPreviewCard,
+    SeoSnippetPreviewCard, SeoSummaryTile,
 };
 pub use model::{SeoCompletenessReport, SeoEntityForm, SeoMetaView, SeoRevisionView};
 pub use panel::{SeoCapabilityNotice, SeoEntityPanel};

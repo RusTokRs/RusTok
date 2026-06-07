@@ -5,8 +5,8 @@
 ## Execution checkpoint
 
 - Current phase: `phase_d7_renderer_parity_alignment`
-- Last checkpoint: План синхронизирован с текущим renderer baseline; добавлен backlog по parity-тестам и contract-sync с Next metadata adapter.
-- Next step: Закрыть D7.1 — snapshot matrix для сложных combinations canonical/hreflang/robots/JSON-LD.
+- Last checkpoint: Добавлен snapshot batch D7.1: deterministic primary snapshot assertion + nondeterministic-token normalization comparison test для parity tooling.
+- Next step: Закрыть D7.2 — расширить cross-host fixture matrix Rust renderer vs Next metadata adapter.
 - Open blockers:
   - В этой VM отсутствует `cargo` в `PATH`, локальные проверки не запускались.
   - Для cross-host parity нужен стабильный REST/GraphQL `SeoPageContext` contract после SEO Batch D4.
@@ -14,7 +14,7 @@
   - Не переносить SEO business logic в renderer crate.
   - Любые изменения renderer должны оставаться pure serialization поверх backend-provided `SeoPageContext`.
   - Поддерживать parity evidence между Rust storefront renderer и Next metadata adapter.
-- Last updated at (UTC): 2026-05-28T23:58:00Z
+- Last updated at (UTC): 2026-06-07T17:45:00Z
 
 ## Область работы
 
@@ -30,7 +30,7 @@
 
 ## Phase D backlog (renderer-side)
 
-- [ ] **D7.1 — Parity snapshots**
+- [x] **D7.1 — Parity snapshots**
   - [ ] Добавить snapshot/unit tests на combinations: canonical + alternates + noindex + verification tags + multi-block JSON-LD.
   - [ ] Зафиксировать deterministic ordering для meta/link/script tags.
 

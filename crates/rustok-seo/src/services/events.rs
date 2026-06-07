@@ -503,7 +503,7 @@ impl SeoService {
             SeoHistoricalReplayStats::default()
         };
 
-        Ok(SeoIndexRepairReplayResultRecord {
+        let result = SeoIndexRepairReplayResultRecord {
             target_type: normalized_target_type,
             limit: bounded_limit as i32,
             replay_mode: if replay_historical {
@@ -515,7 +515,21 @@ impl SeoService {
             replayed_count: replay_stats.replayed_count as i32,
             historical_events_scanned: replay_stats.events_scanned as i32,
             replay_run_id: replay_stats.replay_run_id,
-        })
+        };
+
+        tracing::info!(
+            tenant_id = %tenant_id,
+            target_type = ?result.target_type,
+            limit = result.limit,
+            replay_historical,
+            repaired_count = result.repaired_count,
+            replayed_count = result.replayed_count,
+            historical_events_scanned = result.historical_events_scanned,
+            replay_run_id = ?result.replay_run_id,
+            "completed SEO index repair/replay operator run"
+        );
+
+        Ok(result)
     }
 
     pub async fn repair_index_delivery_backlog(
@@ -638,7 +652,6 @@ impl SeoService {
                     event_delivery.idempotency_key.clone(),
                     trigger.target_type.clone(),
                     trigger.target_scope_key.clone(),
-                    replay_run_id.to_string(),
                 ],
             );
 
@@ -650,6 +663,14 @@ impl SeoService {
                     &trigger,
                 )
                 .await?;
+
+            if matches!(
+                delivery.status.as_str(),
+                INDEX_DELIVERY_STATUS_SENT | INDEX_DELIVERY_STATUS_DEAD_LETTER
+            ) {
+                continue;
+            }
+
             self.dispatch_index_reindex_trigger(tenant_id, &delivery, &trigger)
                 .await;
             if let Err(error) = self
@@ -1590,7 +1611,8 @@ mod tests {
     };
     use rustok_seo_targets::SeoTargetRegistry;
     use sea_orm::{
-        ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+        ActiveModelTrait, ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
+        QueryFilter, Set,
     };
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
@@ -1646,17 +1668,29 @@ mod tests {
         )
     }
 
-    #[derive(Default)]
     struct FlakyIndexTransport {
         fail_reindex_attempts: AtomicI32,
         published_event_types: Mutex<Vec<String>>,
+        reliability: ReliabilityLevel,
     }
 
     impl FlakyIndexTransport {
         fn with_reindex_failures(fail_reindex_attempts: i32) -> Self {
+            Self::with_reliability_and_failures(ReliabilityLevel::InMemory, fail_reindex_attempts)
+        }
+
+        fn with_reliability(reliability: ReliabilityLevel) -> Self {
+            Self::with_reliability_and_failures(reliability, 0)
+        }
+
+        fn with_reliability_and_failures(
+            reliability: ReliabilityLevel,
+            fail_reindex_attempts: i32,
+        ) -> Self {
             Self {
                 fail_reindex_attempts: AtomicI32::new(fail_reindex_attempts.max(0)),
                 published_event_types: Mutex::new(Vec::new()),
+                reliability,
             }
         }
 
@@ -1696,7 +1730,7 @@ mod tests {
         }
 
         fn reliability_level(&self) -> ReliabilityLevel {
-            ReliabilityLevel::InMemory
+            self.reliability
         }
 
         fn as_any(&self) -> &dyn Any {
@@ -1993,6 +2027,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn index_delivery_flow_has_transport_parity_for_memory_and_streaming_levels() {
+        for reliability in [ReliabilityLevel::InMemory, ReliabilityLevel::Streaming] {
+            let db = test_db().await;
+            run_migrations(&db).await;
+            let transport = Arc::new(FlakyIndexTransport::with_reliability(reliability));
+            let service = service_with_transport(db.clone(), transport.clone());
+
+            let tenant_id = Uuid::new_v4();
+            service
+                .publish_seo_meta_upserted_event(
+                    tenant_id,
+                    "product",
+                    Uuid::new_v4(),
+                    "en-US",
+                    "explicit",
+                    None,
+                )
+                .await;
+
+            let summary = service
+                .index_delivery_status(tenant_id, Some("product"))
+                .await
+                .expect("index delivery status should load");
+            assert_eq!(summary.sent_count, 1);
+            assert_eq!(summary.dead_letter_count, 0);
+            assert_eq!(transport.published_count("seo.meta.upserted"), 1);
+            assert_eq!(transport.published_count("index.reindex_requested"), 1);
+        }
+    }
+
+    #[tokio::test]
     async fn seo_index_delivery_moves_to_dead_letter_after_bounded_retries() {
         let db = test_db().await;
         run_migrations(&db).await;
@@ -2131,6 +2196,122 @@ mod tests {
         );
         assert!(cursor.replay_requested_at.is_some());
         assert!(cursor.replay_completed_at.is_some());
+    }
+
+
+    #[tokio::test]
+    async fn historical_replay_deduplicates_repeat_runs() {
+        let db = test_db().await;
+        run_migrations(&db).await;
+        let service = service_with_outbox(db.clone());
+
+        let tenant_id = Uuid::new_v4();
+        service
+            .publish_seo_meta_upserted_event(
+                tenant_id,
+                "product",
+                Uuid::new_v4(),
+                "en-US",
+                "explicit",
+                None,
+            )
+            .await;
+
+        let first = service
+            .run_index_repair_replay(tenant_id, Some("product"), 20, true)
+            .await
+            .expect("first replay run should succeed");
+        let second = service
+            .run_index_repair_replay(tenant_id, Some("product"), 20, true)
+            .await
+            .expect("second replay run should succeed");
+
+        assert_eq!(first.replayed_count, 1);
+        assert_eq!(second.replayed_count, 0);
+
+        let deliveries = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_index_delivery::Column::TargetType.eq("product"))
+            .all(&db)
+            .await
+            .expect("seo index deliveries should load");
+        assert_eq!(deliveries.len(), 2);
+
+        let reindex_events = outbox_entity::Entity::find()
+            .filter(outbox_entity::Column::EventType.eq("index.reindex_requested"))
+            .all(&db)
+            .await
+            .expect("reindex events should load");
+        assert_eq!(reindex_events.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn historical_replay_retries_failed_delivery_without_duplicate_rows() {
+        let db = test_db().await;
+        run_migrations(&db).await;
+        let service = service_with_outbox(db.clone());
+
+        let tenant_id = Uuid::new_v4();
+        service
+            .publish_seo_meta_upserted_event(
+                tenant_id,
+                "product",
+                Uuid::new_v4(),
+                "en-US",
+                "explicit",
+                None,
+            )
+            .await;
+
+        service
+            .run_index_repair_replay(tenant_id, Some("product"), 20, true)
+            .await
+            .expect("replay run should succeed");
+
+        let replay_delivery = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_index_delivery::Column::TargetType.eq("product"))
+            .all(&db)
+            .await
+            .expect("seo index deliveries should load")
+            .into_iter()
+            .find(|item| {
+                item.idempotency_key
+                    .starts_with("seo.index.replay.historical:")
+            })
+            .expect("historical replay delivery should exist");
+
+        let mut failed_delivery: seo_index_delivery::ActiveModel = replay_delivery.into();
+        failed_delivery.status = Set(INDEX_DELIVERY_STATUS_FAILED.to_string());
+        failed_delivery.attempt_count = Set(1);
+        failed_delivery.outbox_event_id = Set(None);
+        failed_delivery.last_error = Set(Some("forced failure".to_string()));
+        failed_delivery
+            .update(&db)
+            .await
+            .expect("failed replay delivery should update");
+
+        let retry = service
+            .run_index_repair_replay(tenant_id, Some("product"), 20, true)
+            .await
+            .expect("replay retry should succeed");
+        assert_eq!(retry.replayed_count, 1);
+
+        let deliveries = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_index_delivery::Column::TargetType.eq("product"))
+            .all(&db)
+            .await
+            .expect("seo index deliveries should load");
+        assert_eq!(deliveries.len(), 2);
+        let replay_delivery = deliveries
+            .into_iter()
+            .find(|item| {
+                item.idempotency_key
+                    .starts_with("seo.index.replay.historical:")
+            })
+            .expect("historical replay delivery should exist");
+        assert_eq!(replay_delivery.status, INDEX_DELIVERY_STATUS_SENT);
     }
 
     #[tokio::test]

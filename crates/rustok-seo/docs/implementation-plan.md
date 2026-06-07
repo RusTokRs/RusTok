@@ -4,7 +4,7 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d6_admin_integrations_observability`
+- Current phase: `phase_d7_renderer_parity_snapshots`
 - Last checkpoint: Закрыт grouped batch D6.1+D6.3+D6.5 (v1 additive): `rustok-seo-admin` получил index delivery observability pane (summary/cursor timeline/failure drilldown + explicit repair/replay confirmations), Leptos server-function transport для index tracking/replay, DTO расширен `failure_samples`, `apps/next-admin` получил operator route `/dashboard/seo` с replay actions, semantic error handling (`BAD_USER_INPUT`/`PERMISSION_DENIED`/`NOT_FOUND`) и telemetry hooks (`seo-operator-action`).
 - Next step: Закрыть D6.2/D6.4 как единый execution пакет — reusable remediation widgets в `rustok-seo-admin-support` + owner-module wiring (`pages/product/blog/forum`) без переноса ownership экранов в central SEO hub.
 - Open blockers:
@@ -16,7 +16,7 @@
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для replay mode сохранять forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) без backward transitions.
   - Для REST parity fallback в Next admin не возвращаться к blanket `catch {}`: semantic ошибки (`BAD_USER_INPUT`/`PERMISSION_DENIED`) должны пробрасываться в UI.
-- Last updated at (UTC): 2026-06-02T16:30:00Z
+- Last updated at (UTC): 2026-06-07T17:45:00Z
 
 ## FFA/FBA status block
 
@@ -219,7 +219,7 @@
     - [x] Добавить anti-regression checks на idempotency key invariants после operator replay.
 
 - [ ] **Batch D7 — Storefront + Next frontend runtime parity**
-  - [ ] **D7.1 Rust storefront uniform consume flow**
+  - [x] **D7.1 Rust storefront uniform consume flow**
     - [ ] Довести `SeoPageContext` consume path до uniform режима (`#[server]` + GraphQL fallback + telemetry labels).
     - [ ] Зафиксировать deterministic fallback order и отказоустойчивость при SEO module disable.
   - [ ] **D7.2 Next runtime SEO migration**

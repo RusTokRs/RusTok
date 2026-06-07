@@ -271,6 +271,71 @@ pub fn SeoRecommendationsCard(
     }
 }
 
+
+#[component]
+pub fn SeoDeliveryStatusCards(
+    summary: Signal<SeoEventDeliverySummary>,
+    locale: Signal<String>,
+) -> impl IntoView {
+    let statuses = [
+        SeoEventDeliveryStatus::Pending,
+        SeoEventDeliveryStatus::Sent,
+        SeoEventDeliveryStatus::Retry,
+        SeoEventDeliveryStatus::Failed,
+    ];
+
+    view! {
+        <article class="rounded-2xl border border-border bg-background/70 p-4 md:col-span-2 xl:col-span-2">
+            <h4 class="text-sm font-semibold text-card-foreground">
+                {move || tr(Some(locale.get().as_str()), "Delivery status", "Статус доставки")}
+            </h4>
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {statuses.into_iter().map(|status| {
+                    let status_label = move || delivery_status_label(Some(locale.get().as_str()), status);
+                    let status_value = move || {
+                        let summary = summary.get();
+                        match status {
+                            SeoEventDeliveryStatus::Pending => summary.pending,
+                            SeoEventDeliveryStatus::Sent => summary.sent,
+                            SeoEventDeliveryStatus::Retry => summary.retry,
+                            SeoEventDeliveryStatus::Failed => summary.failed,
+                        }
+                    };
+                    view! {
+                        <div class="rounded-xl border border-border bg-card px-3 py-2">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">{status_label}</p>
+                            <p class="mt-1 text-sm font-semibold text-card-foreground">{move || status_value().to_string()}</p>
+                        </div>
+                    }
+                }).collect_view()}
+            </div>
+        </article>
+    }
+}
+
+#[component]
+pub fn SeoRemediationHintCard(
+    hint: Signal<SeoRemediationHint>,
+    locale: Signal<String>,
+) -> impl IntoView {
+    view! {
+        <article class="rounded-2xl border border-border bg-background/70 p-4 md:col-span-2 xl:col-span-2">
+            <h4 class="text-sm font-semibold text-card-foreground">
+                {move || tr(Some(locale.get().as_str()), "Remediation hint", "Подсказка remediation")}
+            </h4>
+            <p class="mt-2 text-sm text-foreground">
+                {move || remediation_action_label(Some(locale.get().as_str()), hint.get().action)}
+            </p>
+            <p class="mt-1 text-xs text-muted-foreground">
+                {move || remediation_reason(Some(locale.get().as_str()), hint.get().reason_key.as_str())}
+            </p>
+            <p class="mt-2 text-xs text-muted-foreground">
+                {move || format!("issue_code: {}", hint.get().issue_code)}
+            </p>
+        </article>
+    }
+}
+
 fn required_fields_for_type_name(type_name: &str) -> &'static [&'static str] {
     match type_name.trim() {
         "Product" => &["name"],

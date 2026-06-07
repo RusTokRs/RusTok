@@ -138,6 +138,15 @@ export interface SeoIndexCursorRecord {
   replayCompletedAt: string | null;
 }
 
+export interface SeoIndexFailureSampleRecord {
+  targetType: string;
+  targetId: string | null;
+  status: string;
+  attemptCount: number;
+  lastError: string | null;
+  updatedAt: string;
+}
+
 export interface SeoIndexDeliveryStatusRecord {
   targetType: string | null;
   pendingCount: number;
@@ -146,6 +155,7 @@ export interface SeoIndexDeliveryStatusRecord {
   failedCount: number;
   deadLetterCount: number;
   cursors: SeoIndexCursorRecord[];
+  failureSamples: SeoIndexFailureSampleRecord[];
 }
 
 export interface SeoIndexRepairReplayInput {
@@ -486,6 +496,14 @@ query SeoIndexDeliveryStatus($targetType: String) {
       replayMode
       replayRequestedAt
       replayCompletedAt
+    }
+    failureSamples {
+      targetType
+      targetId
+      status
+      attemptCount
+      lastError
+      updatedAt
     }
   }
 }

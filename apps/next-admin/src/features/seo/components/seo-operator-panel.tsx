@@ -225,6 +225,31 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         )}
       </div>
 
+      <div className='rounded-xl border border-border bg-card p-4'>
+        <h4 className='text-sm font-semibold text-card-foreground'>Failure drilldown</h4>
+        {status?.failureSamples?.length ? (
+          <ul className='mt-3 space-y-2'>
+            {status.failureSamples.map((sample) => (
+              <li
+                key={`${sample.targetType}-${sample.targetId ?? 'none'}-${sample.updatedAt}`}
+                className='rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground'
+              >
+                <div className='font-medium text-foreground'>
+                  {sample.targetType} · {sample.status}
+                </div>
+                <div className='mt-1'>attempts: {sample.attemptCount}</div>
+                <div>updated: {sample.updatedAt}</div>
+                <div className='mt-1 break-words text-destructive'>
+                  {sample.lastError ?? 'n/a'}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className='mt-2 text-sm text-muted-foreground'>No failed/dead-letter samples.</p>
+        )}
+      </div>
+
       {message ? (
         <div className='rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm text-foreground'>
           {message}

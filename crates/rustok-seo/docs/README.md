@@ -137,6 +137,7 @@ Readiness score считается производным от issue set. Summar
 
 - [README crate](../README.md)
 - [План реализации](./implementation-plan.md)
+- [Runbook replay/repair](./replay-repair-runbook.md)
 - [Документация `rustok-seo-render`](../render/docs/README.md)
 - [Документация `rustok-seo-admin-support`](../../rustok-seo-admin-support/docs/README.md)
 - [Admin package](../admin/README.md)

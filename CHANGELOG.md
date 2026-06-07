@@ -1,3 +1,11 @@
+## 2026-06-07 — SEO Phase D (D5-D7) batch progress
+
+- Hardened SEO index repair/replay idempotency: historical replay now deduplicates repeated operator runs and reuses transition keys across replay retries.
+- Added replay failure-recovery coverage (`historical_replay_deduplicates_repeat_runs`, `historical_replay_retries_failed_delivery_without_duplicate_rows`) and transport parity coverage (`memory` + `streaming` reliability levels).
+- Extended Next Admin SEO operator panel with failure drilldown (`failureSamples`) and updated GraphQL/REST contract mapping.
+- Added renderer parity snapshot tests, including deterministic primary snapshot assertion and token-based normalization for non-deterministic payload fields.
+- Added SEO replay/repair operational runbook with troubleshooting and verification checklist.
+
 # Changelog
 
 All notable changes to RusToK are documented in this file.
