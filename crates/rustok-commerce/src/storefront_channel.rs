@@ -1,8 +1,8 @@
 use rustok_api::RequestContext;
 use rustok_channel::{error::ChannelError, ChannelService};
 use rustok_inventory::{
-    inventory_policy_allows_backorder, load_available_inventory_by_variant_for_public_channel,
-    normalize_public_channel_slug,
+    load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
+    PublicChannelInventoryVariantProjectionInput,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -33,24 +33,28 @@ pub(crate) async fn apply_public_channel_inventory_to_product(
     product: &mut ProductResponse,
     public_channel_slug: Option<&str>,
 ) -> Result<(), sea_orm::DbErr> {
-    let variant_ids = product
+    let variants = product
         .variants
         .iter()
-        .map(|variant| variant.id)
+        .map(|variant| PublicChannelInventoryVariantProjectionInput {
+            variant_id: variant.id,
+            inventory_policy: variant.inventory_policy.as_str(),
+        })
         .collect::<Vec<_>>();
-    let available_by_variant = load_available_inventory_by_variant_for_public_channel(
+    let projections = load_inventory_projection_by_variant_for_public_channel(
         db,
         tenant_id,
-        &variant_ids,
+        &variants,
         public_channel_slug,
     )
     .await?;
 
     for variant in &mut product.variants {
-        let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
-        variant.inventory_quantity = available_inventory;
-        variant.in_stock =
-            available_inventory > 0 || inventory_policy_allows_backorder(&variant.inventory_policy);
+        let Some(projection) = projections.get(&variant.id) else {
+            continue;
+        };
+        variant.inventory_quantity = projection.available_quantity;
+        variant.in_stock = projection.in_stock;
     }
 
     Ok(())

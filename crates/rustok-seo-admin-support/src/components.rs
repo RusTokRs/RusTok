@@ -271,7 +271,6 @@ pub fn SeoRecommendationsCard(
     }
 }
 
-
 #[component]
 pub fn SeoDeliveryStatusCards(
     summary: Signal<SeoEventDeliverySummary>,
