@@ -6,7 +6,7 @@ use validator::Validate;
 use rustok_cart::error::CartError;
 use rustok_core::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_fulfillment::error::FulfillmentError;
-use rustok_inventory::inventory_policy_allows_backorder;
+use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
@@ -22,8 +22,7 @@ use crate::dto::{
 };
 use crate::entities::{product, product_variant};
 use crate::storefront_channel::{
-    is_metadata_visible_for_public_channel, load_available_inventory_for_variant_in_public_channel,
-    normalize_public_channel_slug,
+    is_metadata_visible_for_public_channel, normalize_public_channel_slug,
 };
 use crate::storefront_shipping::{
     is_shipping_option_compatible_with_profiles, load_current_shipping_profile_slug_for_line_item,
@@ -531,19 +530,16 @@ impl CheckoutService {
                 )));
             }
 
-            if inventory_policy_allows_backorder(&variant.inventory_policy) {
-                continue;
-            }
-
-            let available_inventory = load_available_inventory_for_variant_in_public_channel(
+            let available = check_variant_availability_for_public_channel(
                 &self.db,
                 tenant_id,
-                variant.id,
+                &variant,
+                line_item.quantity,
                 public_channel_slug.as_deref(),
             )
             .await
             .map_err(stage_error("load_inventory"))?;
-            if available_inventory < line_item.quantity {
+            if !available {
                 return Err(CheckoutError::Validation(format!(
                     "Variant {} does not have enough available inventory for the cart channel",
                     variant.id

@@ -140,6 +140,26 @@ async fn inventory_check_availability_native() {}
 `;
 }
 
+function commerceAvailabilityCallerSource({ includeDirectLookup = false } = {}) {
+  if (includeDirectLookup) {
+    return `
+use rustok_inventory::inventory_policy_allows_backorder;
+use crate::storefront_channel::load_available_inventory_for_variant_in_public_channel;
+async fn validate_storefront_variant_inventory() {
+    if inventory_policy_allows_backorder("continue") { return; }
+    load_available_inventory_for_variant_in_public_channel().await;
+}
+`;
+  }
+
+  return `
+use rustok_inventory::check_variant_availability_for_public_channel;
+async fn validate_storefront_variant_inventory() {
+    check_variant_availability_for_public_channel().await;
+}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-inventory-boundary-"));
   writeFixtureFile(root, "crates/rustok-inventory/src/services/inventory.rs", inventorySource(options));
@@ -153,6 +173,13 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-inventory/admin/src/model.rs", "");
   writeFixtureFile(root, "crates/rustok-inventory/admin/src/ui/leptos.rs", "");
   writeFixtureFile(root, "crates/rustok-inventory/admin/Cargo.toml", "[package]\nname = \"rustok-inventory-admin\"\n");
+  for (const relativePath of [
+    "crates/rustok-commerce/src/graphql/mutation.rs",
+    "crates/rustok-commerce/src/services/checkout.rs",
+    "crates/rustok-commerce/src/controllers/store.rs",
+  ]) {
+    writeFixtureFile(root, relativePath, commerceAvailabilityCallerSource(options));
+  }
   return root;
 }
 
@@ -204,6 +231,19 @@ test("inventory admin boundary verifier rejects transitional write fallback", ()
     assert.notEqual(result.status, 0, "Expected transitional write fallback fixture to fail");
     assert.match(result.stderr, /removed GraphQL fallback marker must stay absent/);
     assert.match(result.stderr, /must not accept auth tokens for a GraphQL fallback path/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("inventory admin boundary verifier rejects direct commerce public-channel availability lookup", () => {
+  const root = withFixture({ includeDirectLookup: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected direct commerce availability lookup fixture to fail");
+    assert.match(result.stderr, /must not call channel-visible inventory loaders directly/);
+    assert.match(result.stderr, /must not duplicate backorder policy branching/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

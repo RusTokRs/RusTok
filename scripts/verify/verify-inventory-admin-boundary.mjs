@@ -214,9 +214,37 @@ function assertInventoryAdminTransportBoundary() {
   }
 }
 
+function assertCommercePublicChannelAvailabilityBoundary() {
+  const callerPaths = [
+    "crates/rustok-commerce/src/graphql/mutation.rs",
+    "crates/rustok-commerce/src/services/checkout.rs",
+    "crates/rustok-commerce/src/controllers/store.rs",
+  ];
+
+  for (const relativePath of callerPaths) {
+    const source = readRepo(relativePath);
+    assertContains(
+      source,
+      "check_variant_availability_for_public_channel",
+      `${relativePath}: public-channel inventory availability must use the inventory-owned facade`,
+    );
+    assertNotContains(
+      source,
+      "load_available_inventory_for_variant_in_public_channel",
+      `${relativePath}: must not call channel-visible inventory loaders directly from commerce callers`,
+    );
+    assertNotContains(
+      source,
+      "inventory_policy_allows_backorder",
+      `${relativePath}: must not duplicate backorder policy branching outside the inventory facade`,
+    );
+  }
+}
+
 
 assertInventoryServiceWriteResults();
 assertInventoryAdminTransportBoundary();
+assertCommercePublicChannelAvailabilityBoundary();
 
 if (failures.length > 0) {
   console.error("Inventory admin boundary check failed:");
