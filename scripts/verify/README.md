@@ -46,6 +46,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-read
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | Проверка runtime-context/cache-key invariants | `node scripts/verify/verify-runtime-context-invariants.mjs` |
+| Проверка inventory admin native/write boundary | `node scripts/verify/verify-inventory-admin-boundary.mjs` |
 | Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
 | Проверка parity provider/consumer для page-builder контракта | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
 | Проверка machine-readable registry page-builder против manifests | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
@@ -106,6 +107,26 @@ RUSTOK_MIGRATION_SMOKE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/pos
 ```bash
 node scripts/verify/verify-runtime-context-invariants.mjs
 ./scripts/verify/verify-all.sh runtime-context-invariants
+```
+
+---
+
+### `verify-inventory-admin-boundary.mjs`
+**Wave 5/Wave 6 inventory guardrail** — быстрый source-level gate для inventory-owned admin read/write boundary без полной Rust-компиляции.
+
+Что проверяет:
+- `InventoryQuantityWriteResult` строит `inStock` из committed quantity и backorder policy;
+- native `set_variant_quantity`/`adjust_variant_quantity` используют internal mutation update result и не делают отдельный pre-read variant policy;
+- transitional `CommerceGraphqlInventoryReadAdapter` остаётся read-only и не содержит inventory mutations;
+- admin API write facades set/adjust/reserve/release/check-availability идут через inventory-owned native facade без GraphQL fallback;
+- native server-function endpoints для inventory write/validation surface остаются объявлены.
+
+Пример:
+
+```bash
+node scripts/verify/verify-inventory-admin-boundary.mjs
+./scripts/verify/verify-all.sh inventory-admin-boundary
+node scripts/verify/verify-inventory-admin-boundary.test.mjs
 ```
 
 ---

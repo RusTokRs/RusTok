@@ -58,9 +58,13 @@ pub struct InventoryReservationReleaseWriteResult {
 
 impl InventoryQuantityWriteResult {
     fn from_quantity(quantity: i32) -> Self {
+        Self::from_quantity_and_policy(quantity, "deny")
+    }
+
+    fn from_quantity_and_policy(quantity: i32, inventory_policy: &str) -> Self {
         Self {
             quantity,
-            in_stock: quantity > 0,
+            in_stock: quantity > 0 || inventory_policy_allows_backorder(inventory_policy),
         }
     }
 }
@@ -136,8 +140,8 @@ impl InventoryService {
         adjustment: i32,
         reason: Option<String>,
     ) -> CommerceResult<InventoryQuantityWriteResult> {
-        let quantity = self
-            .adjust_inventory(
+        let update = self
+            .adjust_inventory_update(
                 tenant_id,
                 actor_id,
                 AdjustInventoryInput {
@@ -148,7 +152,10 @@ impl InventoryService {
             )
             .await?;
 
-        Ok(InventoryQuantityWriteResult::from_quantity(quantity))
+        Ok(InventoryQuantityWriteResult::from_quantity_and_policy(
+            update.quantity,
+            &update.inventory_policy,
+        ))
     }
 
     #[instrument(skip(self))]
@@ -158,6 +165,18 @@ impl InventoryService {
         actor_id: Uuid,
         input: AdjustInventoryInput,
     ) -> CommerceResult<i32> {
+        Ok(self
+            .adjust_inventory_update(tenant_id, actor_id, input)
+            .await?
+            .quantity)
+    }
+
+    async fn adjust_inventory_update(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        input: AdjustInventoryInput,
+    ) -> CommerceResult<InventoryQuantityUpdate> {
         let txn = self.db.begin().await?;
 
         let variant = self.load_variant(&txn, tenant_id, input.variant_id).await?;
@@ -214,8 +233,13 @@ impl InventoryService {
                 .await?;
         }
 
+        let inventory_policy = variant.inventory_policy.clone();
+
         txn.commit().await?;
-        Ok(new_quantity)
+        Ok(InventoryQuantityUpdate {
+            quantity: new_quantity,
+            inventory_policy,
+        })
     }
 
     #[instrument(skip(self))]
@@ -226,11 +250,14 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<InventoryQuantityWriteResult> {
-        let quantity = self
-            .set_inventory(tenant_id, actor_id, variant_id, quantity)
+        let update = self
+            .set_inventory_update(tenant_id, actor_id, variant_id, quantity)
             .await?;
 
-        Ok(InventoryQuantityWriteResult::from_quantity(quantity))
+        Ok(InventoryQuantityWriteResult::from_quantity_and_policy(
+            update.quantity,
+            &update.inventory_policy,
+        ))
     }
 
     #[instrument(skip(self))]
@@ -241,6 +268,19 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<i32> {
+        Ok(self
+            .set_inventory_update(tenant_id, actor_id, variant_id, quantity)
+            .await?
+            .quantity)
+    }
+
+    async fn set_inventory_update(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        variant_id: Uuid,
+        quantity: i32,
+    ) -> CommerceResult<InventoryQuantityUpdate> {
         let txn = self.db.begin().await?;
 
         let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
@@ -282,8 +322,13 @@ impl InventoryService {
             .publish_in_tx(&txn, tenant_id, Some(actor_id), event)
             .await?;
 
+        let inventory_policy = variant.inventory_policy.clone();
+
         txn.commit().await?;
-        Ok(quantity)
+        Ok(InventoryQuantityUpdate {
+            quantity,
+            inventory_policy,
+        })
     }
 
     #[instrument(skip(self))]
@@ -908,6 +953,18 @@ mod tests {
     }
 
     #[test]
+    fn quantity_write_result_honors_backorder_policy_for_native_write_facades() {
+        let depleted = InventoryQuantityWriteResult::from_quantity_and_policy(0, "deny");
+        assert!(!depleted.in_stock);
+
+        let backorderable = InventoryQuantityWriteResult::from_quantity_and_policy(0, "CONTINUE");
+        assert!(
+            backorderable.in_stock,
+            "native set/adjust quantity results must keep backorderable variants in stock"
+        );
+    }
+
+    #[test]
     fn reservation_write_result_reports_reserved_available_and_stock_state() {
         let result = InventoryReservationWriteResult::from_quantities(4, 6, "deny");
 
@@ -964,6 +1021,11 @@ mod tests {
             })
         );
     }
+}
+
+struct InventoryQuantityUpdate {
+    quantity: i32,
+    inventory_policy: String,
 }
 
 struct InventoryState {

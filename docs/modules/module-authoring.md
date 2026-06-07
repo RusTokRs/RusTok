@@ -189,7 +189,37 @@ Module-owned UI package не имеет права invent-ить свою locale
 - manifest/UI wiring: [manifest.md](./manifest.md)
 - module registry/index: [registry.md](./registry.md), [_index.md](./_index.md)
 
-### 5. Проверка UI-части
+### 5. Migration dependencies и descriptor evidence
+
+Если module migrations имеют cross-module FK/order assumptions, модуль обязан
+объявить эти зависимости рядом со своими migrations через `migration_dependencies()`
+в реализации module migration source. Это не заменяет `depends_on` из `modules.toml`:
+
+- `depends_on` описывает runtime/module graph;
+- `migration_dependencies()` описывает ordering constraints между конкретными migrations.
+
+Правила для новых migrations:
+
+1. Если migration ссылается на таблицу, index, enum/type или seed state другого модуля,
+   добавить descriptor dependency на конкретную upstream migration.
+2. Descriptor должен ссылаться только на реально существующую migration name/id.
+3. Server migrator должен агрегировать descriptors через module `MigrationSource`, а не
+   через package-local allowlist одного crate.
+4. Duplicate, missing descriptor и cycle failures считаются ошибкой migration contract, а
+   не flaky test.
+5. Для PostgreSQL smoke использовать apply-from-zero и, для критичных изменений,
+   incremental mode.
+
+Минимальные проверки:
+
+```bash
+./scripts/verify/verify-migration-smoke.sh
+RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
+```
+
+Для диагностики failures см. [runtime guardrails runbook](../guides/runtime-guardrails.md#wave-6-diagnostics-runbook).
+
+### 6. Проверка UI-части
 
 Минимальный check-list:
 
@@ -198,7 +228,7 @@ Module-owned UI package не имеет права invent-ить свою locale
 3. `npm run verify:i18n:ui`, если тронуты locale bundles или locale wiring
 4. UI package docs и host docs обновлены, если поменялся surface contract
 
-### 6. Обязательный FFA/FBA status block для модулей с UI
+### 7. Обязательный FFA/FBA status block для модулей с UI
 
 Для каждого module-owned UI пакета (admin/storefront/host-integrated surface) в локальном
 `docs/implementation-plan.md` обязателен status block:
@@ -222,7 +252,7 @@ Module-owned UI package не имеет права invent-ить свою locale
 2. Если меняется статус локального блока, синхронно обновляется central entry в `docs/modules/registry.md` (раздел FFA/FBA readiness board).
 3. Нельзя выставлять `parity_verified`/`transport_verified` без явного verification evidence в PR и в локальном плане.
 
-### 7. Правило для модулей, у которых UI запланирован, но ещё не реализован
+### 8. Правило для модулей, у которых UI запланирован, но ещё не реализован
 
 Чтобы не терять контроль над будущими UI-surface, для модулей с планируемым UI действует
 обязательное предварительное правило:

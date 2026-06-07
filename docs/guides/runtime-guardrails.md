@@ -98,6 +98,141 @@ Remote executor degradation:
 - `rustok_runtime_guardrail_remote_executor_expired_claims`
 - `rustok_runtime_guardrail_remote_executor_config`
 
+
+## Wave 6 diagnostics runbook
+
+Этот раздел закрывает короткий runbook для быстрых P0/P1 diagnostics из плана
+`docs/research/error fix.md`. Он предназначен для ситуаций, когда оператору или
+ревьюеру нужно проверить runtime invariants без полной компиляции workspace.
+
+### Module graph drift
+
+Симптомы:
+
+- `cargo xtask validate-manifest` падает на несовпадении `modules.toml`,
+  generated runtime registry или central registry evidence;
+- `scripts/verify/verify-runtime-context-invariants.mjs` сообщает, что
+  `pages -> [content, page_builder]` больше не подтверждается source-level
+  evidence.
+
+Быстрая диагностика:
+
+```bash
+cargo xtask validate-manifest
+node scripts/verify/verify-runtime-context-invariants.mjs
+```
+
+Что проверить:
+
+1. `modules.toml` — canonical dependency graph.
+2. `apps/server/src/modules/mod.rs` — runtime registry/test evidence.
+3. `docs/modules/registry.md` — central documentation evidence.
+
+Исправление считается корректным только если manifest, runtime registry и docs
+снова описывают один и тот же graph; ручной special-case для одного модуля не
+считается достаточным.
+
+### Channel resolution без locale или OAuth/client dimension
+
+Симптомы:
+
+- channel resolver получает пустой `RequestFacts.locale` при наличии resolved
+  locale в request extensions;
+- разные OAuth/client contexts шарят один channel cache key;
+- negative cache entry повторно используется для другого locale/client context.
+
+Быстрая диагностика:
+
+```bash
+node scripts/verify/verify-runtime-context-invariants.mjs
+./scripts/verify/verify-all.sh runtime-context-invariants
+```
+
+Что проверить:
+
+1. `apps/server/src/middleware/channel.rs` — `build_request_facts` читает
+   `AuthContextExtension` и `ResolvedRequestLocale`.
+2. `ChannelCacheKey` содержит `oauth_app_id` и `locale`.
+3. `apps/server/src/services/app_router.rs` сохраняет фактический порядок
+   execution: locale -> auth_context -> channel.
+
+### Locale DB amplification
+
+Симптомы:
+
+- repeated tenant-bound requests стабильно увеличивают
+  `rustok_tenant_locale_db_queries_total` без cache hits;
+- `rustok_tenant_locale_cache_misses_total` растёт на каждый запрос одного
+  tenant внутри TTL;
+- `rustok_tenant_locale_cache_entries` не отражает ожидаемые tenant snapshots.
+
+Быстрая диагностика:
+
+```bash
+node scripts/verify/verify-runtime-context-invariants.mjs
+curl -s http://localhost:5150/metrics | rg 'rustok_tenant_locale_(cache|db)'
+```
+
+Что проверить:
+
+1. `apps/server/src/middleware/locale.rs` — tenant locale policy cache включён
+   перед DB lookup.
+2. `apps/server/src/controllers/metrics.rs` — cache hit/miss/db query/
+   invalidation counters и entries gauge экспортируются.
+3. Если policy менялась вручную, проверить invalidation path или дождаться TTL
+   snapshot refresh перед сравнением метрик.
+
+### Migration dependency failure
+
+Симптомы:
+
+- `migration-smoke` падает на пустой PostgreSQL DB;
+- dependency descriptor ссылается на отсутствующую migration;
+- order/cycle validation падает после добавления module migration.
+
+Быстрая диагностика:
+
+```bash
+./scripts/verify/verify-migration-smoke.sh
+RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
+```
+
+Что проверить:
+
+1. Module crate с cross-module FK/order assumption объявляет
+   `migration_dependencies()` рядом с `migrations()`.
+2. Server migrator агрегирует descriptors через module `MigrationSource`, а не
+   через package-local allowlist для одного crate.
+3. Descriptor names ссылаются на существующие migrations, без duplicate/cycle.
+4. Если failure воспроизводится только в GitHub Actions, фиксировать именно
+   environment-specific причину, не отключая smoke job.
+
+### Inventory admin boundary drift
+
+Симптомы:
+
+- inventory admin write facade начинает использовать transitional GraphQL
+  fallback;
+- `set_variant_quantity` / `adjust_variant_quantity` снова выводят `inStock`
+  только из числовой quantity;
+- transitional adapter содержит inventory mutation markers.
+
+Быстрая диагностика:
+
+```bash
+node scripts/verify/verify-inventory-admin-boundary.mjs
+./scripts/verify/verify-all.sh inventory-admin-boundary
+```
+
+Что проверить:
+
+1. `crates/rustok-inventory/src/services/inventory.rs` — typed write result
+   строится из committed quantity + inventory policy.
+2. `crates/rustok-inventory/admin/src/api.rs` — write facades идут через
+   `crate::native::*` без `fallback_*`.
+3. `crates/rustok-inventory/admin/src/transport.rs` — transitional GraphQL
+   adapter остаётся read-only до удаления adapter-а.
+
 ## Stop-the-line условия
 
 - любой limiter backend стал unhealthy;
