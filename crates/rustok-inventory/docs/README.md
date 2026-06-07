@@ -29,7 +29,7 @@
   set-quantity трактует requested quantity как целевую available quantity и сохраняет
   существующий reserved stock, а backorder policy `continue` нормализуется case-insensitive
   в service/read-side и commerce checkout/storefront compatibility semantics через exported
-  inventory-owned policy helper; remaining write parity ещё добирается из umbrella `rustok-commerce`;
+  inventory-owned policy helper; дальнейший non-admin/channel-aware parity ведётся отдельно от admin UI scope;
 - public-channel inventory visibility/projection helpers (`normalize_public_channel_slug`, metadata allowlist parsing, channel-visible available quantity loaders, `PublicChannelInventoryProjection` / `PublicChannelInventoryVariantProjectionInput` и `load_inventory_projection_by_variant_for_public_channel`) принадлежат inventory crate-у и переиспользуются umbrella `rustok-commerce` для storefront/checkout compatibility без дублирования backorder policy branching в commerce DTO adapter-е;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
