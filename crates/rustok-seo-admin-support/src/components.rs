@@ -1,11 +1,12 @@
 use leptos::prelude::*;
 
 use crate::i18n::{
-    delivery_status_label, recommendation, remediation_action_label, remediation_reason, tr,
+    control_plane_state_body, control_plane_state_title, delivery_status_label, recommendation,
+    remediation_action_label, remediation_empty_label, remediation_reason, tr,
 };
 use crate::model::{
-    SeoCompletenessReport, SeoEntityForm, SeoEventDeliveryStatus, SeoEventDeliverySummary,
-    SeoRemediationHint,
+    SeoCompletenessReport, SeoControlPlaneWidgetState, SeoEntityForm, SeoEventDeliveryStatus,
+    SeoEventDeliverySummary, SeoRemediationHint, remediation_hint_for_issue_code,
 };
 
 #[component]
@@ -206,7 +207,6 @@ pub fn SeoSchemaPreviewCard(
                         </p>
                     }.into_any()
                 } else {
-                    let locale_value = locale.get();
                     view! {
                         <ul class="mt-2 space-y-1 text-xs text-amber-700">
                             {issues.into_iter().map(|issue| {
@@ -272,6 +272,51 @@ pub fn SeoRecommendationsCard(
 }
 
 #[component]
+pub fn SeoControlPlaneWidgetStateCard(
+    state: Signal<SeoControlPlaneWidgetState>,
+    locale: Signal<String>,
+) -> impl IntoView {
+    view! {
+        <article class="rounded-2xl border border-border bg-background/70 p-4 md:col-span-2 xl:col-span-2">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                {move || control_plane_state_title(Some(locale.get().as_str()), state.get().kind)}
+            </p>
+            <p class="mt-2 text-sm text-card-foreground">
+                {move || {
+                    let state_value = state.get();
+                    state_value.message.unwrap_or_else(|| {
+                        control_plane_state_body(Some(locale.get().as_str()), state_value.kind)
+                    })
+                }}
+            </p>
+        </article>
+    }
+}
+
+#[component]
+pub fn SeoControlPlaneWidgets(
+    state: Signal<SeoControlPlaneWidgetState>,
+    summary: Signal<SeoEventDeliverySummary>,
+    issue_code: Signal<Option<String>>,
+    locale: Signal<String>,
+) -> impl IntoView {
+    let hint = Signal::derive(move || {
+        issue_code
+            .get()
+            .map(|value| remediation_hint_for_issue_code(value.as_str()))
+            .unwrap_or_else(|| remediation_hint_for_issue_code(""))
+    });
+
+    view! {
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <SeoControlPlaneWidgetStateCard state=state locale=locale />
+            <SeoDeliveryStatusCards summary=summary locale=locale />
+            <SeoRemediationHintCard hint=hint locale=locale />
+        </div>
+    }
+}
+
+#[component]
 pub fn SeoDeliveryStatusCards(
     summary: Signal<SeoEventDeliverySummary>,
     locale: Signal<String>,
@@ -281,6 +326,7 @@ pub fn SeoDeliveryStatusCards(
         SeoEventDeliveryStatus::Sent,
         SeoEventDeliveryStatus::Retry,
         SeoEventDeliveryStatus::Failed,
+        SeoEventDeliveryStatus::DeadLetter,
     ];
 
     view! {
@@ -298,10 +344,11 @@ pub fn SeoDeliveryStatusCards(
                             SeoEventDeliveryStatus::Sent => summary.sent,
                             SeoEventDeliveryStatus::Retry => summary.retry,
                             SeoEventDeliveryStatus::Failed => summary.failed,
+                            SeoEventDeliveryStatus::DeadLetter => summary.dead_letter,
                         }
                     };
                     view! {
-                        <div class="rounded-xl border border-border bg-card px-3 py-2">
+                        <div class="rounded-xl border border-border bg-card px-3 py-2" data-seo-delivery-status=status.as_str()>
                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">{status_label}</p>
                             <p class="mt-1 text-sm font-semibold text-card-foreground">{move || status_value().to_string()}</p>
                         </div>
@@ -323,7 +370,14 @@ pub fn SeoRemediationHintCard(
                 {move || tr(Some(locale.get().as_str()), "Remediation hint", "Подсказка remediation")}
             </h4>
             <p class="mt-2 text-sm text-foreground">
-                {move || remediation_action_label(Some(locale.get().as_str()), hint.get().action)}
+                {move || {
+                    let hint_value = hint.get();
+                    if hint_value.issue_code.trim().is_empty() {
+                        remediation_empty_label(Some(locale.get().as_str()))
+                    } else {
+                        remediation_action_label(Some(locale.get().as_str()), hint_value.action)
+                    }
+                }}
             </p>
             <p class="mt-1 text-xs text-muted-foreground">
                 {move || remediation_reason(Some(locale.get().as_str()), hint.get().reason_key.as_str())}

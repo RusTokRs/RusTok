@@ -16,7 +16,7 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board;

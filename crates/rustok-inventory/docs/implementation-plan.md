@@ -16,10 +16,10 @@ admin read-side service, native-only server-function read/write transport для
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
+  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - backend crate экспортирует `AdminInventoryReadService` и typed read DTO (`AdminInventoryProductList`, `AdminInventoryProductDetail`, variants/prices/translations) как inventory-owned read-side source для native server-function transport;
   - inventory admin UI вынесен в explicit `ui/leptos.rs` adapter, вызывает inventory-owned `core`/`api` facade, read path идёт только через dedicated `admin/src/native.rs` native `#[server]` functions, write split представлен native `inventory/variant/set-quantity`, `inventory/variant/adjust-quantity`, `inventory/variant/reserve-quantity`, `inventory/variant/release-reservation` и `inventory/variant/check-availability` endpoint-ами с typed `InventoryQuantityWriteResult` / `InventoryReservationWriteResult` / `InventoryReservationReleaseWriteResult` / `InventoryAvailabilityCheckResult`; UI targeted set-quantity, +/-1 adjustment, reserve, release-reservation и check-availability controls работают без GraphQL fallback, применяют quantity/in-stock или available-quantity/in-stock state из write result, а прежний transitional commerce GraphQL adapter удалён из пакета;
   - unit tests покрывают locale fallback, tags extraction, price sale mapping, search normalization, variant title fallback в backend read-side service, service-level non-negative reservation/availability request invariants, reservation-aware set-quantity stocked/available calculation, policy-aware set/adjust quantity `in_stock` typed result semantics, no-create reservation release error semantics и tracked reservation item release guardrail;

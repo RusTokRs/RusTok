@@ -21,7 +21,7 @@
 ## FFA/FBA status block
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `docs_boundary`
 - Last verification evidence:
   - `cargo xtask module validate seo` *(pass, 2026-05-30)*

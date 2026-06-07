@@ -16,10 +16,10 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
+  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list request policy, module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `CustomerAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered CRUD flows.
 - Last verified at (UTC): 2026-06-02T00:00:00Z

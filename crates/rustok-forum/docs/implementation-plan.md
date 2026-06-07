@@ -5,23 +5,26 @@
 
 ## Execution checkpoint
 
-- Current phase: in_progress
-- Last checkpoint: Закрыт FW-1 contract freeze в design/contract режиме без rollout — добавлены machine-readable widget catalog v1, compatibility matrix и typed error mapping в `rustok-module.toml`; добавлены REST/GraphQL contract surfaces (`/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`) и validation service `ForumWidgetContractService`; добавлены regression проверки storefront approved-only reply visibility.
-- Next step: Держать FW-2/FW-3/FW-4 в `deferred` до закрытия `P5 / Wave 1 readiness` в central track; разрешены только contract/fallback-prep задачи без tenant activation delivery.
+- Current phase: ffa_admin_storefront_transport_ui_split
+- Last checkpoint: Forum UI получил следующий code-level FFA slice: storefront уже разделён на `core`/`transport`/`ui/leptos`, а admin package теперь тоже имеет framework-agnostic `admin/src/core.rs` для tag/filter/status helpers, `admin/src/transport.rs` facade над existing REST API и explicit Leptos adapter `admin/src/ui/leptos.rs`; crate root стал composition/re-export boundary.
+- Next step: Продолжать сужать admin `ui/leptos.rs`: переносить selected category/topic form snapshots, validation и view-model mapping в `admin/src/core.rs`, оставляя REST/GraphQL contracts без изменений.
 - Open blockers: Activation delivery по FW-2..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
-- Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs.
-- Last updated at (UTC): 2026-05-30T00:00:00Z
+- Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
+- Last updated at (UTC): 2026-06-07T09:43:11Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
-- Structural shape: `docs_boundary`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
   - API parity: forum widget catalog/validation доступен через REST + GraphQL contract surface;
-  - regression coverage расширено: storefront reply read-path подтверждает approved-only visibility semantics.
-- Last verified at (UTC): 2026-05-30T00:00:00Z
+  - regression coverage расширено: storefront reply read-path подтверждает approved-only visibility semantics;
+  - storefront FFA slice добавил `storefront/src/core.rs` для framework-agnostic href/status/rich-content policy, `storefront/src/transport.rs` facade поверх existing native-first + GraphQL fallback API и explicit Leptos adapter `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` теперь только wires modules и re-export `ForumView`;
+  - admin FFA slice добавил `admin/src/core.rs` для framework-agnostic tag parsing, category-filter normalization, count/status helpers, `admin/src/transport.rs` facade поверх existing REST API и explicit Leptos adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `ForumAdmin`;
+  - parity evidence: `cargo test -p rustok-forum-storefront --lib` подтверждает storefront pure-core helpers и сохраняет текущий native/GraphQL API contract без удаления fallback; `cargo test -p rustok-forum-admin --lib` подтверждает admin pure-core helpers и REST facade wiring;
+- Last verified at (UTC): 2026-06-07T09:43:11Z
 - Owner: `rustok-forum` module team
 
 ## Область работ
@@ -79,7 +82,7 @@
 - [x] Проверить полноту и актуальность `README.md` и локальных docs.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
 
-## Forum widget-driven backlog (FBA continuation)
+## Forum widget-driven backlog (future FBA, deferred until FFA phase-gate)
 
 ### Deferred policy (до закрытия P5 в central track)
 

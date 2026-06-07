@@ -17,7 +17,7 @@ capability integrations без дрейфа и битой документаци
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;

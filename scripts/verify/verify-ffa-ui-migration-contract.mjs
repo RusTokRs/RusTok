@@ -458,7 +458,9 @@ function collectStructuralShapeFilesystemErrors(registry) {
     const moduleRoot = path.join(repoRoot, path.dirname(path.dirname(sourcePlanPath)));
     const surfaces = ["admin", "storefront"];
     const corePaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["core.rs", "core"]));
-    const transportPaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["transport.rs", "transport"]));
+    const transportPaths = surfaces.flatMap((surface) =>
+      moduleSurfacePaths(moduleRoot, surface, ["transport.rs", "transport", "native.rs"]),
+    );
     const uiPaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["ui", path.join("ui", "leptos.rs"), path.join("ui", "leptos")]));
 
     const hasCore = hasAnyPath(corePaths);
@@ -469,7 +471,9 @@ function collectStructuralShapeFilesystemErrors(registry) {
       errors.push(`${moduleSlug}: Structural shape ${structuralShape} требует core.rs или core/ в admin/storefront src`);
     }
     if (["core_transport", "core_transport_ui"].includes(structuralShape) && !hasTransport) {
-      errors.push(`${moduleSlug}: Structural shape ${structuralShape} требует transport.rs или transport/ в admin/storefront src`);
+      errors.push(
+        `${moduleSlug}: Structural shape ${structuralShape} требует transport.rs, transport/ или documented single-adapter native.rs в admin/storefront src`,
+      );
     }
     if (structuralShape === "core_transport_ui" && !hasUi) {
       errors.push(`${moduleSlug}: Structural shape ${structuralShape} требует ui/leptos.rs или ui/leptos/ adapter в admin/storefront src`);

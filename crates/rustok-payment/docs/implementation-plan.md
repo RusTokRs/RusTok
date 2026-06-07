@@ -6,8 +6,8 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA/FBA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA/FBA-first sequencing (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
+- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
+- Next step: Выполнять ближайшие незавершённые пункты через FFA-first sequencing; FBA sequencing стартует только после FFA phase-gate (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-05-24T20:10:00Z
@@ -15,10 +15,10 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `no_ui_boundary`
 - Evidence:
-  - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
+  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
 - Last verified at (UTC): 2026-05-24T00:00:00Z
 - Owner: `rustok-payment` module team

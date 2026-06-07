@@ -277,6 +277,31 @@ test("fails when structural shape has no matching code layout", () => {
   }
 });
 
+test("passes when a temporary single-adapter native transport is documented as native.rs", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    registryShape: "core_transport_ui",
+    localShape: "core_transport_ui",
+  });
+
+  try {
+    rmSync(path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "transport"), {
+      recursive: true,
+      force: true,
+    });
+    writeFileSync(
+      path.join(fixture.root, "crates", "rustok-cart", "storefront", "src", "native.rs"),
+      "// single-adapter native transport fixture\n",
+    );
+    const result = runVerifier(fixture.root);
+    assert.equal(result.status, 0, `Expected native.rs transport fixture to succeed:
+${result.stdout}
+${result.stderr}`);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test("passes when docs script uses sh variant", () => {
   const fixture = withFixture({
     pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",

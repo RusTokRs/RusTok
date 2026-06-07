@@ -14,7 +14,7 @@ axum.workspace = true
 bytes = "1.0"
 chrono.workspace = true
 loco-rs.workspace = true
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-telemetry.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

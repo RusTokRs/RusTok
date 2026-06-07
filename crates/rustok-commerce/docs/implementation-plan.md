@@ -13,7 +13,7 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
@@ -45,7 +45,7 @@ typed shipping-profile registry плюс aggregate cart-promotion operator surfa
 - отдельный sales-channel домен в `commerce` не нужен: платформа уже имеет `rustok-channel`, и ecommerce должен стать channel-aware поверх него, а не дублировать его модель.
 
 
-## FFA/FBA transition (early alignment track)
+## FFA transition (FBA deferred alignment track)
 
 Статус: `in progress`
 
@@ -60,16 +60,16 @@ Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
   topology исполнения (embedded vs remote);
 - umbrella слой не возвращает ownership уже выделенных bounded contexts и продолжает
   выступать orchestration root для cross-domain сценариев checkout/post-order;
-- все новые Phase 8/9/10/11 инкременты должны сразу проходить FFA/FBA check:
+- все новые Phase 8/9/10/11 инкременты должны сразу проходить FFA check и future-FBA guardrail:
   transport-neutral service semantics, channel-aware boundaries, и отсутствие
   duplicated business rules в UI/transport adapters.
 
 Обязательные действия в ближайших итерациях:
 
 1. для каждого нового ecommerce endpoint фиксировать FFA parity (`#[server]` ↔ GraphQL/REST);
-2. для каждого нового post-order сценария фиксировать FBA boundary
+2. для каждого нового post-order сценария фиксировать future-FBA boundary placeholder
    (service contract first, transport adapters second);
-3. при обновлении execution checkpoint явно отмечать, какие FFA/FBA invariants были
+3. при обновлении execution checkpoint явно отмечать, какие FFA invariants и future-FBA guardrails были
    проверены в конкретном срезе.
 
 ## Область работ

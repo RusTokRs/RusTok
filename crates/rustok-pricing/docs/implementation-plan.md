@@ -17,10 +17,10 @@ rule и scope write paths, а полный promotions engine и остально
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - модуль ведётся в ускоренном FFA/FBA migration track как часть ecommerce family;
+  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - storefront pricing route теперь использует framework-agnostic `storefront/src/core.rs` для summary/label/effective context formatting, query href building и shared `StorefrontPricingQuery`; Leptos `lib.rs` больше не владеет этой presentation/request policy;
   - storefront transport разделён на thin facade + explicit `native_server_adapter` и `graphql_adapter`, при этом fallback order (`native #[server]` first, GraphQL second) сохранён;
   - Leptos render/bind adapter выделен в `storefront/src/ui/leptos.rs`, а `storefront/src/lib.rs` стал crate-level composition/re-export boundary;
