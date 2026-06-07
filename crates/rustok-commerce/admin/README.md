@@ -8,8 +8,8 @@ Leptos admin UI package for the `rustok-commerce` module.
 - Acts as the commerce-owned shipping-profile registry plus cart-promotion operator surface while ecommerce UI ownership is split by module boundaries.
 - Keeps the typed shipping-profile registry and aggregate cart-promotion orchestration inside the commerce package.
 - Provides native `#[server]` transport helpers for operator-side cart promotion preview/apply over `CartService`, even while the package UI remains focused on shipping-profile ownership.
-- Routes shipping-profile, promotion, and order-change operations through `admin/src/transport.rs`; default form policy lives in `admin/src/core.rs`, so the Leptos surface does not call raw `api::*` operations for covered flows.
-- Publishes the aggregate post-order change operator surface for exchange/claim order changes created by the return decision tree, while lifecycle mutations still call the order-owned GraphQL service contract.
+- Routes shipping-profile, promotion, and order-change operations through the subdomain files under `admin/src/transport/`; shipping-profile form state/draft policy, promotion/order-change command preparation, optional filter normalization, badge presentation classes, shipping-profile summary, cart-promotion display fallbacks, cart-adjustment view-models, and order-change resolution summary mapping live in the subdomain files under `admin/src/core/`, so the Leptos surface does not call raw `api::*` operations or own parsing/policy helpers for covered flows.
+- Publishes the aggregate post-order change operator surface for exchange/claim order changes created by the return decision tree, while lifecycle mutations stay behind the module-owned native/GraphQL transport facade.
 - Participates in the manifest-driven admin composition path through `rustok-module.toml`.
 - No longer carries product CRUD; that catalog UI now lives in `rustok-product/admin`.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.

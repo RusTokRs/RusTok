@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: post_order_operator_resolution_summary + FBA readiness hardening gate
-- Last checkpoint: Phase 10.4 operator UX продолжен: `rustok-commerce-admin` сохранил GraphQL fallback для post-order operator на случай недоступного native server-function transport и добавил resolution summary cards над return-bound exchange/claim order changes (`order_return_id`, `return_decision_action/source`, cancel reason) без host-owned rules.
+- Current phase: admin FFA transport module split + FBA readiness hardening gate
+- Last checkpoint: FFA-срез `rustok-commerce-admin` продолжил decomposition после `admin/src/core/`: single-file `admin/src/transport.rs` заменён на `admin/src/transport/` facade с subdomain files `shipping_profile`, `promotion`, `order_change`; public `transport::` API сохранён для Leptos adapter, raw `api::*` calls остаются внутри transport layer.
 - Next step: сначала зафиксировать FBA-readiness evidence для уже готовых ecommerce slices (service contract first, typed context/errors, explicit ports/events, transport adapters second), затем добавить end-to-end parity evidence для REST/GraphQL/native operator paths и только после этого расширять roadmap новыми marketplace/provider фазами.
 - Open blockers: OpenAPI contract test под default server features ранее блокировался существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `cargo test -p rustok-commerce-admin --features ssr` проходит.
 - Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
-- Last updated at (UTC): 2026-06-02T00:00:00Z
+- Last updated at (UTC): 2026-06-07T00:00:00Z
 
 
 ## FFA/FBA status
@@ -19,10 +19,11 @@
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - admin return decision tree теперь имеет transport parity (`/admin/orders/{id}/returns/decision` ↔ `createOrderReturnDecision`) над единым `PostOrderOrchestrationService`, включая completion semantics для `return_only/refund/exchange/claim`, без дублирования rules в host/UI adapters; live REST и GraphQL parity tests фиксируют claim → completed return + `order_change(change_type=claim)`;
   - module-owned admin UI получил native-first post-order change operator: операторы фильтруют order changes по `order_id/status` и вызывают `OrderService::apply_order_change` / `cancel_order_change` через module-owned `#[server]` functions с targeted SSR coverage, при этом GraphQL `orderChanges` / `applyOrderChange` / `cancelOrderChange` сохранены как fallback transport, когда native server-function transport недоступен;
-  - exchange/claim return-decision helper metadata теперь помечает создаваемые order changes `return_decision_action` и `return_decision_source`, а admin operator workspace показывает resolution summary cards из preview/metadata без переноса domain rules в UI;
+  - exchange/claim return-decision helper metadata теперь помечает создаваемые order changes `return_decision_action` и `return_decision_source`, а admin operator workspace показывает resolution summary cards из preview/metadata через framework-agnostic `admin/src/core/` helper без переноса domain rules в host или Leptos render adapter;
+  - FFA admin transport module split: `admin/src/lib.rs` больше не содержит Leptos render/business code и только wires modules + re-export `CommerceAdmin`; `admin/src/core/mod.rs` реэкспортирует subdomain files для form/command/view-model policy, а `admin/src/transport/mod.rs` реэкспортирует shipping-profile, cart-promotion и order-change transport operations over the existing native/GraphQL-capable `api` layer;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FBA-readiness gate включён для уже готовых ecommerce slices до расширения roadmap новыми marketplace/provider модулями: проверяются service-contract ownership, typed request context/errors, explicit cross-module ports/events и отсутствие business logic в transport/UI adapters.
-- Last verified at (UTC): 2026-06-02T00:00:00Z
+- Last verified at (UTC): 2026-06-07T00:00:00Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа

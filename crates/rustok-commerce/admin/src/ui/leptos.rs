@@ -7,9 +7,8 @@ use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{
-    CommerceAdminBootstrap, CommerceAdminCartSnapshot, CommerceCartPromotionDraft,
-    CommerceCartPromotionKind, CommerceCartPromotionPreview, CommerceCartPromotionScope,
-    CommerceOrderChange, CommerceOrderChangeActionDraft, ShippingProfile, ShippingProfileDraft,
+    CommerceAdminBootstrap, CommerceAdminCartSnapshot, CommerceCartPromotionKind,
+    CommerceCartPromotionPreview, CommerceCartPromotionScope, CommerceOrderChange, ShippingProfile,
 };
 use crate::{core, transport};
 
@@ -370,7 +369,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 bootstrap.current_tenant.id,
-                text_or_none(search_value),
+                core::trimmed_non_empty(search_value.as_str()),
             )
             .await
         },
@@ -393,8 +392,8 @@ pub fn CommerceAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 bootstrap.current_tenant.id,
-                text_or_none(order_id),
-                text_or_none(status),
+                core::trimmed_non_empty(order_id.as_str()),
+                core::trimmed_non_empty(status.as_str()),
             )
             .await
         },
@@ -495,17 +494,16 @@ pub fn CommerceAdmin() -> impl IntoView {
             set_error.set(Some(locale_unavailable_label.clone()));
             return;
         };
-        let draft = ShippingProfileDraft {
-            slug: slug.get_untracked().trim().to_string(),
-            name: name.get_untracked().trim().to_string(),
-            description: description.get_untracked().trim().to_string(),
-            metadata_json: metadata_json.get_untracked().trim().to_string(),
-            locale: submit_locale,
-        };
-        if draft.slug.is_empty() || draft.name.is_empty() {
+        let Some(draft) = core::prepare_shipping_profile_draft(
+            slug.get_untracked().as_str(),
+            name.get_untracked().as_str(),
+            description.get_untracked().as_str(),
+            metadata_json.get_untracked().as_str(),
+            submit_locale,
+        ) else {
             set_error.set(Some(required_label.clone()));
             return;
-        }
+        };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let current_id = editing_id.get_untracked();
@@ -659,25 +657,22 @@ pub fn CommerceAdmin() -> impl IntoView {
     let preview_required_label = promotion_required_label.clone();
     let preview_query_writer = query_writer.clone();
     let preview_promotion = Callback::new(move |_| {
-        let cart_id = promotion_cart_id.get_untracked().trim().to_string();
-        let source_id = promotion_source_id.get_untracked().trim().to_string();
-        if cart_id.is_empty() || source_id.is_empty() {
+        let Some(command) = core::prepare_cart_promotion_command(
+            promotion_cart_id.get_untracked().as_str(),
+            promotion_kind.get_untracked().as_str(),
+            promotion_scope.get_untracked().as_str(),
+            promotion_line_item_id.get_untracked().as_str(),
+            promotion_source_id.get_untracked().as_str(),
+            promotion_discount_percent.get_untracked().as_str(),
+            promotion_amount.get_untracked().as_str(),
+            promotion_metadata_json.get_untracked().as_str(),
+        ) else {
             set_promotion_error.set(Some(preview_required_label.clone()));
             return;
-        }
-        preview_query_writer.replace_value(AdminQueryKey::CartId.as_str(), cart_id.clone());
-        let draft = CommerceCartPromotionDraft {
-            kind: parse_promotion_kind(promotion_kind.get_untracked().as_str()),
-            scope: parse_promotion_scope(promotion_scope.get_untracked().as_str()),
-            line_item_id: promotion_line_item_id.get_untracked().trim().to_string(),
-            source_id,
-            discount_percent: promotion_discount_percent
-                .get_untracked()
-                .trim()
-                .to_string(),
-            amount: promotion_amount.get_untracked().trim().to_string(),
-            metadata_json: promotion_metadata_json.get_untracked().trim().to_string(),
         };
+        preview_query_writer.replace_value(AdminQueryKey::CartId.as_str(), command.cart_id.clone());
+        let cart_id = command.cart_id;
+        let draft = command.draft;
         let preview_error_label = preview_error_label.clone();
         set_promotion_busy.set(true);
         set_promotion_error.set(None);
@@ -696,25 +691,22 @@ pub fn CommerceAdmin() -> impl IntoView {
     let apply_required_label = promotion_required_label.clone();
     let apply_query_writer = query_writer.clone();
     let apply_promotion = Callback::new(move |_| {
-        let cart_id = promotion_cart_id.get_untracked().trim().to_string();
-        let source_id = promotion_source_id.get_untracked().trim().to_string();
-        if cart_id.is_empty() || source_id.is_empty() {
+        let Some(command) = core::prepare_cart_promotion_command(
+            promotion_cart_id.get_untracked().as_str(),
+            promotion_kind.get_untracked().as_str(),
+            promotion_scope.get_untracked().as_str(),
+            promotion_line_item_id.get_untracked().as_str(),
+            promotion_source_id.get_untracked().as_str(),
+            promotion_discount_percent.get_untracked().as_str(),
+            promotion_amount.get_untracked().as_str(),
+            promotion_metadata_json.get_untracked().as_str(),
+        ) else {
             set_promotion_error.set(Some(apply_required_label.clone()));
             return;
-        }
-        apply_query_writer.replace_value(AdminQueryKey::CartId.as_str(), cart_id.clone());
-        let draft = CommerceCartPromotionDraft {
-            kind: parse_promotion_kind(promotion_kind.get_untracked().as_str()),
-            scope: parse_promotion_scope(promotion_scope.get_untracked().as_str()),
-            line_item_id: promotion_line_item_id.get_untracked().trim().to_string(),
-            source_id,
-            discount_percent: promotion_discount_percent
-                .get_untracked()
-                .trim()
-                .to_string(),
-            amount: promotion_amount.get_untracked().trim().to_string(),
-            metadata_json: promotion_metadata_json.get_untracked().trim().to_string(),
         };
+        apply_query_writer.replace_value(AdminQueryKey::CartId.as_str(), command.cart_id.clone());
+        let cart_id = command.cart_id;
+        let draft = command.draft;
         let apply_error_label = apply_error_label.clone();
         set_promotion_busy.set(true);
         set_promotion_error.set(None);
@@ -741,10 +733,14 @@ pub fn CommerceAdmin() -> impl IntoView {
     });
     let clear_order_query_writer = query_writer.clone();
     let order_change_action = Callback::new(move |(change_id, apply): (String, bool)| {
-        if change_id.trim().is_empty() {
+        let Some(command) = core::prepare_order_change_action_command(
+            change_id.as_str(),
+            order_change_metadata_json.get_untracked().as_str(),
+            order_change_cancel_reason.get_untracked().as_str(),
+        ) else {
             set_order_change_error.set(Some(order_change_required_label.clone()));
             return;
-        }
+        };
         let Some(CommerceAdminBootstrap { current_tenant }) =
             bootstrap.get_untracked().and_then(Result::ok)
         else {
@@ -754,16 +750,8 @@ pub fn CommerceAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let action_error_label = order_change_action_error_label.clone();
-        let draft = CommerceOrderChangeActionDraft {
-            metadata_json: order_change_metadata_json
-                .get_untracked()
-                .trim()
-                .to_string(),
-            reason: order_change_cancel_reason
-                .get_untracked()
-                .trim()
-                .to_string(),
-        };
+        let change_id = command.change_id;
+        let draft = command.draft;
         set_order_change_busy.set(true);
         set_order_change_error.set(None);
         spawn_local(async move {
@@ -838,7 +826,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                             <div class="space-y-2">
                                                 <div class="flex flex-wrap items-center gap-2">
-                                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", active_badge(profile.active))>{active_label}</span>
+                                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", core::active_badge_class(profile.active))>{active_label}</span>
                                                     <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{profile.slug.clone()}</span>
                                                 </div>
                                                 <h4 class="text-base font-semibold text-card-foreground">{profile.name.clone()}</h4>
@@ -1009,12 +997,13 @@ fn apply_shipping_profile(
     set_description: WriteSignal<String>,
     set_metadata_json: WriteSignal<String>,
 ) {
-    set_editing_id.set(Some(profile.id.clone()));
+    let state = core::shipping_profile_form_state(profile);
+    set_editing_id.set(state.editing_id);
     set_selected.set(Some(profile.clone()));
-    set_slug.set(profile.slug.clone());
-    set_name.set(profile.name.clone());
-    set_description.set(profile.description.clone().unwrap_or_default());
-    set_metadata_json.set(profile.metadata.clone());
+    set_slug.set(state.slug);
+    set_name.set(state.name);
+    set_description.set(state.description);
+    set_metadata_json.set(state.metadata_json);
 }
 
 fn clear_shipping_profile_form(
@@ -1025,26 +1014,29 @@ fn clear_shipping_profile_form(
     set_description: WriteSignal<String>,
     set_metadata_json: WriteSignal<String>,
 ) {
-    set_editing_id.set(None);
+    let state = core::empty_shipping_profile_form_state();
+    set_editing_id.set(state.editing_id);
     set_selected.set(None);
-    set_slug.set(String::new());
-    set_name.set(String::new());
-    set_description.set(String::new());
-    set_metadata_json.set(String::new());
+    set_slug.set(state.slug);
+    set_name.set(state.name);
+    set_description.set(state.description);
+    set_metadata_json.set(state.metadata_json);
 }
 
 fn summarize_shipping_profile(locale: Option<&str>, profile: &ShippingProfile) -> String {
-    format!(
-        "{} ({}) | {} | {}",
-        profile.name,
-        profile.slug,
-        localized_active_label(locale, profile.active),
-        profile.description.clone().unwrap_or_else(|| t(
-            locale,
-            "commerce.summary.shippingProfile.noDescription",
-            "no description"
-        ))
+    let active_label = localized_active_label(locale, profile.active);
+    let no_description_label = t(
+        locale,
+        "commerce.summary.shippingProfile.noDescription",
+        "no description",
+    );
+
+    core::shipping_profile_summary_view_model(
+        profile,
+        active_label.as_str(),
+        no_description_label.as_str(),
     )
+    .value
 }
 
 fn localized_active_label(locale: Option<&str>, active: bool) -> String {
@@ -1052,38 +1044,6 @@ fn localized_active_label(locale: Option<&str>, active: bool) -> String {
         t(locale, "commerce.common.active", "ACTIVE")
     } else {
         t(locale, "commerce.common.inactive", "INACTIVE")
-    }
-}
-
-fn text_or_none(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn active_badge(active: bool) -> &'static str {
-    if active {
-        "border-emerald-200 bg-emerald-50 text-emerald-700"
-    } else {
-        "border-slate-200 bg-slate-100 text-slate-700"
-    }
-}
-
-fn parse_promotion_kind(value: &str) -> CommerceCartPromotionKind {
-    match value {
-        "percentage_discount" => CommerceCartPromotionKind::PercentageDiscount,
-        _ => CommerceCartPromotionKind::FixedDiscount,
-    }
-}
-
-fn parse_promotion_scope(value: &str) -> CommerceCartPromotionScope {
-    match value {
-        "cart" => CommerceCartPromotionScope::Cart,
-        "line_item" => CommerceCartPromotionScope::LineItem,
-        _ => CommerceCartPromotionScope::Shipping,
     }
 }
 
@@ -1095,7 +1055,7 @@ fn render_promotion_preview(
         <div class="mt-3 grid gap-3 md:grid-cols-2">
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.kind", "Kind") value=localized_promotion_kind(locale, &preview.kind) />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.scope", "Scope") value=localized_promotion_scope(locale, &preview.scope) />
-            <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=preview.line_item_id.unwrap_or_else(|| "-".to_string()) />
+            <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=core::promotion_preview_view_model(&preview).line_item />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.currency", "Currency") value=preview.currency_code />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.base", "Base") value=preview.base_amount />
             <MetricCard title=t(locale, "commerce.cartPromotion.metric.adjustment", "Adjustment") value=preview.adjustment_amount />
@@ -1113,6 +1073,19 @@ fn render_order_changes(
     cancel_label: String,
     busy: ReadSignal<bool>,
 ) -> AnyView {
+    let resolution_return_label = t(locale, "commerce.orderChanges.resolution.return", "Return");
+    let resolution_action_label = t(
+        locale,
+        "commerce.orderChanges.resolution.action",
+        "Decision",
+    );
+    let resolution_source_label = t(locale, "commerce.orderChanges.resolution.source", "Source");
+    let resolution_cancel_reason_label = t(
+        locale,
+        "commerce.orderChanges.resolution.cancelReason",
+        "Cancel reason",
+    );
+
     view! {
         <div class="space-y-3">
             {changes.into_iter().map(|change| {
@@ -1121,12 +1094,18 @@ fn render_order_changes(
                 let can_update = change.status == "pending";
                 let description = change.description.clone();
                 let has_description = description.is_some();
+                let resolution_summary = core::order_change_resolution_summary(&change);
+                let has_resolution_summary = resolution_summary.has_any();
+                let resolution_return_label = resolution_return_label.clone();
+                let resolution_action_label = resolution_action_label.clone();
+                let resolution_source_label = resolution_source_label.clone();
+                let resolution_cancel_reason_label = resolution_cancel_reason_label.clone();
                 view! {
                     <article class="rounded-2xl border border-border bg-background p-5">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div class="space-y-2">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", order_change_status_badge(change.status.as_str()))>{change.status.clone()}</span>
+                                    <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", core::order_change_status_badge_class(change.status.as_str()))>{change.status.clone()}</span>
                                     <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{change.change_type.clone()}</span>
                                 </div>
                                 <h4 class="break-all text-base font-semibold text-card-foreground">{change.id.clone()}</h4>
@@ -1141,6 +1120,14 @@ fn render_order_changes(
                                 <button type="button" class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || busy.get() || !can_update on:click=move |_| action.run((cancel_id.clone(), false))>{cancel_label.clone()}</button>
                             </div>
                         </div>
+                        <Show when=move || has_resolution_summary>
+                            <div class="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                                <MetricCard title=resolution_return_label.clone() value=resolution_summary.order_return_value() />
+                                <MetricCard title=resolution_action_label.clone() value=resolution_summary.return_decision_action_value() />
+                                <MetricCard title=resolution_source_label.clone() value=resolution_summary.return_decision_source_value() />
+                                <MetricCard title=resolution_cancel_reason_label.clone() value=resolution_summary.cancellation_reason_value() />
+                            </div>
+                        </Show>
                         <div class="mt-4 grid gap-3 md:grid-cols-2">
                             <pre class="overflow-x-auto rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{change.preview.clone()}</pre>
                             <pre class="overflow-x-auto rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{change.metadata.clone()}</pre>
@@ -1151,14 +1138,6 @@ fn render_order_changes(
         </div>
     }
     .into_any()
-}
-
-fn order_change_status_badge(status: &str) -> &'static str {
-    match status {
-        "applied" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "cancelled" => "border-rose-200 bg-rose-50 text-rose-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
-    }
 }
 
 fn render_cart_snapshot(locale: Option<&str>, cart: CommerceAdminCartSnapshot) -> AnyView {
@@ -1175,12 +1154,17 @@ fn render_cart_snapshot(locale: Option<&str>, cart: CommerceAdminCartSnapshot) -
             <div class="space-y-3">
                 {cart.adjustments.into_iter().map(|adjustment| view! {
                     <article class="rounded-xl border border-border p-4">
-                        <div class="grid gap-3 md:grid-cols-2">
-                            <MetricCard title=t(locale, "commerce.cartPromotion.metric.source", "Source") value=format!("{} / {}", adjustment.source_type, adjustment.source_id.unwrap_or_else(|| "-".to_string())) />
-                            <MetricCard title=t(locale, "commerce.cartPromotion.metric.scope", "Scope") value=localized_promotion_scope_value(locale, adjustment.scope.as_deref()) />
-                            <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=adjustment.line_item_id.unwrap_or_else(|| "-".to_string()) />
-                            <MetricCard title=t(locale, "commerce.field.amount", "Amount") value=format!("{} {}", adjustment.currency_code, adjustment.amount) />
-                        </div>
+                        {
+                            let adjustment_view = core::cart_adjustment_view_model(&adjustment);
+                            view! {
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    <MetricCard title=t(locale, "commerce.cartPromotion.metric.source", "Source") value=adjustment_view.source />
+                                    <MetricCard title=t(locale, "commerce.cartPromotion.metric.scope", "Scope") value=localized_promotion_scope_value(locale, Some(adjustment_view.scope.as_str())) />
+                                    <MetricCard title=t(locale, "commerce.cartPromotion.metric.lineItem", "Line item") value=adjustment_view.line_item />
+                                    <MetricCard title=t(locale, "commerce.field.amount", "Amount") value=adjustment_view.amount />
+                                </div>
+                            }
+                        }
                         <pre class="mt-3 overflow-x-auto rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{adjustment.metadata}</pre>
                     </article>
                 }).collect_view()}
