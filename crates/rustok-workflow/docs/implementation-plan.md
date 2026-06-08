@@ -7,7 +7,7 @@ capability integrations без дрейфа и битой документаци
 ## Execution checkpoint
 
 - Current phase: FFA admin core policy expansion
-- Last checkpoint: FFA-срез workflow admin дополнительно вынес module route toggle/legacy href policy, transport error presentation и template create command/name policy в framework-agnostic `admin/src/core.rs`; `admin/src/ui/leptos.rs` остался тонким adapter-слоем, который связывает Leptos signals/callbacks с `transport/` facade и core-owned commands/view-models.
+- Last checkpoint: FFA-срез workflow admin дополнительно вынес module route toggle/legacy href policy, transport request context, transport error presentation и template create command/name policy в framework-agnostic `admin/src/core.rs`; `admin/src/transport/mod.rs` принимает core-owned context/command DTO, а `admin/src/ui/leptos.rs` остался тонким adapter-слоем, который связывает Leptos signals/callbacks с `transport/` facade и core-owned commands/view-models.
 - Next step: Добавить native/server-function adapter за `transport/` facade и собрать parity evidence для native + GraphQL paths перед повышением статуса.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; избегать долгих full-workspace компиляций, использовать targeted checks/timeouts.
@@ -21,7 +21,7 @@ capability integrations без дрейфа и битой документаци
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
-  - FFA admin slice: status badge presentation, workflow table row mapping, template category styling, template-name normalization, module route toggle/legacy href policy, transport error presentation и template create command/name policy теперь живут в framework-agnostic `admin/src/core.rs` с unit tests;
+  - FFA admin slice: status badge presentation, workflow table row mapping, template category styling, template-name normalization, module route toggle/legacy href policy, transport request context, transport error presentation и template create command/name policy теперь живут в framework-agnostic `admin/src/core.rs` с unit tests;
   - transport slice: текущий GraphQL adapter перенесён под `admin/src/transport/graphql_adapter.rs`, а `admin/src/transport/mod.rs` стал стабильным facade для будущего native/server-function adapter; Leptos UI больше не зависит от GraphQL adapter module напрямую;
   - UI adapter slice: Leptos-only render code перенесён в `admin/src/ui/leptos.rs`, а crate root оставлен composition/re-export layer для дальнейшего добавления других host adapters;
   - дальнейшее повышение статуса требует native/server-function + GraphQL parity evidence и обновления local+central docs в том же change.
@@ -49,7 +49,7 @@ capability integrations без дрейфа и битой документаци
 - [x] закрепить workflow engine и execution journal как module-owned runtime;
 - [x] зафиксировать transport adapters и admin UI внутри модуля;
 - [x] нормализовать local docs и убрать битую кодировку из module docs;
-- [~] удерживать sync между workflow runtime contract, UI surfaces и module metadata; текущий FFA slice вынес presentation/view-model helpers, module route policy, error presentation и template create command policy из Leptos render path, добавил transport facade и выделил `ui/leptos` adapter без изменения manifest или внешнего GraphQL contract.
+- [~] удерживать sync между workflow runtime contract, UI surfaces и module metadata; текущий FFA slice вынес presentation/view-model helpers, module route policy, transport request context, error presentation и template create command policy из Leptos render path, добавил transport facade и выделил `ui/leptos` adapter без изменения manifest или внешнего GraphQL contract.
 
 ### 2. Execution hardening
 

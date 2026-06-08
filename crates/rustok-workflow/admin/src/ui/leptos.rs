@@ -5,8 +5,8 @@ use leptos_router::components::A;
 use rustok_api::UiRouteContext;
 
 use crate::core::{
-    workflow_admin_nav_view_model, workflow_error_view_model, workflow_row_view_model,
-    workflow_template_card_view_model, workflow_template_create_command,
+    workflow_admin_nav_view_model, workflow_admin_transport_context, workflow_error_view_model,
+    workflow_row_view_model, workflow_template_card_view_model, workflow_template_create_command,
     WorkflowStatusPresentation,
 };
 use crate::i18n::t;
@@ -66,10 +66,13 @@ pub fn WorkflowAdmin() -> impl IntoView {
         workflow_admin_nav_view_model(route_context.route_segment.as_deref(), showing_templates);
 
     let workflows_resource = local_resource(
-        move || (token.get(), tenant.get(), refresh_nonce.get()),
-        move |(token_value, tenant_value, _)| async move {
-            transport::fetch_workflows(token_value, tenant_value).await
+        move || {
+            (
+                workflow_admin_transport_context(token.get(), tenant.get()),
+                refresh_nonce.get(),
+            )
         },
+        move |(context, _)| async move { transport::fetch_workflows(context).await },
     );
 
     view! {
@@ -287,10 +290,13 @@ fn TemplateGallery(
     let token_for_templates = token.clone();
     let tenant_for_templates = tenant_slug.clone();
     let templates_resource = local_resource(
-        move || (token_for_templates.clone(), tenant_for_templates.clone()),
-        move |(token_value, tenant_value)| async move {
-            transport::fetch_templates(token_value, tenant_value).await
+        move || {
+            workflow_admin_transport_context(
+                token_for_templates.clone(),
+                tenant_for_templates.clone(),
+            )
         },
+        move |context| async move { transport::fetch_templates(context).await },
     );
 
     view! {
@@ -333,8 +339,10 @@ fn TemplateGallery(
                                                 name=current_name.clone()
                                                 on_name_change=Callback::new(move |value| set_name_input.set(value))
                                                 on_use=Callback::new(move |_| {
-                                                    let token_value = token_for_request.clone();
-                                                    let tenant_value = tenant_for_request.clone();
+                                                    let context = workflow_admin_transport_context(
+                                                        token_for_request.clone(),
+                                                        tenant_for_request.clone(),
+                                                    );
                                                     let template_id = template_id.clone();
                                                     let command = workflow_template_create_command(
                                                         &template_id,
@@ -344,12 +352,7 @@ fn TemplateGallery(
                                                     set_pending_id.set(Some(command.template_id.clone()));
 
                                                     spawn_local(async move {
-                                                        match transport::create_from_template(
-                                                            token_value,
-                                                            tenant_value,
-                                                            command.template_id.clone(),
-                                                            command.workflow_name,
-                                                        ).await {
+                                                        match transport::create_from_template(context, command).await {
                                                             Ok(workflow_id) => {
                                                                 set_pending_id.set(None);
                                                                 set_name_input.set(String::new());
