@@ -1,17 +1,21 @@
 # rustok-index-admin
 
-Leptos admin UI package for the `rustok-index` module.
+Leptos admin UI adapter package for the `rustok-index` module.
 
 ## Responsibilities
 
 - Exposes the index module overview used by `apps/admin`.
 - Keeps index-specific operator visibility inside the module package.
 - Participates in the manifest-driven admin UI composition path through `rustok-module.toml`.
-- Uses native Leptos `#[server]` functions for the bootstrap surface.
+- Keeps the admin surface in FFA shape: Leptos-free `core.rs`, module-owned `transport/` facade, and explicit `ui/leptos.rs` render adapter.
+- Uses native Leptos `#[server]` functions for the bootstrap surface; this overview is currently a documented native-only single-adapter state because no GraphQL/REST operator contract exists yet.
 
 ## Entry Points
 
-- `IndexAdmin` - root admin page component for the module.
+- `IndexAdmin` - re-exported root admin page component for the module.
+- `src/core.rs` - framework-agnostic view-model and error formatting helpers.
+- `src/transport/` - native server-function bootstrap facade.
+- `src/ui/leptos.rs` - Leptos render/bind adapter.
 
 ## Interactions
 

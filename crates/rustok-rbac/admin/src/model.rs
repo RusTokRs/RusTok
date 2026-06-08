@@ -10,13 +10,13 @@ pub struct RbacAdminBootstrap {
     pub host_surfaces: Vec<RbacHostSurfaceLink>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RbacModulePermissionGroup {
     pub module_slug: String,
     pub permissions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RbacHostSurfaceLink {
     pub label: String,
     pub href: String,

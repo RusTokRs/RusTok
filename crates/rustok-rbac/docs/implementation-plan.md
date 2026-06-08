@@ -5,12 +5,22 @@ steady-state hardening и drift-prevention режиме.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: phase_b_in_progress
+- Last checkpoint: Admin overview переведён на FFA shape: Leptos-free `core.rs`, native-only `transport/` facade и явный `ui/leptos.rs` adapter.
+- Next step: Расширить operator flows/verification для role and permission management surfaces и добавить GraphQL/REST fallback только если такой remote/headless admin contract будет утверждён.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
+- Last updated at (UTC): 2026-06-08T00:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - admin package split introduced `admin/src/core.rs` for Leptos-free overview view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
+  - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-rbac` had no legacy GraphQL/REST operator contract for this overview;
+  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`.
 
 ## Область работ
 
@@ -23,6 +33,7 @@ steady-state hardening и drift-prevention режиме.
 - relation-store остаётся source of truth для role/permission assignments;
 - live authorization выполняется только через Casbin-backed evaluator;
 - `RuntimePermissionResolver` и related contracts уже живут в модуле, а `apps/server` держит только adapters и observability;
+- operator-facing admin overview уже опубликован через `rustok-rbac-admin` и разделён по FFA слоям (`core`, native-only `transport`, `ui/leptos`);
 - local docs, root `README.md` и manifest metadata входят в scoped audit path.
 
 ## Этапы
@@ -39,7 +50,7 @@ steady-state hardening и drift-prevention режиме.
 
 - [ ] держать periodic verification зелёным для RBAC/server integration;
 - [ ] продолжать вычищать presentation-only role inference вне primary authorization path;
-- [ ] расширять guardrails при появлении новых RBAC-managed surfaces.
+- [~] расширять guardrails при появлении новых RBAC-managed surfaces; текущий admin overview уже показывает live permission snapshot и module-declared catalog через FFA native-only transport.
 
 ### 3. Operability
 

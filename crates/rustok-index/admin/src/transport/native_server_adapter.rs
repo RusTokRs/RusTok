@@ -1,38 +1,11 @@
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 
 use crate::model::IndexAdminBootstrap;
 #[cfg(feature = "ssr")]
 use crate::model::{IndexCounterSnapshot, IndexModuleSnapshot, IndexTenantSnapshot};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ApiError {
-    ServerFn(String),
-}
-
-impl Display for ApiError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ServerFn(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for ApiError {}
-
-impl From<ServerFnError> for ApiError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
-
-pub async fn fetch_bootstrap() -> Result<IndexAdminBootstrap, ApiError> {
-    index_bootstrap_native().await.map_err(Into::into)
-}
-
 #[server(prefix = "/api/fn", endpoint = "index/bootstrap")]
-async fn index_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnError> {
+pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;

@@ -25,7 +25,7 @@ ingestion и cross-module query substrate.
 - не должен схлопываться с `rustok-search`: `search` может читать projections, но `index` не становится search module;
 - event-driven consumers модуля публикуются через `IndexModule::register_event_listeners(...)` и собираются сервером из `ModuleRegistry`, а не через отдельный host-owned dispatcher path;
 - текущие module-owned consumers включают `content_indexer`, `product_indexer` и `flex_indexer` для standalone Flex read-model slice `index_flex_entries`;
-- остаётся `Core` module без самостоятельного storefront/admin UX как primary surface.
+- остаётся `Core` module без самостоятельного storefront UX как primary surface; operator-facing admin overview живёт в `rustok-index-admin` и оформлен как FFA `core` + native-only `transport` + `ui/leptos` adapter.
 
 ## Проверка
 

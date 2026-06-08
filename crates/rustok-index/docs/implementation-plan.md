@@ -5,12 +5,22 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: phase_b_in_progress
+- Last checkpoint: Admin overview переведён на FFA shape: Leptos-free `core.rs`, native-only `transport/` facade и явный `ui/leptos.rs` adapter.
+- Next step: Расширить operator flows для health/rebuild control и добавить GraphQL/REST fallback только если такой remote/headless admin contract будет утверждён.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
+- Last updated at (UTC): 2026-06-08T00:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - admin package split introduced `admin/src/core.rs` for Leptos-free view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
+  - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-index` had no legacy GraphQL/REST operator contract for this overview;
+  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`.
 
 ## Область работ
 
@@ -21,6 +31,7 @@
 ## Текущее состояние
 
 - базовая crate/module structure уже встроена в workspace;
+- operator-facing admin overview уже опубликован через `rustok-index-admin` и разделён по FFA слоям (`core`, native-only `transport`, `ui/leptos`);
 - canonical direction зафиксирован: `index` отвечает за ingestion и indexed reads, а не за ranking/UX поиска;
 - модуль уже рассматривается как substrate для cross-module filtering и link-aware queries;
 - event-driven consumers переведены на module-owned runtime path через `register_event_listeners(...)`, старый host/legacy listener path удалён;
@@ -45,7 +56,7 @@
 ### 3. Operability
 
 - [ ] покрыть consistency drift, rebuild duration и sync lag наблюдаемыми метриками;
-- [ ] добавить operator flows для health verification и rebuild control;
+- [~] добавить operator flows для health verification и rebuild control; текущий admin overview уже показывает tenant/module/counter bootstrap через FFA native-only transport;
 - [ ] документировать новые query/ingestion guarantees одновременно с изменением runtime surface.
 
 ## Проверка

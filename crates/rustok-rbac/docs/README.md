@@ -23,6 +23,7 @@
 - `apps/server` владеет только adapter/wiring слоем: store adapters, cache integration, transport extractors и observability;
 - `rustok-core` остаётся владельцем typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
 - live authorization идёт только через Casbin-backed evaluation, без relation-only/shadow parity path;
+- operator-facing admin overview живёт в `rustok-rbac-admin` и оформлен как FFA `core` + native-only `transport` + `ui/leptos` adapter;
 - новые public RBAC surfaces и event contracts требуют синхронизации module docs, server docs и verification plan.
 
 ## Наблюдаемость и release gates

@@ -1,38 +1,11 @@
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 
 use crate::model::RbacAdminBootstrap;
 #[cfg(feature = "ssr")]
 use crate::model::{RbacHostSurfaceLink, RbacModulePermissionGroup};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ApiError {
-    ServerFn(String),
-}
-
-impl Display for ApiError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ServerFn(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for ApiError {}
-
-impl From<ServerFnError> for ApiError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
-
-pub async fn fetch_bootstrap() -> Result<RbacAdminBootstrap, ApiError> {
-    rbac_bootstrap_native().await.map_err(Into::into)
-}
-
 #[server(prefix = "/api/fn", endpoint = "rbac/bootstrap")]
-async fn rbac_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
+pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{infer_user_role_from_permissions, AuthContext, TenantContext};
