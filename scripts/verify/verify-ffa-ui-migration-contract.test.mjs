@@ -32,6 +32,11 @@ function withFixture({
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "src", "ui"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-region", "storefront", "locales"), { recursive: true });
   mkdirSync(path.join(root, "crates", "rustok-pages", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-product", "storefront", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-product", "storefront", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-product", "admin", "src", "ui"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-customer", "admin", "src", "transport"), { recursive: true });
+  mkdirSync(path.join(root, "crates", "rustok-customer", "admin", "src", "ui"), { recursive: true });
 
   writeFileSync(
     path.join(root, "docs", "research", "dioxus-ffa-ui-migration-plan.md"),
@@ -127,6 +132,122 @@ function withFixture({
   writeFileSync(
     path.join(root, "crates", "rustok-pages", "storefront", "README.md"),
     "src/ui/leptos.rs core.rs transport.rs",
+  );
+
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "storefront", "src", "core.rs"),
+    [
+      "pub struct ProductTransportErrorDomEvidence;",
+      "pub fn build_product_transport_error_dom_evidence() {}",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "storefront", "src", "transport", "mod.rs"),
+    "pub struct ProductTransportError; ProductTransportPath NativeServer Graphql native_server graphql fallback_attempted native_error graphql_error",
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "storefront", "src", "ui", "leptos.rs"),
+    [
+      "build_product_transport_error_dom_evidence",
+      "data-product-transport-failed-path",
+      "data-product-transport-fallback-attempted",
+      "data-product-transport-native-error",
+      "data-product-transport-graphql-error",
+    ].join(" "),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "storefront", "README.md"),
+    "ProductTransportError ProductTransportErrorDomEvidence data-product-transport-*",
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "admin", "src", "core.rs"),
+    [
+      "ProductAdminShellViewModel",
+      "build_product_admin_shell_view_model",
+      "ProductAdminProfilePanelViewModel",
+      "build_product_admin_profile_panel_loading_view_model",
+      "build_product_admin_profile_panel_error_view_model",
+      "build_product_admin_profile_panel_ready_view_model",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "admin", "src", "ui", "leptos.rs"),
+    [
+      "build_product_admin_shell_view_model",
+      "build_product_admin_profile_panel_loading_view_model",
+      "build_product_admin_profile_panel_error_view_model",
+      "build_product_admin_profile_panel_ready_view_model",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-product", "admin", "README.md"),
+    "admin shell copy profile-panel state",
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "src", "core.rs"),
+    [
+      "CustomerAdminDraftInput",
+      "CustomerAdminSubmitCommand",
+      "CustomerAdminSubmitCommandError",
+      "build_customer_admin_submit_command",
+      "EmailRequired",
+      "LocaleUnavailable",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "src", "lib.rs"),
+    [
+      "mod core;",
+      "mod i18n;",
+      "mod model;",
+      "mod transport;",
+      "mod ui;",
+      "pub use ui::CustomerAdmin;",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "src", "transport", "mod.rs"),
+    [
+      "mod native_server_adapter;",
+      "pub use native_server_adapter::ApiError;",
+      "use native_server_adapter as native;",
+      "native::fetch_bootstrap().await",
+      "native::fetch_customers(search, page, per_page).await",
+      "native::fetch_customer_detail(customer_id).await",
+      "native::create_customer(payload).await",
+      "native::update_customer(customer_id, payload).await",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "src", "transport", "native_server_adapter.rs"),
+    [
+      "#[server(prefix = \"/api/fn\", endpoint = \"customer/bootstrap\")]",
+      "#[server(prefix = \"/api/fn\", endpoint = \"customer/list\")]",
+      "#[server(prefix = \"/api/fn\", endpoint = \"customer/detail\")]",
+      "#[server(prefix = \"/api/fn\", endpoint = \"customer/create\")]",
+      "#[server(prefix = \"/api/fn\", endpoint = \"customer/update\")]",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "src", "ui", "leptos.rs"),
+    "transport::fetch_bootstrap transport::fetch_customers build_customer_admin_submit_command CustomerAdminDraftInput CustomerAdminSubmitCommandError::EmailRequired CustomerAdminSubmitCommandError::LocaleUnavailable",
+  );
+
+  writeFileSync(
+    path.join(root, "crates", "rustok-customer", "admin", "README.md"),
+    "admin/src/core.rs submit-command admin/src/transport/mod.rs admin/src/transport/native_server_adapter.rs admin/src/ui/leptos.rs",
   );
 
 

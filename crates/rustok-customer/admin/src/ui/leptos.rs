@@ -4,9 +4,12 @@ use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
-use crate::core::customer_list_request;
+use crate::core::{
+    build_customer_admin_submit_command, customer_list_request, CustomerAdminDraftInput,
+    CustomerAdminSubmitCommandError,
+};
 use crate::i18n::t;
-use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerListItem};
+use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerListItem};
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -146,31 +149,34 @@ pub fn CustomerAdmin() -> impl IntoView {
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
-        if email.get_untracked().trim().is_empty() {
-            set_error.set(Some(email_required_label.clone()));
-            return;
-        }
-        let Some(submit_locale) = submit_ui_locale.clone() else {
-            set_error.set(Some(locale_unavailable_label.clone()));
-            return;
+        let command = match build_customer_admin_submit_command(
+            CustomerAdminDraftInput {
+                editing_customer_id: editing_id.get_untracked(),
+                user_id: user_id.get_untracked(),
+                email: email.get_untracked(),
+                first_name: first_name.get_untracked(),
+                last_name: last_name.get_untracked(),
+                phone: phone.get_untracked(),
+            },
+            submit_ui_locale.clone(),
+        ) {
+            Ok(command) => command,
+            Err(CustomerAdminSubmitCommandError::EmailRequired) => {
+                set_error.set(Some(email_required_label.clone()));
+                return;
+            }
+            Err(CustomerAdminSubmitCommandError::LocaleUnavailable) => {
+                set_error.set(Some(locale_unavailable_label.clone()));
+                return;
+            }
         };
-
-        let payload = CustomerDraft {
-            user_id: user_id.get_untracked(),
-            email: email.get_untracked(),
-            first_name: first_name.get_untracked(),
-            last_name: last_name.get_untracked(),
-            phone: phone.get_untracked(),
-            locale: submit_locale,
-        };
-        let editing_customer_id = editing_id.get_untracked();
         let save_customer_error_label = save_customer_error_label.clone();
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            let result = match editing_customer_id {
-                Some(customer_id) => transport::update_customer(customer_id, payload).await,
-                None => transport::create_customer(payload).await,
+            let result = match command.customer_id {
+                Some(customer_id) => transport::update_customer(customer_id, command.draft).await,
+                None => transport::create_customer(command.draft).await,
             };
 
             match result {

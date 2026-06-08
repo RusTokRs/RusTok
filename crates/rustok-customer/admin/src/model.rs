@@ -64,7 +64,7 @@ pub struct CustomerProfileRecord {
     pub tags: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CustomerDraft {
     pub user_id: String,
     pub email: String,
