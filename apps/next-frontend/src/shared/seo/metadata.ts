@@ -123,6 +123,11 @@ export type SeoPageContext = {
   document: SeoDocument;
 };
 
+export type SeoStructuredDataScript = {
+  key: string;
+  json: string;
+};
+
 type BuildSeoMetadataOptions = {
   locale?: string;
   title?: string;
@@ -131,8 +136,25 @@ type BuildSeoMetadataOptions = {
   context?: SeoPageContext | null;
 };
 
+function isAbsoluteUrl(pathOrUrl: string): boolean {
+  return (
+    pathOrUrl.startsWith("http://") ||
+    pathOrUrl.startsWith("https://") ||
+    pathOrUrl.startsWith("//")
+  );
+}
+
 function toAbsoluteUrl(pathOrUrl: string): string {
   return new URL(pathOrUrl, getSiteUrl()).toString();
+}
+
+function toRoutePath(pathOrUrl: string): string {
+  if (!isAbsoluteUrl(pathOrUrl)) {
+    return pathOrUrl;
+  }
+
+  const parsed = new URL(pathOrUrl);
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 function normalizeRobots(robots?: SeoRobots | null): Metadata["robots"] {
@@ -165,16 +187,17 @@ function buildAlternates(
   canonicalUrl: string,
   alternates?: SeoAlternateLink[] | null,
 ): Metadata["alternates"] {
+  const canonicalPath = toRoutePath(canonicalUrl);
   const fallbackLanguages = Object.fromEntries(
     locales.map((item: string) => [
       item,
-      toAbsoluteUrl(localizedPath(item, canonicalUrl)),
+      toAbsoluteUrl(localizedPath(item, canonicalPath)),
     ]),
   );
 
   if (!alternates || alternates.length === 0) {
     return {
-      canonical: toAbsoluteUrl(localizedPath(locale, canonicalUrl)),
+      canonical: toAbsoluteUrl(localizedPath(locale, canonicalPath)),
       languages: fallbackLanguages,
     };
   }
@@ -271,6 +294,48 @@ function buildVerification(
   };
 }
 
+function serializeStructuredData(payload: unknown): string | null {
+  if (payload === null || payload === undefined) {
+    return null;
+  }
+
+  if (typeof payload !== "object") {
+    return null;
+  }
+
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return null;
+  }
+}
+
+export function buildSeoStructuredDataScripts(
+  context?: SeoPageContext | null,
+): SeoStructuredDataScript[] {
+  if (!context?.document.structuredDataBlocks?.length) {
+    return [];
+  }
+
+  return context.document.structuredDataBlocks
+    .map((block, index) => {
+      const json = serializeStructuredData(block.payload);
+      if (!json) {
+        return null;
+      }
+
+      return {
+        key:
+          block.id?.trim() ||
+          block.schemaKind?.trim() ||
+          block.schemaType?.trim() ||
+          `seo-structured-data-${index}`,
+        json,
+      };
+    })
+    .filter((item): item is SeoStructuredDataScript => item !== null);
+}
+
 export function buildSeoMetadata({
   locale = defaultLocale,
   title = "RusToK Storefront",
@@ -278,8 +343,9 @@ export function buildSeoMetadata({
   path = "/",
   context,
 }: BuildSeoMetadataOptions = {}): Metadata {
+  const effectiveLocale = context?.route.effectiveLocale || locale;
   const canonicalUrl =
-    context?.route.canonicalUrl || localizedPath(locale, path);
+    context?.route.canonicalUrl || localizedPath(effectiveLocale, path);
   const documentTitle = context?.document.title || title;
   const documentDescription = context?.document.description || description;
 
@@ -288,13 +354,13 @@ export function buildSeoMetadata({
     title: documentTitle,
     description: documentDescription,
     alternates: buildAlternates(
-      locale,
+      effectiveLocale,
       canonicalUrl,
       context?.route.alternates,
     ),
     robots: normalizeRobots(context?.document.robots),
     openGraph: buildOpenGraph(
-      locale,
+      effectiveLocale,
       canonicalUrl,
       context?.document.openGraph,
       documentTitle,

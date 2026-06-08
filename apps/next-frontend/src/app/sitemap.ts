@@ -1,12 +1,7 @@
 import type { MetadataRoute } from "next";
 
-import { getSiteUrl, locales, localizedPath } from "@/shared/seo/site";
+import { resolveSitemapMetadata } from "@/shared/seo/runtime";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const siteUrl = getSiteUrl();
-  return locales.map((locale: string) => ({
-    url: `${siteUrl}${localizedPath(locale, "/")}`,
-    changeFrequency: "daily",
-    priority: 1,
-  }));
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  return resolveSitemapMetadata();
 }

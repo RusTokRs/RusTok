@@ -51,6 +51,7 @@
 - backend — `apps/server`;
 - module-owned Next admin packages живут в `apps/next-admin/packages/*`;
 - shared API helper `src/shared/api/seo.ts` даёт typed доступ к SEO control-plane: `seoTargets`, diagnostics, sitemap status/jobs, bulk jobs и job detail с REST-first (rollout-gated) + GraphQL fallback стратегией;
+- semantic SEO error taxonomy (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures) считается canonical для Next hosts и переиспользуется не только в `next-admin`, но и в Next storefront SEO runtime adapters;
 - package naming contract для module-owned admin UI остаётся `@rustok/*-admin`.
 
 ## Взаимодействия

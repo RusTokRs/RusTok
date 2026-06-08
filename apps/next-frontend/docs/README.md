@@ -35,8 +35,11 @@
 - если module-owned storefront surface использует query-driven state, Next host обязан держать
   те же key semantics и canonical behavior, что и Leptos storefront.
 - SEO runtime не дублируется в host: canonical source of truth живёт в `rustok-seo`, а Next host выступает только adapter-слоем поверх `SeoPageContext = route + document`.
-- built-in Next Metadata API считается основным render target для SEO head; shared metadata builder должен маппить туда typed robots, Open Graph, Twitter, verification и alternates без собственного SEO source-of-truth в host.
-- `SeoStructuredDataBlock` в shared TypeScript contract сохраняет backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` и payload; Next host не классифицирует schema.org types локально.
+- runtime transport policy для SEO в Next host: `REST-first + GraphQL fallback` с typed semantic error mapping (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures), без blanket `catch {}`.
+- built-in Next Metadata API считается основным render target для SEO head; shared metadata builder маппит туда typed robots, Open Graph, Twitter, verification и alternates без собственного SEO source-of-truth в host.
+- `robots.ts` и `sitemap.ts` работают в runtime-driven режиме через SEO runtime source; host-local static правила допустимы только как аварийный fallback или rollout guard.
+- Rollout guard для runtime robots/sitemap задаётся флагом `NEXT_PUBLIC_SEO_NEXT_RUNTIME_SITEMAP_ENABLED` (или `SEO_NEXT_RUNTIME_SITEMAP_ENABLED` в server env).
+- `SeoStructuredDataBlock` в shared TypeScript contract сохраняет backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` и payload; Next host не классифицирует schema.org types локально и рендерит JSON-LD blocks как runtime-provided scripts.
 - Rust-host путь при этом вынесен в отдельный support crate `rustok-seo-render`; Next host остаётся TypeScript adapter-слоем и не пытается делить с ним source-of-truth.
 
 ## Взаимодействия

@@ -11,6 +11,10 @@ export function getSiteUrl(): string {
 }
 
 export function localizedPath(locale: string, path = "/"): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
+  }
+
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (normalizedPath === "/") {
     return `/${locale}`;

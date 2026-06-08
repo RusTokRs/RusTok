@@ -75,6 +75,7 @@ GraphQL path при этом остаётся рабочим и поддержи
 
 - Canonical и alias state хранится в backend/domain слоях, а не в storefront host.
 - Storefront использует SEO preflight перед рендером страницы: сначала читает `SeoPageContext`, а canonical-only path остаётся fallback-веткой.
+- Consume policy фиксирована как deterministic `#[server]` first + GraphQL fallback; при transport ошибках host сохраняет SSR render path без разрыва route contract.
 - `SeoPageContext` разделён на `route` и `document`: route-часть отвечает за redirect/canonical/hreflang, document-часть — за typed SSR head metadata.
 - `SeoPageContext.document.structured_data_blocks` содержит typed JSON-LD blocks (`schema_kind`, `schema_type`, `source`, payload), а не host-local raw schema mapping.
 - `storefront/seo-page-context` на SSR теперь также передаёт host `RequestContext.channel_slug` в `rustok-seo`, поэтому channel-restricted forum topics получают SEO head только в совпавшем публичном канале.

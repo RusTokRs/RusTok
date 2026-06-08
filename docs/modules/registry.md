@@ -90,7 +90,7 @@ Structural shape фиксирует глубину code-level FFA split неза
 | `order` | admin | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-order/docs/implementation-plan.md` (admin slice: `core` helpers + `transport.rs` facade + explicit `ui/leptos.rs` adapter; return/refund/exchange/claim resolution validation stays module-owned) |
 | `payment` | no module-owned UI | `in_progress` | `not_started` | `no_ui_boundary` | `crates/rustok-payment/docs/implementation-plan.md` |
 | `fulfillment` | admin | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-fulfillment/docs/implementation-plan.md` (slice: admin core list/filter policy + transport facade + explicit `ui/leptos.rs` render adapter over existing GraphQL shipping-option transport; CRUD behavior unchanged) |
-| `seo` | admin + storefront contracts | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-seo/docs/implementation-plan.md` (`rustok-seo-admin` slice: `core.rs` form/view-model helpers + index replay/sitemap guard/schema-fix prefill/busy-key policy, `transport.rs` native/server-function facade and explicit `ui/leptos.rs` render adapter; GraphQL/REST contracts unchanged) |
+| `seo` | admin + storefront contracts | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-seo/docs/implementation-plan.md` (`rustok-seo-admin` slice: `core.rs` form/view-model helpers + index replay/sitemap guard/schema-fix prefill/busy-key policy, `transport.rs` native/server-function facade and explicit `ui/leptos.rs` render adapter; storefront parity wave D7..D9 regrouped as Milestones A..E, A/B runtime Next adapter cutover is in progress) |
 
 ## Hotspot contract (DOC-12 / H1)
 

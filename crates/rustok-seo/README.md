@@ -54,12 +54,21 @@
 
 ## Current execution wave (Phase D)
 
-Phase D is planned as a productionization and integration-parity wave:
+Phase D is a productionization and integration-parity wave.
+
+Completed baseline (`D1..D6`):
 
 - typed SEO domain events + outbox delivery foundations (live `seo_event_deliveries` tracking with outbox envelope ids and duplicate-emission guard)
 - SEO-to-index consumer seam with bounded retry/dead-letter behavior
 - GraphQL/REST control-plane parity completion (additive `v1` only; REST diagnostics/sitemaps/bulk job parity endpoints are live and share GraphQL-compatible error codes)
-- expanded admin and storefront/Next host integrations
-- verification matrix and operational runbooks
+- owner-module admin integrations and Next admin operator parity
 
-See `docs/implementation-plan.md` for the batch-by-batch checklist (`D1..D9`).
+Current wave (`D7..D9`) is grouped into large end-to-end milestones (`A..E`):
+
+- `A`: runtime SEO data plumbing (REST-first + GraphQL fallback adapter semantics for Next storefront)
+- `B`: runtime migration cutover for Next `robots`/`sitemap`/metadata surfaces
+- `C`: route ownership matrix + cross-host fixture parity guardrails
+- `D`: verification matrix execution
+- `E`: docs/runbooks/readiness closeout
+
+See `docs/implementation-plan.md` for the authoritative milestone checklist and status.

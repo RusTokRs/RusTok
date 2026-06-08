@@ -104,20 +104,21 @@ Readiness score считается производным от issue set. Summar
 ## Интеграция
 
 - `apps/storefront` потребляет `SeoPageContext.route + document` через `rustok-seo-render` для SSR `<title>`, meta description, canonical, robots, hreflang, Open Graph, Twitter, verification tags, pagination links и JSON-LD.
-- `apps/next-frontend` использует shared SEO adapter поверх Next Metadata API; unsupported long-tail tags остаются в canonical contract.
+- `apps/next-frontend` использует shared runtime SEO adapter поверх Next Metadata API: `SeoPageContext` приходит через REST-first + GraphQL fallback transport, `robots.ts`/`sitemap.ts` читают runtime source, а host-local static metadata остаётся только аварийным fallback path.
 - `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin` и `rustok-forum/admin` являются canonical owner surfaces для entity SEO authoring.
 - Host runtime обязан прокидывать `ModuleRuntimeExtensions` с `SeoTargetRegistry` во все SEO entrypoints; built-in registry допустим только в tests/helpers.
 
 ## Phase D roadmap (productionization)
 
-Текущий roadmap зафиксирован в `docs/implementation-plan.md` и выполняется батчами `D1..D9`.
+Текущий roadmap зафиксирован в `docs/implementation-plan.md`: базовые батчи `D1..D6` закрыты, а `D7..D9` сгруппированы в крупные Milestones `A..E`.
 
 - `D1` закрыт: contract freeze, compatibility policy (`v1 additive only`) и rollout flags.
 - `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam — закрыто.
 - `D4-D5`: GraphQL/REST parity completion и migrations/backfill/replay policy — закрыто (включая index tracking/replay endpoints `/api/seo/index/tracking`, `/api/seo/index/repair-replay`, GraphQL `seoIndexDeliveryStatus` + `runSeoIndexRepairReplay`).
 - `D6` закрыт: owner-side remediation widgets (`rustok-seo-admin-support`), shared widget state contract и host-locale wiring в `pages/product/blog/forum` + Next admin operator parity.
-- `D7`: storefront + Next runtime SEO parity — в работе.
-- `D8-D9`: verification matrix, runbooks, Definition of Ready/Done для следующего execution wave — в работе.
+- `A` (D7 foundation): в работе — runtime data plumbing в Next adapter, deterministic fallback policy, typed transport semantics.
+- `B` (D7 cutover): в работе — runtime-driven `robots.ts`/`sitemap.ts` и home metadata consume.
+- `C` (D7 guardrails), `D` (D8 verification matrix), `E` (D9 docs/runbooks/readiness): открыты.
 
 ## Проверка
 

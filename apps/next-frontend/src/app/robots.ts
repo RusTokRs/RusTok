@@ -1,13 +1,7 @@
 import type { MetadataRoute } from "next";
 
-import { getSiteUrl } from "@/shared/seo/site";
+import { resolveRobotsMetadata } from "@/shared/seo/runtime";
 
-export default function robots(): MetadataRoute.Robots {
-  return {
-    rules: {
-      userAgent: "*",
-      allow: "/",
-    },
-    sitemap: `${getSiteUrl()}/sitemap.xml`,
-  };
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  return resolveRobotsMetadata();
 }
