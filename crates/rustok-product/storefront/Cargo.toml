@@ -30,4 +30,5 @@ rustok-core.workspace = true
 rustok-product = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 uuid.workspace = true

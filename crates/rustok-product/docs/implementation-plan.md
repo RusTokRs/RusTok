@@ -5,8 +5,8 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_product_admin_route_query_intent_slice
-- Last checkpoint: Product admin selection route/query write policy now builds through `ProductAdminRouteQueryIntent` helpers in `admin/src/core.rs`; the Leptos adapter only applies typed push/replace/clear intents to `RouteQueryWriter`.
+- Current phase: ffa_product_storefront_transport_error_evidence_slice
+- Last checkpoint: Product storefront transport now returns serializable `ProductTransportError` fallback evidence and the Leptos error adapter surfaces stable `data-product-transport-*` attributes without changing native-first/GraphQL fallback ordering.
 - Next step: Continue FFA-first sequencing by extracting remaining admin header/shell copy and profile-panel loading/error copy into typed core helpers without changing the current GraphQL transport contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -24,6 +24,7 @@
   - FFA slice: selected-product card empty state, pricing context label, ownership note, metric labels and pricing action label now live in `SelectedProductEmptyViewModel` / `SelectedProductViewModel` with unit-test evidence;
   - FFA slice: storefront shell badge/title/subtitle/load-error copy and typed fetch request shape now live in `ProductStorefrontShellViewModel` / `ProductStorefrontFetchRequest` with unit-test evidence;
   - FFA slice: storefront pricing-context sanitization/defaulting moved into core, native/GraphQL fetch adapters now sit behind `storefront/src/transport/`, and Leptos rendering is isolated in `storefront/src/ui/leptos.rs`; evidence: `cargo test -p rustok-product-storefront --lib`;
+  - FFA slice: storefront transport errors now keep serializable native/GraphQL fallback evidence (`ProductTransportError`, `ProductTransportPath`) and the Leptos error adapter exposes stable `data-product-transport-*` attributes for host/parity smoke checks;
   - FFA slice: product admin list/status/filter, shipping-profile, pricing-preview and pricing deep-link helpers moved into `admin/src/core.rs`; Leptos admin remains the render/effect adapter while GraphQL transport stays unchanged for this slice;
   - FFA slice: product admin GraphQL operations now route through `admin/src/transport.rs`, keeping `admin/src/api.rs` as the GraphQL adapter and preserving the existing `rustok-commerce` GraphQL contract;
   - FFA slice: product admin Leptos rendering moved under `admin/src/ui/leptos.rs`, and `admin/src/lib.rs` now acts as the module/re-export boundary for `ProductAdmin`;
@@ -78,8 +79,10 @@
   labels/empty state, catalog rail view-model, pricing/seller labels, pricing
   deep-link state и pricing-context sanitization/defaulting вынесены в
   framework-agnostic `storefront/src/core.rs`, native/GraphQL storefront fetch
-  paths оформлены как `storefront/src/transport/` adapters, а Leptos слой
-  изолирован в `storefront/src/ui/leptos.rs` как thin render/host-context adapter;
+  paths оформлены как `storefront/src/transport/` adapters with serializable
+  fallback error evidence, а Leptos слой изолирован в `storefront/src/ui/leptos.rs`
+  как thin render/host-context adapter с host-visible `data-product-transport-*`
+  failure attributes;
 - transport-level validation и public transport по-прежнему публикуются фасадом `rustok-commerce`.
 
 ## Этапы

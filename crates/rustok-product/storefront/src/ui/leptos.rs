@@ -49,13 +49,37 @@ pub fn ProductView() -> impl IntoView {
                         Suspend::new(async move {
                             match resource.await {
                                 Ok(data) => view! { <ProductShowcase data /> }.into_any(),
-                                Err(err) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{}: {err}", load_error)}</div> }.into_any(),
+                                Err(err) => view! { <ProductTransportErrorMessage context=load_error error=err /> }.into_any(),
                             }
                         })
                     }}
                 </Suspense>
             </div>
         </section>
+    }
+}
+
+#[component]
+fn ProductTransportErrorMessage(
+    context: String,
+    error: transport::ProductTransportError,
+) -> impl IntoView {
+    let failed_path = error.failed_path.as_str().to_string();
+    let fallback_attempted = error.fallback_attempted.to_string();
+    let native_error = error.native_error.clone().unwrap_or_default();
+    let graphql_error = error.graphql_error.clone().unwrap_or_default();
+    let message = format!("{}: {error}", context);
+
+    view! {
+        <div
+            class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            data-product-transport-failed-path=failed_path
+            data-product-transport-fallback-attempted=fallback_attempted
+            data-product-transport-native-error=native_error
+            data-product-transport-graphql-error=graphql_error
+        >
+            {message}
+        </div>
     }
 }
 

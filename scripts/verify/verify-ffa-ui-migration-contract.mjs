@@ -186,6 +186,17 @@ const regionStorefrontLocalePaths = [
   "crates/rustok-region/storefront/locales/ru.json",
 ];
 
+
+const productStorefrontTransportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
+const productStorefrontLeptosUiPath = "crates/rustok-product/storefront/src/ui/leptos.rs";
+const productStorefrontReadmePath = "crates/rustok-product/storefront/README.md";
+const requiredProductTransportDomAttributes = [
+  "data-product-transport-failed-path",
+  "data-product-transport-fallback-attempted",
+  "data-product-transport-native-error",
+  "data-product-transport-graphql-error",
+];
+
 const packageJsonPath = "package.json";
 
 const requiredNpmScriptCommands = {
@@ -416,6 +427,50 @@ function collectRegionErrorStatusContractErrors() {
   return errors;
 }
 
+function collectProductTransportEvidenceContractErrors() {
+  const errors = [];
+  const transport = readText(productStorefrontTransportPath);
+  const leptosUi = readText(productStorefrontLeptosUiPath);
+  const storefrontReadme = readText(productStorefrontReadmePath);
+
+  [
+    "ProductTransportError",
+    "ProductTransportPath",
+    "fallback_attempted",
+    "native_error",
+    "graphql_error",
+  ].forEach((contractName) => {
+    if (!transport.includes(contractName)) {
+      errors.push(`Product storefront transport должен содержать fallback evidence contract: ${contractName}`);
+    }
+  });
+
+  [
+    "ProductTransportPath::NativeServer",
+    "ProductTransportPath::Graphql",
+    "native_server",
+    "graphql",
+  ].forEach((contractName) => {
+    if (!transport.includes(contractName)) {
+      errors.push(`Product storefront transport должен содержать stable transport path marker: ${contractName}`);
+    }
+  });
+
+  requiredProductTransportDomAttributes.forEach((attributeName) => {
+    if (!leptosUi.includes(attributeName)) {
+      errors.push(`Product storefront Leptos error adapter должен публиковать DOM attribute: ${attributeName}`);
+    }
+  });
+
+  ["ProductTransportError", "data-product-transport-*"].forEach((requiredSnippet) => {
+    if (!storefrontReadme.includes(requiredSnippet)) {
+      errors.push(`Product storefront README должен документировать transport evidence snippet: ${requiredSnippet}`);
+    }
+  });
+
+  return errors;
+}
+
 function collectStructuralShapeErrors(registry) {
   const errors = [];
 
@@ -600,6 +655,7 @@ function collectValidationErrors({ plan, connectivity, checklist, registry, docs
   errors.push(...collectStructuralShapeFilesystemErrors(registry));
   errors.push(...collectPagesStorefrontUiSplitErrors());
   errors.push(...collectRegionErrorStatusContractErrors());
+  errors.push(...collectProductTransportEvidenceContractErrors());
 
   return errors.sort((a, b) => a.localeCompare(b, "ru"));
 }

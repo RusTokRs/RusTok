@@ -18,6 +18,9 @@ published catalog discovery.
   preferred path.
 - Keep the existing GraphQL storefront contract as a parallel fallback adapter in
   `src/transport/graphql_adapter.rs`.
+- Preserve host-visible native/GraphQL fallback failure evidence through
+  `ProductTransportError` and the Leptos error adapter data attributes
+  (`data-product-transport-*`).
 - Treat `storefrontProduct -> variants.prices` as a catalog compatibility
   snapshot and show resolved price data through a separate pricing-module hook
   backed by `rustok-pricing` in native server functions and GraphQL fallback.

@@ -10779,6 +10779,7 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
