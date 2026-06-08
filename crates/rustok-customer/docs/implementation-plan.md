@@ -6,12 +6,12 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_transport_ui_split
-- Last checkpoint: Admin customer получил FFA slice: `admin/src/core.rs` list request defaults, `admin/src/transport.rs` facade над native Leptos server functions и явный Leptos render adapter `admin/src/ui/leptos.rs`; crate root стал wiring/re-export boundary.
-- Next step: Продолжать сокращать `admin/src/api.rs` до native transport adapter implementation и выносить framework-agnostic request/view policy в `core` без изменения admin CRUD behavior.
+- Current phase: ffa_admin_native_adapter_split
+- Last checkpoint: Admin customer transport split перенёс native Leptos server functions из legacy `admin/src/api.rs` в `admin/src/transport/native_server_adapter.rs`; `admin/src/transport/mod.rs` теперь остаётся фасадом, который потребляет Leptos adapter, а crate root остаётся wiring/re-export boundary.
+- Next step: Продолжать выносить framework-agnostic form/request/view policy в `core` без изменения admin CRUD behavior; при появлении второго transport path добавить explicit adapter рядом с `native_server_adapter.rs`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-02T00:00:00Z
+- Last updated at (UTC): 2026-06-08T00:00:00Z
 
 ## FFA/FBA status
 
@@ -21,8 +21,8 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
-  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list request policy, module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `CustomerAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered CRUD flows.
-- Last verified at (UTC): 2026-06-02T00:00:00Z
+  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list request policy, module-owned `admin/src/transport/mod.rs` facade, native-only `admin/src/transport/native_server_adapter.rs` с `#[server]` endpoints и явный Leptos render adapter `admin/src/ui/leptos.rs`; legacy `admin/src/api.rs` удалён, `admin/src/lib.rs` теперь только wires modules и re-export `CustomerAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered CRUD flows.
+- Last verified at (UTC): 2026-06-08T00:00:00Z
 - Owner: `rustok-customer` module team
 
 ## Область работ
@@ -35,7 +35,7 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 - `customers` и `CustomerService` уже выделены в отдельный модуль;
 - optional linkage на `user_id` и bridge к `profiles` уже существуют как integration contract;
-- `rustok-customer` уже публикует собственный module-owned admin UI package `rustok-customer/admin` с `admin/src/core.rs` request defaults, `admin/src/transport.rs` facade поверх native Leptos server functions для list/detail/create/update customer records и явным `admin/src/ui/leptos.rs` render adapter;
+- `rustok-customer` уже публикует собственный module-owned admin UI package `rustok-customer/admin` с `admin/src/core.rs` request defaults, `admin/src/transport/mod.rs` facade поверх `admin/src/transport/native_server_adapter.rs` native Leptos server functions для list/detail/create/update customer records и явным `admin/src/ui/leptos.rs` render adapter;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`;
 - customer read/write contract не превращает customer в canonical public profile surface.
 
