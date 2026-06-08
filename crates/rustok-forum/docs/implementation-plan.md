@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ffa_admin_storefront_transport_ui_split
-- Last checkpoint: Forum admin FFA slice дополнительно перенёс category/topic card view-model mapping в framework-agnostic `admin/src/core.rs`: category cards теперь получают core-owned description/accent/count/icon/action labels, topic cards получают core-owned status/thread-path/action/busy mapping с exact item-id matching вместо substring matching; Leptos adapter остаётся render/effect слоем, REST transport и storefront native/GraphQL fallback contracts не менялись.
-- Next step: Продолжать сужать admin `ui/leptos.rs`: переносить оставшиеся empty-state/sidebar/reply-stack policies в `admin/src/core.rs`, оставляя REST/GraphQL contracts без изменений.
+- Last checkpoint: Forum admin FFA slice дополнительно перенёс sidebar/reply-stack mapping в framework-agnostic `admin/src/core.rs`: category sidebar получает core-owned active/count/name/slug/topic-count mapping, reply stack получает core-owned status/status-class/locale/preview mapping; Leptos adapter остаётся render/effect слоем, REST transport и storefront native/GraphQL fallback contracts не менялись.
+- Next step: Продолжать сужать admin `ui/leptos.rs`: переносить оставшиеся empty-state и page-level summary policies в `admin/src/core.rs`, оставляя REST/GraphQL contracts без изменений.
 - Open blockers: Activation delivery по FW-2..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-08T15:09:53Z
+- Last updated at (UTC): 2026-06-08T15:21:22Z
 
 ## FFA/FBA status
 
@@ -22,9 +22,9 @@
   - API parity: forum widget catalog/validation доступен через REST + GraphQL contract surface;
   - regression coverage расширено: storefront reply read-path подтверждает approved-only visibility semantics;
   - storefront FFA slice добавил `storefront/src/core.rs` для framework-agnostic href/status/rich-content policy, `storefront/src/transport.rs` facade поверх existing native-first + GraphQL fallback API и explicit Leptos adapter `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` теперь только wires modules и re-export `ForumView`;
-  - admin FFA slice добавил `admin/src/core.rs` для framework-agnostic tag parsing, category-filter normalization, count/status helpers, category/topic form snapshots, submit validation и category/topic card view-model mapping, `admin/src/transport.rs` facade поверх existing REST API и explicit Leptos adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `ForumAdmin`;
-  - parity evidence: storefront/native+GraphQL contracts не затронуты; admin pure-core coverage расширено unit-тестами для category/topic form snapshots, submit validation и card view-model mapping с exact item-id matching для busy state, а полный `cargo test -p rustok-forum-admin --lib` остаётся targeted gate для следующего verification run;
-- Last verified at (UTC): 2026-06-08T15:09:53Z
+  - admin FFA slice добавил `admin/src/core.rs` для framework-agnostic tag parsing, category-filter normalization, count/status helpers, category/topic form snapshots, submit validation и category/topic card view-model mapping, category sidebar mapping и reply-stack view-model mapping, `admin/src/transport.rs` facade поверх existing REST API и explicit Leptos adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `ForumAdmin`;
+  - parity evidence: storefront/native+GraphQL contracts не затронуты; admin pure-core coverage расширено unit-тестами для category/topic form snapshots, submit validation и card view-model mapping, category sidebar mapping и reply-stack view-model mapping с exact item-id matching для busy state, а полный `cargo test -p rustok-forum-admin --lib` остаётся targeted gate для следующего verification run;
+- Last verified at (UTC): 2026-06-08T15:21:22Z
 - Owner: `rustok-forum` module team
 
 ## Область работ

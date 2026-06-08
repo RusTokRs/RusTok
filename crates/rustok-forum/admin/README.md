@@ -19,7 +19,7 @@ Leptos admin UI package for the `rustok-forum` module.
 
 ## FFA structure
 
-- `admin/src/core.rs` owns framework-agnostic tag parsing, category-filter normalization, status/count helpers, category/topic form snapshots, submit validation, and category/topic card view-model mapping with exact busy item matching.
+- `admin/src/core.rs` owns framework-agnostic tag parsing, category-filter normalization, status/count helpers, category/topic form snapshots, submit validation, category/topic card view-model mapping, category sidebar mapping, and reply-stack view-model mapping with exact busy item matching.
 - `admin/src/transport.rs` is the module-owned facade over the existing REST adapter.
 - `admin/src/ui/leptos.rs` is the explicit Leptos render/effect adapter and does not own draft validation policy.
 

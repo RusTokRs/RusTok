@@ -8,10 +8,10 @@ use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::core::{
-    category_card_view_model, format_count, parse_tags, reply_count_label, topic_card_view_model,
-    topic_category_filter, topic_status_class, CategoryFormSnapshot,
-    ForumAdminCategoryRenderLabels, ForumAdminFormError, ForumAdminTopicRenderLabels,
-    TopicFormSnapshot,
+    category_card_view_model, category_sidebar_total_count, category_sidebar_view_model,
+    format_count, parse_tags, reply_card_view_model, reply_count_label, topic_card_view_model,
+    topic_category_filter, CategoryFormSnapshot, ForumAdminCategoryRenderLabels,
+    ForumAdminFormError, ForumAdminTopicRenderLabels, TopicFormSnapshot,
 };
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
@@ -1608,27 +1608,30 @@ fn render_category_sidebar(
     );
     match result {
         Ok(items) if items.is_empty() => view! { <div class="mt-4 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
-        Ok(items) => view! {
+        Ok(items) => {
+            let total_count = category_sidebar_total_count(&items);
+            view! {
             <div class="mt-4 space-y-2">
                 <button type="button" class=sidebar_category_class(active_category_id.is_empty()) on:click=move |_| set_filter_category_id.set(String::new())>
                     <span class="truncate">{all_categories_label}</span>
-                    <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{items.len()}</span>
+                    <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{total_count}</span>
                 </button>
                 {items.into_iter().map(|item| {
-                    let is_active = active_category_id == item.id;
-                    let item_id = item.id.clone();
+                    let vm = category_sidebar_view_model(&item, active_category_id.as_str());
+                    let item_id = vm.id.clone();
                     view! {
-                        <button type="button" class=sidebar_category_class(is_active) on:click=move |_| set_filter_category_id.set(item_id.clone())>
+                        <button type="button" class=sidebar_category_class(vm.is_active) on:click=move |_| set_filter_category_id.set(item_id.clone())>
                             <span class="min-w-0">
-                                <span class="block truncate text-left text-sm font-medium text-foreground">{item.name.clone()}</span>
-                                <span class="block truncate text-left text-xs text-muted-foreground">{item.slug.clone()}</span>
+                                <span class="block truncate text-left text-sm font-medium text-foreground">{vm.name.clone()}</span>
+                                <span class="block truncate text-left text-xs text-muted-foreground">{vm.slug.clone()}</span>
                             </span>
-                            <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{item.topic_count}</span>
+                            <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{vm.topic_count}</span>
                         </button>
                     }
                 }).collect_view()}
             </div>
-        }.into_any(),
+        }.into_any()
+        },
         Err(err) => view! { <div class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
     }
 }
@@ -1714,14 +1717,14 @@ fn render_reply_stack(
         Ok(items) => view! {
             <div class="mt-6 space-y-3">
                 {items.into_iter().map(|item| {
-                    let status_class = topic_status_class(item.status.as_str());
+                    let vm = reply_card_view_model(&item);
                     view! {
                         <article class="rounded-[1.35rem] border border-border bg-background p-4">
                             <div class="flex items-center justify-between gap-3">
-                                <span class=status_badge_class(status_class)>{item.status.clone()}</span>
-                                <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{item.effective_locale.clone()}</span>
+                                <span class=status_badge_class(vm.status_class)>{vm.status.clone()}</span>
+                                <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{vm.effective_locale.clone()}</span>
                             </div>
-                            <p class="mt-3 text-sm leading-6 text-muted-foreground">{item.content_preview}</p>
+                            <p class="mt-3 text-sm leading-6 text-muted-foreground">{vm.content_preview.clone()}</p>
                         </article>
                     }
                 }).collect_view()}

@@ -53,6 +53,49 @@ pub struct ForumAdminTopicCardViewModel {
     pub is_busy: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminCategorySidebarViewModel {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub topic_count: i32,
+    pub is_active: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminReplyCardViewModel {
+    pub status: String,
+    pub status_class: &'static str,
+    pub effective_locale: String,
+    pub content_preview: String,
+}
+
+pub fn category_sidebar_view_model(
+    item: &CategoryListItem,
+    active_category_id: &str,
+) -> ForumAdminCategorySidebarViewModel {
+    ForumAdminCategorySidebarViewModel {
+        id: item.id.clone(),
+        name: item.name.clone(),
+        slug: item.slug.clone(),
+        topic_count: item.topic_count,
+        is_active: active_category_id == item.id,
+    }
+}
+
+pub fn category_sidebar_total_count(items: &[CategoryListItem]) -> usize {
+    items.len()
+}
+
+pub fn reply_card_view_model(item: &ReplyListItem) -> ForumAdminReplyCardViewModel {
+    ForumAdminReplyCardViewModel {
+        status: item.status.clone(),
+        status_class: topic_status_class(item.status.as_str()),
+        effective_locale: item.effective_locale.clone(),
+        content_preview: item.content_preview.clone(),
+    }
+}
+
 pub fn category_card_view_model(
     item: &CategoryListItem,
     editing_id: Option<&str>,
@@ -464,5 +507,62 @@ mod tests {
         assert!(!vm.is_busy);
         assert!(vm.pinned);
         assert!(!vm.locked);
+    }
+
+    #[test]
+    fn builds_sidebar_category_view_model_and_total_count() {
+        let items = vec![
+            CategoryListItem {
+                id: "category-1".to_string(),
+                locale: "en".to_string(),
+                effective_locale: "en".to_string(),
+                name: "General".to_string(),
+                slug: "general".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                topic_count: 5,
+                reply_count: 9,
+            },
+            CategoryListItem {
+                id: "category-2".to_string(),
+                locale: "en".to_string(),
+                effective_locale: "en".to_string(),
+                name: "Support".to_string(),
+                slug: "support".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                topic_count: 2,
+                reply_count: 4,
+            },
+        ];
+        let vm = category_sidebar_view_model(&items[1], "category-2");
+        assert_eq!(category_sidebar_total_count(&items), 2);
+        assert_eq!(vm.id, "category-2");
+        assert_eq!(vm.name, "Support");
+        assert_eq!(vm.slug, "support");
+        assert_eq!(vm.topic_count, 2);
+        assert!(vm.is_active);
+    }
+
+    #[test]
+    fn builds_reply_card_view_model_with_status_class() {
+        let item = ReplyListItem {
+            id: "reply-1".to_string(),
+            locale: "en".to_string(),
+            effective_locale: "en".to_string(),
+            topic_id: "topic-1".to_string(),
+            author_id: None,
+            content_preview: "Thanks for the update".to_string(),
+            status: "pending".to_string(),
+            parent_reply_id: None,
+            created_at: "2026-06-08T00:00:00Z".to_string(),
+        };
+        let vm = reply_card_view_model(&item);
+        assert_eq!(vm.status, "pending");
+        assert_eq!(vm.status_class, "warning");
+        assert_eq!(vm.effective_locale, "en");
+        assert_eq!(vm.content_preview, "Thanks for the update");
     }
 }
