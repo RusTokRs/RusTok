@@ -18,7 +18,7 @@ async-trait.workspace = true
 tokio = { workspace = true }
 utoipa.workspace = true
 once_cell.workspace = true
-regex = "1.10"
+regex = "1.12"
 email_address = "0.2.9"
 v_htmlescape = "0.17.0"
 sea-orm-migration.workspace = true
