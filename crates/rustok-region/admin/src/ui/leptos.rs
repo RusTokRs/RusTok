@@ -4,7 +4,10 @@ use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{RegionAdminDetailLabels, RegionAdminEditorFormState, RegionAdminListLabels};
+use crate::core::{
+    RegionAdminDetailLabels, RegionAdminEditorFormState, RegionAdminListLabels,
+    RegionAdminPolicyLabels,
+};
 use crate::i18n::t;
 use crate::model::{RegionAdminBootstrap, RegionDetail};
 
@@ -107,6 +110,18 @@ pub fn RegionAdmin() -> impl IntoView {
         tax_excluded: list_labels.tax_excluded.clone(),
         countries: list_labels.countries.clone(),
         tax_rate: list_labels.tax_rate.clone(),
+    };
+
+    let policy_labels = RegionAdminPolicyLabels {
+        currency: t(ui_locale.as_deref(), "region.common.currency", "currency"),
+        tax_provider: t(
+            ui_locale.as_deref(),
+            "region.common.taxProvider",
+            "tax provider",
+        ),
+        tax_rate: list_labels.tax_rate.clone(),
+        tax_included: list_labels.tax_included.clone(),
+        tax_excluded: list_labels.tax_excluded.clone(),
     };
 
     let reset_form = move || {
@@ -407,6 +422,8 @@ pub fn RegionAdmin() -> impl IntoView {
                     </section>
 
                     {move || selected.get().map(|detail| {
+                        let countries_summary = crate::core::region_admin_countries_summary(&detail);
+                        let policy_view_model = crate::core::build_region_admin_policy_section_view_model(&detail, &policy_labels);
                         view! {
                             <section class="space-y-6 rounded-3xl border border-border bg-card p-6 shadow-sm">
                                 <div class="space-y-2">
@@ -418,7 +435,7 @@ pub fn RegionAdmin() -> impl IntoView {
                                     <div class="flex flex-wrap items-start justify-between gap-3">
                                         <div class="space-y-2">
                                             <h4 class="text-base font-semibold text-card-foreground">{detail.region.name.clone()}</h4>
-                                            <p class="text-sm text-muted-foreground">{format!("{} | {}", detail.region.currency_code, detail.region.countries.join(", "))}</p>
+                                            <p class="text-sm text-muted-foreground">{format!("{} | {}", detail.region.currency_code, countries_summary.clone())}</p>
                                             <p class="text-xs text-muted-foreground">{crate::core::build_region_admin_detail_meta(&detail, &detail_labels)}</p>
                                         </div>
                                         <div class="text-right text-xs text-muted-foreground">
@@ -432,15 +449,14 @@ pub fn RegionAdmin() -> impl IntoView {
                                     <div class="rounded-2xl border border-border bg-background p-5">
                                         <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "region.section.policy", "Policy Baseline")}</h4>
                                         <div class="mt-4 space-y-2 text-sm text-muted-foreground">
-                                            <p>{format!("currency: {}", detail.region.currency_code)}</p>
-                                            <p>{format!("tax provider: {}", detail.region.tax_provider_id.clone().unwrap_or_else(|| "region_default".to_string()))}</p>
-                                            <p>{format!("tax rate: {}", detail.region.tax_rate)}</p>
-                                            <p>{if detail.region.tax_included { t(ui_locale_for_detail.as_deref(), "region.common.taxIncluded", "tax included") } else { t(ui_locale_for_detail.as_deref(), "region.common.taxExcluded", "tax excluded") }}</p>
+                                            {policy_view_model.rows.into_iter().map(|row| {
+                                                view! { <p>{row.text}</p> }
+                                            }).collect_view()}
                                         </div>
                                     </div>
                                     <div class="rounded-2xl border border-border bg-background p-5">
                                         <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "region.section.countries", "Country Coverage")}</h4>
-                                        <p class="mt-4 text-sm text-muted-foreground">{detail.region.countries.join(", ")}</p>
+                                        <p class="mt-4 text-sm text-muted-foreground">{countries_summary.clone()}</p>
                                     </div>
                                 </div>
 

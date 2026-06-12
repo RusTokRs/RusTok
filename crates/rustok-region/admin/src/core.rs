@@ -59,6 +59,7 @@ pub fn missing_required_region_field(input: &RegionDraft) -> Option<RegionRequir
 pub const DEFAULT_TAX_RATE_INPUT: &str = "0";
 pub const DEFAULT_COUNTRY_TAX_POLICIES_INPUT: &str = "[]";
 pub const DEFAULT_METADATA_INPUT: &str = "{}";
+pub const DEFAULT_TAX_PROVIDER_ID: &str = "region_default";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionAdminEditorFormState {
@@ -100,6 +101,63 @@ impl RegionAdminEditorFormState {
             countries: detail.region.countries.join(", "),
             metadata: detail.region.metadata_pretty.clone(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminPolicyLabels {
+    pub currency: String,
+    pub tax_provider: String,
+    pub tax_rate: String,
+    pub tax_included: String,
+    pub tax_excluded: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminPolicyRowViewModel {
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminPolicySectionViewModel {
+    pub rows: Vec<RegionAdminPolicyRowViewModel>,
+}
+
+pub fn region_admin_countries_summary(detail: &RegionDetail) -> String {
+    detail.region.countries.join(", ")
+}
+
+pub fn build_region_admin_policy_section_view_model(
+    detail: &RegionDetail,
+    labels: &RegionAdminPolicyLabels,
+) -> RegionAdminPolicySectionViewModel {
+    let tax_mode = if detail.region.tax_included {
+        labels.tax_included.clone()
+    } else {
+        labels.tax_excluded.clone()
+    };
+
+    RegionAdminPolicySectionViewModel {
+        rows: vec![
+            RegionAdminPolicyRowViewModel {
+                text: format!("{}: {}", labels.currency, detail.region.currency_code),
+            },
+            RegionAdminPolicyRowViewModel {
+                text: format!(
+                    "{}: {}",
+                    labels.tax_provider,
+                    detail
+                        .region
+                        .tax_provider_id
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_TAX_PROVIDER_ID.to_string())
+                ),
+            },
+            RegionAdminPolicyRowViewModel {
+                text: format!("{}: {}", labels.tax_rate, detail.region.tax_rate),
+            },
+            RegionAdminPolicyRowViewModel { text: tax_mode },
+        ],
     }
 }
 
@@ -275,6 +333,44 @@ mod tests {
         assert_eq!(state.countries, "DE, FR");
         assert_eq!(state.country_tax_policies, "[{\"country\":\"DE\"}]");
         assert_eq!(state.metadata, "{\"tier\":\"eu\"}");
+    }
+
+    #[test]
+    fn admin_policy_section_view_model_applies_tax_provider_fallback() {
+        let detail = crate::model::RegionDetail {
+            region: crate::model::RegionRecord {
+                id: "region-eu".to_string(),
+                tenant_id: "tenant".to_string(),
+                name: "Europe".to_string(),
+                currency_code: "EUR".to_string(),
+                tax_provider_id: None,
+                tax_rate: "20.0".to_string(),
+                tax_included: false,
+                country_tax_policies_pretty: "[]".to_string(),
+                countries: vec!["DE".to_string(), "FR".to_string()],
+                metadata_pretty: "{}".to_string(),
+                created_at: "2026-06-12".to_string(),
+                updated_at: "2026-06-12".to_string(),
+            },
+        };
+        let labels = RegionAdminPolicyLabels {
+            currency: "currency".to_string(),
+            tax_provider: "tax provider".to_string(),
+            tax_rate: "tax rate".to_string(),
+            tax_included: "tax included".to_string(),
+            tax_excluded: "tax excluded".to_string(),
+        };
+
+        let view_model = build_region_admin_policy_section_view_model(&detail, &labels);
+
+        assert_eq!(region_admin_countries_summary(&detail), "DE, FR");
+        assert_eq!(view_model.rows[0].text, "currency: EUR");
+        assert_eq!(
+            view_model.rows[1].text,
+            format!("tax provider: {DEFAULT_TAX_PROVIDER_ID}")
+        );
+        assert_eq!(view_model.rows[2].text, "tax rate: 20.0");
+        assert_eq!(view_model.rows[3].text, "tax excluded");
     }
 
     #[test]
