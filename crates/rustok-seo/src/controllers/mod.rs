@@ -67,10 +67,10 @@ pub struct SeoIndexTrackingQuery {
     pub target_type: Option<String>,
 }
 
-type SeoHttpResult<T> = std::result::Result<T, SeoHttpError>;
+pub(crate) type SeoHttpResult<T> = std::result::Result<T, SeoHttpError>;
 
 #[derive(Debug)]
-struct SeoHttpError {
+pub(crate) struct SeoHttpError {
     status: StatusCode,
     code: ErrorCode,
     message: String,

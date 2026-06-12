@@ -486,7 +486,7 @@ async fn list_refunds_accepts_case_insensitive_status_filter() {
 
 #[tokio::test]
 async fn list_refunds_supports_order_id_filter() {
-    let service = setup().await;
+    let _service = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
 
@@ -650,7 +650,7 @@ async fn list_refunds_returns_empty_for_unknown_order_id() {
 
 #[tokio::test]
 async fn list_refunds_combined_order_and_collection_filters_require_intersection() {
-    let service = setup().await;
+    let _service = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
 

@@ -9,7 +9,10 @@ pub use common::{
     trimmed_non_empty, DEFAULT_ORDER_CHANGE_STATUS, DEFAULT_PROMOTION_AMOUNT,
     DEFAULT_PROMOTION_KIND, DEFAULT_PROMOTION_SCOPE, DEFAULT_PROMOTION_SOURCE_ID,
 };
-pub use order_change::{order_change_resolution_summary, OrderChangeResolutionSummary};
+pub use order_change::{
+    order_change_resolution_summary, prepare_order_change_action_command,
+    OrderChangeActionCommand, OrderChangeResolutionSummary,
+};
 pub use presentation::{
     cart_adjustment_view_model, promotion_preview_view_model, shipping_profile_summary_view_model,
     CartAdjustmentViewModel, PromotionPreviewViewModel, ShippingProfileSummaryViewModel,

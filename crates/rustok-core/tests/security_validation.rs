@@ -59,7 +59,7 @@ fn input_validator_validates_email() {
     ));
     assert!(matches!(
         validator.validate_email("invalid"),
-        ValidationResult::Invalid(_)
+        ValidationResult::Invalid { .. }
     ));
 }
 

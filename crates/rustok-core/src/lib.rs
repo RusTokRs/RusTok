@@ -68,7 +68,7 @@ pub use health::{
     HealthCheck, HealthRegistry, HealthResult, HealthStatus, OverallHealth,
 };
 pub use i18n::{extract_locale_from_header, extract_locale_tag_from_header, translate, Locale};
-pub use id::generate_id;
+pub use id::{generate_id, parse_id};
 pub use locale::{
     build_locale_candidates, is_valid_locale_tag, locale_primary_language, locale_tags_match,
     normalize_locale_tag, push_locale_candidate, PLATFORM_FALLBACK_LOCALE,

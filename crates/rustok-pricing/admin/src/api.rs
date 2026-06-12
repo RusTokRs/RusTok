@@ -503,6 +503,32 @@ fn parse_optional_uuid(value: &str, field_name: &str) -> Result<Option<Uuid>, Se
 }
 
 #[cfg(feature = "ssr")]
+fn normalize_optional(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn resolve_requested_locale(
+    requested: Option<String>,
+    request_context_locale: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    normalize_optional(requested)
+        .or_else(|| {
+            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+        })
+        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .unwrap_or_default()
+}
+
+#[cfg(feature = "ssr")]
 fn ensure_permission(
     permissions: &[rustok_core::Permission],
     required: &[rustok_core::Permission],

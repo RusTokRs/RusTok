@@ -6,20 +6,28 @@ use crate::model::{
     InventoryReservationWriteResult,
 };
 
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR: &str =
     "inventory/bootstrap requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR: &str =
     "inventory/products requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_PRODUCT_REQUIRES_SSR_ERROR: &str =
     "inventory/product requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_SET_QUANTITY_REQUIRES_SSR_ERROR: &str =
     "inventory/variant/set-quantity requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_ADJUST_QUANTITY_REQUIRES_SSR_ERROR: &str =
     "inventory/variant/adjust-quantity requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_RESERVE_QUANTITY_REQUIRES_SSR_ERROR: &str =
     "inventory/variant/reserve-quantity requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_CHECK_AVAILABILITY_REQUIRES_SSR_ERROR: &str =
     "inventory/variant/check-availability requires the `ssr` feature";
+#[cfg(not(feature = "ssr"))]
 pub(crate) const INVENTORY_RELEASE_RESERVATION_REQUIRES_SSR_ERROR: &str =
     "inventory/variant/release-reservation requires the `ssr` feature";
 
@@ -266,7 +274,7 @@ fn map_variant(value: rustok_inventory::AdminInventoryVariant) -> crate::model::
 async fn inventory_bootstrap_native() -> Result<InventoryAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext};
         use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()

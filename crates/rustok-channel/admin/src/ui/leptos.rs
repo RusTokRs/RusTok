@@ -100,7 +100,7 @@ pub fn ChannelAdmin() -> impl IntoView {
     Effect::new(move |_| {
         let selected_channel_id = selected_channel_query.get();
         match (selected_channel_id.as_deref(), bootstrap.get()) {
-            (Some(channel_id), Some(Ok(bootstrap)))
+            (Some(channel_id), Some(Ok(ref bootstrap)))
                 if !channel_selection_exists(bootstrap, channel_id) =>
             {
                 query_writer.clear_key(AdminQueryKey::ChannelId.as_str());
