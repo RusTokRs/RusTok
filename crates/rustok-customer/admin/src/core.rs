@@ -255,6 +255,15 @@ pub struct CustomerAdminPageLabels {
     pub new_action: String,
     pub save_action: String,
     pub create_action: String,
+    pub user_id_field: String,
+    pub email_field: String,
+    pub first_name_field: String,
+    pub last_name_field: String,
+    pub phone_field: String,
+    pub customer_section: String,
+    pub profile_section: String,
+    pub metadata_section: String,
+    pub profile_empty: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,6 +341,44 @@ pub fn customer_admin_open_action_view_model(
     CustomerAdminActionViewModel {
         label: labels.open_action.clone(),
         disabled: is_busy,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerAdminFieldLabels {
+    pub user_id: String,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub phone: String,
+}
+
+pub fn customer_admin_field_labels(labels: &CustomerAdminPageLabels) -> CustomerAdminFieldLabels {
+    CustomerAdminFieldLabels {
+        user_id: labels.user_id_field.clone(),
+        email: labels.email_field.clone(),
+        first_name: labels.first_name_field.clone(),
+        last_name: labels.last_name_field.clone(),
+        phone: labels.phone_field.clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerAdminDetailSectionLabels {
+    pub customer: String,
+    pub profile: String,
+    pub metadata: String,
+    pub profile_empty: String,
+}
+
+pub fn customer_admin_detail_section_labels(
+    labels: &CustomerAdminPageLabels,
+) -> CustomerAdminDetailSectionLabels {
+    CustomerAdminDetailSectionLabels {
+        customer: labels.customer_section.clone(),
+        profile: labels.profile_section.clone(),
+        metadata: labels.metadata_section.clone(),
+        profile_empty: labels.profile_empty.clone(),
     }
 }
 
@@ -456,6 +503,15 @@ mod tests {
             new_action: "New".to_string(),
             save_action: "Save customer".to_string(),
             create_action: "Create customer".to_string(),
+            user_id_field: "Linked user ID (optional)".to_string(),
+            email_field: "Email".to_string(),
+            first_name_field: "First name".to_string(),
+            last_name_field: "Last name".to_string(),
+            phone_field: "Phone".to_string(),
+            customer_section: "Customer Record".to_string(),
+            profile_section: "Profile Bridge".to_string(),
+            metadata_section: "Metadata".to_string(),
+            profile_empty: "No public profile is linked to this customer yet.".to_string(),
         }
     }
 
@@ -480,6 +536,22 @@ mod tests {
         let detail_header = customer_admin_detail_header_view_model(&labels);
         assert_eq!(detail_header.title, "Customer Detail");
         assert_eq!(detail_header.subtitle, "Inspect customer identity.");
+
+        let field_labels = customer_admin_field_labels(&labels);
+        assert_eq!(field_labels.user_id, "Linked user ID (optional)");
+        assert_eq!(field_labels.email, "Email");
+        assert_eq!(field_labels.first_name, "First name");
+        assert_eq!(field_labels.last_name, "Last name");
+        assert_eq!(field_labels.phone, "Phone");
+
+        let detail_sections = customer_admin_detail_section_labels(&labels);
+        assert_eq!(detail_sections.customer, "Customer Record");
+        assert_eq!(detail_sections.profile, "Profile Bridge");
+        assert_eq!(detail_sections.metadata, "Metadata");
+        assert_eq!(
+            detail_sections.profile_empty,
+            "No public profile is linked to this customer yet."
+        );
 
         let refresh = customer_admin_refresh_action_view_model(true, &labels);
         assert_eq!(refresh.label, "Refresh");

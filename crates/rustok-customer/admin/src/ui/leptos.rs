@@ -6,7 +6,8 @@ use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     build_customer_admin_submit_command, customer_admin_detail_empty_view_model,
-    customer_admin_detail_header_view_model, customer_admin_editor_view_model,
+    customer_admin_detail_header_view_model, customer_admin_detail_section_labels,
+    customer_admin_editor_view_model, customer_admin_field_labels,
     customer_admin_list_header_view_model, customer_admin_list_state_view_model,
     customer_admin_open_action_view_model, customer_admin_refresh_action_view_model,
     customer_admin_shell_view_model, customer_detail_form_snapshot, customer_detail_view_model,
@@ -215,8 +216,6 @@ pub fn CustomerAdmin() -> impl IntoView {
         });
     };
 
-    let ui_locale_for_detail = ui_locale.clone();
-    let ui_locale_for_profile = ui_locale.clone();
     let list_query_writer = query_writer.clone();
     let reset_query_writer = query_writer.clone();
     let display_labels = customer_admin_display_labels(ui_locale.as_deref());
@@ -238,7 +237,9 @@ pub fn CustomerAdmin() -> impl IntoView {
     let new_button_labels = page_labels.clone();
     let new_label_labels = page_labels.clone();
     let detail_header_labels = page_labels.clone();
-    let detail_empty_labels = page_labels;
+    let detail_section_labels = page_labels.clone();
+    let detail_empty_labels = page_labels.clone();
+    let field_labels = customer_admin_field_labels(&page_labels);
 
     view! {
         <section class="space-y-6">
@@ -419,18 +420,18 @@ pub fn CustomerAdmin() -> impl IntoView {
                         </div>
 
                         <form class="mt-5 space-y-4" on:submit=on_submit>
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary disabled:opacity-60" placeholder=t(ui_locale.as_deref(), "customer.field.userId", "Linked user ID (optional)") disabled=move || customer_admin_editor_view_model(
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary disabled:opacity-60" placeholder=field_labels.user_id.clone() disabled=move || customer_admin_editor_view_model(
                                     editing_id.get().is_some(),
                                     busy.get(),
                                     &user_id_disabled_labels,
                                 ).user_id_disabled prop:value=move || user_id.get() on:input=move |ev| set_user_id.set(event_target_value(&ev)) />
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.email", "Email") prop:value=move || email.get() on:input=move |ev| set_email.set(event_target_value(&ev)) />
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=field_labels.email.clone() prop:value=move || email.get() on:input=move |ev| set_email.set(event_target_value(&ev)) />
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.firstName", "First name") prop:value=move || first_name.get() on:input=move |ev| set_first_name.set(event_target_value(&ev)) />
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.lastName", "Last name") prop:value=move || last_name.get() on:input=move |ev| set_last_name.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=field_labels.first_name.clone() prop:value=move || first_name.get() on:input=move |ev| set_first_name.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=field_labels.last_name.clone() prop:value=move || last_name.get() on:input=move |ev| set_last_name.set(event_target_value(&ev)) />
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.phone", "Phone") prop:value=move || phone.get() on:input=move |ev| set_phone.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=field_labels.phone.clone() prop:value=move || phone.get() on:input=move |ev| set_phone.set(event_target_value(&ev)) />
                             </div>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || customer_admin_editor_view_model(
                                     editing_id.get().is_some(),
@@ -449,6 +450,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                     {move || selected.get().map(|detail| {
                         let detail_view = customer_detail_view_model(&detail, &detail_display_labels);
                         let detail_header = customer_admin_detail_header_view_model(&detail_header_labels);
+                        let detail_sections = customer_admin_detail_section_labels(&detail_section_labels);
                         view! {
                             <section class="space-y-6 rounded-3xl border border-border bg-card p-6 shadow-sm">
                                 <div class="space-y-2">
@@ -472,7 +474,7 @@ pub fn CustomerAdmin() -> impl IntoView {
 
                                 <div class="grid gap-4 md:grid-cols-2">
                                     <div class="rounded-2xl border border-border bg-background p-5">
-                                        <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "customer.section.customer", "Customer Record")}</h4>
+                                        <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{detail_sections.customer.clone()}</h4>
                                         <div class="mt-4 space-y-2 text-sm text-muted-foreground">
                                             <p>{detail_view.user_link.clone()}</p>
                                             <p>{detail_view.phone.clone()}</p>
@@ -480,7 +482,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                                         </div>
                                     </div>
                                     <div class="rounded-2xl border border-border bg-background p-5">
-                                        <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_profile.as_deref(), "customer.section.profile", "Profile Bridge")}</h4>
+                                        <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{detail_sections.profile.clone()}</h4>
                                         {detail_view.profile.clone().map(|profile| view! {
                                             <div class="mt-4 space-y-2 text-sm text-muted-foreground">
                                                 <p>{profile.identity}</p>
@@ -489,13 +491,13 @@ pub fn CustomerAdmin() -> impl IntoView {
                                                 <p>{profile.tags}</p>
                                             </div>
                                         }.into_any()).unwrap_or_else(|| view! {
-                                            <p class="mt-4 text-sm text-muted-foreground">{t(ui_locale_for_profile.as_deref(), "customer.profile.empty", "No public profile is linked to this customer yet.")}</p>
+                                            <p class="mt-4 text-sm text-muted-foreground">{detail_sections.profile_empty.clone()}</p>
                                         }.into_any())}
                                     </div>
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5">
-                                    <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "customer.section.metadata", "Metadata")}</h4>
+                                    <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{detail_sections.metadata.clone()}</h4>
                                     <pre class="mt-4 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{detail_view.metadata_pretty.clone()}</pre>
                                 </div>
                             </section>
@@ -539,6 +541,19 @@ fn customer_admin_page_labels(locale: Option<&str>) -> CustomerAdminPageLabels {
         new_action: t(locale, "customer.action.new", "New"),
         save_action: t(locale, "customer.action.save", "Save customer"),
         create_action: t(locale, "customer.action.create", "Create customer"),
+        user_id_field: t(locale, "customer.field.userId", "Linked user ID (optional)"),
+        email_field: t(locale, "customer.field.email", "Email"),
+        first_name_field: t(locale, "customer.field.firstName", "First name"),
+        last_name_field: t(locale, "customer.field.lastName", "Last name"),
+        phone_field: t(locale, "customer.field.phone", "Phone"),
+        customer_section: t(locale, "customer.section.customer", "Customer Record"),
+        profile_section: t(locale, "customer.section.profile", "Profile Bridge"),
+        metadata_section: t(locale, "customer.section.metadata", "Metadata"),
+        profile_empty: t(
+            locale,
+            "customer.profile.empty",
+            "No public profile is linked to this customer yet.",
+        ),
     }
 }
 
