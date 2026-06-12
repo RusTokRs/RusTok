@@ -221,19 +221,7 @@ fn CommerceShowcase(
 #[component]
 fn ContextCard(data: StorefrontCommerceData) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let tenant_value = data.tenant_slug.unwrap_or_else(|| {
-        t(
-            locale.as_deref(),
-            "commerce.context.tenantMissing",
-            "host tenant",
-        )
-    });
-    let channel_value = data
-        .channel_slug
-        .unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
-    let resolution_value = data
-        .channel_resolution_source
-        .unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
+    let context_view = core::build_storefront_context_view_model(data, locale.as_deref());
 
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">
@@ -249,13 +237,13 @@ fn ContextCard(data: StorefrontCommerceData) -> impl IntoView {
                 </p>
             </div>
             <div class="mt-6 grid gap-3 md:grid-cols-2">
-                <MetricCard title=t(locale.as_deref(), "commerce.context.locale", "Effective locale") value=data.effective_locale />
-                <MetricCard title=t(locale.as_deref(), "commerce.context.tenant", "Tenant") value=tenant_value />
-                <MetricCard title=t(locale.as_deref(), "commerce.context.tenantDefault", "Tenant default locale") value=data.tenant_default_locale />
-                <MetricCard title=t(locale.as_deref(), "commerce.context.channel", "Channel") value=channel_value />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.locale", "Effective locale") value=context_view.effective_locale />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.tenant", "Tenant") value=context_view.tenant />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.tenantDefault", "Tenant default locale") value=context_view.tenant_default_locale />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.channel", "Channel") value=context_view.channel />
             </div>
             <div class="mt-3">
-                <MetricCard title=t(locale.as_deref(), "commerce.context.resolution", "Channel source") value=resolution_value />
+                <MetricCard title=t(locale.as_deref(), "commerce.context.resolution", "Channel source") value=context_view.channel_resolution_source />
             </div>
         </article>
     }
