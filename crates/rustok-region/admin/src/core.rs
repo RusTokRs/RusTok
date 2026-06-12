@@ -1,6 +1,6 @@
 use rustok_api::normalize_ui_text;
 
-use crate::model::{RegionDetail, RegionDraft};
+use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionList};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RegionFormInput<'a> {
@@ -53,6 +53,66 @@ pub fn missing_required_region_field(input: &RegionDraft) -> Option<RegionRequir
         Some(RegionRequiredField::Countries)
     } else {
         None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminShellLabels {
+    pub badge: String,
+    pub title: String,
+    pub subtitle: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminShellViewModel {
+    pub badge: String,
+    pub title: String,
+    pub subtitle: String,
+}
+
+pub fn build_region_admin_shell_view_model(
+    labels: &RegionAdminShellLabels,
+) -> RegionAdminShellViewModel {
+    RegionAdminShellViewModel {
+        badge: labels.badge.clone(),
+        title: labels.title.clone(),
+        subtitle: labels.subtitle.clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminListHeaderLabels {
+    pub title: String,
+    pub subtitle_template: String,
+    pub subtitle_fallback: String,
+    pub refresh_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminListHeaderViewModel {
+    pub title: String,
+    pub subtitle: String,
+    pub refresh_action: String,
+}
+
+pub fn build_region_admin_list_header_view_model(
+    bootstrap: Option<&RegionAdminBootstrap>,
+    labels: &RegionAdminListHeaderLabels,
+) -> RegionAdminListHeaderViewModel {
+    let tenant_name =
+        bootstrap.and_then(|payload| optional_ui_text(payload.current_tenant.name.as_str()));
+    let subtitle = tenant_name
+        .map(|tenant| {
+            labels
+                .subtitle_template
+                .replace("{tenant}", tenant.as_str())
+        })
+        .unwrap_or_else(|| labels.subtitle_fallback.clone());
+
+    RegionAdminListHeaderViewModel {
+        title: labels.title.clone(),
+        subtitle,
+        refresh_action: labels.refresh_action.clone(),
     }
 }
 
@@ -140,6 +200,45 @@ pub fn build_region_admin_editor_view_model(
         } else {
             labels.create_action.clone()
         },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminEditorFieldLabels {
+    pub name_placeholder: String,
+    pub currency_code_placeholder: String,
+    pub tax_provider_id_placeholder: String,
+    pub tax_rate_placeholder: String,
+    pub tax_included_label: String,
+    pub country_tax_policies_placeholder: String,
+    pub countries_placeholder: String,
+    pub metadata_placeholder: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminEditorFieldViewModel {
+    pub name_placeholder: String,
+    pub currency_code_placeholder: String,
+    pub tax_provider_id_placeholder: String,
+    pub tax_rate_placeholder: String,
+    pub tax_included_label: String,
+    pub country_tax_policies_placeholder: String,
+    pub countries_placeholder: String,
+    pub metadata_placeholder: String,
+}
+
+pub fn build_region_admin_editor_field_view_model(
+    labels: &RegionAdminEditorFieldLabels,
+) -> RegionAdminEditorFieldViewModel {
+    RegionAdminEditorFieldViewModel {
+        name_placeholder: labels.name_placeholder.clone(),
+        currency_code_placeholder: labels.currency_code_placeholder.clone(),
+        tax_provider_id_placeholder: labels.tax_provider_id_placeholder.clone(),
+        tax_rate_placeholder: labels.tax_rate_placeholder.clone(),
+        tax_included_label: labels.tax_included_label.clone(),
+        country_tax_policies_placeholder: labels.country_tax_policies_placeholder.clone(),
+        countries_placeholder: labels.countries_placeholder.clone(),
+        metadata_placeholder: labels.metadata_placeholder.clone(),
     }
 }
 
@@ -304,6 +403,57 @@ pub fn build_region_admin_list_item_view_model(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminListStateLabels {
+    pub loading: String,
+    pub empty: String,
+    pub load_error_context: String,
+    pub open_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegionAdminListStateViewModel {
+    Loading {
+        message: String,
+    },
+    Error {
+        message: String,
+    },
+    Empty {
+        message: String,
+    },
+    Ready {
+        items: Vec<RegionAdminListItemViewModel>,
+        open_action: String,
+    },
+}
+
+pub fn build_region_admin_list_state_view_model(
+    regions: Option<Result<&RegionList, String>>,
+    state_labels: &RegionAdminListStateLabels,
+    item_labels: &RegionAdminListLabels,
+) -> RegionAdminListStateViewModel {
+    match regions {
+        None => RegionAdminListStateViewModel::Loading {
+            message: state_labels.loading.clone(),
+        },
+        Some(Err(err)) => RegionAdminListStateViewModel::Error {
+            message: error_with_context(state_labels.load_error_context.as_str(), err.as_str()),
+        },
+        Some(Ok(list)) if list.items.is_empty() => RegionAdminListStateViewModel::Empty {
+            message: state_labels.empty.clone(),
+        },
+        Some(Ok(list)) => RegionAdminListStateViewModel::Ready {
+            items: list
+                .items
+                .iter()
+                .map(|region| build_region_admin_list_item_view_model(region, item_labels))
+                .collect(),
+            open_action: state_labels.open_action.clone(),
+        },
+    }
+}
+
 pub fn region_admin_list_item_class(is_selected: bool) -> &'static str {
     if is_selected {
         "rounded-2xl border border-primary/40 bg-background p-5 shadow-sm"
@@ -395,6 +545,55 @@ mod tests {
         assert_eq!(
             missing_required_region_field(&draft),
             Some(RegionRequiredField::Name)
+        );
+    }
+
+    #[test]
+    fn admin_shell_view_model_keeps_header_copy_outside_ui_runtime() {
+        let labels = RegionAdminShellLabels {
+            badge: "region".to_string(),
+            title: "Region Operations".to_string(),
+            subtitle: "Module-owned region workspace".to_string(),
+        };
+
+        let view_model = build_region_admin_shell_view_model(&labels);
+
+        assert_eq!(view_model.badge, "region");
+        assert_eq!(view_model.title, "Region Operations");
+        assert_eq!(view_model.subtitle, "Module-owned region workspace");
+    }
+
+    #[test]
+    fn admin_list_header_view_model_formats_tenant_subtitle_without_ui_runtime() {
+        let labels = RegionAdminListHeaderLabels {
+            title: "Regions".to_string(),
+            subtitle_template: "Tenant {tenant} region policy owned by the region module."
+                .to_string(),
+            subtitle_fallback: "Tenant-scoped region policy owned by the region module."
+                .to_string(),
+            refresh_action: "Refresh".to_string(),
+        };
+        let bootstrap = RegionAdminBootstrap {
+            current_tenant: crate::model::CurrentTenant {
+                id: "tenant-1".to_string(),
+                slug: "tenant".to_string(),
+                name: "  Demo Tenant  ".to_string(),
+            },
+        };
+
+        let view_model = build_region_admin_list_header_view_model(Some(&bootstrap), &labels);
+
+        assert_eq!(view_model.title, "Regions");
+        assert_eq!(
+            view_model.subtitle,
+            "Tenant Demo Tenant region policy owned by the region module."
+        );
+        assert_eq!(view_model.refresh_action, "Refresh");
+
+        let fallback = build_region_admin_list_header_view_model(None, &labels);
+        assert_eq!(
+            fallback.subtitle,
+            "Tenant-scoped region policy owned by the region module."
         );
     }
 
@@ -553,6 +752,85 @@ mod tests {
     }
 
     #[test]
+    fn admin_list_state_view_model_maps_loading_error_empty_and_ready_states() {
+        let state_labels = RegionAdminListStateLabels {
+            loading: "Loading regions...".to_string(),
+            empty: "No regions have been created for this tenant yet.".to_string(),
+            load_error_context: "Failed to load regions".to_string(),
+            open_action: "Open".to_string(),
+        };
+        let item_labels = RegionAdminListLabels {
+            tax_included: "tax included".to_string(),
+            tax_excluded: "tax excluded".to_string(),
+            countries: "countries".to_string(),
+            tax_rate: "tax rate".to_string(),
+            updated: "updated".to_string(),
+        };
+
+        assert_eq!(
+            build_region_admin_list_state_view_model(None, &state_labels, &item_labels),
+            RegionAdminListStateViewModel::Loading {
+                message: "Loading regions...".to_string()
+            }
+        );
+
+        assert_eq!(
+            build_region_admin_list_state_view_model(
+                Some(Err("network unavailable".to_string())),
+                &state_labels,
+                &item_labels,
+            ),
+            RegionAdminListStateViewModel::Error {
+                message: "Failed to load regions: network unavailable".to_string()
+            }
+        );
+
+        let empty_list = crate::model::RegionList { items: vec![] };
+        assert_eq!(
+            build_region_admin_list_state_view_model(
+                Some(Ok(&empty_list)),
+                &state_labels,
+                &item_labels,
+            ),
+            RegionAdminListStateViewModel::Empty {
+                message: "No regions have been created for this tenant yet.".to_string()
+            }
+        );
+
+        let ready_list = crate::model::RegionList {
+            items: vec![crate::model::RegionListItem {
+                id: "region-eu".to_string(),
+                name: "Europe".to_string(),
+                currency_code: "EUR".to_string(),
+                tax_provider_id: Some("vat".to_string()),
+                country_count: 2,
+                tax_rate: "20.0".to_string(),
+                tax_included: true,
+                countries_preview: "DE, FR".to_string(),
+                updated_at: "2026-06-12".to_string(),
+            }],
+        };
+
+        assert_eq!(
+            build_region_admin_list_state_view_model(
+                Some(Ok(&ready_list)),
+                &state_labels,
+                &item_labels,
+            ),
+            RegionAdminListStateViewModel::Ready {
+                items: vec![RegionAdminListItemViewModel {
+                    id: "region-eu".to_string(),
+                    name: "Europe".to_string(),
+                    badge_label: "tax included".to_string(),
+                    summary: "EUR | DE, FR".to_string(),
+                    meta: "2 countries | tax rate 20.0 | updated 2026-06-12".to_string(),
+                }],
+                open_action: "Open".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn admin_detail_meta_uses_core_owned_tax_mode_policy() {
         let detail = crate::model::RegionDetail {
             region: crate::model::RegionRecord {
@@ -623,6 +901,37 @@ mod tests {
         );
         assert_eq!(view_model.created, "created 2026-06-11");
         assert_eq!(view_model.updated, "updated 2026-06-12");
+    }
+
+    #[test]
+    fn admin_editor_field_view_model_keeps_form_copy_outside_ui_runtime() {
+        let labels = RegionAdminEditorFieldLabels {
+            name_placeholder: "Region name".to_string(),
+            currency_code_placeholder: "Currency code".to_string(),
+            tax_provider_id_placeholder: "Tax provider ID (optional)".to_string(),
+            tax_rate_placeholder: "Tax rate".to_string(),
+            tax_included_label: "Prices already include tax".to_string(),
+            country_tax_policies_placeholder: "Country tax policies JSON".to_string(),
+            countries_placeholder: "Countries (BY, RU, KZ)".to_string(),
+            metadata_placeholder: "Metadata JSON".to_string(),
+        };
+
+        let view_model = build_region_admin_editor_field_view_model(&labels);
+
+        assert_eq!(view_model.name_placeholder, "Region name");
+        assert_eq!(view_model.currency_code_placeholder, "Currency code");
+        assert_eq!(
+            view_model.tax_provider_id_placeholder,
+            "Tax provider ID (optional)"
+        );
+        assert_eq!(view_model.tax_rate_placeholder, "Tax rate");
+        assert_eq!(view_model.tax_included_label, "Prices already include tax");
+        assert_eq!(
+            view_model.country_tax_policies_placeholder,
+            "Country tax policies JSON"
+        );
+        assert_eq!(view_model.countries_placeholder, "Countries (BY, RU, KZ)");
+        assert_eq!(view_model.metadata_placeholder, "Metadata JSON");
     }
 
     #[test]

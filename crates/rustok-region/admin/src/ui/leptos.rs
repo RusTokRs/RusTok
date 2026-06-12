@@ -5,12 +5,13 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFormState,
-    RegionAdminEditorLabels, RegionAdminListLabels, RegionAdminPolicyLabels,
-    RegionAdminRawSectionLabels,
+    RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFieldLabels,
+    RegionAdminEditorFormState, RegionAdminEditorLabels, RegionAdminListHeaderLabels,
+    RegionAdminListLabels, RegionAdminListStateLabels, RegionAdminListStateViewModel,
+    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminShellLabels,
 };
 use crate::i18n::t;
-use crate::model::{RegionAdminBootstrap, RegionDetail};
+use crate::model::RegionDetail;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -91,6 +92,31 @@ pub fn RegionAdmin() -> impl IntoView {
         "Failed to load regions",
     );
 
+    let shell_view_model = crate::core::build_region_admin_shell_view_model(
+        &RegionAdminShellLabels {
+            badge: t(ui_locale.as_deref(), "region.badge", "region"),
+            title: t(ui_locale.as_deref(), "region.title", "Region Operations"),
+            subtitle: t(ui_locale.as_deref(), "region.subtitle", "Module-owned region workspace for tenant-scoped country, currency and tax baseline management without routing operator CRUD back through the commerce umbrella."),
+        },
+    );
+    let list_header_labels = RegionAdminListHeaderLabels {
+        title: t(ui_locale.as_deref(), "region.list.title", "Regions"),
+        subtitle_template: t(
+            ui_locale.as_deref(),
+            "region.list.subtitle",
+            "Tenant {tenant} region policy owned by the region module.",
+        ),
+        subtitle_fallback: t(
+            ui_locale.as_deref(),
+            "region.list.subtitleFallback",
+            "Tenant-scoped region policy owned by the region module.",
+        ),
+        refresh_action: t(ui_locale.as_deref(), "region.action.refresh", "Refresh"),
+    };
+    let list_header_title = list_header_labels.title.clone();
+    let list_header_refresh_action = list_header_labels.refresh_action.clone();
+    let list_header_labels_for_subtitle = list_header_labels.clone();
+
     let list_labels = RegionAdminListLabels {
         tax_included: t(
             ui_locale.as_deref(),
@@ -106,6 +132,17 @@ pub fn RegionAdmin() -> impl IntoView {
         tax_rate: t(ui_locale.as_deref(), "region.common.taxRate", "tax rate"),
         updated: t(ui_locale.as_deref(), "region.common.updated", "updated"),
     };
+    let list_state_labels = RegionAdminListStateLabels {
+        loading: t(ui_locale.as_deref(), "region.loading", "Loading regions..."),
+        empty: t(
+            ui_locale.as_deref(),
+            "region.list.empty",
+            "No regions have been created for this tenant yet.",
+        ),
+        load_error_context: load_regions_error_label.clone(),
+        open_action: t(ui_locale.as_deref(), "region.action.open", "Open"),
+    };
+
     let detail_labels = RegionAdminDetailLabels {
         tax_included: list_labels.tax_included.clone(),
         tax_excluded: list_labels.tax_excluded.clone(),
@@ -136,6 +173,54 @@ pub fn RegionAdmin() -> impl IntoView {
     };
     let editor_labels_for_heading = editor_labels.clone();
     let editor_labels_for_submit = editor_labels.clone();
+    let editor_field_view_model =
+        crate::core::build_region_admin_editor_field_view_model(&RegionAdminEditorFieldLabels {
+            name_placeholder: t(ui_locale.as_deref(), "region.field.name", "Region name"),
+            currency_code_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.currencyCode",
+                "Currency code",
+            ),
+            tax_provider_id_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.taxProviderId",
+                "Tax provider ID (optional)",
+            ),
+            tax_rate_placeholder: t(ui_locale.as_deref(), "region.field.taxRate", "Tax rate"),
+            tax_included_label: t(
+                ui_locale.as_deref(),
+                "region.field.taxIncluded",
+                "Prices already include tax",
+            ),
+            country_tax_policies_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.countryTaxPolicies",
+                "Country tax policies JSON",
+            ),
+            countries_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.countries",
+                "Countries (BY, RU, KZ)",
+            ),
+            metadata_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.metadata",
+                "Metadata JSON",
+            ),
+        });
+
+    let editor_name_placeholder = editor_field_view_model.name_placeholder.clone();
+    let editor_currency_code_placeholder =
+        editor_field_view_model.currency_code_placeholder.clone();
+    let editor_tax_provider_id_placeholder =
+        editor_field_view_model.tax_provider_id_placeholder.clone();
+    let editor_tax_rate_placeholder = editor_field_view_model.tax_rate_placeholder.clone();
+    let editor_tax_included_label = editor_field_view_model.tax_included_label.clone();
+    let editor_country_tax_policies_placeholder = editor_field_view_model
+        .country_tax_policies_placeholder
+        .clone();
+    let editor_countries_placeholder = editor_field_view_model.countries_placeholder.clone();
+    let editor_metadata_placeholder = editor_field_view_model.metadata_placeholder.clone();
 
     let policy_labels = RegionAdminPolicyLabels {
         currency: t(ui_locale.as_deref(), "region.common.currency", "currency"),
@@ -312,8 +397,6 @@ pub fn RegionAdmin() -> impl IntoView {
         });
     };
 
-    let ui_locale_for_list_heading = ui_locale.clone();
-    let ui_locale_for_list = ui_locale.clone();
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_empty = ui_locale.clone();
     let ui_locale_for_editor = ui_locale.clone();
@@ -325,13 +408,13 @@ pub fn RegionAdmin() -> impl IntoView {
             <header class="rounded-3xl border border-border bg-card p-6 shadow-sm">
                 <div class="space-y-3">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                        {t(ui_locale.as_deref(), "region.badge", "region")}
+                        {shell_view_model.badge.clone()}
                     </span>
                     <h2 class="text-2xl font-semibold text-card-foreground">
-                        {t(ui_locale.as_deref(), "region.title", "Region Operations")}
+                        {shell_view_model.title.clone()}
                     </h2>
                     <p class="max-w-3xl text-sm text-muted-foreground">
-                        {t(ui_locale.as_deref(), "region.subtitle", "Module-owned region workspace for tenant-scoped country, currency and tax baseline management without routing operator CRUD back through the commerce umbrella.")}
+                        {shell_view_model.subtitle.clone()}
                     </p>
                 </div>
             </header>
@@ -347,13 +430,16 @@ pub fn RegionAdmin() -> impl IntoView {
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
                             <h3 class="text-lg font-semibold text-card-foreground">
-                                {t(ui_locale.as_deref(), "region.list.title", "Regions")}
+                                {list_header_title.clone()}
                             </h3>
                             <p class="text-sm text-muted-foreground">
-                                {move || bootstrap.get().and_then(Result::ok).map(|payload: RegionAdminBootstrap| {
-                                    t(ui_locale_for_list_heading.as_deref(), "region.list.subtitle", "Tenant {tenant} region policy owned by the region module.")
-                                        .replace("{tenant}", payload.current_tenant.name.as_str())
-                                }).unwrap_or_else(|| t(ui_locale_for_list_heading.as_deref(), "region.list.subtitleFallback", "Tenant-scoped region policy owned by the region module."))}
+                                {move || {
+                                    let payload = bootstrap.get().and_then(Result::ok);
+                                    crate::core::build_region_admin_list_header_view_model(
+                                        payload.as_ref(),
+                                        &list_header_labels_for_subtitle,
+                                    ).subtitle
+                                }}
                             </p>
                         </div>
                         <button
@@ -362,48 +448,64 @@ pub fn RegionAdmin() -> impl IntoView {
                             disabled=move || busy.get()
                             on:click=move |_| set_refresh_nonce.update(|value| *value += 1)
                         >
-                            {t(ui_locale.as_deref(), "region.action.refresh", "Refresh")}
+                            {list_header_refresh_action.clone()}
                         </button>
                     </div>
 
                     <div class="mt-5 space-y-3">
-                        {move || match regions.get() {
-                            None => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(ui_locale_for_list.as_deref(), "region.loading", "Loading regions...")}</div> }.into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_regions_error_label}: {err}")}</div> }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(ui_locale_for_list.as_deref(), "region.list.empty", "No regions have been created for this tenant yet.")}</div> }.into_any(),
-                            Some(Ok(list)) => view! {
-                                <>
-                                    {list.items.into_iter().map(|region| {
-                                        let item = crate::core::build_region_admin_list_item_view_model(&region, &list_labels);
-                                        let region_id = item.id.clone();
-                                        let region_marker = item.id.clone();
-                                        let item_locale = ui_locale_for_list.clone();
-                                        let item_query_writer = list_query_writer.clone();
-                                        view! {
-                                            <article class=move || crate::core::region_admin_list_item_class(editing_id.get().as_deref() == Some(region_marker.as_str()))>
-                                                <div class="flex items-start justify-between gap-3">
-                                                    <div class="space-y-2">
-                                                        <div class="flex flex-wrap items-center gap-2">
-                                                            <h4 class="text-base font-semibold text-card-foreground">{item.name.clone()}</h4>
-                                                            <span class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{item.badge_label.clone()}</span>
+                        {move || {
+                            let regions_state = regions.get();
+                            let list_state = crate::core::build_region_admin_list_state_view_model(
+                                regions_state.as_ref().map(|result| {
+                                    result.as_ref().map_err(|err| err.to_string())
+                                }),
+                                &list_state_labels,
+                                &list_labels,
+                            );
+
+                            match list_state {
+                                RegionAdminListStateViewModel::Loading { message } => view! {
+                                    <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{message}</div>
+                                }.into_any(),
+                                RegionAdminListStateViewModel::Error { message } => view! {
+                                    <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{message}</div>
+                                }.into_any(),
+                                RegionAdminListStateViewModel::Empty { message } => view! {
+                                    <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{message}</div>
+                                }.into_any(),
+                                RegionAdminListStateViewModel::Ready { items, open_action } => view! {
+                                    <>
+                                        {items.into_iter().map(|item| {
+                                            let region_id = item.id.clone();
+                                            let region_marker = item.id.clone();
+                                            let item_query_writer = list_query_writer.clone();
+                                            let open_action = open_action.clone();
+                                            view! {
+                                                <article class=move || crate::core::region_admin_list_item_class(editing_id.get().as_deref() == Some(region_marker.as_str()))>
+                                                    <div class="flex items-start justify-between gap-3">
+                                                        <div class="space-y-2">
+                                                            <div class="flex flex-wrap items-center gap-2">
+                                                                <h4 class="text-base font-semibold text-card-foreground">{item.name.clone()}</h4>
+                                                                <span class="inline-flex rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{item.badge_label.clone()}</span>
+                                                            </div>
+                                                            <p class="text-sm text-muted-foreground">{item.summary.clone()}</p>
+                                                            <p class="text-xs text-muted-foreground">{item.meta.clone()}</p>
                                                         </div>
-                                                        <p class="text-sm text-muted-foreground">{item.summary.clone()}</p>
-                                                        <p class="text-xs text-muted-foreground">{item.meta.clone()}</p>
+                                                        <button
+                                                            type="button"
+                                                            class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                            disabled=move || busy.get()
+                                                            on:click=move |_| item_query_writer.push_value(AdminQueryKey::RegionId.as_str(), region_id.clone())
+                                                        >
+                                                            {open_action.clone()}
+                                                        </button>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                        disabled=move || busy.get()
-                                                        on:click=move |_| item_query_writer.push_value(AdminQueryKey::RegionId.as_str(), region_id.clone())
-                                                    >
-                                                        {t(item_locale.as_deref(), "region.action.open", "Open")}
-                                                    </button>
-                                                </div>
-                                            </article>
-                                        }
-                                    }).collect_view()}
-                                </>
-                            }.into_any(),
+                                                </article>
+                                            }
+                                        }).collect_view()}
+                                    </>
+                                }.into_any(),
+                            }
                         }}
                     </div>
                 </section>
@@ -433,21 +535,21 @@ pub fn RegionAdmin() -> impl IntoView {
                         </div>
 
                         <form class="mt-5 space-y-4" on:submit=on_submit>
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.name", "Region name") prop:value=move || name.get() on:input=move |ev| set_name.set(event_target_value(&ev)) />
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_name_placeholder.clone() prop:value=move || name.get() on:input=move |ev| set_name.set(event_target_value(&ev)) />
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.currencyCode", "Currency code") prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.taxProviderId", "Tax provider ID (optional)") prop:value=move || tax_provider_id.get() on:input=move |ev| set_tax_provider_id.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_currency_code_placeholder.clone() prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_tax_provider_id_placeholder.clone() prop:value=move || tax_provider_id.get() on:input=move |ev| set_tax_provider_id.set(event_target_value(&ev)) />
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.taxRate", "Tax rate") prop:value=move || tax_rate.get() on:input=move |ev| set_tax_rate.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_tax_rate_placeholder.clone() prop:value=move || tax_rate.get() on:input=move |ev| set_tax_rate.set(event_target_value(&ev)) />
                             </div>
                             <label class="flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
                                 <input type="checkbox" prop:checked=move || tax_included.get() on:change=move |ev| set_tax_included.set(event_target_checked(&ev)) />
-                                <span>{t(ui_locale.as_deref(), "region.field.taxIncluded", "Prices already include tax")}</span>
+                                <span>{editor_tax_included_label.clone()}</span>
                             </label>
-                            <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countryTaxPolicies", "Country tax policies JSON") prop:value=move || country_tax_policies.get() on:input=move |ev| set_country_tax_policies.set(event_target_value(&ev))>{move || country_tax_policies.get()}</textarea>
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countries", "Countries (BY, RU, KZ)") prop:value=move || countries.get() on:input=move |ev| set_countries.set(event_target_value(&ev)) />
-                            <textarea class="min-h-44 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || metadata.get() on:input=move |ev| set_metadata.set(event_target_value(&ev))>{move || metadata.get()}</textarea>
+                            <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_country_tax_policies_placeholder.clone() prop:value=move || country_tax_policies.get() on:input=move |ev| set_country_tax_policies.set(event_target_value(&ev))>{move || country_tax_policies.get()}</textarea>
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_countries_placeholder.clone() prop:value=move || countries.get() on:input=move |ev| set_countries.set(event_target_value(&ev)) />
+                            <textarea class="min-h-44 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_metadata_placeholder.clone() prop:value=move || metadata.get() on:input=move |ev| set_metadata.set(event_target_value(&ev))>{move || metadata.get()}</textarea>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
                                 {move || crate::core::build_region_admin_editor_view_model(editing_id.get().as_deref(), &editor_labels_for_submit).submit_label}
                             </button>
