@@ -2,8 +2,7 @@ mod presentation;
 mod requests;
 
 pub use presentation::{
-    build_checkout_cart_summary_view_model, build_storefront_context_view_model,
-    build_storefront_shell_view_model, error_with_context, CommerceCheckoutCartSummaryViewModel,
+    build_storefront_context_view_model, build_storefront_shell_view_model, error_with_context,
     CommerceStorefrontContextViewModel, CommerceStorefrontShellViewModel,
 };
 pub use requests::{

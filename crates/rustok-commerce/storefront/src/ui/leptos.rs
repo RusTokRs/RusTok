@@ -284,17 +284,8 @@ fn CheckoutWorkspace(
             match checkout.and_then(|workspace| workspace.cart.map(|cart| (cart, workspace.payment_collection))) {
                 Some((cart, payment_collection)) => {
                     let delivery_groups = cart.delivery_groups.clone();
-                    let cart_summary = core::build_checkout_cart_summary_view_model(&cart, locale.as_deref());
-                    let cart_summary_id = cart_summary.id;
-                    let cart_summary_status = cart_summary.status;
-                    let cart_summary_subtotal = cart_summary.subtotal;
-                    let cart_summary_adjustment_total = cart_summary.adjustment_total;
-                    let cart_summary_shipping_total = cart_summary.shipping_total;
-                    let cart_summary_total = cart_summary.total;
-                    let cart_summary_line_item_count = cart_summary.line_item_count;
-                    let cart_summary_adjustment_count = cart_summary.adjustment_count;
-                    let cart_summary_delivery_group_count = cart_summary.delivery_group_count;
-                    let cart_summary_selected_shipping_option = cart_summary.selected_shipping_option;
+                    let cart_id = cart.id.clone();
+                    let cart_status = cart.status.clone();
                     let create_pending_locale = locale.clone();
                     let create_action_locale = locale.clone();
                     let shipping_pending_locale = locale.clone();
@@ -318,17 +309,17 @@ fn CheckoutWorkspace(
                                 view! { <CheckoutCompletionCard result /> }
                             })
                         }}
-                        <div class="mt-6 grid gap-3 md:grid-cols-2">
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.id", "Cart") value=cart_summary_id />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status") value=cart_summary_status />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.subtotal", "Cart subtotal") value=cart_summary_subtotal />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustments", "Cart adjustments") value=cart_summary_adjustment_total />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shippingTotal", "Cart shipping") value=cart_summary_shipping_total />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.total", "Cart total") value=cart_summary_total />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.lineItems", "Line items") value=cart_summary_line_item_count />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustmentCount", "Adjustment rows") value=cart_summary_adjustment_count />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.groups", "Delivery groups") value=cart_summary_delivery_group_count />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shipping", "Legacy shipping shortcut") value=cart_summary_selected_shipping_option />
+                        <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                            {format!(
+                                "{}: {} · {}: {}",
+                                t(locale.as_deref(), "commerce.checkout.cart.id", "Cart"),
+                                cart_id,
+                                t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status"),
+                                cart_status
+                            )}
+                            <span class="ml-2">
+                                {t(locale.as_deref(), "commerce.checkout.cart.moduleOwnership", "Cart totals, line items and adjustments stay in the cart module workspace.")}
+                            </span>
                         </div>
                         <div class="mt-6">
                             <DeliveryGroupsCard
@@ -338,9 +329,6 @@ fn CheckoutWorkspace(
                                 pending_label=t(shipping_pending_locale.as_deref(), "commerce.checkout.pending", "Processing...")
                                 on_select_shipping_option
                             />
-                        </div>
-                        <div class="mt-6">
-                            <AdjustmentsCard adjustments=cart.adjustments.clone() />
                         </div>
                         <div class="mt-6 grid gap-3 md:grid-cols-2">
                             <a class="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-card-foreground transition hover:bg-muted" href=cart_href>
