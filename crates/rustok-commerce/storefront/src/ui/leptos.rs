@@ -284,6 +284,17 @@ fn CheckoutWorkspace(
             match checkout.and_then(|workspace| workspace.cart.map(|cart| (cart, workspace.payment_collection))) {
                 Some((cart, payment_collection)) => {
                     let delivery_groups = cart.delivery_groups.clone();
+                    let cart_summary = core::build_checkout_cart_summary_view_model(&cart, locale.as_deref());
+                    let cart_summary_id = cart_summary.id;
+                    let cart_summary_status = cart_summary.status;
+                    let cart_summary_subtotal = cart_summary.subtotal;
+                    let cart_summary_adjustment_total = cart_summary.adjustment_total;
+                    let cart_summary_shipping_total = cart_summary.shipping_total;
+                    let cart_summary_total = cart_summary.total;
+                    let cart_summary_line_item_count = cart_summary.line_item_count;
+                    let cart_summary_adjustment_count = cart_summary.adjustment_count;
+                    let cart_summary_delivery_group_count = cart_summary.delivery_group_count;
+                    let cart_summary_selected_shipping_option = cart_summary.selected_shipping_option;
                     let create_pending_locale = locale.clone();
                     let create_action_locale = locale.clone();
                     let shipping_pending_locale = locale.clone();
@@ -308,16 +319,16 @@ fn CheckoutWorkspace(
                             })
                         }}
                         <div class="mt-6 grid gap-3 md:grid-cols-2">
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.id", "Cart") value=cart.id.clone() />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status") value=cart.status.clone() />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.subtotal", "Cart subtotal") value=format!("{} {}", cart.currency_code, cart.subtotal_amount) />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustments", "Cart adjustments") value=format!("{} {}", cart.currency_code, cart.adjustment_total) />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shippingTotal", "Cart shipping") value=format!("{} {}", cart.currency_code, cart.shipping_total) />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.total", "Cart total") value=format!("{} {}", cart.currency_code, cart.total_amount) />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.lineItems", "Line items") value=cart.line_item_count.to_string() />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustmentCount", "Adjustment rows") value=cart.adjustment_count.to_string() />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.groups", "Delivery groups") value=cart.delivery_group_count.to_string() />
-                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shipping", "Legacy shipping shortcut") value=cart.selected_shipping_option_id.clone().unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved")) />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.id", "Cart") value=cart_summary_id />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status") value=cart_summary_status />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.subtotal", "Cart subtotal") value=cart_summary_subtotal />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustments", "Cart adjustments") value=cart_summary_adjustment_total />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shippingTotal", "Cart shipping") value=cart_summary_shipping_total />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.total", "Cart total") value=cart_summary_total />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.lineItems", "Line items") value=cart_summary_line_item_count />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustmentCount", "Adjustment rows") value=cart_summary_adjustment_count />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.groups", "Delivery groups") value=cart_summary_delivery_group_count />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shipping", "Legacy shipping shortcut") value=cart_summary_selected_shipping_option />
                         </div>
                         <div class="mt-6">
                             <DeliveryGroupsCard
