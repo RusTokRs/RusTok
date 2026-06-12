@@ -234,6 +234,97 @@ pub fn customer_detail_view_model(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerAdminPageLabels {
+    pub list_loading: String,
+    pub list_empty: String,
+    pub detail_empty: String,
+    pub edit_title: String,
+    pub create_title: String,
+    pub save_action: String,
+    pub create_action: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomerAdminListStateKind {
+    Loading,
+    Error,
+    Empty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerAdminListStateViewModel {
+    pub class: &'static str,
+    pub message: String,
+}
+
+pub fn customer_admin_list_state_view_model(
+    state: CustomerAdminListStateKind,
+    labels: &CustomerAdminPageLabels,
+    error_message: Option<&str>,
+) -> CustomerAdminListStateViewModel {
+    match state {
+        CustomerAdminListStateKind::Loading => CustomerAdminListStateViewModel {
+            class: "rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground",
+            message: labels.list_loading.clone(),
+        },
+        CustomerAdminListStateKind::Error => CustomerAdminListStateViewModel {
+            class: "rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive",
+            message: error_message.unwrap_or_default().to_string(),
+        },
+        CustomerAdminListStateKind::Empty => CustomerAdminListStateViewModel {
+            class: "rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground",
+            message: labels.list_empty.clone(),
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerAdminDetailEmptyViewModel {
+    pub class: &'static str,
+    pub message: String,
+}
+
+pub fn customer_admin_detail_empty_view_model(
+    labels: &CustomerAdminPageLabels,
+) -> CustomerAdminDetailEmptyViewModel {
+    CustomerAdminDetailEmptyViewModel {
+        class: "rounded-3xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground",
+        message: labels.detail_empty.clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomerAdminEditorViewModel {
+    pub title: String,
+    pub submit_label: String,
+    pub user_id_disabled: bool,
+    pub submit_disabled: bool,
+    pub new_disabled: bool,
+}
+
+pub fn customer_admin_editor_view_model(
+    is_editing: bool,
+    is_busy: bool,
+    labels: &CustomerAdminPageLabels,
+) -> CustomerAdminEditorViewModel {
+    CustomerAdminEditorViewModel {
+        title: if is_editing {
+            labels.edit_title.clone()
+        } else {
+            labels.create_title.clone()
+        },
+        submit_label: if is_editing {
+            labels.save_action.clone()
+        } else {
+            labels.create_action.clone()
+        },
+        user_id_disabled: is_editing || is_busy,
+        submit_disabled: is_busy,
+        new_disabled: is_busy,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,6 +338,64 @@ mod tests {
             no_locale: "no locale".to_string(),
             no_tags: "no tags".to_string(),
         }
+    }
+
+    fn page_labels() -> CustomerAdminPageLabels {
+        CustomerAdminPageLabels {
+            list_loading: "Loading customers...".to_string(),
+            list_empty: "No customers match the current filters.".to_string(),
+            detail_empty: "Open a customer to inspect the record.".to_string(),
+            edit_title: "Edit Customer".to_string(),
+            create_title: "Create Customer".to_string(),
+            save_action: "Save customer".to_string(),
+            create_action: "Create customer".to_string(),
+        }
+    }
+
+    #[test]
+    fn page_state_view_models_own_empty_error_and_editor_policy() {
+        let labels = page_labels();
+
+        let loading = customer_admin_list_state_view_model(
+            CustomerAdminListStateKind::Loading,
+            &labels,
+            None,
+        );
+        assert_eq!(loading.message, "Loading customers...");
+        assert!(loading.class.contains("border-dashed"));
+
+        let error = customer_admin_list_state_view_model(
+            CustomerAdminListStateKind::Error,
+            &labels,
+            Some("Failed to load customers: transport"),
+        );
+        assert_eq!(error.message, "Failed to load customers: transport");
+        assert!(error.class.contains("destructive"));
+
+        let empty =
+            customer_admin_list_state_view_model(CustomerAdminListStateKind::Empty, &labels, None);
+        assert_eq!(empty.message, "No customers match the current filters.");
+        assert!(empty.class.contains("text-center"));
+
+        let detail_empty = customer_admin_detail_empty_view_model(&labels);
+        assert_eq!(
+            detail_empty.message,
+            "Open a customer to inspect the record."
+        );
+
+        let edit_busy = customer_admin_editor_view_model(true, true, &labels);
+        assert_eq!(edit_busy.title, "Edit Customer");
+        assert_eq!(edit_busy.submit_label, "Save customer");
+        assert!(edit_busy.user_id_disabled);
+        assert!(edit_busy.submit_disabled);
+        assert!(edit_busy.new_disabled);
+
+        let create_idle = customer_admin_editor_view_model(false, false, &labels);
+        assert_eq!(create_idle.title, "Create Customer");
+        assert_eq!(create_idle.submit_label, "Create customer");
+        assert!(!create_idle.user_id_disabled);
+        assert!(!create_idle.submit_disabled);
+        assert!(!create_idle.new_disabled);
     }
 
     #[test]

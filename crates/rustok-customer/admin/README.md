@@ -9,7 +9,7 @@ Leptos admin UI package for the `rustok-customer` module.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses native Leptos server functions as the primary admin transport behind the module-owned `admin/src/transport/mod.rs` facade instead of inventing a new umbrella GraphQL or REST layer.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
-- Keeps framework-agnostic customer list defaults, submit-command validation/preparation, list/detail view models, active-row CSS policy, and form snapshots in `admin/src/core.rs` so render adapters do not own pagination, display fallback, or form mapping policy.
+- Keeps framework-agnostic customer list defaults, submit-command validation/preparation, list/detail view models, page-state view models, editor action-state policy, active-row CSS policy, and form snapshots in `admin/src/core.rs` so render adapters do not own pagination, display fallback, editor mode/disabled, or form mapping policy.
 - Keeps native Leptos server functions in `admin/src/transport/native_server_adapter.rs`; `admin/src/transport/mod.rs` remains the module-owned facade consumed by UI.
 - Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; `admin/src/lib.rs` only wires modules and re-exports `CustomerAdmin`.
 

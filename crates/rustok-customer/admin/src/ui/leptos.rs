@@ -5,10 +5,12 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    build_customer_admin_submit_command, customer_detail_form_snapshot, customer_detail_view_model,
-    customer_list_item_class, customer_list_item_view_model, customer_list_request,
-    empty_customer_admin_form_snapshot, CustomerAdminDisplayLabels, CustomerAdminDraftInput,
-    CustomerAdminFormSnapshot, CustomerAdminSubmitCommandError,
+    build_customer_admin_submit_command, customer_admin_detail_empty_view_model,
+    customer_admin_editor_view_model, customer_admin_list_state_view_model,
+    customer_detail_form_snapshot, customer_detail_view_model, customer_list_item_class,
+    customer_list_item_view_model, customer_list_request, empty_customer_admin_form_snapshot,
+    CustomerAdminDisplayLabels, CustomerAdminDraftInput, CustomerAdminFormSnapshot,
+    CustomerAdminListStateKind, CustomerAdminPageLabels, CustomerAdminSubmitCommandError,
 };
 use crate::i18n::t;
 use crate::model::{CustomerAdminBootstrap, CustomerDetail};
@@ -214,14 +216,20 @@ pub fn CustomerAdmin() -> impl IntoView {
     let ui_locale_for_list = ui_locale.clone();
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_profile = ui_locale.clone();
-    let ui_locale_for_empty = ui_locale.clone();
-    let ui_locale_for_editor_heading = ui_locale.clone();
     let ui_locale_for_editor = ui_locale.clone();
     let list_query_writer = query_writer.clone();
     let reset_query_writer = query_writer.clone();
     let display_labels = customer_admin_display_labels(ui_locale.as_deref());
     let list_display_labels = display_labels.clone();
     let detail_display_labels = display_labels;
+    let page_labels = customer_admin_page_labels(ui_locale.as_deref());
+    let list_state_labels = page_labels.clone();
+    let editor_title_labels = page_labels.clone();
+    let user_id_disabled_labels = page_labels.clone();
+    let submit_disabled_labels = page_labels.clone();
+    let submit_label_labels = page_labels.clone();
+    let new_button_labels = page_labels.clone();
+    let detail_empty_labels = page_labels;
 
     view! {
         <section class="space-y-6">
@@ -279,9 +287,31 @@ pub fn CustomerAdmin() -> impl IntoView {
 
                     <div class="mt-5 space-y-3">
                         {move || match customers.get() {
-                            None => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(ui_locale_for_list.as_deref(), "customer.loading", "Loading customers...")}</div> }.into_any(),
-                            Some(Err(err)) => view! { <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{format!("{load_customers_error_label}: {err}")}</div> }.into_any(),
-                            Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t(ui_locale_for_list.as_deref(), "customer.list.empty", "No customers match the current filters.")}</div> }.into_any(),
+                            None => {
+                                let state = customer_admin_list_state_view_model(
+                                    CustomerAdminListStateKind::Loading,
+                                    &list_state_labels,
+                                    None,
+                                );
+                                view! { <div class=state.class>{state.message}</div> }.into_any()
+                            },
+                            Some(Err(err)) => {
+                                let message = format!("{load_customers_error_label}: {err}");
+                                let state = customer_admin_list_state_view_model(
+                                    CustomerAdminListStateKind::Error,
+                                    &list_state_labels,
+                                    Some(message.as_str()),
+                                );
+                                view! { <div class=state.class>{state.message}</div> }.into_any()
+                            },
+                            Some(Ok(list)) if list.items.is_empty() => {
+                                let state = customer_admin_list_state_view_model(
+                                    CustomerAdminListStateKind::Empty,
+                                    &list_state_labels,
+                                    None,
+                                );
+                                view! { <div class=state.class>{state.message}</div> }.into_any()
+                            },
                             Some(Ok(list)) => view! {
                                 <>
                                     {list.items.into_iter().map(|customer| {
@@ -324,7 +354,11 @@ pub fn CustomerAdmin() -> impl IntoView {
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <h3 class="text-lg font-semibold text-card-foreground">
-                                    {move || if editing_id.get().is_some() { t(ui_locale_for_editor_heading.as_deref(), "customer.editor.editTitle", "Edit Customer") } else { t(ui_locale_for_editor_heading.as_deref(), "customer.editor.createTitle", "Create Customer") }}
+                                    {move || customer_admin_editor_view_model(
+                                        editing_id.get().is_some(),
+                                        busy.get(),
+                                        &editor_title_labels,
+                                    ).title}
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
                                     {t(ui_locale_for_editor.as_deref(), "customer.editor.subtitle", "Native customer CRUD lives in the customer module package. User linkage is optional and can be set only during customer creation.")}
@@ -333,7 +367,11 @@ pub fn CustomerAdmin() -> impl IntoView {
                             <button
                                 type="button"
                                 class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                disabled=move || busy.get()
+                                disabled=move || customer_admin_editor_view_model(
+                                    editing_id.get().is_some(),
+                                    busy.get(),
+                                    &new_button_labels,
+                                ).new_disabled
                                 on:click=move |_| {
                                     reset_query_writer.clear_key(AdminQueryKey::CustomerId.as_str());
                                     reset_form();
@@ -344,7 +382,11 @@ pub fn CustomerAdmin() -> impl IntoView {
                         </div>
 
                         <form class="mt-5 space-y-4" on:submit=on_submit>
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary disabled:opacity-60" placeholder=t(ui_locale.as_deref(), "customer.field.userId", "Linked user ID (optional)") disabled=move || editing_id.get().is_some() || busy.get() prop:value=move || user_id.get() on:input=move |ev| set_user_id.set(event_target_value(&ev)) />
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary disabled:opacity-60" placeholder=t(ui_locale.as_deref(), "customer.field.userId", "Linked user ID (optional)") disabled=move || customer_admin_editor_view_model(
+                                    editing_id.get().is_some(),
+                                    busy.get(),
+                                    &user_id_disabled_labels,
+                                ).user_id_disabled prop:value=move || user_id.get() on:input=move |ev| set_user_id.set(event_target_value(&ev)) />
                             <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.email", "Email") prop:value=move || email.get() on:input=move |ev| set_email.set(event_target_value(&ev)) />
                             <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.firstName", "First name") prop:value=move || first_name.get() on:input=move |ev| set_first_name.set(event_target_value(&ev)) />
@@ -353,8 +395,16 @@ pub fn CustomerAdmin() -> impl IntoView {
                             <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.phone", "Phone") prop:value=move || phone.get() on:input=move |ev| set_phone.set(event_target_value(&ev)) />
                             </div>
-                            <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
-                                {move || if editing_id.get().is_some() { t(ui_locale.as_deref(), "customer.action.save", "Save customer") } else { t(ui_locale.as_deref(), "customer.action.create", "Create customer") }}
+                            <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || customer_admin_editor_view_model(
+                                    editing_id.get().is_some(),
+                                    busy.get(),
+                                    &submit_disabled_labels,
+                                ).submit_disabled>
+                                {move || customer_admin_editor_view_model(
+                                    editing_id.get().is_some(),
+                                    busy.get(),
+                                    &submit_label_labels,
+                                ).submit_label}
                             </button>
                         </form>
                     </section>
@@ -412,10 +462,33 @@ pub fn CustomerAdmin() -> impl IntoView {
                                 </div>
                             </section>
                         }.into_any()
-                    }).unwrap_or_else(|| view! { <section class="rounded-3xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{t(ui_locale_for_empty.as_deref(), "customer.detail.empty", "Open a customer to inspect the record, linked user and profile bridge state.")}</section> }.into_any())}
+                    }).unwrap_or_else(|| {
+                        let empty = customer_admin_detail_empty_view_model(&detail_empty_labels);
+                        view! { <section class=empty.class>{empty.message}</section> }.into_any()
+                    })}
                 </section>
             </div>
         </section>
+    }
+}
+
+fn customer_admin_page_labels(locale: Option<&str>) -> CustomerAdminPageLabels {
+    CustomerAdminPageLabels {
+        list_loading: t(locale, "customer.loading", "Loading customers..."),
+        list_empty: t(
+            locale,
+            "customer.list.empty",
+            "No customers match the current filters.",
+        ),
+        detail_empty: t(
+            locale,
+            "customer.detail.empty",
+            "Open a customer to inspect the record, linked user and profile bridge state.",
+        ),
+        edit_title: t(locale, "customer.editor.editTitle", "Edit Customer"),
+        create_title: t(locale, "customer.editor.createTitle", "Create Customer"),
+        save_action: t(locale, "customer.action.save", "Save customer"),
+        create_action: t(locale, "customer.action.create", "Create customer"),
     }
 }
 
