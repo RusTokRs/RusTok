@@ -7,11 +7,13 @@
 ## Execution checkpoint
 
 - Current phase: ffa_ui_leptos_adapter_split_slice
-- Last checkpoint: FFA slice #21 перенесла admin detail raw JSON sections (`country_tax_policies_pretty`, `metadata_pretty`) в Leptos-free `RegionAdminRawSectionsViewModel`; Leptos adapter рендерит готовые title/body пары.
-- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer и добрать оставшиеся detail header timestamp view-model helpers в core без изменения native/GraphQL contracts.
+- Last checkpoint: FFA slice #23 перенесла admin editor mode copy в Leptos-free `RegionAdminEditorViewModel`: create/edit title и create/save submit label теперь выбираются в core по normalized editing id, а Leptos adapter только рендерит готовые строки.
+- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer и добрать следующий небольшой admin detail/editor presentation slice без изменения native/GraphQL contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
 - Last updated at (UTC): 2026-06-12T00:00:00Z
+- Last updated at (UTC): 2026-06-12T12:00:00Z
+- Last updated at (UTC): 2026-06-12T13:00:00Z
 
 
 ## FFA/FBA status
@@ -42,7 +44,9 @@
   - FFA slice #18 добавила admin `RegionAdminListItemViewModel`, `RegionAdminListLabels`, `RegionAdminDetailLabels`, core-owned selected-row CSS policy и detail meta formatting с unit-тестами без Leptos runtime; Leptos adapter больше не форматирует region row/meta/tax badge inline;
   - FFA slice #19 добавила `RegionAdminEditorFormState` и core-owned defaults для create/reset формы (`0`, `[]`, `{}`), а loaded-detail mapping (`tax_provider_id` fallback, countries CSV, pretty JSON fields) больше не живёт в Leptos signal helper;
   - FFA slice #20 добавила `RegionAdminPolicyLabels`, `RegionAdminPolicySectionViewModel`, `region_admin_countries_summary` и default tax-provider id fallback в core; Leptos detail section больше не форматирует policy rows inline;
-  - FFA slice #21 добавила `RegionAdminRawSectionLabels`, `RegionAdminRawSectionsViewModel` и `build_region_admin_raw_sections_view_model`, чтобы raw JSON section titles/bodies собирались вне Leptos render слоя.
+  - FFA slice #21 добавила `RegionAdminRawSectionLabels`, `RegionAdminRawSectionsViewModel` и `build_region_admin_raw_sections_view_model`, чтобы raw JSON section titles/bodies собирались вне Leptos render слоя;
+  - FFA slice #22 добавила admin detail header view-model (`RegionAdminDetailHeaderViewModel`) для name/summary/meta и локализованных created/updated timestamp строк; Leptos adapter больше не форматирует header/timestamps напрямую;
+  - FFA slice #23 добавила admin editor mode view-model (`RegionAdminEditorViewModel`) для create/edit title и create/save submit label selection без Leptos runtime.
 - Last verified at (UTC): 2026-06-12T00:00:00Z
 - Owner: `rustok-region` module team
 
@@ -130,3 +134,5 @@
 - [x] Slice 19: admin editor form-state defaults и loaded-detail snapshot mapping перенесены в core (`RegionAdminEditorFormState`, default input constants, `from_detail`); Leptos adapter только применяет готовый snapshot к signals; проверка: `timeout 120s cargo check -p rustok-region-admin --lib --no-default-features` завершилась успешно в заданном лимите.
 - [x] Slice 20: admin detail policy-section rows, countries summary и `region_default` tax-provider fallback перенесены в core (`RegionAdminPolicySectionViewModel`, `RegionAdminPolicyLabels`, `region_admin_countries_summary`); Leptos adapter рендерит готовые rows; проверка: `timeout 90s cargo check -p rustok-region-admin --lib --no-default-features` завершилась успешно.
 - [x] Slice 21: admin detail raw JSON sections (`Country Tax Policies`, `Metadata`) перенесены в core (`RegionAdminRawSectionsViewModel`, `RegionAdminRawSectionLabels`); Leptos adapter рендерит готовые title/body пары; проверка: `timeout 90s cargo check -p rustok-region-admin --lib --no-default-features` завершилась успешно.
+- [x] Slice 22: admin detail header presentation перенесена в core (`RegionAdminDetailHeaderViewModel`, `RegionAdminDetailHeaderLabels`): name, currency/countries summary, policy meta и created/updated timestamp строки собираются без Leptos runtime; проверки `timeout 90s cargo check -p rustok-region-admin --lib --no-default-features` и `timeout 90s cargo test -p rustok-region-admin --lib --no-default-features admin_detail_header_view_model_formats_summary_and_timestamps` остановлены по timeout, чтобы не уходить в долгую компиляцию.
+- [x] Slice 23: admin editor mode copy перенесена в core (`RegionAdminEditorViewModel`, `RegionAdminEditorLabels`): create/edit title и create/save submit label выбираются по normalized editing id; проверка: `timeout 45s cargo test -p rustok-region-admin --lib --no-default-features admin_editor_view_model_selects_create_or_edit_copy_without_ui_runtime` остановлена по timeout, чтобы не уходить в долгую компиляцию.

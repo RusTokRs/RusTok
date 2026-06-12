@@ -5,8 +5,9 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    RegionAdminDetailLabels, RegionAdminEditorFormState, RegionAdminListLabels,
-    RegionAdminPolicyLabels, RegionAdminRawSectionLabels,
+    RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFormState,
+    RegionAdminEditorLabels, RegionAdminListLabels, RegionAdminPolicyLabels,
+    RegionAdminRawSectionLabels,
 };
 use crate::i18n::t;
 use crate::model::{RegionAdminBootstrap, RegionDetail};
@@ -111,6 +112,30 @@ pub fn RegionAdmin() -> impl IntoView {
         countries: list_labels.countries.clone(),
         tax_rate: list_labels.tax_rate.clone(),
     };
+    let detail_header_labels = RegionAdminDetailHeaderLabels {
+        created: t(ui_locale.as_deref(), "region.common.created", "created"),
+        updated: list_labels.updated.clone(),
+    };
+    let editor_labels = RegionAdminEditorLabels {
+        create_title: t(
+            ui_locale.as_deref(),
+            "region.editor.createTitle",
+            "Create Region",
+        ),
+        edit_title: t(
+            ui_locale.as_deref(),
+            "region.editor.editTitle",
+            "Edit Region",
+        ),
+        create_action: t(
+            ui_locale.as_deref(),
+            "region.action.create",
+            "Create region",
+        ),
+        save_action: t(ui_locale.as_deref(), "region.action.save", "Save region"),
+    };
+    let editor_labels_for_heading = editor_labels.clone();
+    let editor_labels_for_submit = editor_labels.clone();
 
     let policy_labels = RegionAdminPolicyLabels {
         currency: t(ui_locale.as_deref(), "region.common.currency", "currency"),
@@ -291,7 +316,6 @@ pub fn RegionAdmin() -> impl IntoView {
     let ui_locale_for_list = ui_locale.clone();
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_empty = ui_locale.clone();
-    let ui_locale_for_editor_heading = ui_locale.clone();
     let ui_locale_for_editor = ui_locale.clone();
     let list_query_writer = query_writer.clone();
     let reset_query_writer = query_writer.clone();
@@ -389,7 +413,7 @@ pub fn RegionAdmin() -> impl IntoView {
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <h3 class="text-lg font-semibold text-card-foreground">
-                                    {move || if editing_id.get().is_some() { t(ui_locale_for_editor_heading.as_deref(), "region.editor.editTitle", "Edit Region") } else { t(ui_locale_for_editor_heading.as_deref(), "region.editor.createTitle", "Create Region") }}
+                                    {move || crate::core::build_region_admin_editor_view_model(editing_id.get().as_deref(), &editor_labels_for_heading).title}
                                 </h3>
                                 <p class="text-sm text-muted-foreground">
                                     {t(ui_locale_for_editor.as_deref(), "region.editor.subtitle", "Native region CRUD lives in the region module package. Countries are entered as comma-separated ISO codes and metadata is stored as raw JSON.")}
@@ -425,13 +449,18 @@ pub fn RegionAdmin() -> impl IntoView {
                             <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countries", "Countries (BY, RU, KZ)") prop:value=move || countries.get() on:input=move |ev| set_countries.set(event_target_value(&ev)) />
                             <textarea class="min-h-44 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || metadata.get() on:input=move |ev| set_metadata.set(event_target_value(&ev))>{move || metadata.get()}</textarea>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
-                                {move || if editing_id.get().is_some() { t(ui_locale.as_deref(), "region.action.save", "Save region") } else { t(ui_locale.as_deref(), "region.action.create", "Create region") }}
+                                {move || crate::core::build_region_admin_editor_view_model(editing_id.get().as_deref(), &editor_labels_for_submit).submit_label}
                             </button>
                         </form>
                     </section>
 
                     {move || selected.get().map(|detail| {
                         let countries_summary = crate::core::region_admin_countries_summary(&detail);
+                        let header_view_model = crate::core::build_region_admin_detail_header_view_model(
+                            &detail,
+                            &detail_labels,
+                            &detail_header_labels,
+                        );
                         let policy_view_model = crate::core::build_region_admin_policy_section_view_model(&detail, &policy_labels);
                         let raw_sections = crate::core::build_region_admin_raw_sections_view_model(&detail, &raw_section_labels);
                         view! {
@@ -444,13 +473,13 @@ pub fn RegionAdmin() -> impl IntoView {
                                 <div class="rounded-2xl border border-border bg-background p-5">
                                     <div class="flex flex-wrap items-start justify-between gap-3">
                                         <div class="space-y-2">
-                                            <h4 class="text-base font-semibold text-card-foreground">{detail.region.name.clone()}</h4>
-                                            <p class="text-sm text-muted-foreground">{format!("{} | {}", detail.region.currency_code, countries_summary.clone())}</p>
-                                            <p class="text-xs text-muted-foreground">{crate::core::build_region_admin_detail_meta(&detail, &detail_labels)}</p>
+                                            <h4 class="text-base font-semibold text-card-foreground">{header_view_model.name}</h4>
+                                            <p class="text-sm text-muted-foreground">{header_view_model.summary}</p>
+                                            <p class="text-xs text-muted-foreground">{header_view_model.meta}</p>
                                         </div>
                                         <div class="text-right text-xs text-muted-foreground">
-                                            <p>{format!("created {}", detail.region.created_at)}</p>
-                                            <p>{format!("updated {}", detail.region.updated_at)}</p>
+                                            <p>{header_view_model.created}</p>
+                                            <p>{header_view_model.updated}</p>
                                         </div>
                                     </div>
                                 </div>

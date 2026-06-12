@@ -105,6 +105,45 @@ impl RegionAdminEditorFormState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminEditorLabels {
+    pub create_title: String,
+    pub edit_title: String,
+    pub create_action: String,
+    pub save_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminEditorViewModel {
+    pub is_editing: bool,
+    pub title: String,
+    pub submit_label: String,
+}
+
+pub fn build_region_admin_editor_view_model(
+    editing_id: Option<&str>,
+    labels: &RegionAdminEditorLabels,
+) -> RegionAdminEditorViewModel {
+    let is_editing = editing_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some();
+
+    RegionAdminEditorViewModel {
+        is_editing,
+        title: if is_editing {
+            labels.edit_title.clone()
+        } else {
+            labels.create_title.clone()
+        },
+        submit_label: if is_editing {
+            labels.save_action.clone()
+        } else {
+            labels.create_action.clone()
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionAdminPolicyLabels {
     pub currency: String,
     pub tax_provider: String,
@@ -225,6 +264,21 @@ pub struct RegionAdminDetailLabels {
     pub tax_rate: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminDetailHeaderLabels {
+    pub created: String,
+    pub updated: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminDetailHeaderViewModel {
+    pub name: String,
+    pub summary: String,
+    pub meta: String,
+    pub created: String,
+    pub updated: String,
+}
+
 pub fn build_region_admin_list_item_view_model(
     region: &crate::model::RegionListItem,
     labels: &RegionAdminListLabels,
@@ -274,6 +328,24 @@ pub fn build_region_admin_detail_meta(
         labels.tax_rate,
         detail.region.tax_rate
     )
+}
+
+pub fn build_region_admin_detail_header_view_model(
+    detail: &crate::model::RegionDetail,
+    detail_labels: &RegionAdminDetailLabels,
+    header_labels: &RegionAdminDetailHeaderLabels,
+) -> RegionAdminDetailHeaderViewModel {
+    RegionAdminDetailHeaderViewModel {
+        name: detail.region.name.clone(),
+        summary: format!(
+            "{} | {}",
+            detail.region.currency_code,
+            region_admin_countries_summary(detail)
+        ),
+        meta: build_region_admin_detail_meta(detail, detail_labels),
+        created: format!("{} {}", header_labels.created, detail.region.created_at),
+        updated: format!("{} {}", header_labels.updated, detail.region.updated_at),
+    }
 }
 
 #[cfg(test)]
@@ -509,5 +581,72 @@ mod tests {
             build_region_admin_detail_meta(&detail, &labels),
             "2 countries | tax rate 20.0 (tax excluded)"
         );
+    }
+
+    #[test]
+    fn admin_detail_header_view_model_formats_summary_and_timestamps() {
+        let detail = crate::model::RegionDetail {
+            region: crate::model::RegionRecord {
+                id: "region-eu".to_string(),
+                tenant_id: "tenant".to_string(),
+                name: "Europe".to_string(),
+                currency_code: "EUR".to_string(),
+                tax_provider_id: Some("vat".to_string()),
+                tax_rate: "20.0".to_string(),
+                tax_included: true,
+                country_tax_policies_pretty: "[]".to_string(),
+                countries: vec!["DE".to_string(), "FR".to_string()],
+                metadata_pretty: "{}".to_string(),
+                created_at: "2026-06-11".to_string(),
+                updated_at: "2026-06-12".to_string(),
+            },
+        };
+        let detail_labels = RegionAdminDetailLabels {
+            tax_included: "tax included".to_string(),
+            tax_excluded: "tax excluded".to_string(),
+            countries: "countries".to_string(),
+            tax_rate: "tax rate".to_string(),
+        };
+        let header_labels = RegionAdminDetailHeaderLabels {
+            created: "created".to_string(),
+            updated: "updated".to_string(),
+        };
+
+        let view_model =
+            build_region_admin_detail_header_view_model(&detail, &detail_labels, &header_labels);
+
+        assert_eq!(view_model.name, "Europe");
+        assert_eq!(view_model.summary, "EUR | DE, FR");
+        assert_eq!(
+            view_model.meta,
+            "2 countries | tax rate 20.0 (tax included)"
+        );
+        assert_eq!(view_model.created, "created 2026-06-11");
+        assert_eq!(view_model.updated, "updated 2026-06-12");
+    }
+
+    #[test]
+    fn admin_editor_view_model_selects_create_or_edit_copy_without_ui_runtime() {
+        let labels = RegionAdminEditorLabels {
+            create_title: "Create Region".to_string(),
+            edit_title: "Edit Region".to_string(),
+            create_action: "Create region".to_string(),
+            save_action: "Save region".to_string(),
+        };
+
+        let create_view_model = build_region_admin_editor_view_model(None, &labels);
+        assert!(!create_view_model.is_editing);
+        assert_eq!(create_view_model.title, "Create Region");
+        assert_eq!(create_view_model.submit_label, "Create region");
+
+        let edit_view_model = build_region_admin_editor_view_model(Some("region-eu"), &labels);
+        assert!(edit_view_model.is_editing);
+        assert_eq!(edit_view_model.title, "Edit Region");
+        assert_eq!(edit_view_model.submit_label, "Save region");
+
+        let blank_view_model = build_region_admin_editor_view_model(Some("  "), &labels);
+        assert!(!blank_view_model.is_editing);
+        assert_eq!(blank_view_model.title, "Create Region");
+        assert_eq!(blank_view_model.submit_label, "Create region");
     }
 }
