@@ -466,8 +466,8 @@ pub fn CustomerAdmin() -> impl IntoView {
                                             <p class="text-xs text-muted-foreground">{detail_view.meta.clone()}</p>
                                         </div>
                                         <div class="text-right text-xs text-muted-foreground">
-                                            <p>{format!("created {}", detail_view.created_at)}</p>
-                                            <p>{format!("updated {}", detail_view.updated_at)}</p>
+                                            <p>{detail_view.created_at_label.clone()}</p>
+                                            <p>{detail_view.updated_at_label.clone()}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -569,6 +569,12 @@ fn customer_admin_display_labels(locale: Option<&str>) -> CustomerAdminDisplayLa
         no_phone: t(locale, "customer.common.noPhone", "no phone"),
         no_locale: t(locale, "customer.common.noLocale", "no locale"),
         no_tags: t(locale, "customer.profile.noTags", "no tags"),
+        phone_label: t(locale, "customer.common.phone", "phone"),
+        locale_label: t(locale, "customer.common.locale", "locale"),
+        user_label: t(locale, "customer.common.user", "user"),
+        created_label: t(locale, "customer.common.created", "created"),
+        updated_label: t(locale, "customer.common.updated", "updated"),
+        visibility_label: t(locale, "customer.common.visibility", "visibility"),
     }
 }
 

@@ -110,6 +110,12 @@ pub struct CustomerAdminDisplayLabels {
     pub no_phone: String,
     pub no_locale: String,
     pub no_tags: String,
+    pub phone_label: String,
+    pub locale_label: String,
+    pub user_label: String,
+    pub created_label: String,
+    pub updated_label: String,
+    pub visibility_label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,8 +151,8 @@ pub fn customer_list_item_view_model(
         email: customer.email.clone(),
         linked_badge,
         meta: format!(
-            "phone: {phone} | locale: {locale} | updated {}",
-            customer.updated_at
+            "{}: {phone} | {}: {locale} | {} {}",
+            labels.phone_label, labels.locale_label, labels.updated_label, customer.updated_at
         ),
     }
 }
@@ -174,6 +180,8 @@ pub struct CustomerDetailViewModel {
     pub meta: String,
     pub created_at: String,
     pub updated_at: String,
+    pub created_at_label: String,
+    pub updated_at_label: String,
     pub user_link: String,
     pub phone: String,
     pub locale: String,
@@ -204,9 +212,14 @@ pub fn customer_detail_view_model(
     CustomerDetailViewModel {
         full_name: detail.customer.full_name.clone(),
         email: detail.customer.email.clone(),
-        meta: format!("user: {user_link_for_meta} | locale: {locale}"),
+        meta: format!(
+            "{}: {user_link_for_meta} | {}: {locale}",
+            labels.user_label, labels.locale_label
+        ),
         created_at: detail.customer.created_at.clone(),
         updated_at: detail.customer.updated_at.clone(),
+        created_at_label: format!("{} {}", labels.created_label, detail.customer.created_at),
+        updated_at_label: format!("{} {}", labels.updated_label, detail.customer.updated_at),
         user_link: detail
             .customer
             .user_id
@@ -219,7 +232,7 @@ pub fn customer_detail_view_model(
             .as_ref()
             .map(|profile| CustomerProfileViewModel {
                 identity: format!("{} @{}", profile.display_name, profile.handle),
-                visibility: format!("visibility: {}", profile.visibility),
+                visibility: format!("{}: {}", labels.visibility_label, profile.visibility),
                 preferred_locale: profile
                     .preferred_locale
                     .clone()
@@ -478,6 +491,12 @@ mod tests {
             no_phone: "no phone".to_string(),
             no_locale: "no locale".to_string(),
             no_tags: "no tags".to_string(),
+            phone_label: "phone".to_string(),
+            locale_label: "locale".to_string(),
+            user_label: "user".to_string(),
+            created_label: "created".to_string(),
+            updated_label: "updated".to_string(),
+            visibility_label: "visibility".to_string(),
         }
     }
 
@@ -674,6 +693,8 @@ mod tests {
         assert_eq!(view_model.user_link, "user-1");
         assert_eq!(view_model.phone, "+10000000000");
         assert_eq!(view_model.locale, "en");
+        assert_eq!(view_model.created_at_label, "created created");
+        assert_eq!(view_model.updated_at_label, "updated updated");
         assert_eq!(view_model.metadata_pretty, "{}");
         let profile = view_model.profile.expect("profile view model");
         assert_eq!(profile.identity, "Alice @alice");
