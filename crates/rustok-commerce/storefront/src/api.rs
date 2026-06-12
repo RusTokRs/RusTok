@@ -966,19 +966,6 @@ fn build_native_shipping_selection_plan(
     Ok(selections)
 }
 
-pub async fn fetch_storefront_commerce(
-    selected_cart_id: Option<String>,
-    locale: Option<String>,
-) -> Result<StorefrontCommerceData, ApiError> {
-    match fetch_storefront_commerce_server(selected_cart_id.clone(), locale.clone()).await {
-        Ok(data) => Ok(data),
-        Err(error) if should_fallback_to_graphql(&error) => {
-            fetch_storefront_commerce_graphql(selected_cart_id, locale).await
-        }
-        Err(err) => Err(err),
-    }
-}
-
 pub async fn fetch_storefront_commerce_server(
     selected_cart_id: Option<String>,
     locale: Option<String>,
@@ -1009,48 +996,6 @@ pub async fn fetch_storefront_commerce_graphql(
         payment_collection: None,
     });
     Ok(data)
-}
-
-fn should_fallback_to_graphql(error: &ApiError) -> bool {
-    match error {
-        ApiError::ServerFn(server_error) => {
-            server_error.contains("MissingServer")
-                || server_error.contains("missing server")
-                || server_error.contains("not available on this target")
-        }
-        _ => false,
-    }
-}
-
-pub async fn select_storefront_shipping_option(
-    cart: StorefrontCheckoutCart,
-    shipping_profile_slug: String,
-    seller_id: Option<String>,
-    seller_scope: Option<String>,
-    shipping_option_id: Option<String>,
-) -> Result<(), ApiError> {
-    match select_storefront_shipping_option_server(
-        cart.id.clone(),
-        shipping_profile_slug.clone(),
-        seller_id.clone(),
-        seller_scope.clone(),
-        shipping_option_id.clone(),
-    )
-    .await
-    {
-        Ok(()) => Ok(()),
-        Err(error) if should_fallback_to_graphql(&error) => {
-            select_storefront_shipping_option_graphql(
-                cart,
-                shipping_profile_slug,
-                seller_id,
-                seller_scope,
-                shipping_option_id,
-            )
-            .await
-        }
-        Err(error) => Err(error),
-    }
 }
 
 pub async fn select_storefront_shipping_option_server(
@@ -1107,15 +1052,6 @@ pub async fn select_storefront_shipping_option_graphql(
     Ok(())
 }
 
-pub async fn create_storefront_payment_collection(
-    cart_id: String,
-) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    match create_storefront_payment_collection_server(cart_id.clone()).await {
-        Ok(collection) => Ok(collection),
-        Err(_) => create_storefront_payment_collection_graphql(cart_id).await,
-    }
-}
-
 pub async fn create_storefront_payment_collection_server(
     cart_id: String,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
@@ -1145,15 +1081,6 @@ pub async fn create_storefront_payment_collection_graphql(
     .await?;
 
     Ok(map_graphql_payment_collection(response.payment_collection))
-}
-
-pub async fn complete_storefront_checkout(
-    cart_id: String,
-) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    match complete_storefront_checkout_server(cart_id.clone()).await {
-        Ok(completion) => Ok(completion),
-        Err(_) => complete_storefront_checkout_graphql(cart_id).await,
-    }
 }
 
 pub async fn complete_storefront_checkout_server(

@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: admin FFA transport module split + FBA readiness hardening gate
-- Last checkpoint: FFA-срез `rustok-commerce-admin` продолжил decomposition после `admin/src/core/`: single-file `admin/src/transport.rs` заменён на `admin/src/transport/` facade с subdomain files `shipping_profile`, `promotion`, `order_change`; public `transport::` API сохранён для Leptos adapter, raw `api::*` calls остаются внутри transport layer.
+- Current phase: storefront FFA transport adapter split + FBA readiness hardening gate
+- Last checkpoint: corrective FFA-срез усилил module-owned UI boundaries: cart-summary/cart adjustments, payment details, order totals and fulfillment/shipping option detail rendering удалены из commerce storefront; эти детали остаются в `rustok-cart`, `rustok-payment`, `rustok-order` и `rustok-fulfillment`, а commerce storefront показывает только orchestration/handoff state. `storefront/src/core/` содержит только commerce-owned shell/context presentation и route/request/command construction (`presentation`, `requests`), transport остаётся split на `native_server_adapter`/`graphql_adapter`.
 - Next step: сначала зафиксировать FBA-readiness evidence для уже готовых ecommerce slices (service contract first, typed context/errors, explicit ports/events, transport adapters second), затем добавить end-to-end parity evidence для REST/GraphQL/native operator paths и только после этого расширять roadmap новыми marketplace/provider фазами.
 - Open blockers: OpenAPI contract test под default server features ранее блокировался существующими compile errors вне commerce (`rustok-pages-admin` Fn/FnOnce и server build/lifecycle/graphql ошибки); targeted `cargo test -p rustok-commerce-admin --features ssr` проходит.
 - Hand-off notes for next agent: После каждого returns/order-change инкремента обновлять этот блок и central readiness/registry evidence.
-- Last updated at (UTC): 2026-06-07T00:00:00Z
+- Last updated at (UTC): 2026-06-12T00:00:00Z
 
 
 ## FFA/FBA status
@@ -21,9 +21,10 @@
   - module-owned admin UI получил native-first post-order change operator: операторы фильтруют order changes по `order_id/status` и вызывают `OrderService::apply_order_change` / `cancel_order_change` через module-owned `#[server]` functions с targeted SSR coverage, при этом GraphQL `orderChanges` / `applyOrderChange` / `cancelOrderChange` сохранены как fallback transport, когда native server-function transport недоступен;
   - exchange/claim return-decision helper metadata теперь помечает создаваемые order changes `return_decision_action` и `return_decision_source`, а admin operator workspace показывает resolution summary cards из preview/metadata через framework-agnostic `admin/src/core/` helper без переноса domain rules в host или Leptos render adapter;
   - FFA admin transport module split: `admin/src/lib.rs` больше не содержит Leptos render/business code и только wires modules + re-export `CommerceAdmin`; `admin/src/core/mod.rs` реэкспортирует subdomain files для form/command/view-model policy, а `admin/src/transport/mod.rs` реэкспортирует shipping-profile, cart-promotion и order-change transport operations over the existing native/GraphQL-capable `api` layer;
+  - FFA storefront transport/core split: aggregate checkout route теперь строит `FetchCommerceRequest`, `CartCommandRequest`, `SelectShippingOptionRequest` и commerce-owned context fallback view-model (`tenant/channel/resolution`) в Leptos-free `storefront/src/core/` submodules (`requests`, `presentation`); cart totals/line-items/adjustments stay in `rustok-cart`, payment details stay in `rustok-payment`, order totals stay in `rustok-order`, fulfillment/shipping option details stay in `rustok-fulfillment`, and commerce renders only handoff/orchestration context; `storefront/src/transport/mod.rs` owns единственную native-first + GraphQL fallback policy, duplicate combined fallback helpers удалены из `storefront/src/api.rs`, а `native_server_adapter.rs` / `graphql_adapter.rs` являются единственными местами storefront UI package, где вызываются raw native/GraphQL `api::*` functions;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FBA-readiness gate включён для уже готовых ecommerce slices до расширения roadmap новыми marketplace/provider модулями: проверяются service-contract ownership, typed request context/errors, explicit cross-module ports/events и отсутствие business logic в transport/UI adapters.
-- Last verified at (UTC): 2026-06-07T00:00:00Z
+- Last verified at (UTC): 2026-06-12T00:00:00Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа
