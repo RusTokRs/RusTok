@@ -72,6 +72,48 @@
 
 Ключевое правило: UI adapter не вызывает raw GraphQL/native functions напрямую. Он может обращаться только к module-owned `transport/` facade; request/command/state construction, validation и business/policy decisions остаются в `core` ports/helpers.
 
+### Стандарт минимального FFA-среза и anti-over-extraction
+
+FFA-срез должен уменьшать связность, а не механически переносить каждую строку из Leptos adapter
+в `core`. Для всех модулей действует единый decision gate: перенос в `core` разрешён, если
+выполнено хотя бы одно из условий ниже.
+
+**Переносить в `core`:**
+
+1. request/command construction, normalization и validation, которые влияют на transport payload
+   или доменную семантику;
+2. view-model mapping, где есть вычисляемые поля, fallback policy, CSS/status class policy,
+   route/query intent, pagination/filter/sort state или reusable display rules;
+3. transport-agnostic error/policy envelope, если его должны одинаково потреблять Leptos,
+   будущий Dioxus adapter, Next/mobile/headless host или tests;
+4. state transitions, busy/selected/empty/error policy и mutation outcomes, если они могут
+   разойтись между adapters или должны тестироваться без UI runtime;
+5. повторяющийся паттерн, который уже встречается минимум в двух surfaces или ожидаемо будет
+   вынесен в shared foundation.
+
+**Оставлять в `ui/leptos`:**
+
+1. простые i18n label bindings (`t(locale, key, fallback)`) и одноразовые success/error copy,
+   если они не меняют policy и не нужны другим host adapters;
+2. DOM layout, classes без state/policy ветвления, event binding, signals/resources/effects;
+3. reset/refresh side effects после mutation, если они завязаны на конкретный adapter state;
+4. механические wrappers над одной строкой форматирования, которые не дают reuse и увеличивают
+   количество DTO/enum/label structs;
+5. код, перенос которого увеличивает public surface сильнее, чем уменьшает coupling.
+
+**Правило размера:** маленький FFA-срез предпочтительнее большого, но он должен иметь
+архитектурный смысл. Если изменение добавляет больше boilerplate, чем удаляет coupling,
+срез отклоняется или откатывается.
+
+**Обязательный review после каждого среза:**
+
+- зафиксировать в local implementation plan, какую coupling-проблему решил срез;
+- проверить, что UI adapter стал тоньше именно по business/policy/transport ownership, а не просто
+  получил больше passthrough DTO;
+- если обнаружен over-extraction, откатить его в той же итерации и оставить reusable rule в этом плане;
+- при расхождении между модулями сначала искать общий паттерн, затем переносить его в shared crate,
+  а не копировать крупные module-local structs.
+
 ## Phase C — Shared platform abstractions (1–2 недели)
 
 Вынести повторяющиеся контракты в shared crate(s):

@@ -1374,20 +1374,6 @@ fn DictionariesView() -> impl IntoView {
         "search.error.loadDictionaries",
         "Failed to load search dictionaries",
     );
-    let feedback_labels = core::SearchDictionaryMutationFeedbackLabels {
-        synonym_updated: synonym_updated_label,
-        synonym_save_error: synonym_save_error_label,
-        stop_word_updated: stop_word_updated_label,
-        stop_word_save_error: stop_word_save_error_label,
-        pin_rule_updated: pin_rule_updated_label,
-        pin_rule_save_error: pin_rule_save_error_label,
-        synonym_removed: synonym_removed_label,
-        synonym_remove_error: synonym_remove_error_label,
-        stop_word_removed: stop_word_removed_label,
-        stop_word_remove_error: stop_word_remove_error_label,
-        pin_rule_removed: pin_rule_removed_label,
-        pin_rule_remove_error: pin_rule_remove_error_label,
-    };
 
     let snapshot = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -1396,7 +1382,6 @@ fn DictionariesView() -> impl IntoView {
         },
     );
 
-    let submit_synonym_feedback_labels = feedback_labels.clone();
     let submit_synonym = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         set_busy.set(true);
@@ -1411,7 +1396,8 @@ fn DictionariesView() -> impl IntoView {
                     term: term.as_str(),
                     synonyms: synonyms.as_str(),
                 });
-            let feedback_labels = submit_synonym_feedback_labels.clone();
+            let synonym_updated_label = synonym_updated_label.clone();
+            let synonym_save_error_label = synonym_save_error_label.clone();
             async move {
                 match transport::upsert_search_synonym(
                     token_value,
@@ -1422,18 +1408,14 @@ fn DictionariesView() -> impl IntoView {
                 .await
                 {
                     Ok(_) => {
-                        set_feedback.set(Some(core::dictionary_mutation_success_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::SaveSynonym,
-                        )));
+                        set_feedback.set(Some(synonym_updated_label));
                         set_synonym_term.set(String::new());
                         set_synonym_values.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(core::dictionary_mutation_error_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::SaveSynonym,
+                        set_feedback.set(Some(core::error_with_context(
+                            synonym_save_error_label.as_str(),
                             &err.to_string(),
                         )));
                     }
@@ -1443,7 +1425,6 @@ fn DictionariesView() -> impl IntoView {
         });
     });
 
-    let submit_stop_word_feedback_labels = feedback_labels.clone();
     let submit_stop_word = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         set_busy.set(true);
@@ -1456,23 +1437,20 @@ fn DictionariesView() -> impl IntoView {
                 core::build_search_stop_word_mutation_request(core::SearchStopWordMutationInput {
                     value: value.as_str(),
                 });
-            let feedback_labels = submit_stop_word_feedback_labels.clone();
+            let stop_word_updated_label = stop_word_updated_label.clone();
+            let stop_word_save_error_label = stop_word_save_error_label.clone();
             async move {
                 match transport::add_search_stop_word(token_value, tenant_value, request.value)
                     .await
                 {
                     Ok(_) => {
-                        set_feedback.set(Some(core::dictionary_mutation_success_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::AddStopWord,
-                        )));
+                        set_feedback.set(Some(stop_word_updated_label));
                         set_stop_word_value.set(String::new());
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(core::dictionary_mutation_error_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::AddStopWord,
+                        set_feedback.set(Some(core::error_with_context(
+                            stop_word_save_error_label.as_str(),
                             &err.to_string(),
                         )));
                     }
@@ -1482,7 +1460,6 @@ fn DictionariesView() -> impl IntoView {
         });
     });
 
-    let submit_pin_rule_feedback_labels = feedback_labels.clone();
     let submit_pin_rule = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let query_text = pin_query_text.get_untracked();
@@ -1508,7 +1485,8 @@ fn DictionariesView() -> impl IntoView {
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
-            let feedback_labels = submit_pin_rule_feedback_labels.clone();
+            let pin_rule_updated_label = pin_rule_updated_label.clone();
+            let pin_rule_save_error_label = pin_rule_save_error_label.clone();
             async move {
                 match transport::upsert_search_pin_rule(
                     token_value,
@@ -1520,19 +1498,15 @@ fn DictionariesView() -> impl IntoView {
                 .await
                 {
                     Ok(_) => {
-                        set_feedback.set(Some(core::dictionary_mutation_success_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::SavePinRule,
-                        )));
+                        set_feedback.set(Some(pin_rule_updated_label));
                         set_pin_query_text.set(String::new());
                         set_pin_document_id.set(String::new());
                         set_pin_position.set("1".to_string());
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(core::dictionary_mutation_error_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::SavePinRule,
+                        set_feedback.set(Some(core::error_with_context(
+                            pin_rule_save_error_label.as_str(),
                             &err.to_string(),
                         )));
                     }
@@ -1542,28 +1516,24 @@ fn DictionariesView() -> impl IntoView {
         });
     });
 
-    let delete_synonym_feedback_labels = feedback_labels.clone();
     let delete_synonym = Callback::new(move |synonym_id: String| {
         set_busy.set(true);
         set_feedback.set(None);
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
-            let feedback_labels = delete_synonym_feedback_labels.clone();
+            let synonym_removed_label = synonym_removed_label.clone();
+            let synonym_remove_error_label = synonym_remove_error_label.clone();
             async move {
                 match transport::delete_search_synonym(token_value, tenant_value, synonym_id).await
                 {
                     Ok(_) => {
-                        set_feedback.set(Some(core::dictionary_mutation_success_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::DeleteSynonym,
-                        )));
+                        set_feedback.set(Some(synonym_removed_label));
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(core::dictionary_mutation_error_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::DeleteSynonym,
+                        set_feedback.set(Some(core::error_with_context(
+                            synonym_remove_error_label.as_str(),
                             &err.to_string(),
                         )));
                     }
@@ -1573,29 +1543,25 @@ fn DictionariesView() -> impl IntoView {
         });
     });
 
-    let delete_stop_word_feedback_labels = feedback_labels.clone();
     let delete_stop_word = Callback::new(move |stop_word_id: String| {
         set_busy.set(true);
         set_feedback.set(None);
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
-            let feedback_labels = delete_stop_word_feedback_labels.clone();
+            let stop_word_removed_label = stop_word_removed_label.clone();
+            let stop_word_remove_error_label = stop_word_remove_error_label.clone();
             async move {
                 match transport::delete_search_stop_word(token_value, tenant_value, stop_word_id)
                     .await
                 {
                     Ok(_) => {
-                        set_feedback.set(Some(core::dictionary_mutation_success_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::DeleteStopWord,
-                        )));
+                        set_feedback.set(Some(stop_word_removed_label));
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(core::dictionary_mutation_error_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::DeleteStopWord,
+                        set_feedback.set(Some(core::error_with_context(
+                            stop_word_remove_error_label.as_str(),
                             &err.to_string(),
                         )));
                     }
@@ -1605,29 +1571,25 @@ fn DictionariesView() -> impl IntoView {
         });
     });
 
-    let delete_query_rule_feedback_labels = feedback_labels.clone();
     let delete_query_rule = Callback::new(move |query_rule_id: String| {
         set_busy.set(true);
         set_feedback.set(None);
         spawn_local({
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
-            let feedback_labels = delete_query_rule_feedback_labels.clone();
+            let pin_rule_removed_label = pin_rule_removed_label.clone();
+            let pin_rule_remove_error_label = pin_rule_remove_error_label.clone();
             async move {
                 match transport::delete_search_query_rule(token_value, tenant_value, query_rule_id)
                     .await
                 {
                     Ok(_) => {
-                        set_feedback.set(Some(core::dictionary_mutation_success_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::DeletePinRule,
-                        )));
+                        set_feedback.set(Some(pin_rule_removed_label));
                         set_refresh_nonce.update(|nonce| *nonce += 1);
                     }
                     Err(err) => {
-                        set_feedback.set(Some(core::dictionary_mutation_error_feedback(
-                            &feedback_labels,
-                            core::SearchDictionaryMutationFeedbackKind::DeletePinRule,
+                        set_feedback.set(Some(core::error_with_context(
+                            pin_rule_remove_error_label.as_str(),
                             &err.to_string(),
                         )));
                     }

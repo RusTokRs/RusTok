@@ -162,77 +162,7 @@ pub fn build_search_synonym_mutation_request(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchDictionaryMutationFeedbackKind {
-    SaveSynonym,
-    AddStopWord,
-    SavePinRule,
-    DeleteSynonym,
-    DeleteStopWord,
-    DeletePinRule,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SearchDictionaryMutationFeedbackLabels {
-    pub synonym_updated: String,
-    pub synonym_save_error: String,
-    pub stop_word_updated: String,
-    pub stop_word_save_error: String,
-    pub pin_rule_updated: String,
-    pub pin_rule_save_error: String,
-    pub synonym_removed: String,
-    pub synonym_remove_error: String,
-    pub stop_word_removed: String,
-    pub stop_word_remove_error: String,
-    pub pin_rule_removed: String,
-    pub pin_rule_remove_error: String,
-}
-
-impl SearchDictionaryMutationFeedbackLabels {
-    pub fn success_message(&self, kind: SearchDictionaryMutationFeedbackKind) -> &str {
-        match kind {
-            SearchDictionaryMutationFeedbackKind::SaveSynonym => self.synonym_updated.as_str(),
-            SearchDictionaryMutationFeedbackKind::AddStopWord => self.stop_word_updated.as_str(),
-            SearchDictionaryMutationFeedbackKind::SavePinRule => self.pin_rule_updated.as_str(),
-            SearchDictionaryMutationFeedbackKind::DeleteSynonym => self.synonym_removed.as_str(),
-            SearchDictionaryMutationFeedbackKind::DeleteStopWord => self.stop_word_removed.as_str(),
-            SearchDictionaryMutationFeedbackKind::DeletePinRule => self.pin_rule_removed.as_str(),
-        }
-    }
-
-    pub fn error_context(&self, kind: SearchDictionaryMutationFeedbackKind) -> &str {
-        match kind {
-            SearchDictionaryMutationFeedbackKind::SaveSynonym => self.synonym_save_error.as_str(),
-            SearchDictionaryMutationFeedbackKind::AddStopWord => self.stop_word_save_error.as_str(),
-            SearchDictionaryMutationFeedbackKind::SavePinRule => self.pin_rule_save_error.as_str(),
-            SearchDictionaryMutationFeedbackKind::DeleteSynonym => {
-                self.synonym_remove_error.as_str()
-            }
-            SearchDictionaryMutationFeedbackKind::DeleteStopWord => {
-                self.stop_word_remove_error.as_str()
-            }
-            SearchDictionaryMutationFeedbackKind::DeletePinRule => {
-                self.pin_rule_remove_error.as_str()
-            }
-        }
-    }
-}
-
-pub fn dictionary_mutation_success_feedback(
-    labels: &SearchDictionaryMutationFeedbackLabels,
-    kind: SearchDictionaryMutationFeedbackKind,
-) -> String {
-    labels.success_message(kind).to_string()
-}
-
-pub fn dictionary_mutation_error_feedback(
-    labels: &SearchDictionaryMutationFeedbackLabels,
-    kind: SearchDictionaryMutationFeedbackKind,
-    error: &str,
-) -> String {
-    error_with_context(labels.error_context(kind), error)
-}
-
 pub struct SearchStopWordMutationInput<'a> {
     pub value: &'a str,
 }
@@ -371,55 +301,6 @@ mod tests {
         assert_eq!(
             request.filters.statuses,
             vec!["published".to_string(), "draft".to_string()]
-        );
-    }
-
-    #[test]
-    fn dictionary_mutation_feedback_uses_core_owned_labels() {
-        let labels = SearchDictionaryMutationFeedbackLabels {
-            synonym_updated: "Synonym updated".to_string(),
-            synonym_save_error: "Synonym failed".to_string(),
-            stop_word_updated: "Stop word updated".to_string(),
-            stop_word_save_error: "Stop word failed".to_string(),
-            pin_rule_updated: "Pin rule updated".to_string(),
-            pin_rule_save_error: "Pin rule failed".to_string(),
-            synonym_removed: "Synonym removed".to_string(),
-            synonym_remove_error: "Synonym remove failed".to_string(),
-            stop_word_removed: "Stop word removed".to_string(),
-            stop_word_remove_error: "Stop word remove failed".to_string(),
-            pin_rule_removed: "Pin rule removed".to_string(),
-            pin_rule_remove_error: "Pin rule remove failed".to_string(),
-        };
-
-        assert_eq!(
-            dictionary_mutation_success_feedback(
-                &labels,
-                SearchDictionaryMutationFeedbackKind::SaveSynonym
-            ),
-            "Synonym updated"
-        );
-        assert_eq!(
-            dictionary_mutation_success_feedback(
-                &labels,
-                SearchDictionaryMutationFeedbackKind::DeletePinRule
-            ),
-            "Pin rule removed"
-        );
-        assert_eq!(
-            dictionary_mutation_error_feedback(
-                &labels,
-                SearchDictionaryMutationFeedbackKind::AddStopWord,
-                "timeout"
-            ),
-            "Stop word failed: timeout"
-        );
-        assert_eq!(
-            dictionary_mutation_error_feedback(
-                &labels,
-                SearchDictionaryMutationFeedbackKind::DeleteSynonym,
-                "not found"
-            ),
-            "Synonym remove failed: not found"
         );
     }
 
