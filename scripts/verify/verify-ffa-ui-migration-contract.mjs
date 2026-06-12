@@ -78,6 +78,7 @@ const requiredDocs = [
 const requiredPlanHeadings = [
   "Фазы реализации",
   "Принцип исполнения backlog (одна задача за итерацию)",
+  "Стандарт минимального FFA-среза и anti-over-extraction",
   "Политика актуализации verification scripts",
   "Phase-gate критерии (обязательные переходы между фазами)",
   "KPI parity (измеримые пороги)",
@@ -146,6 +147,17 @@ const requiredIndexRefs = [
   "dioxus-ffa-ui-migration-plan.md",
   "dioxus-ffa-pilot-connectivity-map.md",
   "ffa-ui-parity-checklist.md",
+];
+
+
+const requiredAntiOverExtractionPlanMarkers = [
+  "FFA-срез должен уменьшать связность",
+  "request/command construction, normalization и validation",
+  "простые i18n label bindings",
+  "reset/refresh side effects после mutation",
+  "механические wrappers над одной строкой форматирования",
+  "Если изменение добавляет больше boilerplate, чем удаляет coupling",
+  "если обнаружен over-extraction, откатить его в той же итерации",
 ];
 
 const requiredKpiMentions = [
@@ -754,6 +766,12 @@ function collectValidationErrors({ plan, connectivity, checklist, registry, docs
   requiredKpiMentions.forEach((kpi) => {
     if (!plan.includes(kpi)) {
       errors.push(`Не найден обязательный KPI-маркер в migration plan: ${kpi}`);
+    }
+  });
+
+  requiredAntiOverExtractionPlanMarkers.forEach((marker) => {
+    if (!plan.includes(marker)) {
+      errors.push(`Не найден anti-over-extraction маркер в migration plan: ${marker}`);
     }
   });
 

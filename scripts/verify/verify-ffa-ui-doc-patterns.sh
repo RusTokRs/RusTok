@@ -22,6 +22,16 @@ rg -n "Phase-gate" "$PLAN" >/dev/null
 rg -n "KPI parity" "$PLAN" >/dev/null
 rg -n "RACI" "$PLAN" >/dev/null
 
+echo "[2b/4] Проверка anti-over-extraction стандарта FFA-срезов..."
+rg -n "Стандарт минимального FFA-среза и anti-over-extraction" "$PLAN" >/dev/null
+rg -n "FFA-срез должен уменьшать связность" "$PLAN" >/dev/null
+rg -n "request/command construction, normalization и validation" "$PLAN" >/dev/null
+rg -n "простые i18n label bindings" "$PLAN" >/dev/null
+rg -n "reset/refresh side effects после mutation" "$PLAN" >/dev/null
+rg -n "механические wrappers над одной строкой форматирования" "$PLAN" >/dev/null
+rg -n "Если изменение добавляет больше boilerplate, чем удаляет coupling" "$PLAN" >/dev/null
+rg -n "если обнаружен over-extraction, откатить его" "$PLAN" >/dev/null
+
 echo "[3/4] Поиск Leptos-зависимостей внутри core-слоя (core.rs и core/)..."
 CORE_HITS=$(rg -n --no-heading -S "leptos|leptos_router|leptos_ui_routing" crates --glob "**/core/**" --glob "**/core.rs" || true)
 if [[ -n "$CORE_HITS" ]]; then

@@ -43,6 +43,14 @@ function withFixture({
     [
       "## Фазы реализации",
       "## Принцип исполнения backlog (одна задача за итерацию)",
+      "## Стандарт минимального FFA-среза и anti-over-extraction",
+      "FFA-срез должен уменьшать связность",
+      "request/command construction, normalization и validation",
+      "простые i18n label bindings",
+      "reset/refresh side effects после mutation",
+      "механические wrappers над одной строкой форматирования",
+      "Если изменение добавляет больше boilerplate, чем удаляет coupling",
+      "если обнаружен over-extraction, откатить его в той же итерации",
       "## Политика актуализации verification scripts",
       "## Phase-gate критерии (обязательные переходы между фазами)",
       "## KPI parity (измеримые пороги)",
@@ -340,6 +348,36 @@ test("passes when migration pipeline includes contract and docs commands", () =>
   try {
     const result = runVerifier(fixture.root);
     assert.equal(result.status, 0, `Expected PASS fixture to succeed:\n${result.stdout}\n${result.stderr}`);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("fails when anti-over-extraction standard is missing from the plan", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+  });
+
+  try {
+    writeFileSync(
+      path.join(fixture.root, "docs", "research", "dioxus-ffa-ui-migration-plan.md"),
+      [
+        "## Фазы реализации",
+        "## Принцип исполнения backlog (одна задача за итерацию)",
+        "## Политика актуализации verification scripts",
+        "## Phase-gate критерии (обязательные переходы между фазами)",
+        "## KPI parity (измеримые пороги)",
+        "Функциональный parity",
+        "Error parity",
+        "Performance guard",
+        "Contract guard",
+        "Docs guard",
+        "## RACI (кто принимает phase-gates)",
+      ].join("\n"),
+    );
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected missing anti-over-extraction fixture to fail");
+    assert.match(result.stderr, /anti-over-extraction|Стандарт минимального FFA-среза/);
   } finally {
     fixture.cleanup();
   }
