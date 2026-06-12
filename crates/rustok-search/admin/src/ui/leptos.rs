@@ -221,12 +221,26 @@ pub fn SearchAdmin() -> impl IntoView {
             let preview_error_label = preview_error_label.clone();
             let preview_query_writer = preview_query_writer.clone();
             async move {
-                preview_query_writer.replace_query_update(
-                    AdminQueryKey::Query.as_str(),
-                    preview_request.route_query_update.clone(),
-                );
-                match transport::fetch_search_preview(token_value, tenant_value, preview_request)
-                    .await
+                let core::SearchPreviewRequest {
+                    query,
+                    locale,
+                    ranking_profile,
+                    preset_key,
+                    filters,
+                    route_query_update,
+                } = preview_request;
+                preview_query_writer
+                    .replace_query_update(AdminQueryKey::Query.as_str(), route_query_update);
+                match transport::fetch_search_preview(
+                    token_value,
+                    tenant_value,
+                    query,
+                    locale,
+                    ranking_profile,
+                    preset_key,
+                    filters,
+                )
+                .await
                 {
                     Ok(result) => set_preview.set(Some(result)),
                     Err(err) => set_preview_error.set(Some(core::error_with_context(
@@ -1385,7 +1399,14 @@ fn DictionariesView() -> impl IntoView {
             let synonym_updated_label = synonym_updated_label.clone();
             let synonym_save_error_label = synonym_save_error_label.clone();
             async move {
-                match transport::upsert_search_synonym(token_value, tenant_value, request).await {
+                match transport::upsert_search_synonym(
+                    token_value,
+                    tenant_value,
+                    request.term,
+                    request.synonyms,
+                )
+                .await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(synonym_updated_label));
                         set_synonym_term.set(String::new());
@@ -1419,7 +1440,9 @@ fn DictionariesView() -> impl IntoView {
             let stop_word_updated_label = stop_word_updated_label.clone();
             let stop_word_save_error_label = stop_word_save_error_label.clone();
             async move {
-                match transport::add_search_stop_word(token_value, tenant_value, request).await {
+                match transport::add_search_stop_word(token_value, tenant_value, request.value)
+                    .await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(stop_word_updated_label));
                         set_stop_word_value.set(String::new());
@@ -1465,7 +1488,15 @@ fn DictionariesView() -> impl IntoView {
             let pin_rule_updated_label = pin_rule_updated_label.clone();
             let pin_rule_save_error_label = pin_rule_save_error_label.clone();
             async move {
-                match transport::upsert_search_pin_rule(token_value, tenant_value, request).await {
+                match transport::upsert_search_pin_rule(
+                    token_value,
+                    tenant_value,
+                    request.query_text,
+                    request.document_id,
+                    request.pinned_position,
+                )
+                .await
+                {
                     Ok(_) => {
                         set_feedback.set(Some(pin_rule_updated_label));
                         set_pin_query_text.set(String::new());

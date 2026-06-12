@@ -1,4 +1,7 @@
-use crate::model::{SearchFacetGroup, SearchFilterPreset, SearchPreviewPayload, SearchSuggestion};
+use crate::model::{
+    SearchFacetGroup, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
+    SearchSuggestion,
+};
 
 pub fn parse_csv(value: &str) -> Vec<String> {
     value
@@ -35,6 +38,38 @@ pub fn parse_search_route_filters(
         source_modules: parse_csv(source_modules.unwrap_or_default()),
         statuses: parse_csv(statuses.unwrap_or_default()),
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorefrontSearchFetchRequest {
+    pub query: String,
+    pub locale: Option<String>,
+    pub preset_key: Option<String>,
+    pub filters: SearchPreviewFilters,
+}
+
+pub fn search_preview_filters_from_route(
+    route_filters: SearchRouteFilters,
+) -> SearchPreviewFilters {
+    SearchPreviewFilters {
+        entity_types: route_filters.entity_types,
+        source_modules: route_filters.source_modules,
+        statuses: route_filters.statuses,
+    }
+}
+
+pub fn build_storefront_search_fetch_request(
+    query: &str,
+    locale: Option<String>,
+    preset_key: &str,
+    filters: SearchPreviewFilters,
+) -> Option<StorefrontSearchFetchRequest> {
+    normalized_search_query(query).map(|query| StorefrontSearchFetchRequest {
+        query,
+        locale,
+        preset_key: optional_text(preset_key),
+        filters,
+    })
 }
 
 pub fn facet_display_name(raw_name: &str) -> String {
@@ -116,6 +151,50 @@ mod tests {
                 statuses: vec!["published".to_string(), "draft".to_string()],
             }
         );
+
+        let filters = search_preview_filters_from_route(parsed);
+        assert_eq!(
+            filters.entity_types,
+            vec!["product".to_string(), "pages".to_string()]
+        );
+        assert!(filters.source_modules.is_empty());
+        assert_eq!(
+            filters.statuses,
+            vec!["published".to_string(), "draft".to_string()]
+        );
+    }
+
+    #[test]
+    fn storefront_search_fetch_request_normalizes_payload_policy() {
+        let filters = SearchPreviewFilters {
+            entity_types: vec!["product".to_string()],
+            source_modules: Vec::new(),
+            statuses: vec!["published".to_string()],
+        };
+
+        assert_eq!(
+            build_storefront_search_fetch_request(
+                "   ",
+                Some("ru".to_string()),
+                "featured",
+                filters.clone()
+            ),
+            None
+        );
+
+        let request = build_storefront_search_fetch_request(
+            "  boots  ",
+            Some("ru".to_string()),
+            " featured ",
+            filters,
+        )
+        .expect("non-empty query should build request");
+
+        assert_eq!(request.query, "boots");
+        assert_eq!(request.locale, Some("ru".to_string()));
+        assert_eq!(request.preset_key, Some("featured".to_string()));
+        assert_eq!(request.filters.entity_types, vec!["product".to_string()]);
+        assert_eq!(request.filters.statuses, vec!["published".to_string()]);
     }
 
     #[test]

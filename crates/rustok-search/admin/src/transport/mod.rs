@@ -1,13 +1,10 @@
 use crate::api;
-use crate::core::{
-    SearchPinRuleMutationRequest, SearchPreviewRequest, SearchStopWordMutationRequest,
-    SearchSynonymMutationRequest,
-};
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
     SearchConsistencyIssuePayload, SearchDictionaryMutationPayload,
-    SearchDictionarySnapshotPayload, SearchFilterPresetPayload, SearchPreviewPayload,
-    SearchSettingsPayload, TrackSearchClickPayload, TriggerSearchRebuildPayload,
+    SearchDictionarySnapshotPayload, SearchFilterPresetPayload, SearchPreviewFilters,
+    SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
+    TriggerSearchRebuildPayload,
 };
 
 pub type TransportError = api::ApiError;
@@ -22,16 +19,20 @@ pub async fn fetch_bootstrap(
 pub async fn fetch_search_preview(
     token: Option<String>,
     tenant_slug: Option<String>,
-    request: SearchPreviewRequest,
+    query: String,
+    locale: Option<String>,
+    ranking_profile: Option<String>,
+    preset_key: Option<String>,
+    filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, TransportError> {
     api::fetch_search_preview(
         token,
         tenant_slug,
-        request.query,
-        request.locale,
-        request.ranking_profile,
-        request.preset_key,
-        request.filters,
+        query,
+        locale,
+        ranking_profile,
+        preset_key,
+        filters,
     )
     .await
 }
@@ -117,9 +118,10 @@ pub async fn update_search_settings(
 pub async fn upsert_search_synonym(
     token: Option<String>,
     tenant_slug: Option<String>,
-    request: SearchSynonymMutationRequest,
+    term: String,
+    synonyms: Vec<String>,
 ) -> Result<SearchDictionaryMutationPayload, TransportError> {
-    api::upsert_search_synonym(token, tenant_slug, request.term, request.synonyms).await
+    api::upsert_search_synonym(token, tenant_slug, term, synonyms).await
 }
 
 pub async fn delete_search_synonym(
@@ -133,9 +135,9 @@ pub async fn delete_search_synonym(
 pub async fn add_search_stop_word(
     token: Option<String>,
     tenant_slug: Option<String>,
-    request: SearchStopWordMutationRequest,
+    value: String,
 ) -> Result<SearchDictionaryMutationPayload, TransportError> {
-    api::add_search_stop_word(token, tenant_slug, request.value).await
+    api::add_search_stop_word(token, tenant_slug, value).await
 }
 
 pub async fn delete_search_stop_word(
@@ -149,16 +151,11 @@ pub async fn delete_search_stop_word(
 pub async fn upsert_search_pin_rule(
     token: Option<String>,
     tenant_slug: Option<String>,
-    request: SearchPinRuleMutationRequest,
+    query_text: String,
+    document_id: String,
+    pinned_position: Option<i32>,
 ) -> Result<SearchDictionaryMutationPayload, TransportError> {
-    api::upsert_search_pin_rule(
-        token,
-        tenant_slug,
-        request.query_text,
-        request.document_id,
-        request.pinned_position,
-    )
-    .await
+    api::upsert_search_pin_rule(token, tenant_slug, query_text, document_id, pinned_position).await
 }
 
 pub async fn delete_search_query_rule(

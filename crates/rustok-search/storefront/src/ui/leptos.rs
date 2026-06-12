@@ -6,9 +6,7 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
-use crate::model::{
-    SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload, SearchSuggestion,
-};
+use crate::model::{SearchFilterPreset, SearchPreviewPayload, SearchSuggestion};
 use crate::{core, transport};
 
 #[component]
@@ -84,11 +82,7 @@ pub fn SearchView() -> impl IntoView {
         read_route_query_value(&route_context, "source_modules").as_deref(),
         read_route_query_value(&route_context, "statuses").as_deref(),
     );
-    let filters = SearchPreviewFilters {
-        entity_types: route_filters.entity_types,
-        source_modules: route_filters.source_modules,
-        statuses: route_filters.statuses,
-    };
+    let filters = core::search_preview_filters_from_route(route_filters);
     let query_for_resource = query.clone();
     let locale_for_resource = locale.clone();
     let filters_for_resource = filters.clone();
@@ -107,17 +101,21 @@ pub fn SearchView() -> impl IntoView {
         move |(query, locale, filters)| {
             let preset_key = preset_for_resource.clone();
             async move {
-                if core::normalized_search_query(&query).is_none() {
-                    Ok(None)
-                } else {
-                    transport::fetch_search(
-                        query,
-                        locale,
-                        core::optional_text(&preset_key),
-                        filters,
+                match core::build_storefront_search_fetch_request(
+                    &query,
+                    locale,
+                    preset_key.as_str(),
+                    filters,
+                ) {
+                    Some(request) => transport::fetch_search(
+                        request.query,
+                        request.locale,
+                        request.preset_key,
+                        request.filters,
                     )
                     .await
-                    .map(Some)
+                    .map(Some),
+                    None => Ok(None),
                 }
             }
         },
