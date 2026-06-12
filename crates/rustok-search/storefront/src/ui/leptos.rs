@@ -123,8 +123,8 @@ pub fn SearchView() -> impl IntoView {
     let suggestions = Resource::new(
         move || (search_input.get(), locale_for_suggestions.clone()),
         move |(query, locale)| async move {
-            match core::suggestion_query(&query, 2) {
-                Some(trimmed) => transport::fetch_suggestions(trimmed, locale).await,
+            match core::build_storefront_suggestion_fetch_request(&query, locale) {
+                Some(request) => transport::fetch_suggestions(request.query, request.locale).await,
                 None => Ok(Vec::new()),
             }
         },

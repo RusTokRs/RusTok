@@ -207,6 +207,17 @@ mod tests {
         assert_eq!(suggestion_query(" a ", 2), None);
         assert_eq!(suggestion_query("  rustok ", 2), Some("rustok".to_string()));
         assert_eq!(
+            build_storefront_suggestion_fetch_request(" a ", Some("ru".to_string())),
+            None
+        );
+        assert_eq!(
+            build_storefront_suggestion_fetch_request("  rustok ", Some("ru".to_string())),
+            Some(StorefrontSuggestionFetchRequest {
+                query: "rustok".to_string(),
+                locale: Some("ru".to_string()),
+            })
+        );
+        assert_eq!(
             suggestion_kind_with_locale("document", Some("ru")),
             "document • ru".to_string()
         );
@@ -596,6 +607,8 @@ pub fn build_storefront_search_route_intent(
     }
 }
 
+pub const DEFAULT_SUGGESTION_MIN_LEN: usize = 2;
+
 pub fn suggestion_query(query: &str, min_len: usize) -> Option<String> {
     let trimmed = query.trim();
     if trimmed.len() < min_len {
@@ -603,6 +616,20 @@ pub fn suggestion_query(query: &str, min_len: usize) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorefrontSuggestionFetchRequest {
+    pub query: String,
+    pub locale: Option<String>,
+}
+
+pub fn build_storefront_suggestion_fetch_request(
+    query: &str,
+    locale: Option<String>,
+) -> Option<StorefrontSuggestionFetchRequest> {
+    suggestion_query(query, DEFAULT_SUGGESTION_MIN_LEN)
+        .map(|query| StorefrontSuggestionFetchRequest { query, locale })
 }
 
 pub fn suggestion_kind_with_locale(kind: &str, locale: Option<&str>) -> String {

@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: Phase B slice #39 принят как storefront route-query policy срез: `storefront/src/core.rs` теперь владеет построением `StorefrontSearchRouteIntent` для `q`/`preset` query params, а Leptos adapter только применяет prepared set/delete intent к текущему URL.
+- Last checkpoint: Phase B slice #40 принят как storefront suggestions request-policy срез: `storefront/src/core.rs` теперь владеет autocomplete min-length gate и построением `StorefrontSuggestionFetchRequest`, а Leptos resource только исполняет prepared request или возвращает empty suggestions.
 - Next step: Продолжить Phase B только по минимальному FFA decision gate из `docs/research/dioxus-ffa-ui-migration-plan.md`: выбирать request/command/state/view-model/route policy с reusable семантикой, но не переносить механические pass-through DTO, простые i18n feedback labels или adapter-local reset/refresh effects в `core`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-12T12:59:15Z
+- Last updated at (UTC): 2026-06-12T13:16:02Z
 
 
 ## FFA/FBA status
@@ -44,7 +44,8 @@
   - Ревью избыточного переноса: предложенные feedback-envelope и admin transport DTO pass-through slices отклонены; принятая граница — одноразовые i18n success/error тексты, adapter-local reset/refresh effects и механическое распаковывание transport параметров остаются в adapter/facade, если нет reusable policy semantics.
   - Phase B slice #38 добавил `StorefrontSearchFetchRequest`, `search_preview_filters_from_route` и `build_storefront_search_fetch_request` в `storefront/src/core.rs`; storefront Leptos resource больше не решает inline blank-query skip, query trim, preset normalization или route-filter-to-transport mapping, при этом native/GraphQL transport facade signatures не менялись.
   - Phase B slice #39 добавил `StorefrontSearchRouteIntent` и `build_storefront_search_route_intent` в `storefront/src/core.rs`; storefront Leptos navigation больше не решает inline set/delete policy для `q` и `preset`, а только применяет prepared route intent к browser URL.
-- Last verified at (UTC): 2026-06-12T12:59:15Z
+  - Phase B slice #40 добавил `DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest` и `build_storefront_suggestion_fetch_request` в `storefront/src/core.rs`; storefront Leptos suggestions resource больше не владеет inline autocomplete min-length gate или query trim policy.
+- Last verified at (UTC): 2026-06-12T13:16:02Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -152,3 +153,4 @@
 - [x] Slice 37: storefront results header перенесён в core (`SearchResultsHeaderViewModel`), поэтому Leptos adapter рендерит готовые query label/query/summary/preset/locale fields без локальной header presentation сборки.
 - [x] Slice 38: storefront search fetch request policy перенесён в core (`StorefrontSearchFetchRequest`, `search_preview_filters_from_route`, `build_storefront_search_fetch_request`), поэтому Leptos resource исполняет подготовленный request и не владеет blank-query skip/query trim/preset normalization/filter payload mapping.
 - [x] Slice 39: storefront search route-query policy перенесён в core (`StorefrontSearchRouteIntent`, `build_storefront_search_route_intent`), поэтому Leptos navigation adapter применяет готовый `q`/`preset` set/delete intent без inline normalization policy.
+- [x] Slice 40: storefront suggestions request policy перенесён в core (`DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest`, `build_storefront_suggestion_fetch_request`), поэтому Leptos suggestions resource исполняет prepared request и не владеет autocomplete threshold/query trim policy.
