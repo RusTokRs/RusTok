@@ -38,5 +38,7 @@
   "region.section.metadata": "Metadata",
   "region.section.policy": "Policy Baseline",
   "region.subtitle": "Module-owned region workspace for tenant-scoped country, currency and tax baseline management without routing operator CRUD back through the commerce umbrella.",
-  "region.title": "Region Operations"
+  "region.title": "Region Operations",
+  "region.field.countryTaxPolicies": "Country tax policies JSON",
+  "region.field.metadata": "Metadata JSON"
 }

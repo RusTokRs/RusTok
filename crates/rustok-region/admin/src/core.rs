@@ -144,6 +144,45 @@ pub fn build_region_admin_editor_view_model(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminEditorFieldLabels {
+    pub name_placeholder: String,
+    pub currency_code_placeholder: String,
+    pub tax_provider_id_placeholder: String,
+    pub tax_rate_placeholder: String,
+    pub tax_included_label: String,
+    pub country_tax_policies_placeholder: String,
+    pub countries_placeholder: String,
+    pub metadata_placeholder: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionAdminEditorFieldViewModel {
+    pub name_placeholder: String,
+    pub currency_code_placeholder: String,
+    pub tax_provider_id_placeholder: String,
+    pub tax_rate_placeholder: String,
+    pub tax_included_label: String,
+    pub country_tax_policies_placeholder: String,
+    pub countries_placeholder: String,
+    pub metadata_placeholder: String,
+}
+
+pub fn build_region_admin_editor_field_view_model(
+    labels: &RegionAdminEditorFieldLabels,
+) -> RegionAdminEditorFieldViewModel {
+    RegionAdminEditorFieldViewModel {
+        name_placeholder: labels.name_placeholder.clone(),
+        currency_code_placeholder: labels.currency_code_placeholder.clone(),
+        tax_provider_id_placeholder: labels.tax_provider_id_placeholder.clone(),
+        tax_rate_placeholder: labels.tax_rate_placeholder.clone(),
+        tax_included_label: labels.tax_included_label.clone(),
+        country_tax_policies_placeholder: labels.country_tax_policies_placeholder.clone(),
+        countries_placeholder: labels.countries_placeholder.clone(),
+        metadata_placeholder: labels.metadata_placeholder.clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionAdminPolicyLabels {
     pub currency: String,
     pub tax_provider: String,
@@ -623,6 +662,37 @@ mod tests {
         );
         assert_eq!(view_model.created, "created 2026-06-11");
         assert_eq!(view_model.updated, "updated 2026-06-12");
+    }
+
+    #[test]
+    fn admin_editor_field_view_model_keeps_form_copy_outside_ui_runtime() {
+        let labels = RegionAdminEditorFieldLabels {
+            name_placeholder: "Region name".to_string(),
+            currency_code_placeholder: "Currency code".to_string(),
+            tax_provider_id_placeholder: "Tax provider ID (optional)".to_string(),
+            tax_rate_placeholder: "Tax rate".to_string(),
+            tax_included_label: "Prices already include tax".to_string(),
+            country_tax_policies_placeholder: "Country tax policies JSON".to_string(),
+            countries_placeholder: "Countries (BY, RU, KZ)".to_string(),
+            metadata_placeholder: "Metadata JSON".to_string(),
+        };
+
+        let view_model = build_region_admin_editor_field_view_model(&labels);
+
+        assert_eq!(view_model.name_placeholder, "Region name");
+        assert_eq!(view_model.currency_code_placeholder, "Currency code");
+        assert_eq!(
+            view_model.tax_provider_id_placeholder,
+            "Tax provider ID (optional)"
+        );
+        assert_eq!(view_model.tax_rate_placeholder, "Tax rate");
+        assert_eq!(view_model.tax_included_label, "Prices already include tax");
+        assert_eq!(
+            view_model.country_tax_policies_placeholder,
+            "Country tax policies JSON"
+        );
+        assert_eq!(view_model.countries_placeholder, "Countries (BY, RU, KZ)");
+        assert_eq!(view_model.metadata_placeholder, "Metadata JSON");
     }
 
     #[test]

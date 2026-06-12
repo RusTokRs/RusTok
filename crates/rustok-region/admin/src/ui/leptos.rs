@@ -5,9 +5,9 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFormState,
-    RegionAdminEditorLabels, RegionAdminListLabels, RegionAdminPolicyLabels,
-    RegionAdminRawSectionLabels,
+    RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFieldLabels,
+    RegionAdminEditorFormState, RegionAdminEditorLabels, RegionAdminListLabels,
+    RegionAdminPolicyLabels, RegionAdminRawSectionLabels,
 };
 use crate::i18n::t;
 use crate::model::{RegionAdminBootstrap, RegionDetail};
@@ -136,6 +136,54 @@ pub fn RegionAdmin() -> impl IntoView {
     };
     let editor_labels_for_heading = editor_labels.clone();
     let editor_labels_for_submit = editor_labels.clone();
+    let editor_field_view_model =
+        crate::core::build_region_admin_editor_field_view_model(&RegionAdminEditorFieldLabels {
+            name_placeholder: t(ui_locale.as_deref(), "region.field.name", "Region name"),
+            currency_code_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.currencyCode",
+                "Currency code",
+            ),
+            tax_provider_id_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.taxProviderId",
+                "Tax provider ID (optional)",
+            ),
+            tax_rate_placeholder: t(ui_locale.as_deref(), "region.field.taxRate", "Tax rate"),
+            tax_included_label: t(
+                ui_locale.as_deref(),
+                "region.field.taxIncluded",
+                "Prices already include tax",
+            ),
+            country_tax_policies_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.countryTaxPolicies",
+                "Country tax policies JSON",
+            ),
+            countries_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.countries",
+                "Countries (BY, RU, KZ)",
+            ),
+            metadata_placeholder: t(
+                ui_locale.as_deref(),
+                "region.field.metadata",
+                "Metadata JSON",
+            ),
+        });
+
+    let editor_name_placeholder = editor_field_view_model.name_placeholder.clone();
+    let editor_currency_code_placeholder =
+        editor_field_view_model.currency_code_placeholder.clone();
+    let editor_tax_provider_id_placeholder =
+        editor_field_view_model.tax_provider_id_placeholder.clone();
+    let editor_tax_rate_placeholder = editor_field_view_model.tax_rate_placeholder.clone();
+    let editor_tax_included_label = editor_field_view_model.tax_included_label.clone();
+    let editor_country_tax_policies_placeholder = editor_field_view_model
+        .country_tax_policies_placeholder
+        .clone();
+    let editor_countries_placeholder = editor_field_view_model.countries_placeholder.clone();
+    let editor_metadata_placeholder = editor_field_view_model.metadata_placeholder.clone();
 
     let policy_labels = RegionAdminPolicyLabels {
         currency: t(ui_locale.as_deref(), "region.common.currency", "currency"),
@@ -433,21 +481,21 @@ pub fn RegionAdmin() -> impl IntoView {
                         </div>
 
                         <form class="mt-5 space-y-4" on:submit=on_submit>
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.name", "Region name") prop:value=move || name.get() on:input=move |ev| set_name.set(event_target_value(&ev)) />
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_name_placeholder.clone() prop:value=move || name.get() on:input=move |ev| set_name.set(event_target_value(&ev)) />
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.currencyCode", "Currency code") prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.taxProviderId", "Tax provider ID (optional)") prop:value=move || tax_provider_id.get() on:input=move |ev| set_tax_provider_id.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_currency_code_placeholder.clone() prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_tax_provider_id_placeholder.clone() prop:value=move || tax_provider_id.get() on:input=move |ev| set_tax_provider_id.set(event_target_value(&ev)) />
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.taxRate", "Tax rate") prop:value=move || tax_rate.get() on:input=move |ev| set_tax_rate.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_tax_rate_placeholder.clone() prop:value=move || tax_rate.get() on:input=move |ev| set_tax_rate.set(event_target_value(&ev)) />
                             </div>
                             <label class="flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
                                 <input type="checkbox" prop:checked=move || tax_included.get() on:change=move |ev| set_tax_included.set(event_target_checked(&ev)) />
-                                <span>{t(ui_locale.as_deref(), "region.field.taxIncluded", "Prices already include tax")}</span>
+                                <span>{editor_tax_included_label.clone()}</span>
                             </label>
-                            <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countryTaxPolicies", "Country tax policies JSON") prop:value=move || country_tax_policies.get() on:input=move |ev| set_country_tax_policies.set(event_target_value(&ev))>{move || country_tax_policies.get()}</textarea>
-                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countries", "Countries (BY, RU, KZ)") prop:value=move || countries.get() on:input=move |ev| set_countries.set(event_target_value(&ev)) />
-                            <textarea class="min-h-44 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || metadata.get() on:input=move |ev| set_metadata.set(event_target_value(&ev))>{move || metadata.get()}</textarea>
+                            <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_country_tax_policies_placeholder.clone() prop:value=move || country_tax_policies.get() on:input=move |ev| set_country_tax_policies.set(event_target_value(&ev))>{move || country_tax_policies.get()}</textarea>
+                            <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_countries_placeholder.clone() prop:value=move || countries.get() on:input=move |ev| set_countries.set(event_target_value(&ev)) />
+                            <textarea class="min-h-44 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_metadata_placeholder.clone() prop:value=move || metadata.get() on:input=move |ev| set_metadata.set(event_target_value(&ev))>{move || metadata.get()}</textarea>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
                                 {move || crate::core::build_region_admin_editor_view_model(editing_id.get().as_deref(), &editor_labels_for_submit).submit_label}
                             </button>

@@ -38,5 +38,7 @@
   "region.section.metadata": "Metadata",
   "region.section.policy": "Policy baseline",
   "region.subtitle": "Module-owned workspace региона для tenant-scoped управления странами, валютой и tax baseline без возврата CRUD в umbrella commerce.",
-  "region.title": "Операции с регионами"
+  "region.title": "Операции с регионами",
+  "region.field.countryTaxPolicies": "JSON политик налогов по странам",
+  "region.field.metadata": "JSON метаданных"
 }
