@@ -7,15 +7,15 @@ packages и module metadata синхронизированы.
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_storefront_ui_adapter_split
-- Last checkpoint: FFA slice #75 added the admin transport facade and explicit Leptos render adapters: `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`; crate roots now only wire/re-export module layers.
-- Next step: Add adapter-level parity evidence around native failure classification or continue extracting admin render fragments into core view-model helpers without changing the dual-path contract.
+- Current phase: ffa_admin_save_command_core_boundary
+- Last checkpoint: FFA slice #77 added the fast source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs` for the blog admin `core/transport/ui` split, crate-root transport passthrough removal, Leptos-free core helpers, UI-only facade calls and the existing GraphQL adapter contract without running long Cargo compilation.
+- Next step: Use the fast boundary guardrail as cheap evidence while adding adapter-level parity evidence around native failure classification, or continue only with admin render fragments that reduce real coupling without changing the dual-path contract.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-06-02T00:00:00Z
+- Last updated at (UTC): 2026-06-13T00:00:00Z
 
 ## FFA/FBA status
 
@@ -26,8 +26,8 @@ packages и module metadata синхронизированы.
   - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples; admin calls now go through a module-owned `admin/src/transport.rs` facade instead of direct `api::*` calls from the Leptos adapter;
   - native `#[server]` + GraphQL fallback остаются параллельными путями, GraphQL removal/replacement не выполнялся;
   - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract;
-  - FFA slice #75 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а `admin/src/lib.rs` и `storefront/src/lib.rs` стали тонким module wiring/re-export слоем.
-- Last verified at (UTC): 2026-06-02T00:00:00Z
+  - FFA slice #75 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а crate roots стали тонким module wiring/re-export слоем; FFA slice #76 перенесла admin save-command preparation в `admin/src/core.rs`: required-field validation, validation issue construction, create/update operation selection и busy-key policy теперь Leptos-free, поэтому adapter только собирает form state/локализованный текст и вызывает module-owned transport facade; FFA slice #77 закрепила это быстрым source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs`.
+- Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-blog` module team
 
 ## Область работ
@@ -199,6 +199,8 @@ packages и module metadata синхронизированы.
 - [x] Slice 72: storefront shell copy and selected-post route/query state moved to core (`BlogStorefrontShellViewModel`, `BlogStorefrontRouteState`, `SELECTED_POST_QUERY_KEY`); Leptos now only reads host context/query and renders the core payload, while `slug` normalization reuses shared `rustok-api::normalize_ui_text` without changing native/GraphQL transport. Evidence: `cargo test -p rustok-blog-storefront --lib`.
 - [x] Slice 73: storefront transport facade split into explicit `transport/native_server_adapter.rs` and `transport/graphql_adapter.rs`; the facade remains native-first and falls back to GraphQL, and the obsolete combined `api::fetch_storefront_blog(...)` wrapper was removed to keep ownership clear. Evidence: `cargo test -p rustok-blog-storefront --lib`.
 - [x] Slice 74: storefront fetch input moved to core-owned `BlogStorefrontFetchRequest`; Leptos builds the request from `BlogStorefrontRouteState` + host locale, and native/GraphQL transport adapters now consume that typed request instead of raw `(post_slug, locale)` tuples. Evidence: `cargo test -p rustok-blog-storefront --lib`.
+- [x] Slice 76: admin save-command preparation moved to `admin/src/core.rs` (`prepare_blog_post_save_command`, `BlogPostSaveOperation`, `BlogPostSaveCommand`) with unit-test evidence for required-field rejection, create operation selection and update operation selection; Leptos UI now resolves localized copy/form state, delegates validation/outcome/busy-key policy to core and only dispatches the resulting command through the module-owned transport facade.
+- [x] Slice 77: fast source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs` added for the blog admin FFA boundary; it checks private crate-root wiring, Leptos-free core markers, core-owned save command helpers, UI calls through `transport`, GraphQL adapter preservation, and local/central docs sync without long Cargo compilation.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 

@@ -217,26 +217,35 @@ pub fn BlogAdmin() -> impl IntoView {
             tags: &tags_value,
         });
 
-        if !core::has_required_draft_fields(draft.title.as_str(), draft.body.as_str()) {
-            set_submit_error.set(Some(WritePathIssue::new(t(
-                submit_ui_locale.as_deref(),
-                "blog.error.requiredFields",
-                "Title and body are required to save a blog post.",
-            ))));
-            return;
-        }
+        let required_fields_message = t(
+            submit_ui_locale.as_deref(),
+            "blog.error.requiredFields",
+            "Title and body are required to save a blog post.",
+        );
+        let command = match core::prepare_blog_post_save_command(
+            editing_post_id.get_untracked(),
+            draft,
+            required_fields_message,
+        ) {
+            Ok(command) => command,
+            Err(issue) => {
+                set_submit_error.set(Some(issue));
+                return;
+            }
+        };
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        let editing_post = editing_post_id.get_untracked();
-        set_busy_key.set(Some(core::busy_key_for_save(editing_post.as_deref())));
+        set_busy_key.set(Some(command.busy_key.clone()));
 
         spawn_local(async move {
-            let result = match core::editing_post_id_if_editing_mode(editing_post) {
-                Some(post_id) => {
-                    transport::update_post(token_value, tenant_value, post_id, draft).await
+            let result = match command.operation {
+                core::BlogPostSaveOperation::Update { post_id } => {
+                    transport::update_post(token_value, tenant_value, post_id, command.draft).await
                 }
-                None => transport::create_post(token_value, tenant_value, draft).await,
+                core::BlogPostSaveOperation::Create => {
+                    transport::create_post(token_value, tenant_value, command.draft).await
+                }
             };
 
             match result {

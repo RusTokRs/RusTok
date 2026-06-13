@@ -6,9 +6,9 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_storefront_ui_split
-- Last checkpoint: FFA storefront slice перенёс Leptos render/bind слой в `storefront/src/ui/leptos.rs`; crate root теперь только wires `core`/`transport`/`ui` modules и re-export `PagesView`, а dual-path (`native #[server]` + GraphQL fallback) остаётся в `storefront/src/api.rs` через facade `storefront/src/transport.rs`.
-- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем оставить pages в maintenance mode до следующего явного builder/FBA среза.
+- Current phase: phase_b_boundary_guardrail
+- Last checkpoint: FFA boundary guardrail slice добавил быстрый source-level verifier `scripts/verify/verify-pages-ui-boundary.mjs` для admin/storefront `core/transport/ui` split, private crate-root wiring, Leptos-free core helpers, UI-only facade calls и сохранения GraphQL/native adapter contracts без долгой Cargo-компиляции.
+- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем оставить pages в maintenance mode до следующего явного builder/FBA среза. Для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs` guardrail.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Перед любыми изменениями pages сначала сверить `docs/research/dioxus-ffa-pilot-connectivity-map.md` и этот файл; не открывать новый slice без явной цели в трекере.
@@ -32,7 +32,7 @@
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
 - Latest maintenance update: admin UI получил явный FFA split `core` + `transport` + `ui/leptos`; GraphQL operations остаются в `admin/src/api.rs`, а render/effect код вызывает только facade из `admin/src/transport/`.
-- Latest FFA update: storefront UI получил matching split `core` + `transport` + `ui/leptos`; crate root re-export-ит `PagesView`, Leptos adapter вызывает только `storefront/src/transport.rs`, а native/GraphQL transport contract не менялся.
+- Latest FFA update: storefront UI получил matching split `core` + `transport` + `ui/leptos`; crate root re-export-ит `PagesView`, Leptos adapter вызывает только `storefront/src/transport.rs`, а native/GraphQL transport contract не менялся. Быстрый guardrail `scripts/verify/verify-pages-ui-boundary.mjs` закрепляет admin/storefront boundary без full-workspace compile.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -53,8 +53,8 @@
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FFA maintenance slice: create-page draft normalization, channel slug CSV parsing and route text checks переиспользуют shared UI helpers из `rustok-api` без изменения native/GraphQL транспорта;
   - FFA admin slice: Leptos render/effect adapter живёт в `admin/src/ui/leptos.rs`, transport facade — в `admin/src/transport/`, GraphQL adapter — в `admin/src/api.rs`; внешний GraphQL contract не менялся;
-  - FFA storefront slice: Leptos render/bind adapter живёт в `storefront/src/ui/leptos.rs`, crate root только wires modules/re-export `PagesView`, transport facade — в `storefront/src/transport.rs`, native/GraphQL adapter — в `storefront/src/api.rs`.
-- Last verified at (UTC): 2026-06-01T11:45:00Z
+  - FFA storefront slice: Leptos render/bind adapter живёт в `storefront/src/ui/leptos.rs`, crate root только wires modules/re-export `PagesView`, transport facade — в `storefront/src/transport.rs`, native/GraphQL adapter — в `storefront/src/api.rs`; fast boundary guardrail `scripts/verify/verify-pages-ui-boundary.mjs` фиксирует admin/storefront split, Leptos-free core и docs sync.
+- Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-pages` module team
 
 ## PB-FBA immediate sprint (продолжение page builder разработки)
