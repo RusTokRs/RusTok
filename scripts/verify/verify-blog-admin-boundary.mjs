@@ -98,6 +98,12 @@ for (const marker of [
   "issue_banner_class_or_hidden",
   "BlogPostAdminIssueBannerViewModel",
   "blog_post_admin_issue_banner_view",
+  "BlogPostStatusCommand",
+  "prepare_blog_post_status_command",
+  "BlogPostArchiveCommand",
+  "prepare_blog_post_archive_command",
+  "BlogPostDeleteCommand",
+  "prepare_blog_post_delete_command",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
 }
@@ -105,6 +111,9 @@ for (const marker of [
 assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter must consume core and transport layers`);
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
+assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
+assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
+assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
 assertContains(ui, "transport::fetch_posts", `${uiPath}: UI must call the module-owned transport facade`);
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PostService", "CategoryService", "TagService"]) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);

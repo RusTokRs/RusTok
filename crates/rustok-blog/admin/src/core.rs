@@ -533,6 +533,68 @@ pub fn blog_post_admin_issue_banner_view(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlogPostStatusOperation {
+    Publish,
+    Unpublish,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostStatusCommand {
+    pub post_id: String,
+    pub operation: BlogPostStatusOperation,
+    pub locale: Option<String>,
+    pub busy_key: String,
+}
+
+pub fn prepare_blog_post_status_command(
+    post_id: String,
+    publish: bool,
+    post_locale: &str,
+) -> BlogPostStatusCommand {
+    BlogPostStatusCommand {
+        busy_key: busy_key_for_publish(post_id.as_str()),
+        post_id,
+        operation: if should_publish_now(publish) {
+            BlogPostStatusOperation::Publish
+        } else {
+            BlogPostStatusOperation::Unpublish
+        },
+        locale: locale_arg(post_locale),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostArchiveCommand {
+    pub post_id: String,
+    pub locale: Option<String>,
+    pub busy_key: String,
+}
+
+pub fn prepare_blog_post_archive_command(
+    post_id: String,
+    post_locale: &str,
+) -> BlogPostArchiveCommand {
+    BlogPostArchiveCommand {
+        busy_key: busy_key_for_archive(post_id.as_str()),
+        post_id,
+        locale: locale_arg(post_locale),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostDeleteCommand {
+    pub post_id: String,
+    pub busy_key: String,
+}
+
+pub fn prepare_blog_post_delete_command(post_id: String) -> BlogPostDeleteCommand {
+    BlogPostDeleteCommand {
+        busy_key: busy_key_for_delete(post_id.as_str()),
+        post_id,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubmitButtonState {
     Saving,
@@ -727,6 +789,29 @@ mod tests {
             }
         );
         assert_eq!(command.busy_key, "save:post-1");
+    }
+
+    #[test]
+    fn action_commands_prepare_status_archive_and_delete_without_ui_runtime() {
+        let publish = prepare_blog_post_status_command("post-1".to_string(), true, "en");
+        assert_eq!(publish.post_id, "post-1");
+        assert_eq!(publish.operation, BlogPostStatusOperation::Publish);
+        assert_eq!(publish.locale, Some("en".to_string()));
+        assert_eq!(publish.busy_key, "publish:post-1");
+
+        let unpublish = prepare_blog_post_status_command("post-2".to_string(), false, "ru");
+        assert_eq!(unpublish.operation, BlogPostStatusOperation::Unpublish);
+        assert_eq!(unpublish.locale, Some("ru".to_string()));
+        assert_eq!(unpublish.busy_key, "publish:post-2");
+
+        let archive = prepare_blog_post_archive_command("post-3".to_string(), "de");
+        assert_eq!(archive.post_id, "post-3");
+        assert_eq!(archive.locale, Some("de".to_string()));
+        assert_eq!(archive.busy_key, "archive:post-3");
+
+        let delete = prepare_blog_post_delete_command("post-4".to_string());
+        assert_eq!(delete.post_id, "post-4");
+        assert_eq!(delete.busy_key, "delete:post-4");
     }
 
     #[test]

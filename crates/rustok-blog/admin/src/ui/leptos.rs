@@ -286,26 +286,31 @@ pub fn BlogAdmin() -> impl IntoView {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let ui_locale = toggle_publish_locale.clone();
+            let command =
+                core::prepare_blog_post_status_command(post_id, publish, post_locale.as_str());
             set_submit_error.set(None);
-            set_busy_key.set(Some(core::busy_key_for_publish(post_id.as_str())));
+            set_busy_key.set(Some(command.busy_key.clone()));
 
             spawn_local(async move {
-                let result = if core::should_publish_now(publish) {
-                    transport::publish_post(
-                        token_value,
-                        tenant_value,
-                        post_id.clone(),
-                        core::locale_arg(post_locale.as_str()),
-                    )
-                    .await
-                } else {
-                    transport::unpublish_post(
-                        token_value,
-                        tenant_value,
-                        post_id.clone(),
-                        core::locale_arg(post_locale.as_str()),
-                    )
-                    .await
+                let result = match command.operation {
+                    core::BlogPostStatusOperation::Publish => {
+                        transport::publish_post(
+                            token_value,
+                            tenant_value,
+                            command.post_id.clone(),
+                            command.locale.clone(),
+                        )
+                        .await
+                    }
+                    core::BlogPostStatusOperation::Unpublish => {
+                        transport::unpublish_post(
+                            token_value,
+                            tenant_value,
+                            command.post_id.clone(),
+                            command.locale.clone(),
+                        )
+                        .await
+                    }
                 };
 
                 match result {
@@ -351,15 +356,16 @@ pub fn BlogAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = archive_post_locale.clone();
+        let command = core::prepare_blog_post_archive_command(post_id, post_locale.as_str());
         set_submit_error.set(None);
-        set_busy_key.set(Some(core::busy_key_for_archive(post_id.as_str())));
+        set_busy_key.set(Some(command.busy_key.clone()));
 
         spawn_local(async move {
             match transport::archive_post(
                 token_value,
                 tenant_value,
-                post_id.clone(),
-                core::locale_arg(post_locale.as_str()),
+                command.post_id.clone(),
+                command.locale.clone(),
             )
             .await
             {
@@ -408,15 +414,16 @@ pub fn BlogAdmin() -> impl IntoView {
         let ui_locale = delete_post_locale.clone();
         let reset_form_to_defaults = delete_post_reset_form_action;
         let delete_query_writer = delete_query_writer.clone();
+        let command = core::prepare_blog_post_delete_command(post_id);
         set_submit_error.set(None);
-        set_busy_key.set(Some(core::busy_key_for_delete(post_id.as_str())));
+        set_busy_key.set(Some(command.busy_key.clone()));
 
         spawn_local(async move {
-            match transport::delete_post(token_value, tenant_value, post_id.clone()).await {
+            match transport::delete_post(token_value, tenant_value, command.post_id.clone()).await {
                 Ok(true) => {
                     if core::should_reset_form_after_delete(
                         editing_post_id.get_untracked().as_deref(),
-                        post_id.as_str(),
+                        command.post_id.as_str(),
                     ) {
                         delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
                         reset_form_to_defaults.run(());
