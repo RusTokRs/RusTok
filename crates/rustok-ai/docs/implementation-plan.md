@@ -134,6 +134,15 @@
 - [ ] time-windowed diagnostics trends и richer historical observability
 - [ ] persisted provider error/fallback analytics beyond in-process snapshot
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_only` for the first AI admin slice.
+- Evidence: `crates/rustok-ai/admin/src/core.rs` now owns Leptos-free request normalization and direct-job payload builders (`parse_csv`, `optional_text`, `alloy_task_payload`, `image_task_payload`, `product_task_payload`, `product_attributes_task_payload`, `blog_task_payload`), while `admin/src/lib.rs` remains the current Leptos adapter and imports those helpers from `core`.
+- Guardrail: `scripts/verify/verify-ai-admin-boundary.mjs` enforces the first core slice and prevents the moved request/payload helpers from drifting back into the Leptos adapter.
+- Next step: split the large Leptos adapter into explicit `transport/` and `ui/leptos.rs` layers without removing the existing native server-function + GraphQL/Next.js parallel contract.
+
 ## Проверка
 
 Минимальная локальная проверка, которой уже закрыт текущий срез:
