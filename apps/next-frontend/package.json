@@ -8,7 +8,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:seo-runtime-fixtures": "node scripts/verify-seo-runtime-fixtures.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.5",

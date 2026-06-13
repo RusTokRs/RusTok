@@ -60,3 +60,11 @@
 - [Storefront docs](../../../docs/UI/storefront.md)
 - [Контракт manifest-слоя](../../../docs/modules/manifest.md)
 - [Карта документации](../../../docs/index.md)
+
+## SEO runtime parity evidence
+
+- Быстрый fixture baseline для D7 живёт в `contracts/seo/runtime-parity-fixtures.json` и покрывает четыре fallback сценария SEO runtime: `module_disabled`, `not_found`, `permission_denied`, `transport_failure`.
+- В этом же fixture закреплена route ownership matrix для owner modules `rustok-pages`, `rustok-product`, `rustok-blog`, `rustok-forum`: каждая строка связывает Next route pattern, Rust storefront route и canonical `targetKind`.
+- Минимальный non-home smoke baseline сейчас фиксирует два owner route: `/modules/product?slug=demo-product` и `/modules/blog?slug=release-notes`; эти маршруты проверяют metadata adapter assertions для canonical, robots, social metadata и JSON-LD blocks.
+- Allowlist допустимых long-tail differences ограничен host-level деталями: `metadataBase`, request-local CSP nonce и whitespace-only JSON-LD serialization differences; semantic payload equality остаётся обязательной.
+- Лёгкая проверка без компиляции запускается командой `npm run verify:seo-runtime-fixtures` из `apps/next-frontend`.

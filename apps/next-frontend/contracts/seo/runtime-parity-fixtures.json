@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "updatedAt": "2026-06-13T00:00:00Z",
+  "fallbackBehavior": [
+    {
+      "case": "module_disabled",
+      "transportCode": "NOT_FOUND",
+      "messageContains": "seo module is not enabled",
+      "expectedReason": "module_disabled",
+      "expectedSource": "fallback_static"
+    },
+    {
+      "case": "not_found",
+      "transportCode": "NOT_FOUND",
+      "messageContains": "target not found",
+      "expectedReason": "not_found",
+      "expectedSource": "fallback_static"
+    },
+    {
+      "case": "permission_denied",
+      "transportCode": "PERMISSION_DENIED",
+      "messageContains": "permission denied",
+      "expectedReason": "permission_denied",
+      "expectedSource": "fallback_static"
+    },
+    {
+      "case": "transport_failure",
+      "transportCode": "TRANSPORT_ERROR",
+      "messageContains": "connection refused",
+      "expectedReason": "transport_failure",
+      "expectedSource": "fallback_static"
+    }
+  ],
+  "routeOwnership": [
+    {
+      "ownerModule": "rustok-pages",
+      "routePatterns": ["/", "/modules/pages?slug=:slug"],
+      "targetKind": "page",
+      "nextSmokeRoute": { "locale": "en", "routeSegment": "pages", "query": { "slug": "about" } },
+      "rustStorefrontRoute": "/modules/pages?slug=about"
+    },
+    {
+      "ownerModule": "rustok-product",
+      "routePatterns": ["/modules/product?slug=:slug", "/products/:slug"],
+      "targetKind": "product",
+      "nextSmokeRoute": { "locale": "en", "routeSegment": "product", "query": { "slug": "demo-product" } },
+      "rustStorefrontRoute": "/modules/product?slug=demo-product"
+    },
+    {
+      "ownerModule": "rustok-blog",
+      "routePatterns": ["/modules/blog?slug=:slug", "/blog/:slug"],
+      "targetKind": "blog_post",
+      "nextSmokeRoute": { "locale": "en", "routeSegment": "blog", "query": { "slug": "release-notes" } },
+      "rustStorefrontRoute": "/modules/blog?slug=release-notes"
+    },
+    {
+      "ownerModule": "rustok-forum",
+      "routePatterns": ["/modules/forum?topic=:slug", "/forum/:slug"],
+      "targetKind": "forum_topic",
+      "nextSmokeRoute": { "locale": "en", "routeSegment": "forum", "query": { "topic": "welcome" } },
+      "rustStorefrontRoute": "/modules/forum?topic=welcome"
+    }
+  ],
+  "longTailDiffAllowlist": [
+    {
+      "field": "metadataBase",
+      "reason": "Next Metadata API materializes absolute URLs from host env while Rust renderer writes already-resolved head tags."
+    },
+    {
+      "field": "scriptNonce",
+      "reason": "Host CSP nonce is request-local and intentionally not part of SeoPageContext."
+    },
+    {
+      "field": "jsonLdWhitespace",
+      "reason": "Rust and Next serializers may differ in whitespace only; payload object equality is required."
+    }
+  ],
+  "smokeEvidence": [
+    {
+      "name": "product owner route metadata adapter",
+      "route": "/modules/product?slug=demo-product",
+      "assertions": ["canonical", "robots", "openGraph", "twitter", "structuredDataBlocks"]
+    },
+    {
+      "name": "blog owner route metadata adapter",
+      "route": "/modules/blog?slug=release-notes",
+      "assertions": ["canonical", "hreflang", "robots", "openGraph", "structuredDataBlocks"]
+    }
+  ]
+}
