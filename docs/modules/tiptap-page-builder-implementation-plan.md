@@ -506,8 +506,8 @@ Notes: <known deviations or waivers>
 
 - [ ] Зафиксировать `builder_contract_version` в provider metadata и добавить anti-drift проверку в CI.
 - [x] Формализовать baseline typed error catalog для `preview/tree/properties/publish` (`validation/sanitize/runtime/feature-disabled`) в provider/consumer metadata и runtime gate; RBAC parity остаётся Wave evidence.
-- [ ] Довести health contract до machine-readable профиля (`ready/degraded/unavailable`) с причиной деградации.
-- [ ] Подготовить SLO-baseline для capability endpoints по pilot-tenant классу нагрузки.
+- [x] Довести health contract до machine-readable профиля (`ready/degraded/unavailable`) с причиной деградации (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) и anti-drift проверкой registry ↔ manifest.
+- [x] Подготовить SLO-baseline для capability endpoints по pilot-tenant классу нагрузки (`preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`) и включить sync-check в synthetic Wave evidence gate; фактические tenant measurements остаются Wave hand-off evidence.
 
 **Выход итерации:** builder-модуль имеет стабильный FBA-provider профиль, пригодный для массового consumer onboarding.
 
@@ -968,7 +968,7 @@ Notes: <known deviations or waivers>
   - [ ] провести реальный dry-run toggle change-set (tenant internal), сохранить фактические `before/after` snapshots;
   - [ ] оформить реальный decision log (`keep|rollback`) с owner sign-off.
 - [~] **PB-FBA-1D / Observability baseline:**
-  - [x] зафиксировать synthetic Wave 0 baseline-метрики `preview p95`, `publish p95`, `sanitize failure rate`, `runtime error rate` в evidence packet; фактические tenant-метрики остаются Wave hand-off задачей.
+  - [x] зафиксировать synthetic Wave 0 baseline-метрики и SLO thresholds/evaluation (`preview p95`, `publish p95`, `sanitize failure rate`, `runtime error rate`) в evidence packet; фактические tenant-метрики остаются Wave hand-off задачей.
   - [x] приложить минимум 2 synthetic correlation trace (`builder write -> pages publish -> storefront read`) и включить проверку `trace_samples` в evidence gate; фактические trace examples остаются Wave hand-off задачей.
 
 #### Артефакты, обязательные для checkpoint update

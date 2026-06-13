@@ -42,7 +42,7 @@
 - PB-FBA-1B Next parity update: `apps/next-admin` save-flow отображает тот же typed catalog (`validation/sanitize/runtime/feature-disabled`) и operator guidance для `FEATURE_DISABLED`; baseline gate включает static parity-check для Next Admin.
 - PB-FBA-1B Leptos parity update: module-owned Leptos admin показывает localized operator guidance для `validation/sanitize/runtime/feature-disabled`; baseline gate включает static parity-check для `rustok-pages-admin`.
 - PB-FBA-1B Flutter parity update: `rustok_mobile/packages/app_core` содержит shared mapper для того же typed catalog и `FEATURE_DISABLED` guidance; baseline gate включает static parity-check для Flutter app-core.
-- PB-FBA-1D synthetic observability update: Wave 0 dry-run packet теперь содержит baseline metrics и 2 correlation trace samples (`builder_write -> pages_publish -> storefront_read`); `verify-page-builder-wave-evidence-packet.mjs` блокирует placeholder traces, missing spans и неполный correlation path. Фактические tenant metrics/traces остаются Wave hand-off evidence.
+- PB-FBA-1D synthetic observability update: Wave 0 dry-run packet теперь содержит baseline metrics, pilot SLO thresholds/evaluation и 2 correlation trace samples (`builder_write -> pages_publish -> storefront_read`); `verify-page-builder-wave-evidence-packet.mjs` блокирует threshold drift, placeholder traces, missing spans и неполный correlation path. Фактические tenant metrics/traces остаются Wave hand-off evidence.
 
 ## FFA/FBA status
 
@@ -89,7 +89,7 @@
 3. `preview_off` скрывает или блокирует preview capability, но не должен запрещать properties/tree чтение, если `builder.properties.enabled=true`.
 
 - [x] Wave 0 evidence template: flags snapshot + smoke output + observability snapshot + keep/rollback decision (`crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json`).
-- [x] Синтетический Wave 0 dry-run packet для всех baseline-профилей: `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json` (проверяет форму, fallback-семантику, baseline metrics и минимум 2 correlation trace samples; не заменяет фактическое tenant evidence).
+- [x] Синтетический Wave 0 dry-run packet для всех baseline-профилей: `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json` (проверяет форму, fallback-семантику, baseline metrics, SLO thresholds/evaluation и минимум 2 correlation trace samples; не заменяет фактическое tenant evidence).
 
 ### Out of scope (for this sprint)
 

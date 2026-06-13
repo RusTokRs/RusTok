@@ -15,6 +15,9 @@ contract = "grapesjs_v1"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
+health_profile = "ready"
+health_states = ["ready", "degraded", "unavailable"]
+degradation_reasons = ["capability_disabled", "provider_unhealthy", "sanitize_backpressure", "publish_backlog"]
 
 [fba.provider.error_catalog]
 validation = "validation"

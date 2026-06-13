@@ -113,6 +113,41 @@ expectObjectHas(
   "observability.metrics",
 );
 expectObjectHas(
+  packet.metadata?.provider?.slo_thresholds,
+  template.required_sections.observability.slo_thresholds,
+  "metadata.provider.slo_thresholds",
+);
+expectObjectHas(
+  packet.observability?.slo_thresholds,
+  template.required_sections.observability.slo_thresholds,
+  "observability.slo_thresholds",
+);
+expectObjectHas(
+  packet.observability?.slo_evaluation,
+  template.required_sections.observability.slo_evaluation,
+  "observability.slo_evaluation",
+);
+for (const key of template.required_sections.observability.slo_thresholds) {
+  const metadataValue = packet.metadata.provider.slo_thresholds[key];
+  const evidenceValue = packet.observability.slo_thresholds[key];
+  if (typeof metadataValue !== "number" || metadataValue < 0) {
+    fail(`metadata.provider.slo_thresholds.${key} must be a non-negative number`);
+  }
+  if (metadataValue !== evidenceValue) {
+    fail(
+      `observability.slo_thresholds.${key} must match metadata.provider.slo_thresholds.${key}`,
+    );
+  }
+}
+for (const [key, value] of Object.entries(packet.observability.slo_evaluation)) {
+  if (!["pass", "fail", "warning"].includes(value)) {
+    fail(`observability.slo_evaluation.${key} must be pass|fail|warning`);
+  }
+}
+if (packet.observability.slo_evaluation.overall !== "pass") {
+  fail("dry-run evidence packet requires observability.slo_evaluation.overall=pass");
+}
+expectObjectHas(
   packet.observability?.traces,
   template.required_sections.observability.traces,
   "observability.traces",

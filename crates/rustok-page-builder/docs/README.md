@@ -31,6 +31,10 @@
 - `rustok-pages` и другие layout/content модули используют builder как consumer по contract-first path;
 - host-реализации (Next/Leptos/Flutter) синхронизируются через capability contract, а не через UI 1:1.
 
+## Provider health and SLO baseline
+
+Machine-readable provider metadata now includes the health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) and pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. The registry and Wave evidence packet gates must keep these thresholds synchronized before Wave 1 promotion.
+
 ## Fallback matrix
 
 Runtime provider-а фиксирует baseline fallback-профили в `src/rollout.rs`; consumer-модули и host adapters обязаны держать те же имена outcome.
@@ -46,7 +50,8 @@ Runtime provider-а фиксирует baseline fallback-профили в `src/
 
 - `cargo test -p rustok-page-builder --lib` — базовая проверка runtime metadata/contract surface;
 - `cargo xtask module validate page_builder` — проверка publish-readiness и manifest/docs contracts;
-- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages` — anti-drift проверка machine-readable registry против provider/consumer manifests.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages` — anti-drift проверка machine-readable registry против provider/consumer manifests, включая provider health states и degradation reasons.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs` — проверка Wave 0 evidence packet, включая SLO thresholds/evaluation и correlation trace samples.
 
 ## Связанные документы
 

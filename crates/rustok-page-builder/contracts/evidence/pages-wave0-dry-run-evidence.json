@@ -16,7 +16,13 @@
         "builder_disabled",
         "preview_disabled",
         "publish_disabled"
-      ]
+      ],
+      "slo_thresholds": {
+        "preview_p95_ms": 1500,
+        "publish_p95_ms": 3000,
+        "sanitize_failure_rate_max": 0.01,
+        "runtime_error_rate_max": 0.01
+      }
     },
     "consumer": {
       "module_slug": "pages",
@@ -199,7 +205,20 @@
         ],
         "result": "typed_feature_disabled_error_without_read_5xx"
       }
-    ]
+    ],
+    "slo_thresholds": {
+      "preview_p95_ms": 1500,
+      "publish_p95_ms": 3000,
+      "sanitize_failure_rate_max": 0.01,
+      "runtime_error_rate_max": 0.01
+    },
+    "slo_evaluation": {
+      "preview_p95_ms": "pass",
+      "publish_p95_ms": "pass",
+      "sanitize_failure_rate": "pass",
+      "runtime_error_rate": "pass",
+      "overall": "pass"
+    }
   },
   "rollback": {
     "decision": "keep",
