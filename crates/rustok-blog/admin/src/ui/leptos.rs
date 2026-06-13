@@ -961,15 +961,18 @@ fn apply_post_to_form(
     set_publish_now: WriteSignal<bool>,
     post: &BlogPostDetail,
 ) {
-    set_editing_post_id.set(Some(post.id.clone()));
-    set_locale.set(post.requested_locale.clone());
-    set_title.set(post.title.clone());
-    set_slug.set(core::optional_text_or_default(post.slug.clone()));
-    set_excerpt.set(core::optional_text_or_default(post.excerpt.clone()));
-    set_body.set(core::optional_text_or_default(post.body.clone()));
-    set_body_format.set(post.body_format.clone());
-    set_tags_input.set(core::tags_input_value(post.tags.as_slice()));
-    set_publish_now.set(core::is_published_status(post.status.as_str()));
+    apply_form_state(
+        set_editing_post_id,
+        set_title,
+        set_slug,
+        set_excerpt,
+        set_body,
+        set_locale,
+        set_body_format,
+        set_tags_input,
+        set_publish_now,
+        core::BlogPostEditorFormState::from_post(post),
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -985,13 +988,40 @@ fn reset_form(
     set_publish_now: WriteSignal<bool>,
     default_locale: &str,
 ) {
-    set_editing_post_id.set(None);
-    set_title.set(String::new());
-    set_slug.set(String::new());
-    set_excerpt.set(String::new());
-    set_body.set(String::new());
-    set_locale.set(default_locale.to_string());
-    set_body_format.set("markdown".to_string());
-    set_tags_input.set(String::new());
-    set_publish_now.set(false);
+    apply_form_state(
+        set_editing_post_id,
+        set_title,
+        set_slug,
+        set_excerpt,
+        set_body,
+        set_locale,
+        set_body_format,
+        set_tags_input,
+        set_publish_now,
+        core::BlogPostEditorFormState::empty(default_locale),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_form_state(
+    set_editing_post_id: WriteSignal<Option<String>>,
+    set_title: WriteSignal<String>,
+    set_slug: WriteSignal<String>,
+    set_excerpt: WriteSignal<String>,
+    set_body: WriteSignal<String>,
+    set_locale: WriteSignal<String>,
+    set_body_format: WriteSignal<String>,
+    set_tags_input: WriteSignal<String>,
+    set_publish_now: WriteSignal<bool>,
+    state: core::BlogPostEditorFormState,
+) {
+    set_editing_post_id.set(state.editing_post_id);
+    set_title.set(state.title);
+    set_slug.set(state.slug);
+    set_excerpt.set(state.excerpt);
+    set_body.set(state.body);
+    set_locale.set(state.locale);
+    set_body_format.set(state.body_format);
+    set_tags_input.set(state.tags_input);
+    set_publish_now.set(state.publish_now);
 }

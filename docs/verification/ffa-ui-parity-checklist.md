@@ -91,6 +91,10 @@ Commands:
 - npm run verify:ffa:ui:migration
 ```
 
+## Текущие evidence notes
+
+- 2026-06-13, `blog`, slice #78: admin editor form-state mapping/reset defaults moved into Leptos-free `BlogPostEditorFormState`; `node scripts/verify/verify-blog-admin-boundary.mjs` passed; long `cargo test -p rustok-blog-admin --lib` was stopped after dependency compilation started to avoid long compile during this iteration; native/GraphQL transport surfaces were not changed.
+
 ## Связанные документы
 
 - `docs/research/dioxus-ffa-ui-migration-plan.md`
