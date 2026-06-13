@@ -51,6 +51,15 @@
 - [ ] расширить server resolver regression matrix под lifecycle invalidation (positive + negative cache сценарии после tenant state transition);
 - [ ] зафиксировать migration note по deprecated `TenantService::toggle_module`: runtime module enable/disable path должен идти через host `ModuleLifecycleService`.
 
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter.
+- Temporary parity note: the current tenant admin overview remains a native-only single-adapter state because there is no legacy GraphQL/REST tenant bootstrap UI contract to preserve for this surface; the existing server GraphQL tenant/module read paths remain unchanged outside this UI package.
+
 ## Проверка
 
 - `cargo xtask module validate tenant`

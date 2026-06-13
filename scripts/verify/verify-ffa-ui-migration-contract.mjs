@@ -235,12 +235,20 @@ const requiredNpmScriptCommands = {
   "verify:channel:admin-boundary": [
     "node scripts/verify/verify-channel-admin-boundary.mjs",
   ],
+  "verify:ai:admin-boundary": [
+    "node scripts/verify/verify-ai-admin-boundary.mjs",
+  ],
+  "verify:tenant:admin-boundary": [
+    "node scripts/verify/verify-tenant-admin-boundary.mjs",
+  ],
 };
 
 const requiredMigrationPipelineCommands = [
   "npm run verify:ffa:ui:migration:contract",
   "npm run verify:ffa:ui:migration:docs",
   "npm run verify:channel:admin-boundary",
+  "npm run verify:ai:admin-boundary",
+  "npm run verify:tenant:admin-boundary",
 ];
 
 function assertFileExists(relPath) {

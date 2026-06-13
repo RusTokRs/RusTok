@@ -312,6 +312,10 @@ function withFixture({
             docsCommand ?? "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
           "verify:channel:admin-boundary":
             "node scripts/verify/verify-channel-admin-boundary.mjs",
+          "verify:ai:admin-boundary":
+            "node scripts/verify/verify-ai-admin-boundary.mjs",
+          "verify:tenant:admin-boundary":
+            "node scripts/verify/verify-tenant-admin-boundary.mjs",
         },
       },
       null,
@@ -342,7 +346,7 @@ function runVerifier(root, options = {}) {
 
 test("passes when migration pipeline includes contract and docs commands", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -355,7 +359,7 @@ test("passes when migration pipeline includes contract and docs commands", () =>
 
 test("fails when anti-over-extraction standard is missing from the plan", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -412,7 +416,7 @@ test("fails when migration pipeline misses channel boundary command", () => {
 
 test("passes when pipeline uses extra whitespace", () => {
   const fixture = withFixture({
-    pipeline: "npm   run verify:ffa:ui:migration:contract   &&   npm run verify:ffa:ui:migration:docs   &&   npm   run verify:channel:admin-boundary",
+    pipeline: "npm   run verify:ffa:ui:migration:contract   &&   npm run verify:ffa:ui:migration:docs   &&   npm   run verify:channel:admin-boundary   && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -427,7 +431,7 @@ ${result.stderr}`);
 
 test("fails when contract script command is drifted", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     contractCommand: "node scripts/verify/some-other-command.mjs",
   });
 
@@ -443,7 +447,7 @@ test("fails when contract script command is drifted", () => {
 
 test("fails when registry structural shape drifts from local module plan", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_only",
   });
@@ -459,7 +463,7 @@ test("fails when registry structural shape drifts from local module plan", () =>
 
 test("fails when structural shape has no matching code layout", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_transport_ui",
   });
@@ -476,7 +480,7 @@ test("fails when structural shape has no matching code layout", () => {
 
 test("passes when a temporary single-adapter native transport is documented as native.rs", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_transport_ui",
   });
@@ -501,7 +505,7 @@ ${result.stderr}`);
 
 test("passes when docs script uses sh variant", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     docsCommand: "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
   });
 
@@ -518,7 +522,7 @@ ${result.stderr}`);
 
 test("passes when root is provided via --root argument", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -534,7 +538,7 @@ ${result.stderr}`);
 
 test("passes when root is provided via --root <path> arguments", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {

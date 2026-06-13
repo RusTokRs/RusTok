@@ -47,6 +47,8 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-read
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | Проверка runtime-context/cache-key invariants | `node scripts/verify/verify-runtime-context-invariants.mjs` |
 | Проверка inventory admin native/write boundary | `node scripts/verify/verify-inventory-admin-boundary.mjs` |
+| Проверка AI admin FFA boundary | `node scripts/verify/verify-ai-admin-boundary.mjs` |
+| Проверка tenant admin FFA boundary | `node scripts/verify/verify-tenant-admin-boundary.mjs` |
 | Проверка запрета lifecycle bypass helper в production | `node scripts/verify/verify-module-lifecycle-bypass-usage.mjs` |
 | Проверка parity provider/consumer для page-builder контракта | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs` |
 | Проверка machine-readable registry page-builder против manifests | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs` |
@@ -129,6 +131,27 @@ node scripts/verify/verify-runtime-context-invariants.mjs
 node scripts/verify/verify-inventory-admin-boundary.mjs
 ./scripts/verify/verify-all.sh inventory-admin-boundary
 node scripts/verify/verify-inventory-admin-boundary.test.mjs
+```
+
+---
+
+
+### `verify-ai-admin-boundary.mjs` / `verify-tenant-admin-boundary.mjs`
+**FFA admin guardrails** — быстрые source-level checks для module-owned admin UI splits без полной Rust-компиляции.
+
+Что проверяют:
+- crate root wires `core`, `transport` and explicit `ui/leptos.rs` adapters;
+- Leptos adapters consume module-owned transport facades instead of pre-FFA `api::` calls;
+- `core.rs` stays Leptos/server-function/runtime free;
+- native server-function endpoints stay inside `transport/native_server_adapter.rs`;
+- old flat `api.rs` facades do not return for completed slices.
+
+Пример:
+
+```bash
+npm run verify:ai:admin-boundary
+npm run verify:tenant:admin-boundary
+npm run verify:ffa:ui:migration
 ```
 
 ---
