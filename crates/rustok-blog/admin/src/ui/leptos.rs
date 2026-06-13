@@ -686,25 +686,23 @@ pub fn BlogAdmin() -> impl IntoView {
                             )}
                         </label>
 
-                        <Show when=move || core::has_issue(core::issue_kind(submit_error.get().as_ref()))>
+                        <Show when=move || {
+                            core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()).visible
+                        }>
                             <div class=move || {
-                                core::issue_banner_class_or_hidden(
-                                    core::issue_kind(submit_error.get().as_ref()),
-                                )
+                                core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()).class
                             }>
                                 {move || {
-                                    submit_error.get().map(|issue| {
-                                        let label = core::issue_label_for(&issue);
+                                    let issue_banner =
+                                        core::blog_post_admin_issue_banner_view(submit_error.get().as_ref());
 
-                                        view! {
-                                            <span>
-                                                <strong>{label}</strong>
-                                                {": "}
-                                                {issue.message}
-                                            </span>
-                                        }
-                                        .into_any()
-                                    })
+                                    view! {
+                                        <span>
+                                            <strong>{issue_banner.label}</strong>
+                                            {": "}
+                                            {issue_banner.message}
+                                        </span>
+                                    }
                                 }}
                             </div>
                         </Show>

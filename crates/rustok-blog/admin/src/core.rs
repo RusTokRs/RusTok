@@ -1,4 +1,4 @@
-use rustok_api::{normalize_ui_text, parse_ui_csv};
+use rustok_api::{normalize_ui_text, parse_ui_csv, WritePathIssue, WritePathIssueKind};
 
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
 
@@ -431,6 +431,33 @@ pub fn issue_label_for(issue: &WritePathIssue) -> &'static str {
     issue_kind_label(issue.kind)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminIssueBannerViewModel {
+    pub visible: bool,
+    pub class: &'static str,
+    pub label: &'static str,
+    pub message: String,
+}
+
+pub fn blog_post_admin_issue_banner_view(
+    issue: Option<&WritePathIssue>,
+) -> BlogPostAdminIssueBannerViewModel {
+    match issue {
+        Some(issue) => BlogPostAdminIssueBannerViewModel {
+            visible: true,
+            class: issue_banner_class(issue.kind),
+            label: issue_label_for(issue),
+            message: issue.message.clone(),
+        },
+        None => BlogPostAdminIssueBannerViewModel {
+            visible: false,
+            class: issue_banner_class_or_hidden(None),
+            label: "",
+            message: String::new(),
+        },
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubmitButtonState {
     Saving,
@@ -826,6 +853,20 @@ mod tests {
             issue_label_for(&WritePathIssue::new("runtime issue")),
             "Runtime"
         );
+        let issue_banner =
+            blog_post_admin_issue_banner_view(Some(&WritePathIssue::new("runtime issue")));
+        assert!(issue_banner.visible);
+        assert_eq!(issue_banner.label, "Runtime");
+        assert_eq!(issue_banner.message, "runtime issue");
+        assert_eq!(
+            issue_banner.class,
+            "rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        );
+        let hidden_issue_banner = blog_post_admin_issue_banner_view(None);
+        assert!(!hidden_issue_banner.visible);
+        assert_eq!(hidden_issue_banner.class, "hidden");
+        assert_eq!(hidden_issue_banner.label, "");
+        assert_eq!(hidden_issue_banner.message, "");
         assert_eq!(
             submit_action_label(
                 SubmitButtonState::Saving,
@@ -855,4 +896,3 @@ mod tests {
         );
     }
 }
-use rustok_api::{WritePathIssue, WritePathIssueKind};

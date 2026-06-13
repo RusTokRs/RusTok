@@ -92,6 +92,8 @@ for (const marker of [
   "delete_label",
   "selected_post_request",
   "issue_banner_class_or_hidden",
+  "BlogPostAdminIssueBannerViewModel",
+  "blog_post_admin_issue_banner_view",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
 }
