@@ -1,5 +1,5 @@
 use crate::i18n::t;
-use crate::model::{StorefrontCheckoutPaymentCollection, StorefrontCommerceData};
+use crate::model::StorefrontCommerceData;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommerceStorefrontShellViewModel {
@@ -17,12 +17,6 @@ pub struct CommerceStorefrontContextViewModel {
     pub tenant_default_locale: String,
     pub channel: String,
     pub channel_resolution_source: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommercePaymentCollectionViewModel {
-    pub collection_id: String,
-    pub status: String,
 }
 
 pub fn build_storefront_shell_view_model(locale: Option<&str>) -> CommerceStorefrontShellViewModel {
@@ -63,25 +57,6 @@ pub fn build_storefront_context_view_model(
         channel_resolution_source: data
             .channel_resolution_source
             .unwrap_or_else(|| empty_value.clone()),
-    }
-}
-
-pub fn build_payment_collection_view_model(
-    payment_collection: Option<StorefrontCheckoutPaymentCollection>,
-    locale: Option<&str>,
-) -> CommercePaymentCollectionViewModel {
-    let (collection_id, status) = payment_collection
-        .map(|collection| (collection.id, collection.status))
-        .unwrap_or_else(|| {
-            (
-                t(locale, "commerce.payment.emptyId", "not attached"),
-                t(locale, "commerce.payment.emptyStatus", "pending"),
-            )
-        });
-
-    CommercePaymentCollectionViewModel {
-        collection_id,
-        status,
     }
 }
 
@@ -131,27 +106,5 @@ mod tests {
         assert_eq!(view_model.tenant, "host tenant");
         assert_eq!(view_model.channel, "not resolved");
         assert_eq!(view_model.channel_resolution_source, "not resolved");
-    }
-
-    #[test]
-    fn payment_collection_view_model_preserves_resolved_collection() {
-        let view_model = build_payment_collection_view_model(
-            Some(StorefrontCheckoutPaymentCollection {
-                id: "paycol_1".to_string(),
-                status: "authorized".to_string(),
-            }),
-            Some("en"),
-        );
-
-        assert_eq!(view_model.collection_id, "paycol_1");
-        assert_eq!(view_model.status, "authorized");
-    }
-
-    #[test]
-    fn payment_collection_view_model_applies_empty_fallbacks() {
-        let view_model = build_payment_collection_view_model(None, Some("en"));
-
-        assert_eq!(view_model.collection_id, "not attached");
-        assert_eq!(view_model.status, "pending");
     }
 }

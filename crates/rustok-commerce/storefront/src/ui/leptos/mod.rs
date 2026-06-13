@@ -5,8 +5,7 @@ use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{
-    StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCheckoutWorkspace,
-    StorefrontCommerceData,
+    StorefrontCheckoutCompletion, StorefrontCheckoutWorkspace, StorefrontCommerceData,
 };
 use crate::{core, transport};
 
@@ -309,9 +308,6 @@ fn CheckoutWorkspace(
                                 }}
                             </button>
                         </div>
-                        <div class="mt-6">
-                            <PaymentCollectionCard payment_collection />
-                        </div>
                     </article>
                 }.into_any()
                 },
@@ -332,29 +328,6 @@ fn CheckoutWorkspace(
 }
 
 #[component]
-fn PaymentCollectionCard(
-    payment_collection: Option<StorefrontCheckoutPaymentCollection>,
-) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-
-    let view_model =
-        core::build_payment_collection_view_model(payment_collection, locale.as_deref());
-
-    view! {
-        <article class="rounded-2xl border border-dashed border-border p-5">
-            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                {t(locale.as_deref(), "commerce.payment.badge", "payment collection")}
-            </div>
-            <p class="mt-2 text-sm text-muted-foreground">
-                {t(locale.as_deref(), "commerce.payment.moduleOwnership", "Payment collection details stay in payment-owned UI; commerce only shows checkout orchestration handoff state.")}
-            </p>
-            <div class="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                {format!("{} · {}", view_model.collection_id, view_model.status)}
-            </div>
-        </article>
-    }
-}
-#[component]
 fn CheckoutCompletionCard(result: StorefrontCheckoutCompletion) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
@@ -369,7 +342,6 @@ fn CheckoutCompletionCard(result: StorefrontCheckoutCompletion) -> impl IntoView
             </p>
             <div class="mt-4 grid gap-3 md:grid-cols-2">
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.orderStatus", "Order status") value=result.order_status />
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.collectionStatus", "Collection status") value=result.payment_collection_status />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.fulfillments", "Fulfillments") value=result.fulfillment_count.to_string() />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.locale", "Resolved locale") value=result.context_locale />
             </div>
