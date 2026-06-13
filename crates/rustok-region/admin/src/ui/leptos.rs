@@ -8,7 +8,8 @@ use crate::core::{
     RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFieldLabels,
     RegionAdminEditorFormState, RegionAdminEditorLabels, RegionAdminListHeaderLabels,
     RegionAdminListLabels, RegionAdminListStateLabels, RegionAdminListStateViewModel,
-    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminShellLabels,
+    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent,
+    RegionAdminShellLabels,
 };
 use crate::i18n::t;
 use crate::model::RegionDetail;
@@ -38,11 +39,13 @@ pub fn RegionAdmin() -> impl IntoView {
     let (name, set_name) = signal(String::new());
     let (currency_code, set_currency_code) = signal(String::new());
     let (tax_provider_id, set_tax_provider_id) = signal(String::new());
-    let (tax_rate, set_tax_rate) = signal("0".to_string());
-    let (tax_included, set_tax_included) = signal(false);
-    let (country_tax_policies, set_country_tax_policies) = signal("[]".to_string());
-    let (countries, set_countries) = signal(String::new());
-    let (metadata, set_metadata) = signal("{}".to_string());
+    let empty_form_state = RegionAdminEditorFormState::empty();
+    let (tax_rate, set_tax_rate) = signal(empty_form_state.tax_rate.clone());
+    let (tax_included, set_tax_included) = signal(empty_form_state.tax_included);
+    let (country_tax_policies, set_country_tax_policies) =
+        signal(empty_form_state.country_tax_policies.clone());
+    let (countries, set_countries) = signal(empty_form_state.countries.clone());
+    let (metadata, set_metadata) = signal(empty_form_state.metadata.clone());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
@@ -244,16 +247,18 @@ pub fn RegionAdmin() -> impl IntoView {
     };
 
     let reset_form = move || {
-        set_editing_id.set(None);
-        set_selected.set(None);
-        set_name.set(String::new());
-        set_currency_code.set(String::new());
-        set_tax_provider_id.set(String::new());
-        set_tax_rate.set("0".to_string());
-        set_tax_included.set(false);
-        set_country_tax_policies.set("[]".to_string());
-        set_countries.set(String::new());
-        set_metadata.set("{}".to_string());
+        clear_region_form(
+            set_editing_id,
+            set_selected,
+            set_name,
+            set_currency_code,
+            set_tax_provider_id,
+            set_tax_rate,
+            set_tax_included,
+            set_country_tax_policies,
+            set_countries,
+            set_metadata,
+        );
         set_error.set(None);
     };
 
@@ -300,12 +305,10 @@ pub fn RegionAdmin() -> impl IntoView {
         });
     });
     let initial_open_region = open_region;
-    Effect::new(move |_| match selected_region_query.get() {
-        Some(region_id) if crate::core::optional_ui_text(region_id.as_str()).is_some() => {
-            initial_open_region.run(region_id);
-        }
-        _ => {
-            clear_region_form(
+    Effect::new(move |_| {
+        match crate::core::region_admin_route_query_intent(selected_region_query.get().as_deref()) {
+            RegionAdminRouteQueryIntent::Open { region_id } => initial_open_region.run(region_id),
+            RegionAdminRouteQueryIntent::Clear => clear_region_form(
                 set_editing_id,
                 set_selected,
                 set_name,
@@ -316,7 +319,7 @@ pub fn RegionAdmin() -> impl IntoView {
                 set_country_tax_policies,
                 set_countries,
                 set_metadata,
-            );
+            ),
         }
     });
 

@@ -30,6 +30,20 @@ pub fn ui_text_or_default(value: &str) -> String {
     normalize_ui_text(value).unwrap_or_default()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegionAdminRouteQueryIntent {
+    Open { region_id: String },
+    Clear,
+}
+
+pub fn region_admin_route_query_intent(
+    selected_region_query: Option<&str>,
+) -> RegionAdminRouteQueryIntent {
+    optional_ui_text(selected_region_query.unwrap_or_default())
+        .map(|region_id| RegionAdminRouteQueryIntent::Open { region_id })
+        .unwrap_or(RegionAdminRouteQueryIntent::Clear)
+}
+
 pub fn build_region_draft(input: RegionFormInput<'_>) -> RegionDraft {
     RegionDraft {
         name: ui_text_or_default(input.name),
@@ -932,6 +946,24 @@ mod tests {
         );
         assert_eq!(view_model.countries_placeholder, "Countries (BY, RU, KZ)");
         assert_eq!(view_model.metadata_placeholder, "Metadata JSON");
+    }
+
+    #[test]
+    fn admin_route_query_intent_trims_open_region_and_clears_blank_values() {
+        assert_eq!(
+            region_admin_route_query_intent(Some("  region-eu  ")),
+            RegionAdminRouteQueryIntent::Open {
+                region_id: "region-eu".to_string(),
+            }
+        );
+        assert_eq!(
+            region_admin_route_query_intent(Some("   ")),
+            RegionAdminRouteQueryIntent::Clear
+        );
+        assert_eq!(
+            region_admin_route_query_intent(None),
+            RegionAdminRouteQueryIntent::Clear
+        );
     }
 
     #[test]
