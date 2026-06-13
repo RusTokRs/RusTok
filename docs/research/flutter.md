@@ -1123,11 +1123,12 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | ⬜ Planned | **Phase 5 — Offline/advanced sync (optional)** | Добавить офлайн-сценарии только после продуктового подтверждения требований. | [Open questions и ограничения](#open-questions-и-ограничения), [Риски и митигации](#риски-и-митигации) | Есть утверждённые offline requirements и реализована целевая стратегия sync/outbox. |
 
 
-#### Операционный статус плана (обновлено: 2026-05-31, storefront catalog/cart package)
+#### Операционный статус плана (обновлено: 2026-06-13, storefront GraphQL evidence hardening)
 
 - **FFA в плане отмечен:** ✅ Да. FFA-baseline явно зафиксирован в `Phase 0 — Foundation` и отдельно закреплён в anti-drift guardrail разделе.
-- **Текущий фокус выполнения:** `Phase 1 — Pilot module` (статус `🟡 In progress`) поверх закрытого host adapter seam; первый mutation-backed operator action для `modules` добавлен через canonical GraphQL `toggleModule`, permission gate берётся из GraphQL `me.permissions`, а retryable post-hook failures получают recovery feedback, retry/compensation actions и отдельный operation history/recovery screen через существующие lifecycle GraphQL contracts без feature-local transport-клиентов. `Phase 2 — Registry/codegen` остаётся в поддерживающем режиме без изменения platform contract. В отдельном host-треке добавлен `rustok_frontend_mobile` как customer storefront shell, чтобы не смешивать admin/operator и storefront UX.
-- **Следующая точка контроля:** закрепить E2E evidence operation history/recovery screen в CI-сигнале и довести storefront cart до canonical shared-transport implementation, не добавляя feature-local transport-клиентов.
+- **Текущий фокус выполнения:** `Phase 1 — Pilot module` остаётся `🟡 In progress` для admin/operator flow, но его ключевые seams уже закрыты: module-owned package, shared GraphQL transport, `toggleModule`, hydrated `me.permissions`, retry/compensation actions и dedicated operation history/recovery screen используют существующие lifecycle GraphQL contracts без feature-local transport-клиентов. `Phase 2 — Registry/codegen` работает как supporting track: admin и storefront registry/codegen проверяются локальными deterministic checks, а storefront registry уже используется для package discovery и generated home navigation.
+- **Storefront track:** `rustok_frontend_mobile` отделён от admin/operator host; catalog/cart package работает через host-owned repository seam, durable cart id seam и source-backed GraphQL contract verifier для `storefrontSearch`, `storefrontCart` и create/add/update/remove cart mutations.
+- **Следующая точка контроля:** превратить source-backed storefront verifier в live schema/test-server CI job, когда доступен Flutter SDK или lightweight server harness; до этого не расширять Flutter API surface и не добавлять package-local transport/storage fallback chains.
 
 #### Ближайший execution backlog (Phase 1 pilot)
 
@@ -1167,6 +1168,9 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry подключается без ручного списка модулей в shell-router | ✅ Done |
 | Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav использует `nav.icon` из generated manifest и fallback по module metadata без ручного списка routes | ✅ Done |
 | Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` + `rustok_mobile/packages/rustok_modules_mobile/test/modules_mobile_screen_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back; package widget test verifies `toggleModule` action refresh and operation history/recovery actions | 🟡 In progress |
+| Storefront catalog/cart GraphQL source verifier | `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py` | `python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` verifies catalog/cart operation documents against existing server-owned surfaces | ✅ Done |
+| Storefront live schema/test-server promotion | mobile CI pipeline + server test harness | execute the same catalog/cart operation set against a live schema or test server, then keep source verifier as fast preflight | ⬜ Planned |
+| Storefront package mapping expansion gate | `apps/rustok_frontend_mobile` + module-owned packages | add a new package-backed route only when a module-owned package exists and consumes a host-provided repository | ⬜ Planned |
 
 #### PR-D evidence pack (Flutter storefront mobile host)
 
@@ -1339,6 +1343,19 @@ Storefront track получил первый детерминированный 
 
 Следующий storefront шаг: поднять этот сигнал до live schema/test-server job в CI, когда будет доступен Flutter SDK/test server harness, и расширять package mappings только при появлении новых module-owned storefront packages.
 
+#### PR-P execution slice (storefront live-schema promotion plan)
+
+**Цель:** перевести существующий source-backed verifier в CI-grade live сигнал без изменения mobile/backend API contract.
+
+Так как текущая проверка уже доказывает совпадение Flutter operation documents с server-owned source и runtime parity test paths, следующий PR должен быть не новым architectural layer, а promotion-шагом:
+- preflight — оставить `verify_storefront_graphql_contract.py` как быстрый обязательный шаг до запуска Flutter/server harness;
+- live execution — поднять test schema/server и выполнить тот же набор operations: `StorefrontMobileCatalog`, `StorefrontMobileCart`, `StorefrontMobileCreateCart`, `StorefrontMobileAddCartLine`, `StorefrontMobileUpdateCartLine`, `StorefrontMobileRemoveCartLine`;
+- evidence output — сохранять JSON с operation name, root field, source marker, server evidence path и результатом live execution;
+- failure policy — падение live job не должно компенсироваться Flutter fallback endpoint-ом; исправлять нужно schema/resolver/client document drift;
+- package expansion gate — новые package-backed storefront routes разрешены только после появления module-owned package и host-owned repository adapter, а manifest-only routes остаются generic placeholders.
+
+**Не делать в PR-P:** не добавлять `/api/flutter`, `/api/mobile`, package-local GraphQL clients, tenant/locale/cart fallback chains или server-side FBA metadata в Flutter registry. Это hardening existing contract, а не расширение platform surface.
+
 #### PR-A evidence pack (registry contract freeze)
 
 **Snapshot source (canonical):** `rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json`.
@@ -1421,5 +1438,6 @@ Storefront track получил первый детерминированный 
 | Тип мобильного приложения | **Уточнено** | Admin/operator и customer storefront ведутся как отдельные host-приложения: `rustok_admin_mobile` и `rustok_frontend_mobile` |
 | Способ получения manifest/export для mobile registry | **Не указано** | На первом этапе — snapshot/codegen из RusTok repo; в долгую — backend/export endpoint |
 | Distribution model | **Не указано** | Internal/TestFlight/Play Internal на первых этапах |
+| Live schema/test-server harness для Flutter storefront | **Запланировано** | Использовать source-backed verifier как preflight; live job должен выполнять те же catalog/cart operations против test schema/server без новых Flutter-specific endpoints |
 
 Итоговая рекомендация остаётся высокой уверенности: **строить Flutter-клиент как новый host платформы RusTok, а не как набор экранов без ownership-границ**. Именно это лучше всего соответствует текущей архитектуре репозитория и лучше всего масштабируется в сопровождении. fileciteturn30file0L3-L3 fileciteturn33file0L3-L3
