@@ -29,12 +29,8 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-pub async fn fetch_bootstrap() -> Result<TenantAdminBootstrap, ApiError> {
-    tenant_bootstrap_native().await.map_err(Into::into)
-}
-
 #[server(prefix = "/api/fn", endpoint = "tenant/bootstrap")]
-async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnError> {
+pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
