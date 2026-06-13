@@ -79,6 +79,10 @@ for (const marker of [
   "category_select_options",
   "forum_admin_topic_tag_count_label",
   "forum_admin_editing_thread_label",
+  "forum_admin_position_value",
+  "forum_admin_sidebar_category_class",
+  "forum_admin_status_badge_class",
+  "forum_admin_tag_chips",
   "forum_admin_form_error_message",
   "forum_admin_transport_error_message",
   "selected_category_filter_label",
@@ -97,6 +101,10 @@ assertContains(ui, "forum_admin_transport_error_message", `${uiPath}: UI must co
 assertContains(ui, "category_select_options", `${uiPath}: UI must consume core-owned category select options`);
 assertContains(ui, "forum_admin_topic_tag_count_label", `${uiPath}: UI must consume core-owned tag count label policy`);
 assertContains(ui, "forum_admin_editing_thread_label", `${uiPath}: UI must consume core-owned editing thread label policy`);
+assertContains(ui, "forum_admin_position_value", `${uiPath}: UI must consume core-owned position parsing policy`);
+assertContains(ui, "forum_admin_sidebar_category_class", `${uiPath}: UI must consume core-owned sidebar class policy`);
+assertContains(ui, "forum_admin_status_badge_class", `${uiPath}: UI must consume core-owned status badge class policy`);
+assertContains(ui, "forum_admin_tag_chips", `${uiPath}: UI must consume core-owned tag chip parsing policy`);
 assertContains(ui, "forum_admin_delete_outcome", `${uiPath}: UI must consume core-owned delete outcome policy`);
 assertContains(ui, "CategoryFormSnapshot", `${uiPath}: UI must consume core-owned category form snapshots`);
 assertContains(ui, "TopicFormSnapshot", `${uiPath}: UI must consume core-owned topic form snapshots`);

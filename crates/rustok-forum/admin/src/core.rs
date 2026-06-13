@@ -565,6 +565,14 @@ pub fn parse_tags(raw: &str) -> Vec<String> {
         .collect()
 }
 
+pub fn forum_admin_tag_chips(raw: &str) -> Vec<String> {
+    parse_tags(raw)
+}
+
+pub fn forum_admin_position_value(raw: &str) -> i32 {
+    raw.trim().parse::<i32>().unwrap_or(0)
+}
+
 pub fn format_count(value: usize) -> String {
     value.to_string()
 }
@@ -575,6 +583,31 @@ pub fn topic_status_class(status: &str) -> &'static str {
         "draft" | "pending" => "warning",
         "archived" | "closed" => "muted",
         _ => "default",
+    }
+}
+
+pub fn forum_admin_sidebar_category_class(is_active: bool) -> &'static str {
+    if is_active {
+        "flex w-full items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-3 py-3 text-left"
+    } else {
+        "flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-3 py-3 text-left transition hover:bg-muted"
+    }
+}
+
+pub fn forum_admin_status_badge_class(status_class: &'static str) -> &'static str {
+    match status_class {
+        "success" => {
+            "rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
+        }
+        "warning" => {
+            "rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+        }
+        "muted" => {
+            "rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+        }
+        _ => {
+            "rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+        }
     }
 }
 
@@ -718,6 +751,12 @@ mod tests {
             parse_tags(" rust, forum ,, ffa "),
             vec!["rust", "forum", "ffa"]
         );
+        assert_eq!(
+            forum_admin_tag_chips(" rust, forum ,, ffa "),
+            vec!["rust", "forum", "ffa"]
+        );
+        assert_eq!(forum_admin_position_value(" 42 "), 42);
+        assert_eq!(forum_admin_position_value("not-a-number"), 0);
     }
 
     #[test]
@@ -726,6 +765,16 @@ mod tests {
         assert_eq!(topic_status_class("pending"), "warning");
         assert_eq!(topic_status_class("closed"), "muted");
         assert_eq!(topic_status_class("other"), "default");
+    }
+
+    #[test]
+    fn maps_status_and_sidebar_classes_without_leptos() {
+        assert!(forum_admin_sidebar_category_class(true).contains("border-primary/30"));
+        assert!(forum_admin_sidebar_category_class(false).contains("hover:bg-muted"));
+        assert!(forum_admin_status_badge_class("success").contains("emerald"));
+        assert!(forum_admin_status_badge_class("warning").contains("amber"));
+        assert!(forum_admin_status_badge_class("muted").contains("bg-muted"));
+        assert!(forum_admin_status_badge_class("default").contains("border-border"));
     }
 
     #[test]

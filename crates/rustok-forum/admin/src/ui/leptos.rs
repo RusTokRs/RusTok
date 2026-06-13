@@ -11,15 +11,16 @@ use crate::core::{
     category_card_view_model, category_select_options, category_sidebar_total_count,
     category_sidebar_view_model, format_count, forum_admin_busy_key, forum_admin_collection_state,
     forum_admin_delete_outcome, forum_admin_editing_thread_label, forum_admin_form_error_message,
-    forum_admin_header_view_model, forum_admin_open_query_intent, forum_admin_reset_query_intent,
-    forum_admin_saved_query_intent, forum_admin_topic_tag_count_label,
-    forum_admin_transport_error_message, parse_tags, reply_card_view_model, reply_count_label,
-    result_item_count, selected_category_filter_label, selected_query_id, topic_card_view_model,
-    topic_category_filter, CategoryFormSnapshot, ForumAdminBusyAction, ForumAdminBusySurface,
-    ForumAdminCategoryRenderLabels, ForumAdminCollectionState, ForumAdminFormError,
-    ForumAdminFormErrorLabels, ForumAdminHeaderLabels, ForumAdminQuerySurface,
-    ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation, ForumAdminTopicRenderLabels,
-    TopicFormSnapshot,
+    forum_admin_header_view_model, forum_admin_open_query_intent, forum_admin_position_value,
+    forum_admin_reset_query_intent, forum_admin_saved_query_intent,
+    forum_admin_sidebar_category_class, forum_admin_status_badge_class, forum_admin_tag_chips,
+    forum_admin_topic_tag_count_label, forum_admin_transport_error_message, reply_card_view_model,
+    reply_count_label, result_item_count, selected_category_filter_label, selected_query_id,
+    topic_card_view_model, topic_category_filter, CategoryFormSnapshot, ForumAdminBusyAction,
+    ForumAdminBusySurface, ForumAdminCategoryRenderLabels, ForumAdminCollectionState,
+    ForumAdminFormError, ForumAdminFormErrorLabels, ForumAdminHeaderLabels,
+    ForumAdminQuerySurface, ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation,
+    ForumAdminTopicRenderLabels, TopicFormSnapshot,
 };
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
@@ -1096,7 +1097,7 @@ fn CategoriesPage(
                         <input
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || position.get().to_string()
-                            on:input=move |ev| set_position.set(event_target_value(&ev).parse::<i32>().unwrap_or(0))
+                            on:input=move |ev| set_position.set(forum_admin_position_value(event_target_value(&ev).as_str()))
                             placeholder="0"
                         />
                     </FieldShell>
@@ -1514,7 +1515,7 @@ fn TopicsPage(
                         </div>
 
                         {move || {
-                            let parsed_tags = parse_tags(tags.get().as_str());
+                            let parsed_tags = forum_admin_tag_chips(tags.get().as_str());
                             (!parsed_tags.is_empty()).then(|| {
                                 view! {
                                     <div class="flex flex-wrap gap-2 rounded-2xl border border-border bg-background px-4 py-3">
@@ -1709,7 +1710,7 @@ fn render_category_sidebar(
             let total_count = category_sidebar_total_count(&items);
             view! {
             <div class="mt-4 space-y-2">
-                <button type="button" class=sidebar_category_class(active_category_id.is_empty()) on:click=move |_| set_filter_category_id.set(String::new())>
+                <button type="button" class=forum_admin_sidebar_category_class(active_category_id.is_empty()) on:click=move |_| set_filter_category_id.set(String::new())>
                     <span class="truncate">{all_categories_label}</span>
                     <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{total_count}</span>
                 </button>
@@ -1717,7 +1718,7 @@ fn render_category_sidebar(
                     let vm = category_sidebar_view_model(&item, active_category_id.as_str());
                     let item_id = vm.id.clone();
                     view! {
-                        <button type="button" class=sidebar_category_class(vm.is_active) on:click=move |_| set_filter_category_id.set(item_id.clone())>
+                        <button type="button" class=forum_admin_sidebar_category_class(vm.is_active) on:click=move |_| set_filter_category_id.set(item_id.clone())>
                             <span class="min-w-0">
                                 <span class="block truncate text-left text-sm font-medium text-foreground">{vm.name.clone()}</span>
                                 <span class="block truncate text-left text-xs text-muted-foreground">{vm.slug.clone()}</span>
@@ -1772,7 +1773,7 @@ fn render_topic_feed(
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div class="space-y-3">
                                     <div class="flex flex-wrap items-center gap-2">
-                                        <span class=status_badge_class(vm.status_class)>{vm.status.clone()}</span>
+                                        <span class=forum_admin_status_badge_class(vm.status_class)>{vm.status.clone()}</span>
                                         <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">{vm.effective_locale.clone()}</span>
                                         {vm.pinned.then(|| view! { <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{pinned_label.clone()}</span> })}
                                         {vm.locked.then(|| view! { <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">{locked_label.clone()}</span> })}
@@ -1818,7 +1819,7 @@ fn render_reply_stack(
                     view! {
                         <article class="rounded-[1.35rem] border border-border bg-background p-4">
                             <div class="flex items-center justify-between gap-3">
-                                <span class=status_badge_class(vm.status_class)>{vm.status.clone()}</span>
+                                <span class=forum_admin_status_badge_class(vm.status_class)>{vm.status.clone()}</span>
                                 <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{vm.effective_locale.clone()}</span>
                             </div>
                             <p class="mt-3 text-sm leading-6 text-muted-foreground">{vm.content_preview.clone()}</p>
@@ -1911,29 +1912,4 @@ fn clear_topic_form(
     set_topic_body.set(String::new());
     set_topic_body_format.set("markdown".to_string());
     set_topic_tags.set(String::new());
-}
-
-fn sidebar_category_class(is_active: bool) -> &'static str {
-    if is_active {
-        "flex w-full items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-3 py-3 text-left"
-    } else {
-        "flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-3 py-3 text-left transition hover:bg-muted"
-    }
-}
-
-fn status_badge_class(status_class: &'static str) -> &'static str {
-    match status_class {
-        "success" => {
-            "rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
-        }
-        "warning" => {
-            "rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
-        }
-        "muted" => {
-            "rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
-        }
-        _ => {
-            "rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
-        }
-    }
 }
