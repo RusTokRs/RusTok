@@ -2,14 +2,14 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_api::UiRouteContext;
 
 use crate::core::{
     RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFieldLabels,
     RegionAdminEditorFormState, RegionAdminEditorLabels, RegionAdminListHeaderLabels,
     RegionAdminListLabels, RegionAdminListStateLabels, RegionAdminListStateViewModel,
     RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent,
-    RegionAdminShellLabels,
+    RegionAdminRouteQueryUpdate, RegionAdminShellLabels, REGION_ADMIN_SELECTED_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::model::RegionDetail;
@@ -30,7 +30,7 @@ where
 pub fn RegionAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let selected_region_query = use_route_query_value(AdminQueryKey::RegionId.as_str());
+    let selected_region_query = use_route_query_value(REGION_ADMIN_SELECTED_QUERY_KEY);
     let query_writer = use_route_query_writer();
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -388,7 +388,10 @@ pub fn RegionAdmin() -> impl IntoView {
                         set_metadata,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    submit_query_writer.replace_value(AdminQueryKey::RegionId.as_str(), detail_id);
+                    apply_region_route_query_update(
+                        &submit_query_writer,
+                        crate::core::region_admin_saved_query_update(&detail_id),
+                    );
                 }
                 Err(err) => set_error.set(Some(crate::core::error_with_context(
                     save_region_error_label.as_str(),
@@ -498,7 +501,7 @@ pub fn RegionAdmin() -> impl IntoView {
                                                             type="button"
                                                             class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                             disabled=move || busy.get()
-                                                            on:click=move |_| item_query_writer.push_value(AdminQueryKey::RegionId.as_str(), region_id.clone())
+                                                            on:click=move |_| apply_region_route_query_update(&item_query_writer, crate::core::region_admin_open_query_update(&region_id))
                                                         >
                                                             {open_action.clone()}
                                                         </button>
@@ -529,7 +532,10 @@ pub fn RegionAdmin() -> impl IntoView {
                                 class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                 disabled=move || busy.get()
                             on:click=move |_| {
-                                reset_query_writer.clear_key(AdminQueryKey::RegionId.as_str());
+                                apply_region_route_query_update(
+                                    &reset_query_writer,
+                                    Some(crate::core::region_admin_new_query_update()),
+                                );
                                 reset_form();
                             }
                             >
@@ -619,6 +625,24 @@ pub fn RegionAdmin() -> impl IntoView {
                 </section>
             </div>
         </section>
+    }
+}
+
+fn apply_region_route_query_update(
+    query_writer: &leptos_ui_routing::RouteQueryWriter,
+    update: Option<RegionAdminRouteQueryUpdate>,
+) {
+    match update {
+        Some(RegionAdminRouteQueryUpdate::PushSelected { key, region_id }) => {
+            query_writer.push_value(key, region_id);
+        }
+        Some(RegionAdminRouteQueryUpdate::ReplaceSelected { key, region_id }) => {
+            query_writer.replace_value(key, region_id);
+        }
+        Some(RegionAdminRouteQueryUpdate::ClearSelected { key }) => {
+            query_writer.clear_key(key);
+        }
+        None => {}
     }
 }
 

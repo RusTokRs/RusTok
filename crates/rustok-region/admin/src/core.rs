@@ -1,4 +1,4 @@
-use rustok_api::normalize_ui_text;
+use rustok_api::{normalize_ui_text, AdminQueryKey};
 
 use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionList};
 
@@ -30,10 +30,27 @@ pub fn ui_text_or_default(value: &str) -> String {
     normalize_ui_text(value).unwrap_or_default()
 }
 
+pub const REGION_ADMIN_SELECTED_QUERY_KEY: &str = AdminQueryKey::RegionId.as_str();
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegionAdminRouteQueryIntent {
     Open { region_id: String },
     Clear,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegionAdminRouteQueryUpdate {
+    PushSelected {
+        key: &'static str,
+        region_id: String,
+    },
+    ReplaceSelected {
+        key: &'static str,
+        region_id: String,
+    },
+    ClearSelected {
+        key: &'static str,
+    },
 }
 
 pub fn region_admin_route_query_intent(
@@ -42,6 +59,26 @@ pub fn region_admin_route_query_intent(
     optional_ui_text(selected_region_query.unwrap_or_default())
         .map(|region_id| RegionAdminRouteQueryIntent::Open { region_id })
         .unwrap_or(RegionAdminRouteQueryIntent::Clear)
+}
+
+pub fn region_admin_open_query_update(region_id: &str) -> Option<RegionAdminRouteQueryUpdate> {
+    optional_ui_text(region_id).map(|region_id| RegionAdminRouteQueryUpdate::PushSelected {
+        key: REGION_ADMIN_SELECTED_QUERY_KEY,
+        region_id,
+    })
+}
+
+pub fn region_admin_saved_query_update(region_id: &str) -> Option<RegionAdminRouteQueryUpdate> {
+    optional_ui_text(region_id).map(|region_id| RegionAdminRouteQueryUpdate::ReplaceSelected {
+        key: REGION_ADMIN_SELECTED_QUERY_KEY,
+        region_id,
+    })
+}
+
+pub fn region_admin_new_query_update() -> RegionAdminRouteQueryUpdate {
+    RegionAdminRouteQueryUpdate::ClearSelected {
+        key: REGION_ADMIN_SELECTED_QUERY_KEY,
+    }
 }
 
 pub fn build_region_draft(input: RegionFormInput<'_>) -> RegionDraft {
@@ -963,6 +1000,30 @@ mod tests {
         assert_eq!(
             region_admin_route_query_intent(None),
             RegionAdminRouteQueryIntent::Clear
+        );
+    }
+
+    #[test]
+    fn admin_route_query_updates_encode_host_writer_policy() {
+        assert_eq!(REGION_ADMIN_SELECTED_QUERY_KEY, "region_id");
+        assert_eq!(
+            region_admin_open_query_update("  region-eu  "),
+            Some(RegionAdminRouteQueryUpdate::PushSelected {
+                key: "region_id",
+                region_id: "region-eu".to_string(),
+            })
+        );
+        assert_eq!(region_admin_open_query_update(" "), None);
+        assert_eq!(
+            region_admin_saved_query_update("region-us"),
+            Some(RegionAdminRouteQueryUpdate::ReplaceSelected {
+                key: "region_id",
+                region_id: "region-us".to_string(),
+            })
+        );
+        assert_eq!(
+            region_admin_new_query_update(),
+            RegionAdminRouteQueryUpdate::ClearSelected { key: "region_id" }
         );
     }
 
