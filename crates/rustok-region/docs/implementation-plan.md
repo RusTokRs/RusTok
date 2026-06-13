@@ -7,7 +7,7 @@
 ## Execution checkpoint
 
 - Current phase: ffa_admin_mutation_policy_slice
-- Last checkpoint: FFA slice #31 объединила admin submit preparation в Leptos-free core: `RegionAdminSubmitInput` -> `RegionAdminSubmitCommand` теперь строит normalized `RegionDraft`, проверяет host locale/required fields и выбирает create/update mode до render/transport слоя.
+- Last checkpoint: FFA slice #32 добавила fast source-level guardrail `scripts/verify/verify-region-admin-boundary.mjs` для admin `core/transport/ui` split, submit preparation boundary и temporary native `api.rs` adapter state без запуска долгой Cargo-компиляции.
 - Next step: Продолжить FFA-first sequencing к тонкому host-adapter smoke для route/query writer либо добрать следующий небольшой admin mutation outcome/error state slice без изменения native/GraphQL contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
@@ -52,7 +52,8 @@
   - FFA slice #28 добавила admin route/query writer update contract (`RegionAdminRouteQueryUpdate`, `REGION_ADMIN_SELECTED_QUERY_KEY`) для open/save/new host query mutations без Leptos-owned key/action policy;
   - FFA slice #29 добавила admin detail panel view-model (`RegionAdminDetailPanelViewModel`) для empty/ready selected-region branches, detail labels, header, policy rows, countries summary и raw sections без Leptos runtime;
   - FFA slice #30 добавила admin mutation policy helpers (`RegionRequiredFieldLabels`, `region_required_field_message`, `RegionAdminSaveMode`, `region_admin_save_mode`), чтобы required-field validation copy и create/update decision больше не жили в Leptos submit handler;
-  - FFA slice #31 добавила admin submit command preparation (`RegionAdminSubmitInput`, `RegionAdminSubmitCommand`, `RegionAdminSubmitError`, `prepare_region_admin_submit`), чтобы Leptos adapter передавал form snapshot в core и получал готовый payload+mode либо typed validation error.
+  - FFA slice #31 добавила admin submit command preparation (`RegionAdminSubmitInput`, `RegionAdminSubmitCommand`, `RegionAdminSubmitError`, `prepare_region_admin_submit`), чтобы Leptos adapter передавал form snapshot в core и получал готовый payload+mode либо typed validation error;
+  - FFA slice #32 добавила fast boundary guardrail `scripts/verify/verify-region-admin-boundary.mjs` и включила его в `verify:ffa:ui:migration`; guardrail проверяет Leptos-free admin core, запрет raw `api`/service calls из UI, transport facade exposure, native endpoints в temporary `api.rs`, local plan и central readiness board sync.
 - Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-region` module team
 
@@ -145,3 +146,9 @@
 - [x] Slice 24: admin editor field copy перенесена в core (`RegionAdminEditorFieldViewModel`, `RegionAdminEditorFieldLabels`): placeholders, tax-included checkbox label и metadata/country-tax-policy copy передаются в Leptos adapter готовыми строками; побочная правка: добавлены отсутствующие admin locale keys `region.field.countryTaxPolicies` и `region.field.metadata`; проверка: `timeout 45s cargo check -p rustok-region-admin --lib --no-default-features` дважды остановлена по timeout на dependency compile, чтобы не уходить в долгую компиляцию.
 - [x] Slice 25: admin shell/list header state перенесён в core (`RegionAdminShellViewModel`, `RegionAdminListHeaderViewModel`): top-level badge/title/subtitle, refresh label и tenant-aware list subtitle replacement/fallback больше не форматируются inline в Leptos adapter; проверка: `timeout 60s cargo check -p rustok-region-admin --lib --no-default-features` остановлена по timeout на dependency compile, чтобы не уходить в долгую компиляцию.
 - [x] Slice 26: admin list state mapping перенесён в core (`RegionAdminListStateViewModel`, `RegionAdminListStateLabels`): loading/error/empty/ready branches, error context, готовые rows и open action copy больше не собираются inline в Leptos adapter; проверка: `timeout 60s cargo check -p rustok-region-admin --lib --no-default-features` остановлена по timeout на dependency compile, чтобы не уходить в долгую компиляцию.
+- [x] Slice 27: admin selected-region route/query intent (`RegionAdminRouteQueryIntent`) перенесён в core; Leptos effect применяет готовое `Open`/`Clear` решение без package-local query policy.
+- [x] Slice 28: admin route/query writer update contract (`RegionAdminRouteQueryUpdate`, `REGION_ADMIN_SELECTED_QUERY_KEY`) перенесён в core для open/save/new mutations без Leptos-owned key/action policy.
+- [x] Slice 29: admin detail panel aggregation перенесён в core (`RegionAdminDetailPanelViewModel`): empty/ready branches, labels, header, policy rows, countries summary и raw sections собираются до render слоя.
+- [x] Slice 30: admin mutation policy helpers (`RegionRequiredFieldLabels`, `region_required_field_message`, `RegionAdminSaveMode`, `region_admin_save_mode`) перенесли required-field validation copy mapping и create/update decision из submit handler.
+- [x] Slice 31: admin submit command preparation (`RegionAdminSubmitInput`, `RegionAdminSubmitCommand`, `RegionAdminSubmitError`, `prepare_region_admin_submit`) строит normalized payload, typed validation errors и save mode в core; Leptos adapter остаётся snapshot/error/transport bind слоем.
+- [x] Slice 32: fast boundary guardrail `scripts/verify/verify-region-admin-boundary.mjs` добавлен в aggregate `verify:ffa:ui:migration` и проверяет admin core/transport/ui split без долгой Cargo-компиляции.

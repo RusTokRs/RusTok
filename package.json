@@ -15,14 +15,15 @@
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
     "verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.mjs",
     "test:verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.test.mjs",
-    "verify:ffa:ui:migration": "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    "verify:ffa:ui:migration": "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary && npm run verify:region:admin-boundary",
     "verify:ffa:ui:migration:contract": "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
     "verify:ffa:ui:migration:docs": "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
     "test:verify:ffa:ui:migration": "node scripts/verify/verify-ffa-ui-migration-contract.test.mjs",
     "verify:channel:admin-boundary": "node scripts/verify/verify-channel-admin-boundary.mjs",
     "test:verify:channel:admin-boundary": "node scripts/verify/verify-channel-admin-boundary.test.mjs",
     "verify:ai:admin-boundary": "node scripts/verify/verify-ai-admin-boundary.mjs",
-    "verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.mjs"
+    "verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.mjs",
+    "verify:region:admin-boundary": "node scripts/verify/verify-region-admin-boundary.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
