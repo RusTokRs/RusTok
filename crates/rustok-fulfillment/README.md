@@ -12,6 +12,7 @@
 - Prepare a stable shipping boundary for checkout orchestration.
 - Keep shipment lifecycle transitions isolated from the ecommerce umbrella.
 - Provide a built-in manual/default fulfillment flow for the current stage, without external carrier providers.
+- Own storefront shipping handoff and seller-aware shipping selection presentation through `rustok-fulfillment/storefront`; commerce may still provide the transitional aggregate checkout transport callback until the fulfillment-owned transport cutover lands.
 - Normalize first-class `allowed_shipping_profile_slugs` on shipping-option contracts into the temporary metadata-backed compatibility shape.
 - Provide create/update/lifecycle read-side service operations for shipping-option management that the commerce facade exposes over admin REST and GraphQL.
 - Return typed fulfillment items from `FulfillmentResponse` instead of forcing post-order flows to reconstruct line-item scope from metadata blobs alone.
@@ -26,6 +27,7 @@
 - Used by `rustok-commerce` as the default fulfillment submodule of the ecommerce family.
 - Links to orders and customers by identifier without taking ownership of those domains.
 - `apps/admin` consumes `rustok-fulfillment-admin` through manifest-driven `build.rs` composition for shipping-option CRUD and lifecycle work.
+- `rustok-commerce-storefront` consumes `rustok-fulfillment-storefront` for delivery-group shipping selection UI while it still orchestrates cross-module checkout transport.
 
 ## Entry points
 

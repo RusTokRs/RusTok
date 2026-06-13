@@ -52,7 +52,7 @@
 | Field | Value | Notes |
 |---|---|---|
 | `cycle_id` | `2026-Q2-round-robin-v1` | Идентификатор текущего цикла |
-| `next_plan_id` | `rustok-fulfillment` | ID записи, которую должен взять следующий агент |
+| `next_plan_id` | `rustok-iggy` | ID записи, которую должен взять следующий агент |
 | `last_rotation_at` | `2026-05-24T00:00:00Z` | Когда указатель был сдвинут последний раз |
 | `rotation_rule` | `strict_round_robin` | Всегда следующий план по списку, без пропусков |
 
@@ -88,7 +88,7 @@
 | `rustok-email` | `rustok-email` | `crates/rustok-email/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-email --lib` |
 | `rustok-events` | `rustok-events` | `crates/rustok-events/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-events --lib` |
 | `rustok-forum` | `rustok-forum` | `crates/rustok-forum/docs/implementation-plan.md` | `in_progress` | `82%` | `agent` | `2026-05-30T00:00:00Z` | `закрыт FW-1 contract freeze (design/contract path): machine-readable widget catalog/compatibility matrix/error mapping в manifest + REST/GraphQL contract surfaces + regression test на approved-only storefront replies` | Подготовить FW-2 design-prep: fallback checklist (`builder_off/publish_off`) и anti-5xx regression matrix без открытия tenant rollout delivery до P5 | pilot delivery по FW-2..FW-4 остаётся blocked до central P5 Wave 1 Go/No-Go + cross-runtime parity evidence + owner sign-off Platform/Builder/Forum/Frontend | `cargo test -p rustok-forum --lib` |
-| `rustok-fulfillment` | `rustok-fulfillment` | `crates/rustok-fulfillment/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-fulfillment --lib` |
+| `rustok-fulfillment` | `rustok-fulfillment` | `crates/rustok-fulfillment/docs/implementation-plan.md` | `in_progress` | `18%` | `agent` | `2026-06-13T22:35:00Z` | `Fulfillment storefront now owns seller-aware shipping selection DTOs, core request normalization and Leptos selection panel; commerce checkout route renders that owner UI and retains only transitional aggregate selection transport callback.` | Move select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` with GraphQL fallback parity, then update commerce docs/registry evidence. | `-` | `node scripts/verify/verify-fulfillment-admin-boundary.mjs`; `node scripts/verify/verify-fulfillment-storefront-boundary.mjs`; `cargo test -p rustok-fulfillment --lib` |
 | `rustok-iggy` | `rustok-iggy` | `crates/rustok-iggy/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-iggy --lib` |
 | `rustok-iggy-connector` | `rustok-iggy-connector` | `crates/rustok-iggy-connector/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-iggy-connector --lib` |
 | `rustok-index` | `rustok-index` | `crates/rustok-index/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-index --lib` |
