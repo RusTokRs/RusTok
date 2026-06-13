@@ -186,6 +186,17 @@ pub(crate) enum ProductAdminPricingPreviewState<'a> {
     Ready(&'a ProductPricingDetail),
 }
 
+pub(crate) fn product_admin_pricing_preview_state_from_result<'a>(
+    pricing_state: Option<&'a Result<Option<ProductPricingDetail>, String>>,
+) -> ProductAdminPricingPreviewState<'a> {
+    match pricing_state {
+        None => ProductAdminPricingPreviewState::Loading,
+        Some(Err(err)) => ProductAdminPricingPreviewState::Error(err.as_str()),
+        Some(Ok(None)) => ProductAdminPricingPreviewState::Unavailable,
+        Some(Ok(Some(pricing))) => ProductAdminPricingPreviewState::Ready(pricing),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SelectedProductSummaryViewModel {
     Empty {
@@ -542,6 +553,39 @@ pub(crate) fn empty_product_admin_editor_form_state() -> ProductAdminEditorFormS
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) enum ProductAdminOpenProductViewModel {
+    Ready {
+        product: ProductDetail,
+        form_state: ProductAdminEditorFormState,
+    },
+    Empty {
+        form_state: ProductAdminEditorFormState,
+        error_message: String,
+    },
+}
+
+pub(crate) fn build_product_admin_open_product_view_model<E: std::fmt::Display>(
+    requested_locale: Option<&str>,
+    error_copy: &ProductAdminErrorCopy,
+    result: Result<Option<ProductDetail>, E>,
+) -> ProductAdminOpenProductViewModel {
+    match result {
+        Ok(Some(product)) => ProductAdminOpenProductViewModel::Ready {
+            form_state: build_product_admin_editor_form_state(&product, requested_locale),
+            product,
+        },
+        Ok(None) => ProductAdminOpenProductViewModel::Empty {
+            form_state: empty_product_admin_editor_form_state(),
+            error_message: error_copy.product_not_found.clone(),
+        },
+        Err(err) => ProductAdminOpenProductViewModel::Empty {
+            form_state: empty_product_admin_editor_form_state(),
+            error_message: error_copy.load_product_failure(err),
+        },
+    }
+}
+
 pub(crate) fn build_product_admin_editor_form_state(
     product: &ProductDetail,
     requested_locale: Option<&str>,
@@ -830,6 +874,29 @@ pub(crate) fn build_product_admin_shell_view_model(
             locale,
             "product.subtitle",
             "Product ownership now lives in the product module package. Commerce keeps delivery orchestration while catalog CRUD moves to the product route.",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminSeoPanelCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub empty_message: String,
+}
+
+pub(crate) fn build_product_admin_seo_panel_copy(locale: Option<&str>) -> ProductAdminSeoPanelCopy {
+    ProductAdminSeoPanelCopy {
+        title: t(locale, "product.seo.title", "Product SEO"),
+        subtitle: t(
+            locale,
+            "product.seo.subtitle",
+            "Explicit metadata, social tags and diagnostics for the selected product.",
+        ),
+        empty_message: t(
+            locale,
+            "product.seo.empty",
+            "Create or open a product first. The SEO panel stays attached to the product editor.",
         ),
     }
 }
@@ -1151,6 +1218,10 @@ pub(crate) fn text_or_none(value: String) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
+    value.trim().parse().unwrap_or(0)
 }
 
 pub(crate) fn status_badge(status: &str) -> &'static str {
@@ -1616,6 +1687,21 @@ mod tests {
     }
 
     #[test]
+    fn product_admin_seo_panel_copy_is_core_owned() {
+        let copy = build_product_admin_seo_panel_copy(Some("en"));
+
+        assert_eq!(copy.title, "Product SEO");
+        assert_eq!(
+            copy.subtitle,
+            "Explicit metadata, social tags and diagnostics for the selected product."
+        );
+        assert_eq!(
+            copy.empty_message,
+            "Create or open a product first. The SEO panel stays attached to the product editor."
+        );
+    }
+
+    #[test]
     fn product_admin_profile_panel_view_models_are_core_owned() {
         let active = ShippingProfile {
             id: "profile-1".to_string(),
@@ -1670,6 +1756,48 @@ mod tests {
     }
 
     #[test]
+    fn product_admin_inventory_quantity_input_parsing_is_core_owned() {
+        assert_eq!(parse_product_admin_inventory_quantity_input(" 42 "), 42);
+        assert_eq!(parse_product_admin_inventory_quantity_input(""), 0);
+        assert_eq!(
+            parse_product_admin_inventory_quantity_input("not-a-number"),
+            0
+        );
+    }
+
+    #[test]
+    fn product_admin_open_product_view_model_handles_missing_and_failed_loads() {
+        let error_copy = build_product_admin_error_copy(Some("en"));
+
+        match build_product_admin_open_product_view_model::<&str>(Some("en"), &error_copy, Ok(None))
+        {
+            ProductAdminOpenProductViewModel::Empty {
+                form_state,
+                error_message,
+            } => {
+                assert_eq!(form_state, empty_product_admin_editor_form_state());
+                assert_eq!(error_message, "Product not found.");
+            }
+            ProductAdminOpenProductViewModel::Ready { .. } => panic!("expected empty view-model"),
+        }
+
+        match build_product_admin_open_product_view_model(
+            Some("en"),
+            &error_copy,
+            Err("network unavailable"),
+        ) {
+            ProductAdminOpenProductViewModel::Empty {
+                form_state,
+                error_message,
+            } => {
+                assert_eq!(form_state, empty_product_admin_editor_form_state());
+                assert_eq!(error_message, "Failed to load product: network unavailable");
+            }
+            ProductAdminOpenProductViewModel::Ready { .. } => panic!("expected empty view-model"),
+        }
+    }
+
+    #[test]
     fn admin_status_labels_and_badges_are_framework_agnostic() {
         assert_eq!(localized_product_status(Some("en"), "ACTIVE"), "Active");
         assert!(status_badge("ARCHIVED").contains("slate"));
@@ -1686,6 +1814,26 @@ mod tests {
             format_product_shipping_profile(Some("en"), "standard"),
             "profile standard",
         );
+    }
+
+    #[test]
+    fn product_admin_pricing_preview_state_maps_async_resource_results() {
+        assert!(matches!(
+            product_admin_pricing_preview_state_from_result(None),
+            ProductAdminPricingPreviewState::Loading
+        ));
+
+        let unavailable = Ok(None);
+        assert!(matches!(
+            product_admin_pricing_preview_state_from_result(Some(&unavailable)),
+            ProductAdminPricingPreviewState::Unavailable
+        ));
+
+        let failed = Err("pricing timeout".to_string());
+        assert!(matches!(
+            product_admin_pricing_preview_state_from_result(Some(&failed)),
+            ProductAdminPricingPreviewState::Error("pricing timeout")
+        ));
     }
 
     #[test]
