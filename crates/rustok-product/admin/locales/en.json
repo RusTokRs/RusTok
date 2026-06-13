@@ -74,5 +74,6 @@
   "product.title": "Product Catalog",
   "product.seo.title": "Product SEO",
   "product.seo.subtitle": "Explicit metadata, social tags and diagnostics for the selected product.",
-  "product.seo.empty": "Create or open a product first. The SEO panel stays attached to the product editor."
+  "product.seo.empty": "Create or open a product first. The SEO panel stays attached to the product editor.",
+  "product.field.sellerId": "Seller ID"
 }

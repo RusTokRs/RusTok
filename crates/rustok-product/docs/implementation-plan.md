@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_product_admin_shell_profile_panel_slice
-- Last checkpoint: Product admin shell copy and shipping-profile panel loading/error/ready messages now build through `ProductAdminShellViewModel` and `ProductAdminProfilePanelViewModel` in `admin/src/core.rs`; Leptos only renders prepared strings without changing the current GraphQL transport contract.
-- Next step: Continue FFA-first sequencing by extracting remaining admin field labels and editor action copy into typed core helpers without changing the current GraphQL transport contract.
+- Current phase: ffa_product_admin_status_result_slice
+- Last checkpoint: Product admin status mutation outcome mapping now builds through `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel` in `admin/src/core.rs`; Leptos only dispatches transport and applies prepared refresh/error intents.
+- Next step: Continue FFA-first sequencing only for small mutation outcome/state policy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-08T00:00:00Z
+- Last updated at (UTC): 2026-06-13T00:00:00Z
 
 
 ## FFA/FBA status
@@ -40,9 +40,12 @@
   - FFA slice: product admin list loading/empty/error state copy is composed by semantic `ProductAdminListStateViewModel` helpers in `admin/src/core.rs`; Leptos list rendering maps semantic state kind to framework-specific classes;
   - FFA slice: product admin list controls copy/search placeholder/status filter options are composed by `ProductAdminListControlsViewModel` in `admin/src/core.rs`; Leptos list controls only bind prepared labels/options;
   - FFA slice: product admin shell copy and shipping-profile panel loading/error/ready messages are composed by `ProductAdminShellViewModel` and `ProductAdminProfilePanelViewModel` in `admin/src/core.rs`; Leptos renders prepared strings without owning this copy/state policy;
+  - FFA slice: product admin editor field placeholders, new action label, shipping-profile empty option and keep-published checkbox copy are composed by `ProductAdminEditorCopy` in `admin/src/core.rs`; Leptos editor rendering consumes prepared strings only;
+  - FFA slice: product admin transport/error base copy and load/save/status failure message composition are owned by `ProductAdminErrorCopy` in `admin/src/core.rs`; Leptos effects reuse prepared messages without owning those error bindings;
+  - FFA slice: product admin status mutation refresh/error outcome policy is composed by `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel` in `admin/src/core.rs`; Leptos status action effects only dispatch transport and apply prepared intents;
   - FFA slice: product admin route/query selection writes are composed by `ProductAdminRouteQueryIntent` helpers in `admin/src/core.rs`; Leptos applies typed push/replace/clear intents without owning the product selection query policy;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-06-08T00:00:00Z
+- Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-product` module team
 
 ## Область работ
@@ -67,10 +70,10 @@
   `ProductAdminEditorViewModel`, а submit command/validation state собирается через
   `ProductAdminSaveCommand` / `ProductAdminDraftForm`, а editor reset/apply mapping — через
   `ProductAdminEditorFormState`, а publish/draft/archive command mapping — через
-  `ProductAdminStatusMutationCommand` / `ProductAdminStatusTarget`, а delete command mapping — через
+  `ProductAdminStatusMutationCommand` / `ProductAdminStatusTarget`, status mutation result policy — через `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel`, а delete command mapping — через
   `ProductAdminDeleteCommand`, а delete-result policy — через
   `ProductAdminDeleteResultViewModel` / `ProductAdminDeleteOutcome`, а list action labels/availability — через
-  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, а product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers в `admin/src/core.rs`; Leptos слой
+  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, editor field/action copy — через `ProductAdminEditorCopy`, transport/error base copy and failure formatting — через `ProductAdminErrorCopy`, а product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers в `admin/src/core.rs`; Leptos слой
   изолирован в `admin/src/ui/leptos.rs` как render/effect adapter;
 - module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
   подключён в manifest-driven storefront composition для published catalog

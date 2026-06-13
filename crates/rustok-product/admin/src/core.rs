@@ -291,6 +291,114 @@ pub(crate) fn build_selected_product_summary_view_model(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminErrorCopy {
+    pub bootstrap_loading: String,
+    pub load_product: String,
+    pub product_not_found: String,
+    pub save_product: String,
+    pub change_status: String,
+}
+
+pub(crate) fn build_product_admin_error_copy(locale: Option<&str>) -> ProductAdminErrorCopy {
+    ProductAdminErrorCopy {
+        bootstrap_loading: t(
+            locale,
+            "product.error.bootstrapLoading",
+            "Bootstrap is still loading.",
+        ),
+        load_product: t(
+            locale,
+            "product.error.loadProduct",
+            "Failed to load product",
+        ),
+        product_not_found: t(
+            locale,
+            "product.error.productNotFound",
+            "Product not found.",
+        ),
+        save_product: t(
+            locale,
+            "product.error.saveProduct",
+            "Failed to save product",
+        ),
+        change_status: t(
+            locale,
+            "product.error.changeStatus",
+            "Failed to change status",
+        ),
+    }
+}
+
+impl ProductAdminErrorCopy {
+    pub(crate) fn load_product_failure(&self, detail: impl std::fmt::Display) -> String {
+        product_admin_error_with_detail(&self.load_product, detail)
+    }
+
+    pub(crate) fn save_product_failure(&self, detail: impl std::fmt::Display) -> String {
+        product_admin_error_with_detail(&self.save_product, detail)
+    }
+
+    pub(crate) fn change_status_failure(&self, detail: impl std::fmt::Display) -> String {
+        product_admin_error_with_detail(&self.change_status, detail)
+    }
+}
+
+fn product_admin_error_with_detail(base: &str, detail: impl std::fmt::Display) -> String {
+    format!("{base}: {detail}")
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminEditorCopy {
+    pub new_action_label: String,
+    pub handle_placeholder: String,
+    pub title_placeholder: String,
+    pub description_placeholder: String,
+    pub seller_id_placeholder: String,
+    pub vendor_placeholder: String,
+    pub product_type_placeholder: String,
+    pub primary_sku_placeholder: String,
+    pub barcode_placeholder: String,
+    pub currency_placeholder: String,
+    pub price_placeholder: String,
+    pub compare_at_price_placeholder: String,
+    pub no_shipping_profile_label: String,
+    pub inventory_quantity_placeholder: String,
+    pub keep_published_label: String,
+}
+
+pub(crate) fn build_product_admin_editor_copy(locale: Option<&str>) -> ProductAdminEditorCopy {
+    ProductAdminEditorCopy {
+        new_action_label: t(locale, "product.action.new", "New"),
+        handle_placeholder: t(locale, "product.field.handle", "Handle"),
+        title_placeholder: t(locale, "product.field.title", "Title"),
+        description_placeholder: t(locale, "product.field.description", "Description"),
+        seller_id_placeholder: t(locale, "product.field.sellerId", "Seller ID"),
+        vendor_placeholder: t(locale, "product.field.vendor", "Vendor"),
+        product_type_placeholder: t(locale, "product.field.productType", "Product type"),
+        primary_sku_placeholder: t(locale, "product.field.primarySku", "Primary SKU"),
+        barcode_placeholder: t(locale, "product.field.barcode", "Barcode"),
+        currency_placeholder: t(locale, "product.field.currency", "Currency"),
+        price_placeholder: t(locale, "product.field.price", "Price"),
+        compare_at_price_placeholder: t(locale, "product.field.compareAtPrice", "Compare-at price"),
+        no_shipping_profile_label: t(
+            locale,
+            "product.field.noShippingProfile",
+            "No shipping profile",
+        ),
+        inventory_quantity_placeholder: t(
+            locale,
+            "product.field.inventoryQuantity",
+            "Inventory quantity",
+        ),
+        keep_published_label: t(
+            locale,
+            "product.field.keepPublished",
+            "Keep published after save",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ProductAdminEditorMode {
     Create,
     Edit,
@@ -542,6 +650,37 @@ pub(crate) fn build_product_admin_status_mutation_command(
         product_id,
         status,
     })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProductAdminStatusMutationOutcome {
+    Changed,
+    TransportError(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminStatusMutationResultViewModel {
+    pub refresh: bool,
+    pub error_message: Option<String>,
+}
+
+pub(crate) fn build_product_admin_status_mutation_result_view_model(
+    locale: Option<&str>,
+    outcome: ProductAdminStatusMutationOutcome,
+) -> ProductAdminStatusMutationResultViewModel {
+    match outcome {
+        ProductAdminStatusMutationOutcome::Changed => ProductAdminStatusMutationResultViewModel {
+            refresh: true,
+            error_message: None,
+        },
+        ProductAdminStatusMutationOutcome::TransportError(err) => {
+            let error_copy = build_product_admin_error_copy(locale);
+            ProductAdminStatusMutationResultViewModel {
+                refresh: false,
+                error_message: Some(error_copy.change_status_failure(err)),
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1187,6 +1326,30 @@ mod tests {
     }
 
     #[test]
+    fn product_admin_status_mutation_result_view_model_maps_outcomes() {
+        assert_eq!(
+            build_product_admin_status_mutation_result_view_model(
+                Some("en"),
+                ProductAdminStatusMutationOutcome::Changed,
+            ),
+            ProductAdminStatusMutationResultViewModel {
+                refresh: true,
+                error_message: None,
+            },
+        );
+        assert_eq!(
+            build_product_admin_status_mutation_result_view_model(
+                Some("en"),
+                ProductAdminStatusMutationOutcome::TransportError("network".to_string()),
+            ),
+            ProductAdminStatusMutationResultViewModel {
+                refresh: false,
+                error_message: Some("Failed to change status: network".to_string()),
+            },
+        );
+    }
+
+    #[test]
     fn product_admin_status_mutation_command_prepares_transport_payload() {
         let command = build_product_admin_status_mutation_command(
             Some(&admin_bootstrap()),
@@ -1361,6 +1524,41 @@ mod tests {
             edit.subtitle,
             "Single-SKU catalog editor backed by the existing commerce GraphQL contract."
         );
+    }
+
+    #[test]
+    fn product_admin_error_copy_is_core_owned() {
+        let copy = build_product_admin_error_copy(Some("en"));
+
+        assert_eq!(copy.bootstrap_loading, "Bootstrap is still loading.");
+        assert_eq!(copy.load_product, "Failed to load product");
+        assert_eq!(copy.product_not_found, "Product not found.");
+        assert_eq!(copy.save_product, "Failed to save product");
+        assert_eq!(copy.change_status, "Failed to change status");
+        assert_eq!(
+            copy.load_product_failure("network unavailable"),
+            "Failed to load product: network unavailable",
+        );
+        assert_eq!(
+            copy.save_product_failure("validation failed"),
+            "Failed to save product: validation failed",
+        );
+        assert_eq!(
+            copy.change_status_failure("timeout"),
+            "Failed to change status: timeout",
+        );
+    }
+
+    #[test]
+    fn product_admin_editor_copy_is_core_owned() {
+        let copy = build_product_admin_editor_copy(Some("en"));
+
+        assert_eq!(copy.new_action_label, "New");
+        assert_eq!(copy.handle_placeholder, "Handle");
+        assert_eq!(copy.seller_id_placeholder, "Seller ID");
+        assert_eq!(copy.compare_at_price_placeholder, "Compare-at price");
+        assert_eq!(copy.no_shipping_profile_label, "No shipping profile");
+        assert_eq!(copy.keep_published_label, "Keep published after save");
     }
 
     #[test]
