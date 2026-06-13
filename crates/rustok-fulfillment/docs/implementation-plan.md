@@ -7,12 +7,12 @@ SPI и post-order delivery changes ещё остаются в активном b
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_transport_ui_split
-- Last checkpoint: Admin fulfillment получил FFA slice: `admin/src/core.rs` настройки по умолчанию для списка и фильтров, `admin/src/transport.rs` facade над existing GraphQL shipping-option transport и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; crate root стал wiring/re-export boundary без изменения shipping-option CRUD behavior.
-- Next step: Продолжать сокращать `admin/src/api.rs` до transport adapter implementation и выносить remaining request/view policy в `core`, затем расширять provider/deliverability scope без host-owned logic.
+- Current phase: ffa_admin_boundary_guardrail
+- Last checkpoint: Admin fulfillment получил fast source-level guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs`, который фиксирует `core/transport/ui` split, private crate-root wiring, Leptos-free core request helpers, UI-only facade calls и сохранение existing GraphQL shipping-option transport без долгой Cargo-компиляции.
+- Next step: Использовать fast boundary guardrail как дешёвое evidence, затем продолжать сокращать `admin/src/api.rs` до transport adapter implementation и выносить remaining request/view policy в `core`, не меняя shipping-option GraphQL contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-02T00:00:00Z
+- Last updated at (UTC): 2026-06-13T00:00:00Z
 
 ## FFA/FBA status
 
@@ -22,8 +22,8 @@ SPI и post-order delivery changes ещё остаются в активном b
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
-  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows.
-- Last verified at (UTC): 2026-06-02T00:00:00Z
+  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile.
+- Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 
 ## Область работ

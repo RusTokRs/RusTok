@@ -6,12 +6,12 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_transport_ui_split
-- Last checkpoint: Admin order получил FFA slice: `admin/src/core.rs` list/filter defaults, `admin/src/transport.rs` facade над existing GraphQL order transport и явный Leptos render adapter `admin/src/ui/leptos.rs`; crate root стал wiring/re-export boundary без изменения order lifecycle behavior.
-- Next step: Продолжать сокращать `admin/src/api.rs` до transport adapter implementation и выносить remaining request/view policy в `core`, затем расширить umbrella `rustok-commerce` operator UX для refund/exchange/claim return decisions без host-owned logic.
+- Current phase: ffa_admin_lifecycle_command_core_slice
+- Last checkpoint: Admin order lifecycle action preparation moved into Leptos-free `admin/src/core.rs` for mark-paid and ship flows: required-field trimming/validation now produces typed command payloads before the Leptos adapter dispatches through the module-owned transport facade; existing GraphQL order transport is unchanged.
+- Next step: Continue the same small-slice pattern for deliver/cancel action payload policy or add a fast boundary guardrail, then keep reducing `admin/src/api.rs` to transport adapter implementation without changing the existing GraphQL order contract.
 - Open blockers: серверный OpenAPI contract test под default features ранее упирался в существующие compile errors вне order/commerce (`rustok-pages-admin`, server build service/module lifecycle/graphql mutations); targeted order lifecycle и `rustok-commerce` check остаются основным gate для этого среза.
 - Hand-off notes for next agent: После каждого returns/refund/exchange/claim инкремента обновлять FFA evidence и FBA placeholder, README/admin docs и central registry в том же PR.
-- Last updated at (UTC): 2026-06-02T00:00:00Z
+- Last updated at (UTC): 2026-06-13T00:00:00Z
 
 ## FFA/FBA status
 
@@ -21,8 +21,8 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
-  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list/filter request policy, module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `OrderAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered order list/detail/lifecycle flows.
-- Last verified at (UTC): 2026-06-02T00:00:00Z
+  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list/filter request policy, module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `OrderAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered order list/detail/lifecycle flows; latest admin slice moved mark-paid and ship action payload validation into core-owned command helpers (`prepare_mark_paid_command`, `prepare_ship_order_command`) with unit-test evidence.
+- Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-order` module team
 
 ## Область работ
