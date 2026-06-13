@@ -1,12 +1,13 @@
-use crate::api;
-pub use crate::api::ApiError;
+mod graphql_adapter;
+
 use crate::model::{OrderAdminBootstrap, OrderDetail, OrderDetailEnvelope, OrderList};
+pub use graphql_adapter::ApiError;
 
 pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<OrderAdminBootstrap, ApiError> {
-    api::fetch_bootstrap(token, tenant_slug).await
+    graphql_adapter::fetch_bootstrap(token, tenant_slug).await
 }
 
 pub async fn fetch_orders(
@@ -17,7 +18,7 @@ pub async fn fetch_orders(
     page: u64,
     per_page: u64,
 ) -> Result<OrderList, ApiError> {
-    api::fetch_orders(token, tenant_slug, tenant_id, status, page, per_page).await
+    graphql_adapter::fetch_orders(token, tenant_slug, tenant_id, status, page, per_page).await
 }
 
 pub async fn fetch_order_detail(
@@ -26,7 +27,7 @@ pub async fn fetch_order_detail(
     tenant_id: String,
     id: String,
 ) -> Result<Option<OrderDetailEnvelope>, ApiError> {
-    api::fetch_order_detail(token, tenant_slug, tenant_id, id).await
+    graphql_adapter::fetch_order_detail(token, tenant_slug, tenant_id, id).await
 }
 
 pub async fn mark_order_paid(
@@ -38,7 +39,7 @@ pub async fn mark_order_paid(
     payment_id: String,
     payment_method: String,
 ) -> Result<OrderDetail, ApiError> {
-    api::mark_order_paid(
+    graphql_adapter::mark_order_paid(
         token,
         tenant_slug,
         tenant_id,
@@ -59,7 +60,7 @@ pub async fn ship_order(
     tracking_number: String,
     carrier: String,
 ) -> Result<OrderDetail, ApiError> {
-    api::ship_order(
+    graphql_adapter::ship_order(
         token,
         tenant_slug,
         tenant_id,
@@ -79,7 +80,7 @@ pub async fn deliver_order(
     id: String,
     delivered_signature: Option<String>,
 ) -> Result<OrderDetail, ApiError> {
-    api::deliver_order(
+    graphql_adapter::deliver_order(
         token,
         tenant_slug,
         tenant_id,
@@ -98,5 +99,5 @@ pub async fn cancel_order(
     id: String,
     reason: Option<String>,
 ) -> Result<OrderDetail, ApiError> {
-    api::cancel_order(token, tenant_slug, tenant_id, user_id, id, reason).await
+    graphql_adapter::cancel_order(token, tenant_slug, tenant_id, user_id, id, reason).await
 }

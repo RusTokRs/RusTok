@@ -42,8 +42,8 @@ const libPath = "crates/rustok-order/admin/src/lib.rs";
 const corePath = "crates/rustok-order/admin/src/core.rs";
 const uiPath = "crates/rustok-order/admin/src/ui/leptos.rs";
 const helpersPath = "crates/rustok-order/admin/src/helpers.rs";
-const transportPath = "crates/rustok-order/admin/src/transport.rs";
-const apiPath = "crates/rustok-order/admin/src/api.rs";
+const transportPath = "crates/rustok-order/admin/src/transport/mod.rs";
+const graphqlAdapterPath = "crates/rustok-order/admin/src/transport/graphql_adapter.rs";
 const implementationPlanPath = "crates/rustok-order/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
@@ -53,7 +53,7 @@ for (const filePath of [
   uiPath,
   helpersPath,
   transportPath,
-  apiPath,
+  graphqlAdapterPath,
   implementationPlanPath,
   registryPath,
 ]) {
@@ -64,11 +64,11 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
-const api = readRepo(apiPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 
-assertContains(lib, "mod api;", `${libPath}: crate root must wire current GraphQL/api adapter privately`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire raw API adapter at root after transport split`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
@@ -142,9 +142,11 @@ for (const marker of [
 ]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
-assertContains(transport, "use crate::api", `${transportPath}: transport facade may delegate to the current GraphQL/api adapter`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must own the GraphQL adapter module`);
+assertContains(transport, "graphql_adapter::", `${transportPath}: transport facade must delegate through the GraphQL adapter`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the order admin transport facade`);
-assertContains(api, "GraphqlRequest", `${apiPath}: order admin api adapter must keep the GraphQL transport contract`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: order admin GraphQL adapter must keep the GraphQL transport contract`);
+assertContains(graphqlAdapter, "execute_graphql", `${graphqlAdapterPath}: GraphQL adapter must own execute_graphql calls`);
 
 assertContains(implementationPlan, "verify-order-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the order fast boundary guardrail`);
 assertContains(registry, "verify-order-admin-boundary.mjs", `${registryPath}: central readiness board must mention the order fast boundary guardrail`);

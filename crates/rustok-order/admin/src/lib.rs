@@ -1,4 +1,3 @@
-mod api;
 mod core;
 mod helpers;
 mod i18n;
