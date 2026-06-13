@@ -140,6 +140,48 @@ assertArraySame(
   provider.capabilities,
   extractArray(providerManifest, "capabilities", "provider capabilities"),
 );
+assertSame(
+  errors,
+  "provider.health_profile",
+  provider.health_profile,
+  extractString(providerManifest, "health_profile", "provider health_profile"),
+);
+assertArraySame(
+  errors,
+  "provider.health_states",
+  provider.health_states,
+  extractArray(providerManifest, "health_states", "provider health_states"),
+);
+assertArraySame(
+  errors,
+  "provider.degradation_reasons",
+  provider.degradation_reasons,
+  extractArray(providerManifest, "degradation_reasons", "provider degradation_reasons"),
+);
+
+if (!["ready", "degraded", "unavailable"].includes(provider.health_profile)) {
+  errors.push(`provider.health_profile has unsupported value: ${provider.health_profile}`);
+}
+for (const state of ["ready", "degraded", "unavailable"]) {
+  if (!provider.health_states?.includes(state)) {
+    errors.push(`provider.health_states missing '${state}'`);
+  }
+}
+for (const key of [
+  "preview_p95_ms",
+  "publish_p95_ms",
+  "sanitize_failure_rate_max",
+  "runtime_error_rate_max",
+]) {
+  if (!(key in (provider.slo_thresholds ?? {}))) {
+    errors.push(`provider.slo_thresholds missing '${key}'`);
+  }
+}
+for (const [key, value] of Object.entries(provider.slo_thresholds ?? {})) {
+  if (typeof value !== "number" || value < 0) {
+    errors.push(`provider.slo_thresholds.${key} must be a non-negative number`);
+  }
+}
 
 const consumers = moduleArg === "all"
   ? registry.consumers

@@ -10,7 +10,7 @@
 
 - [x] Фаза 0 — bootstrap module contract (`Cargo.toml`, `rustok-module.toml`, `RusToKModule`).
 - [ ] Фаза 1 — capability API baseline (`preview/tree/properties/publish`) без vendor lock-in.
-- [ ] Фаза 2 — observability и module health contract.
+- [~] Фаза 2 — observability и module health contract.
 - [ ] Фаза 3 — integration contract для `pages` как consumer.
 - [ ] Фаза 4 — rollout controls (feature flags / tenant gates / pilot).
 
@@ -18,7 +18,7 @@
 
 - runtime module scaffold завершён;
 - module manifest и docs contracts заведены;
-- machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) фиксирует provider version, `consumer_min_version`, consumer contract versions и fallback profile set для anti-drift gate;
+- machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) фиксирует provider version, `consumer_min_version`, consumer contract versions, fallback profile set, provider health states, degradation reasons и pilot SLO thresholds для anti-drift gate;
 - server feature wiring (`mod-page-builder`) подключён;
 - capability handlers пока в статусе planned (Phase 1).
 
@@ -26,7 +26,7 @@
 
 1. Довести transport-neutral DTO/contract package для builder capabilities до publish-ready evidence.
 2. Добавить server-side stub handlers и permission checks.
-3. Удерживать `verify-page-builder-contract-registry.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift.
+3. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync и Wave evidence формы.
 4. Описать sunset path для legacy block-driven compatibility.
 
 ## Область работ

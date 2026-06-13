@@ -20,6 +20,24 @@
     },
     "error_codes": {
       "feature_disabled": "FEATURE_DISABLED"
+    },
+    "health_profile": "ready",
+    "health_states": [
+      "ready",
+      "degraded",
+      "unavailable"
+    ],
+    "degradation_reasons": [
+      "capability_disabled",
+      "provider_unhealthy",
+      "sanitize_backpressure",
+      "publish_backlog"
+    ],
+    "slo_thresholds": {
+      "preview_p95_ms": 1500,
+      "publish_p95_ms": 3000,
+      "sanitize_failure_rate_max": 0.01,
+      "runtime_error_rate_max": 0.01
     }
   },
   "consumers": [

@@ -15,7 +15,8 @@
         "builder_contract_version",
         "consumer_min_version",
         "health_profile",
-        "degraded_modes"
+        "degraded_modes",
+        "slo_thresholds"
       ],
       "consumer": [
         "module_slug",
@@ -78,7 +79,20 @@
         "result",
         "correlation_path"
       ],
-      "minimum_trace_samples": 2
+      "minimum_trace_samples": 2,
+      "slo_thresholds": [
+        "preview_p95_ms",
+        "publish_p95_ms",
+        "sanitize_failure_rate_max",
+        "runtime_error_rate_max"
+      ],
+      "slo_evaluation": [
+        "preview_p95_ms",
+        "publish_p95_ms",
+        "sanitize_failure_rate",
+        "runtime_error_rate",
+        "overall"
+      ]
     },
     "rollback": {
       "decision": [
