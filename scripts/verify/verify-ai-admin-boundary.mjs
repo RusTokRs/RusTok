@@ -42,12 +42,14 @@ const uiPath = "crates/rustok-ai/admin/src/ui/leptos.rs";
 const corePath = "crates/rustok-ai/admin/src/core.rs";
 const transportModPath = "crates/rustok-ai/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-ai/admin/src/transport/native_server_adapter.rs";
+const graphqlAdapterPath = "crates/rustok-ai/admin/src/transport/graphql_adapter.rs";
 
 assertExists(libPath, `${libPath}: expected AI admin crate root file`);
 assertExists(uiPath, `${uiPath}: expected AI admin Leptos adapter file`);
 assertExists(corePath, `${corePath}: expected AI admin core slice file`);
 assertExists(transportModPath, `${transportModPath}: expected AI admin transport facade file`);
 assertExists(nativeAdapterPath, `${nativeAdapterPath}: expected AI admin native server adapter file`);
+assertExists(graphqlAdapterPath, `${graphqlAdapterPath}: expected AI admin GraphQL/headless adapter file`);
 if (existsSync(repoPath("crates/rustok-ai/admin/src/api.rs"))) {
   fail("crates/rustok-ai/admin/src/api.rs: pre-FFA api facade must stay removed");
 }
@@ -57,9 +59,10 @@ const ui = readRepo(uiPath);
 const core = readRepo(corePath);
 const transportMod = readRepo(transportModPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
 
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
-assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
+assertContains(lib, "pub mod transport;", `${libPath}: crate root must expose the transport facade for headless adapters`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::leptos::AiAdmin;", `${libPath}: crate root must re-export the Leptos adapter surface`);
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
@@ -78,11 +81,21 @@ for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]", "RwSig
   assertNotContains(core, marker, `${corePath}: core must stay UI/runtime free (${marker})`);
 }
 assertContains(transportMod, "pub mod native_server_adapter;", `${transportModPath}: transport facade must wire the native adapter`);
+assertContains(transportMod, "pub mod graphql_adapter;", `${transportModPath}: transport facade must wire the GraphQL/headless adapter`);
 assertContains(transportMod, "pub use native_server_adapter::{", `${transportModPath}: transport facade must re-export native adapter operations`);
 assertContains(transportMod, "fetch_bootstrap", `${transportModPath}: transport facade must expose bootstrap loading`);
 assertContains(transportMod, "run_task_job", `${transportModPath}: transport facade must expose direct job execution`);
 assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter must contain server-function endpoints`);
 assertContains(nativeAdapter, "ai_bootstrap_native", `${nativeAdapterPath}: native adapter must own bootstrap endpoint`);
+assertContains(graphqlAdapter, "pub const AI_BOOTSTRAP_QUERY", `${graphqlAdapterPath}: GraphQL adapter must expose bootstrap query document`);
+assertContains(graphqlAdapter, "pub fn bootstrap_request", `${graphqlAdapterPath}: GraphQL adapter must expose a bootstrap request builder`);
+assertContains(graphqlAdapter, "pub fn session_request", `${graphqlAdapterPath}: GraphQL adapter must expose a session request builder`);
+assertContains(graphqlAdapter, "pub fn session_events_subscription_request", `${graphqlAdapterPath}: GraphQL adapter must expose the subscription request builder`);
+assertContains(graphqlAdapter, "aiRecentRuns(limit: 20)", `${graphqlAdapterPath}: GraphQL adapter must include recent persisted run diagnostics`);
+assertContains(graphqlAdapter, "aiRecentRunStreamEvents(limit: 20)", `${graphqlAdapterPath}: GraphQL adapter must include recent stream diagnostics`);
+for (const marker of ["leptos::", "#[component]", "#[server]", "RwSignal", "LocalResource", "web_sys::"]) {
+  assertNotContains(graphqlAdapter, marker, `${graphqlAdapterPath}: GraphQL adapter must stay UI/runtime free (${marker})`);
+}
 
 for (const marker of [
   "pub fn parse_csv",

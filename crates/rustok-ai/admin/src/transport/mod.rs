@@ -2,9 +2,10 @@
 //!
 //! The Leptos adapter calls this module instead of raw server-function
 //! endpoints. Native server functions currently live in `native_server_adapter`;
-//! GraphQL/headless parity remains outside this Leptos-only facade until the
-//! next adapter split.
+//! GraphQL/headless operation documents live in `graphql_adapter` for host-owned
+//! HTTP/WebSocket GraphQL clients.
 
+pub mod graphql_adapter;
 pub mod native_server_adapter;
 
 pub use native_server_adapter::{
