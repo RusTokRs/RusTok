@@ -5,9 +5,9 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_diagnostics_core_slice
-- Last checkpoint: политика диагностики AI admin перенесена в Leptos-free core как продолжение FFA-среза.
-- Next step: продолжить добавлением GraphQL/headless adapter за `transport/` без удаления существующего native server-function + GraphQL/Next.js parallel contract.
+- Current phase: ffa_admin_graphql_headless_transport_slice
+- Last checkpoint: добавлен Leptos-free GraphQL/headless adapter за `admin/src/transport/graphql_adapter.rs`, а native server-function adapter оставлен primary Leptos path.
+- Next step: расширить headless adapter typed response mapping для mutation flows без удаления существующего native server-function + GraphQL/Next.js parallel contract.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
 - Last updated at (UTC): 2026-06-13T00:00:00Z
@@ -139,9 +139,9 @@
 - FFA status: `in_progress`
 - FBA status: `not_started`
 - Structural shape: `core_transport_ui` for the first AI admin slice.
-- Evidence: `crates/rustok-ai/admin/src/core.rs` владеет Leptos-free request normalization, direct-job payload builders (`parse_csv`, `optional_text`, `alloy_task_payload`, `image_task_payload`, `product_task_payload`, `product_attributes_task_payload`, `blog_task_payload`) и diagnostics summary policy (`average_latency_ms`, `summarize_recent_runs`), `admin/src/transport/mod.rs` владеет current facade, `admin/src/transport/native_server_adapter.rs` владеет existing native server-function endpoints после удаления pre-FFA `api.rs` facade, `admin/src/ui/leptos.rs` остаётся explicit Leptos adapter consuming `core` + `transport`, а `admin/src/lib.rs` только wires/re-exports module layers.
-- Guardrail: `scripts/verify/verify-ai-admin-boundary.mjs` проверяет core/transport slice, включая diagnostics summary helpers, и не даёт перенесённым request/payload helpers или raw `api::` calls вернуться в Leptos adapter.
-- Next step: продолжить добавлением GraphQL/headless adapter за `transport/` без удаления существующего native server-function + GraphQL/Next.js parallel contract.
+- Evidence: `crates/rustok-ai/admin/src/core.rs` владеет Leptos-free request normalization, direct-job payload builders (`parse_csv`, `optional_text`, `alloy_task_payload`, `image_task_payload`, `product_task_payload`, `product_attributes_task_payload`, `blog_task_payload`) и diagnostics summary policy (`average_latency_ms`, `summarize_recent_runs`), `admin/src/transport/mod.rs` владеет current facade, `admin/src/transport/native_server_adapter.rs` владеет existing native server-function endpoints после удаления pre-FFA `api.rs` facade, `admin/src/transport/graphql_adapter.rs` владеет Leptos-free GraphQL/headless operation documents and request builders, `admin/src/ui/leptos.rs` остаётся explicit Leptos adapter consuming `core` + `transport`, а `admin/src/lib.rs` только wires/re-exports module layers.
+- Guardrail: `scripts/verify/verify-ai-admin-boundary.mjs` проверяет core/transport slice, включая diagnostics summary helpers and GraphQL/headless adapter markers, и не даёт перенесённым request/payload helpers или raw `api::` calls вернуться в Leptos adapter.
+- Next step: расширить headless adapter typed response mapping для mutation flows без удаления существующего native server-function + GraphQL/Next.js parallel contract.
 
 ## Проверка
 
