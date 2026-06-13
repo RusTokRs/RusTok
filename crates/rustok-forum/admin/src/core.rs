@@ -1,3 +1,5 @@
+use rustok_api::AdminQueryKey;
+
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
@@ -331,6 +333,78 @@ impl TopicFormSnapshot {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumAdminQuerySurface {
+    Category,
+    Topic,
+}
+
+impl ForumAdminQuerySurface {
+    pub fn query_key(self) -> &'static str {
+        match self {
+            Self::Category => AdminQueryKey::CategoryId.as_str(),
+            Self::Topic => AdminQueryKey::TopicId.as_str(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumAdminRouteQueryOperation {
+    Push,
+    Replace,
+    Clear,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminRouteQueryIntent {
+    pub operation: ForumAdminRouteQueryOperation,
+    pub key: &'static str,
+    pub value: Option<String>,
+}
+
+pub fn forum_admin_open_query_intent(
+    surface: ForumAdminQuerySurface,
+    id: impl Into<String>,
+) -> ForumAdminRouteQueryIntent {
+    ForumAdminRouteQueryIntent {
+        operation: ForumAdminRouteQueryOperation::Push,
+        key: surface.query_key(),
+        value: Some(id.into()),
+    }
+}
+
+pub fn forum_admin_saved_query_intent(
+    surface: ForumAdminQuerySurface,
+    id: impl Into<String>,
+) -> ForumAdminRouteQueryIntent {
+    ForumAdminRouteQueryIntent {
+        operation: ForumAdminRouteQueryOperation::Replace,
+        key: surface.query_key(),
+        value: Some(id.into()),
+    }
+}
+
+pub fn forum_admin_reset_query_intent(
+    surface: ForumAdminQuerySurface,
+) -> ForumAdminRouteQueryIntent {
+    ForumAdminRouteQueryIntent {
+        operation: ForumAdminRouteQueryOperation::Clear,
+        key: surface.query_key(),
+        value: None,
+    }
+}
+
+pub fn selected_query_id(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
+pub fn deleted_selection_matches(current_id: Option<&str>, deleted_id: &str) -> bool {
+    current_id == Some(deleted_id)
+}
+
 pub fn topic_category_filter(category_id: String) -> Option<String> {
     let trimmed = category_id.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -379,6 +453,47 @@ mod tests {
             Some("category-1".to_string())
         );
         assert_eq!(topic_category_filter("   ".to_string()), None);
+    }
+
+    #[test]
+    fn builds_route_query_intents_for_admin_surfaces() {
+        assert_eq!(
+            forum_admin_open_query_intent(ForumAdminQuerySurface::Category, "category-1"),
+            ForumAdminRouteQueryIntent {
+                operation: ForumAdminRouteQueryOperation::Push,
+                key: AdminQueryKey::CategoryId.as_str(),
+                value: Some("category-1".to_string()),
+            }
+        );
+        assert_eq!(
+            forum_admin_saved_query_intent(ForumAdminQuerySurface::Topic, "topic-1"),
+            ForumAdminRouteQueryIntent {
+                operation: ForumAdminRouteQueryOperation::Replace,
+                key: AdminQueryKey::TopicId.as_str(),
+                value: Some("topic-1".to_string()),
+            }
+        );
+        assert_eq!(
+            forum_admin_reset_query_intent(ForumAdminQuerySurface::Category),
+            ForumAdminRouteQueryIntent {
+                operation: ForumAdminRouteQueryOperation::Clear,
+                key: AdminQueryKey::CategoryId.as_str(),
+                value: None,
+            }
+        );
+    }
+
+    #[test]
+    fn normalizes_selected_query_ids_and_deleted_selection_match() {
+        assert_eq!(
+            selected_query_id(Some("  topic-1  ".to_string())),
+            Some("topic-1".to_string())
+        );
+        assert_eq!(selected_query_id(Some("   ".to_string())), None);
+        assert_eq!(selected_query_id(None), None);
+        assert!(deleted_selection_matches(Some("topic-1"), "topic-1"));
+        assert!(!deleted_selection_matches(Some("topic-10"), "topic-1"));
+        assert!(!deleted_selection_matches(None, "topic-1"));
     }
 
     #[test]
