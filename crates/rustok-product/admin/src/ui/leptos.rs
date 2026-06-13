@@ -23,8 +23,9 @@ use crate::core::{
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
     product_admin_saved_product_query_intent, shipping_profile_choice_label, text_or_none,
     ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
-    ProductAdminListStateKind, ProductAdminPricingPreviewState, ProductAdminRouteQueryIntent,
-    ProductAdminSaveMode, ProductAdminStatusTarget, SelectedProductSummaryViewModel,
+    ProductAdminErrorCopy, ProductAdminListStateKind, ProductAdminPricingPreviewState,
+    ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminStatusTarget,
+    SelectedProductSummaryViewModel,
 };
 use crate::i18n::t;
 use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
@@ -185,13 +186,7 @@ pub fn ProductAdmin() -> impl IntoView {
     );
 
     let error_copy = build_product_admin_error_copy(ui_locale.as_deref());
-    let _bootstrap_loading_label = error_copy.bootstrap_loading.clone();
-    let load_product_error_label = error_copy.load_product.clone();
-    let product_not_found_label = error_copy.product_not_found.clone();
-    let save_product_error_label = error_copy.save_product.clone();
-    let change_status_error_label = error_copy.change_status.clone();
-    let initial_product_not_found_label = product_not_found_label.clone();
-    let initial_load_product_error_label = load_product_error_label.clone();
+    let initial_error_copy = error_copy.clone();
     Effect::new(move |_| match selected_product_query.get() {
         Some(product_id) if !product_id.trim().is_empty() => {
             let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
@@ -203,8 +198,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 tenant.get(),
                 effective_locale_for_initial_open.clone(),
                 product_id,
-                initial_product_not_found_label.clone(),
-                initial_load_product_error_label.clone(),
+                initial_error_copy.clone(),
                 set_busy,
                 set_error,
                 set_editing_id,
@@ -269,6 +263,7 @@ pub fn ProductAdmin() -> impl IntoView {
 
     let submit_ui_locale = ui_locale.clone();
     let submit_query_writer = query_writer.clone();
+    let error_copy_for_submit_base = error_copy.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
@@ -309,7 +304,7 @@ pub fn ProductAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
 
-        let save_product_error_label = save_product_error_label.clone();
+        let error_copy_for_submit = error_copy_for_submit_base.clone();
         spawn_local(async move {
             let submit_locale = command.draft.locale.clone();
             let result = match command.mode {
@@ -365,7 +360,7 @@ pub fn ProductAdmin() -> impl IntoView {
                         product_admin_saved_product_query_intent(product_id),
                     );
                 }
-                Err(err) => set_error.set(Some(format!("{save_product_error_label}: {err}"))),
+                Err(err) => set_error.set(Some(error_copy_for_submit.save_product_failure(err))),
             }
 
             set_busy.set(false);
@@ -524,9 +519,9 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let item_locale_for_draft = item_locale_for_buttons.clone();
                                         let item_locale_for_archive = item_locale_for_buttons.clone();
                                         let item_locale_for_delete = item_locale_for_buttons.clone();
-                                        let change_status_error_label_for_publish = change_status_error_label.clone();
-                                        let change_status_error_label_for_draft = change_status_error_label.clone();
-                                        let change_status_error_label_for_archive = change_status_error_label.clone();
+                                        let error_copy_for_publish = error_copy.clone();
+                                        let error_copy_for_draft = error_copy.clone();
+                                        let error_copy_for_archive = error_copy.clone();
                                         view! {
                                             <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -564,7 +559,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             publish_id.clone(),
                                                             ProductAdminStatusTarget::Active,
                                                             item_locale_for_publish.clone(),
-                                                            change_status_error_label_for_publish.clone(),
+                                                            error_copy_for_publish.clone(),
                                                             set_busy,
                                                             set_error,
                                                             set_refresh_nonce,
@@ -578,7 +573,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             draft_id.clone(),
                                                             ProductAdminStatusTarget::Draft,
                                                             item_locale_for_draft.clone(),
-                                                            change_status_error_label_for_draft.clone(),
+                                                            error_copy_for_draft.clone(),
                                                             set_busy,
                                                             set_error,
                                                             set_refresh_nonce,
@@ -592,7 +587,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             archive_id.clone(),
                                                             ProductAdminStatusTarget::Archived,
                                                             item_locale_for_archive.clone(),
-                                                            change_status_error_label_for_archive.clone(),
+                                                            error_copy_for_archive.clone(),
                                                             set_busy,
                                                             set_error,
                                                             set_refresh_nonce,
@@ -788,8 +783,7 @@ fn open_product_for_edit(
     tenant: Option<String>,
     requested_locale: Option<String>,
     product_id: String,
-    product_not_found_label: String,
-    load_product_error_label: String,
+    error_copy: ProductAdminErrorCopy,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     set_editing_id: WriteSignal<Option<String>>,
@@ -860,7 +854,7 @@ fn open_product_for_edit(
                     set_inventory_quantity,
                     set_publish_now,
                 );
-                set_error.set(Some(product_not_found_label));
+                set_error.set(Some(error_copy.product_not_found.clone()));
             }
             Err(err) => {
                 clear_product_form(
@@ -881,7 +875,7 @@ fn open_product_for_edit(
                     set_inventory_quantity,
                     set_publish_now,
                 );
-                set_error.set(Some(format!("{load_product_error_label}: {err}")));
+                set_error.set(Some(error_copy.load_product_failure(err)));
             }
         }
         set_busy.set(false);
@@ -1010,7 +1004,7 @@ fn mutate_status(
     product_id: String,
     status: ProductAdminStatusTarget,
     locale: Option<String>,
-    change_status_error_label: String,
+    error_copy: ProductAdminErrorCopy,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
     set_refresh_nonce: WriteSignal<u64>,
@@ -1038,7 +1032,7 @@ fn mutate_status(
         .await
         {
             Ok(_) => set_refresh_nonce.update(|value| *value += 1),
-            Err(err) => set_error.set(Some(format!("{change_status_error_label}: {err}"))),
+            Err(err) => set_error.set(Some(error_copy.change_status_failure(err))),
         }
         set_busy.set(false);
     });

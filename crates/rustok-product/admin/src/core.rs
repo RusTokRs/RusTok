@@ -329,6 +329,24 @@ pub(crate) fn build_product_admin_error_copy(locale: Option<&str>) -> ProductAdm
     }
 }
 
+impl ProductAdminErrorCopy {
+    pub(crate) fn load_product_failure(&self, detail: impl std::fmt::Display) -> String {
+        product_admin_error_with_detail(&self.load_product, detail)
+    }
+
+    pub(crate) fn save_product_failure(&self, detail: impl std::fmt::Display) -> String {
+        product_admin_error_with_detail(&self.save_product, detail)
+    }
+
+    pub(crate) fn change_status_failure(&self, detail: impl std::fmt::Display) -> String {
+        product_admin_error_with_detail(&self.change_status, detail)
+    }
+}
+
+fn product_admin_error_with_detail(base: &str, detail: impl std::fmt::Display) -> String {
+    format!("{base}: {detail}")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProductAdminEditorCopy {
     pub new_action_label: String,
@@ -1462,6 +1480,18 @@ mod tests {
         assert_eq!(copy.product_not_found, "Product not found.");
         assert_eq!(copy.save_product, "Failed to save product");
         assert_eq!(copy.change_status, "Failed to change status");
+        assert_eq!(
+            copy.load_product_failure("network unavailable"),
+            "Failed to load product: network unavailable",
+        );
+        assert_eq!(
+            copy.save_product_failure("validation failed"),
+            "Failed to save product: validation failed",
+        );
+        assert_eq!(
+            copy.change_status_failure("timeout"),
+            "Failed to change status: timeout",
+        );
     }
 
     #[test]
