@@ -45,6 +45,8 @@ const transportPath = "crates/rustok-region/admin/src/transport/mod.rs";
 const apiPath = "crates/rustok-region/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-region/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+const packagePath = "package.json";
+const verifierTestPath = "scripts/verify/verify-region-admin-boundary.test.mjs";
 
 for (const filePath of [
   libPath,
@@ -54,6 +56,8 @@ for (const filePath of [
   apiPath,
   implementationPlanPath,
   registryPath,
+  packagePath,
+  verifierTestPath,
 ]) {
   assertExists(filePath, `${filePath}: expected region admin FFA boundary file`);
 }
@@ -65,6 +69,8 @@ const transport = readRepo(transportPath);
 const api = readRepo(apiPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
+const packageJson = readRepo(packagePath);
+const verifierTest = readRepo(verifierTestPath);
 
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
@@ -121,8 +127,11 @@ assertContains(api, "RegionService", `${apiPath}: native adapter must own servic
 
 assertContains(implementationPlan, "FFA slice #31", `${implementationPlanPath}: local plan must record slice #31`);
 assertContains(implementationPlan, "verify-region-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fast boundary guardrail`);
-assertContains(registry, "slice #37", `${registryPath}: central readiness board must record slice #37`);
+assertContains(registry, "slice #38", `${registryPath}: central readiness board must record slice #38`);
 assertContains(registry, "verify-region-admin-boundary.mjs", `${registryPath}: central readiness board must mention the fast boundary guardrail`);
+assertContains(packageJson, "test:verify:region:admin-boundary", `${packagePath}: package scripts must expose region boundary fixture tests`);
+assertContains(verifierTest, "region admin boundary verifier passes canonical fixture", `${verifierTestPath}: fixture tests must include canonical pass case`);
+assertContains(verifierTest, "rejects stale central readiness board", `${verifierTestPath}: fixture tests must include docs sync negative case`);
 
 if (failures.length > 0) {
   console.error("region admin boundary verification failed:");
