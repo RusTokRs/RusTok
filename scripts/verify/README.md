@@ -388,7 +388,8 @@ npm run verify:ffa:ui:migration
 Что проверяет:
 - наличие `rustok-module.toml` и `docs/implementation-plan.md` для модуля-consumer;
 - наличие marker-ов dependency/consumer contract (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
-- наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan.
+- наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan;
+- для `pages`: manifest/docs rollout policy markers для `control_plane_builder_wave_audit`, before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers, pilot smoke `preview -> properties -> publish(dry)` и rollback target <= 10 минут без redeploy.
 
 Поддерживаемые slug:
 - `pages`

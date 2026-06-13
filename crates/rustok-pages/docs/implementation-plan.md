@@ -6,9 +6,9 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_boundary_guardrail
-- Last checkpoint: FFA boundary guardrail slice добавил быстрый source-level verifier `scripts/verify/verify-pages-ui-boundary.mjs` для admin/storefront `core/transport/ui` split, private crate-root wiring, Leptos-free core helpers, UI-only facade calls и сохранения GraphQL/native adapter contracts без долгой Cargo-компиляции.
-- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем оставить pages в maintenance mode до следующего явного builder/FBA среза. Для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs` guardrail.
+- Current phase: phase_b_operability_rollout_guardrail
+- Last checkpoint: B3 operability slice зафиксировал control-plane audit trail, tenant before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers и обязательный pilot smoke `preview -> properties -> publish(dry)` в manifest rollout policy и локальных docs; проверяется быстрым readiness gate без Cargo-компиляции.
+- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем оставить pages в maintenance mode до следующего явного builder/FBA среза. Для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs` guardrail; для FBA rollout policy использовать `npm run verify:page-builder:consumer:pages`.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Перед любыми изменениями pages сначала сверить `docs/research/dioxus-ffa-pilot-connectivity-map.md` и этот файл; не открывать новый slice без явной цели в трекере.
@@ -28,11 +28,13 @@
 - Last updated at (UTC): 2026-06-01T04:30:00Z
 - Last updated at (UTC): 2026-06-01T11:45:00Z
 - Last updated at (UTC): 2026-06-07T00:00:00Z
+- Last updated at (UTC): 2026-06-13T00:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
 - Latest maintenance update: admin UI получил явный FFA split `core` + `transport` + `ui/leptos`; GraphQL operations остаются в `admin/src/api.rs`, а render/effect код вызывает только facade из `admin/src/transport/`.
 - Latest FFA update: storefront UI получил matching split `core` + `transport` + `ui/leptos`; crate root re-export-ит `PagesView`, Leptos adapter вызывает только `storefront/src/transport.rs`, а native/GraphQL transport contract не менялся. Быстрый guardrail `scripts/verify/verify-pages-ui-boundary.mjs` закрепляет admin/storefront boundary без full-workspace compile.
+- Latest FBA rollout update: manifest `fba.builder_consumer.rollout_policy` теперь закрепляет control-plane audit trail, mandatory before/after tenant snapshots, keep/rollback decision, owner sign-off, rollback target <= 10 минут без redeploy, SLO rollback triggers и pilot smoke `preview -> properties -> publish(dry)`; `verify-page-builder-consumer-readiness.mjs pages` проверяет эти markers без компиляции.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -138,17 +140,22 @@
 
 ### Tenant switch procedure (operational checklist)
 
-1. Capture `before` snapshot по flags и module health.
+Manifest source of truth: `fba.builder_consumer.rollout_policy` in `rustok-module.toml`.
+
+1. Capture `before` snapshot по flags и module health в `control_plane_builder_wave_audit`.
 2. Apply change-set (`builder.enabled`, `builder.preview`, `builder.properties`, `builder.publish`).
-3. Run targeted smoke (`list -> open -> preview -> save-draft -> publish-dry`).
+3. Run targeted smoke (`list -> open -> preview -> save-draft -> publish-dry`) и обязательный pilot smoke `preview -> properties -> publish(dry)`.
 4. Validate logs/metrics (`sanitize`, `runtime`, `publish_latency`).
-5. Capture `after` snapshot + decision note (`keep/rollback`).
+5. Capture `after` snapshot + decision note (`keep/rollback`) + owner sign-off in the same audit trail.
 
 Rollback trigger:
 
 - runtime errors выше alert threshold;
 - publish latency p95 выше целевого SLO в течение 10 минут;
+- sanitize failures выше alert threshold;
 - storefront read regression на published pages.
+
+Rollback target: переключение tenant flags назад должно занимать <= 10 минут и не требует redeploy `pages` runtime; pages-owned list/read/menu surfaces остаются доступными во всех degraded builder-профилях.
 
 ## Этапы
 
@@ -173,7 +180,7 @@ Rollback trigger:
 - [ ] покрывать page/block/menu lifecycle targeted integration tests;
 - [ ] документировать новые runtime guarantees одновременно с изменением visual builder и visibility contract;
 - [ ] синхронизировать local docs, README и central references при изменении module boundary.
-- [ ] добавить FBA runbook: partial disable capability layer + fallback behavior для admin/storefront paths.
+- [x] добавить FBA runbook: partial disable capability layer + fallback behavior для admin/storefront paths.
 
 ## FBA execution backlog (`pages` как consumer reference builder-модуля)
 
@@ -192,9 +199,9 @@ Rollback trigger:
 
 ### B3. Operability & rollout
 
-- [ ] Привязать tenant switch checklist к control-plane audit trail (before/after snapshots + decision).
-- [ ] Синхронизировать rollback triggers с platform SLO policy (p95 publish, runtime error-rate, sanitize failures).
-- [ ] Добавить runbook-note для pilot-tenants: обязательный smoke `preview -> properties -> publish(dry)`.
+- [x] Привязать tenant switch checklist к control-plane audit trail (before/after snapshots + decision) через `fba.builder_consumer.rollout_policy.audit_trail`.
+- [x] Синхронизировать rollback triggers с platform SLO policy (p95 publish, runtime error-rate, sanitize failures) в manifest rollout policy.
+- [x] Добавить runbook-note для pilot-tenants: обязательный smoke `preview -> properties -> publish(dry)`.
 
 ### B4. Verification gates
 
@@ -222,7 +229,7 @@ Rollback trigger:
 
 - [x] service-level fallback regression checks и admin/storefront host-helper static checks зелёные на актуальном коммите; Next/Flutter typed error parity ещё требуется для Wave 1.
 - [ ] нет RBAC regression для editor/moderator/admin в builder-related сценариях.
-- [ ] подтверждён rollback execution <= 10 минут без redeploy `pages` runtime.
+- [~] подтверждён rollback execution <= 10 минут без redeploy `pages` runtime: manifest target зафиксирован, фактическое tenant evidence ожидается в реальном Wave 0 dry-run.
 
 ## Проверка
 
@@ -289,3 +296,12 @@ Rollback trigger:
 - [x] Module test evidence attached (`cargo xtask module test pages`).
 - [x] Double documentation verification completed and synced in central tracker.
 - [x] Ready to move primary focus to next module wave while keeping pages in maintenance mode.
+
+
+## B3 operability rollout guardrail (2026-06-13)
+
+- Manifest rollout policy закрепляет `control_plane_builder_wave_audit` как обязательный audit trail для before/after snapshots, keep/rollback decision и owner sign-off.
+- Pilot tenants обязаны выполнять smoke `preview -> properties -> publish(dry)` дополнительно к общему `list -> open -> preview -> save-draft -> publish-dry`.
+- Rollback triggers синхронизированы с platform SLO policy: runtime error-rate, publish p95 за 10 минут, sanitize failures и storefront published-read regression.
+- Rollback target зафиксирован как <= 10 минут без redeploy `pages` runtime; core pages-owned list/read/menu paths остаются стабильными при disabled builder capabilities.
+- Verification: `npm run verify:page-builder:consumer:pages` проверяет наличие rollout policy markers без Cargo-компиляции.

@@ -18,6 +18,7 @@
 ## Interactions
 
 - Depends on `rustok-content` for shared content helpers and on `rustok-page-builder` for builder capability contracts (`preview/tree/properties/publish`).
+- Builder rollout is controlled by manifest metadata: tenant switches must write before/after snapshots, keep/rollback decisions, and owner sign-off to `control_plane_builder_wave_audit`; pilot tenants must smoke `preview -> properties -> publish(dry)`; rollback target is <= 10 minutes without redeploy.
 - Depends on `rustok-channel` for the first public channel-aware gating proof point on pages read paths and typed page-level channel visibility via `channelSlugs`.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request/GraphQL helper contracts.

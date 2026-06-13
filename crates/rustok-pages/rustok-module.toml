@@ -120,3 +120,19 @@ builder_off = [
   "builder.publish.enabled=false",
   "builder.legacy_bridge_readonly=true",
 ]
+
+[fba.builder_consumer.rollout_policy]
+audit_trail = "control_plane_builder_wave_audit"
+before_snapshot_required = true
+after_snapshot_required = true
+decision_required = true
+owner_signoff_required = true
+rollback_without_redeploy_target_minutes = 10
+pilot_smoke = "preview -> properties -> publish(dry)"
+rollback_triggers = [
+  "runtime_error_rate_above_alert_threshold",
+  "publish_latency_p95_above_slo_for_10m",
+  "sanitize_failures_above_alert_threshold",
+  "storefront_published_read_regression",
+]
+read_surfaces_guarantee = "pages_owned_list_read_menu_paths_stay_available_when_builder_capabilities_are_disabled"
