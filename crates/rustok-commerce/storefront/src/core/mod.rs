@@ -6,5 +6,5 @@ pub use presentation::{
 };
 pub use requests::{
     build_cart_command_request, build_fetch_commerce_request, build_storefront_route_state,
-    CartCommandRequest, FetchCommerceRequest, SelectShippingOptionRequest, SELECTED_CART_QUERY_KEY,
+    CartCommandRequest, FetchCommerceRequest, SELECTED_CART_QUERY_KEY,
 };

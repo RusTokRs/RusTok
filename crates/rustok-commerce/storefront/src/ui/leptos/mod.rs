@@ -228,10 +228,9 @@ fn CheckoutWorkspace(
         }.into_any(),
         Some(cart_id) => {
             let cart_href = format!("{cart_base_href}?cart_id={cart_id}");
-            match checkout.and_then(|workspace| workspace.cart.map(|cart| (cart, workspace.payment_collection))) {
-                Some((cart, payment_collection)) => {
+            match checkout.and_then(|workspace| workspace.cart) {
+                Some(cart) => {
                     let cart_id = cart.id.clone();
-                    let cart_status = cart.status.clone();
                     let create_pending_locale = locale.clone();
                     let create_action_locale = locale.clone();
                     let complete_pending_locale = locale.clone();
@@ -256,11 +255,9 @@ fn CheckoutWorkspace(
                         }}
                         <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
                             {format!(
-                                "{}: {} · {}: {}",
+                                "{}: {}",
                                 t(locale.as_deref(), "commerce.checkout.cart.id", "Cart"),
-                                cart_id,
-                                t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status"),
-                                cart_status
+                                cart_id
                             )}
                             <span class="ml-2">
                                 {t(locale.as_deref(), "commerce.checkout.cart.moduleOwnership", "Cart totals, line items and adjustments stay in the cart module workspace.")}
@@ -340,11 +337,6 @@ fn CheckoutCompletionCard(result: StorefrontCheckoutCompletion) -> impl IntoView
             <p class="mt-2 text-sm text-muted-foreground">
                 {t(locale.as_deref(), "commerce.checkout.result.moduleOwnership", "Order, payment, fulfillment and adjustment details remain in their module-owned workspaces; commerce shows only the aggregate checkout outcome.")}
             </p>
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.orderStatus", "Order status") value=result.order_status />
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.fulfillments", "Fulfillments") value=result.fulfillment_count.to_string() />
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.locale", "Resolved locale") value=result.context_locale />
-            </div>
         </article>
     }
 }

@@ -1,5 +1,5 @@
 use crate::api::{self, ApiError};
-use crate::core::{CartCommandRequest, FetchCommerceRequest, SelectShippingOptionRequest};
+use crate::core::{CartCommandRequest, FetchCommerceRequest};
 use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };
@@ -14,20 +14,6 @@ pub async fn create_storefront_payment_collection(
     request: CartCommandRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
     api::create_storefront_payment_collection_graphql(request.cart_id).await
-}
-
-#[allow(dead_code)]
-pub async fn select_storefront_shipping_option(
-    request: SelectShippingOptionRequest,
-) -> Result<(), ApiError> {
-    api::select_storefront_shipping_option_graphql(
-        request.cart,
-        request.shipping_profile_slug,
-        request.seller_id,
-        request.seller_scope,
-        request.shipping_option_id,
-    )
-    .await
 }
 
 pub async fn complete_storefront_checkout(
