@@ -1369,7 +1369,7 @@ impl CommerceMutation {
         input: CompleteOrderReturnInputObject,
     ) -> Result<GqlOrderReturn> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
+        let auth = require_commerce_permission(
             ctx,
             &[Permission::ORDERS_UPDATE],
             "Permission denied: orders:update required",
@@ -1401,6 +1401,30 @@ impl CommerceMutation {
                 id,
                 complete_input,
                 refund_input,
+            )
+            .await?;
+        }
+
+        if let Some(exchange_input) = input.exchange {
+            complete_input = build_exchange_resolution_return_completion(
+                &order_service,
+                tenant_id,
+                auth.user_id,
+                id,
+                complete_input,
+                exchange_input,
+            )
+            .await?;
+        }
+
+        if let Some(claim_input) = input.claim {
+            complete_input = build_claim_resolution_return_completion(
+                &order_service,
+                tenant_id,
+                auth.user_id,
+                id,
+                complete_input,
+                claim_input,
             )
             .await?;
         }
@@ -2496,6 +2520,131 @@ async fn build_refund_resolution_return_completion(
     complete_input.resolution_type = Some("refund".to_string());
     complete_input.refund_id = Some(refund.id);
     Ok(complete_input)
+}
+
+async fn build_exchange_resolution_return_completion(
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    return_id: Uuid,
+    mut complete_input: crate::dto::CompleteOrderReturnInput,
+    exchange_input: CompleteOrderReturnExchangeInputObject,
+) -> Result<crate::dto::CompleteOrderReturnInput> {
+    if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+        return Err(async_graphql::Error::new(
+            "exchange helper cannot be combined with explicit refund_id or order_change_id",
+        ));
+    }
+    if complete_input
+        .resolution_type
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("exchange"))
+        == Some(false)
+    {
+        return Err(async_graphql::Error::new(
+            "exchange helper requires resolution_type to be omitted or `exchange`",
+        ));
+    }
+
+    let existing_return = order_service.get_return(tenant_id, return_id).await?;
+    let preview_val = parse_json_payload(exchange_input.preview.as_str(), "Invalid JSON preview payload")?;
+    let metadata_val = parse_optional_metadata(exchange_input.metadata.as_deref())?;
+
+    let preview = attach_return_order_change_context_gql(preview_val, return_id, "exchange")?;
+    let metadata = attach_return_order_change_context_gql(metadata_val, return_id, "exchange")?;
+
+    let order_change = order_service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            existing_return.order_id,
+            crate::dto::CreateOrderChangeInput {
+                change_type: "exchange".to_string(),
+                description: exchange_input.description,
+                preview,
+                metadata,
+            },
+        )
+        .await?;
+
+    complete_input.resolution_type = Some("exchange".to_string());
+    complete_input.order_change_id = Some(order_change.id);
+    Ok(complete_input)
+}
+
+async fn build_claim_resolution_return_completion(
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    return_id: Uuid,
+    mut complete_input: crate::dto::CompleteOrderReturnInput,
+    claim_input: CompleteOrderReturnClaimInputObject,
+) -> Result<crate::dto::CompleteOrderReturnInput> {
+    if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+        return Err(async_graphql::Error::new(
+            "claim helper cannot be combined with explicit refund_id or order_change_id",
+        ));
+    }
+    if complete_input
+        .resolution_type
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("claim"))
+        == Some(false)
+    {
+        return Err(async_graphql::Error::new(
+            "claim helper requires resolution_type to be omitted or `claim`",
+        ));
+    }
+
+    let existing_return = order_service.get_return(tenant_id, return_id).await?;
+    let preview_val = parse_json_payload(claim_input.preview.as_str(), "Invalid JSON preview payload")?;
+    let metadata_val = parse_optional_metadata(claim_input.metadata.as_deref())?;
+
+    let preview = attach_return_order_change_context_gql(preview_val, return_id, "claim")?;
+    let metadata = attach_return_order_change_context_gql(metadata_val, return_id, "claim")?;
+
+    let order_change = order_service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            existing_return.order_id,
+            crate::dto::CreateOrderChangeInput {
+                change_type: "claim".to_string(),
+                description: claim_input.description,
+                preview,
+                metadata,
+            },
+        )
+        .await?;
+
+    complete_input.resolution_type = Some("claim".to_string());
+    complete_input.order_change_id = Some(order_change.id);
+    Ok(complete_input)
+}
+
+fn attach_return_order_change_context_gql(
+    value: serde_json::Value,
+    return_id: Uuid,
+    change_type: &str,
+) -> Result<serde_json::Value> {
+    let mut object = match value {
+        serde_json::Value::Null => serde_json::Map::new(),
+        serde_json::Value::Object(obj) => obj,
+        _ => return Err(async_graphql::Error::new("Value must be a JSON object")),
+    };
+    object.insert(
+        "order_return_id".to_string(),
+        serde_json::Value::String(return_id.to_string()),
+    );
+    object.insert(
+        "return_decision_action".to_string(),
+        serde_json::Value::String(change_type.to_string()),
+    );
+    object.insert(
+        "return_decision_source".to_string(),
+        serde_json::Value::String("rustok-commerce".to_string()),
+    );
+    Ok(serde_json::Value::Object(object))
 }
 
 fn build_create_order_change_input(

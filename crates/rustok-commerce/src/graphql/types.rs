@@ -1050,6 +1050,8 @@ pub struct CompleteOrderReturnInputObject {
     pub refund_id: Option<Uuid>,
     pub order_change_id: Option<Uuid>,
     pub refund: Option<CompleteOrderReturnRefundInputObject>,
+    pub exchange: Option<CompleteOrderReturnExchangeInputObject>,
+    pub claim: Option<CompleteOrderReturnClaimInputObject>,
     pub metadata: Option<String>,
 }
 
@@ -1060,6 +1062,20 @@ pub struct CompleteOrderReturnRefundInputObject {
     pub reason: Option<String>,
     pub metadata: Option<String>,
     pub complete: Option<bool>,
+}
+
+#[derive(InputObject)]
+pub struct CompleteOrderReturnExchangeInputObject {
+    pub description: Option<String>,
+    pub preview: String,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CompleteOrderReturnClaimInputObject {
+    pub description: Option<String>,
+    pub preview: String,
+    pub metadata: Option<String>,
 }
 
 #[derive(InputObject)]

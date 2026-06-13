@@ -209,11 +209,29 @@ pub struct CompleteOrderReturnRefundInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompleteOrderReturnExchangeInput {
+    pub description: Option<String>,
+    pub preview: serde_json::Value,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompleteOrderReturnClaimInput {
+    pub description: Option<String>,
+    pub preview: serde_json::Value,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AdminCompleteOrderReturnInput {
     pub resolution_type: Option<String>,
     pub refund_id: Option<Uuid>,
     pub order_change_id: Option<Uuid>,
     pub refund: Option<CompleteOrderReturnRefundInput>,
+    pub exchange: Option<CompleteOrderReturnExchangeInput>,
+    pub claim: Option<CompleteOrderReturnClaimInput>,
     #[serde(default)]
     pub metadata: serde_json::Value,
 }
@@ -957,6 +975,31 @@ pub async fn show_order_return(
     Ok(Json(item))
 }
 
+fn attach_return_order_change_context(
+    value: serde_json::Value,
+    return_id: Uuid,
+    change_type: &str,
+) -> Result<serde_json::Value> {
+    let mut object = match value {
+        serde_json::Value::Null => serde_json::Map::new(),
+        serde_json::Value::Object(obj) => obj,
+        _ => return Err(Error::BadRequest("Value must be a JSON object".to_string())),
+    };
+    object.insert(
+        "order_return_id".to_string(),
+        serde_json::Value::String(return_id.to_string()),
+    );
+    object.insert(
+        "return_decision_action".to_string(),
+        serde_json::Value::String(change_type.to_string()),
+    );
+    object.insert(
+        "return_decision_source".to_string(),
+        serde_json::Value::String("rustok-commerce".to_string()),
+    );
+    Ok(serde_json::Value::Object(object))
+}
+
 /// Complete admin order return
 #[utoipa::path(
     post,
@@ -1062,6 +1105,96 @@ pub async fn complete_order_return(
 
         complete_input.resolution_type = Some("refund".to_string());
         complete_input.refund_id = Some(refund.id);
+    }
+
+    if let Some(exchange_input) = input.exchange {
+        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || input.refund.is_some() || input.claim.is_some() {
+            return Err(Error::BadRequest(
+                "exchange helper cannot be combined with explicit refund_id, order_change_id, refund helper, or claim helper"
+                    .to_string(),
+            ));
+        }
+        if complete_input
+            .resolution_type
+            .as_deref()
+            .map(|value| value.trim().eq_ignore_ascii_case("exchange"))
+            == Some(false)
+        {
+            return Err(Error::BadRequest(
+                "exchange helper requires resolution_type to be omitted or `exchange`".to_string(),
+            ));
+        }
+
+        let existing_return = order_service
+            .get_return(tenant.id, id)
+            .await
+            .map_err(map_order_error)?;
+
+        let preview = attach_return_order_change_context(exchange_input.preview, id, "exchange")?;
+        let metadata = attach_return_order_change_context(exchange_input.metadata, id, "exchange")?;
+
+        let order_change = order_service
+            .create_order_change(
+                tenant.id,
+                auth.user_id,
+                existing_return.order_id,
+                rustok_order::dto::CreateOrderChangeInput {
+                    change_type: "exchange".to_string(),
+                    description: exchange_input.description,
+                    preview,
+                    metadata,
+                },
+            )
+            .await
+            .map_err(map_order_error)?;
+
+        complete_input.resolution_type = Some("exchange".to_string());
+        complete_input.order_change_id = Some(order_change.id);
+    }
+
+    if let Some(claim_input) = input.claim {
+        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || input.refund.is_some() || input.exchange.is_some() {
+            return Err(Error::BadRequest(
+                "claim helper cannot be combined with explicit refund_id, order_change_id, refund helper, or exchange helper"
+                    .to_string(),
+            ));
+        }
+        if complete_input
+            .resolution_type
+            .as_deref()
+            .map(|value| value.trim().eq_ignore_ascii_case("claim"))
+            == Some(false)
+        {
+            return Err(Error::BadRequest(
+                "claim helper requires resolution_type to be omitted or `claim`".to_string(),
+            ));
+        }
+
+        let existing_return = order_service
+            .get_return(tenant.id, id)
+            .await
+            .map_err(map_order_error)?;
+
+        let preview = attach_return_order_change_context(claim_input.preview, id, "claim")?;
+        let metadata = attach_return_order_change_context(claim_input.metadata, id, "claim")?;
+
+        let order_change = order_service
+            .create_order_change(
+                tenant.id,
+                auth.user_id,
+                existing_return.order_id,
+                rustok_order::dto::CreateOrderChangeInput {
+                    change_type: "claim".to_string(),
+                    description: claim_input.description,
+                    preview,
+                    metadata,
+                },
+            )
+            .await
+            .map_err(map_order_error)?;
+
+        complete_input.resolution_type = Some("claim".to_string());
+        complete_input.order_change_id = Some(order_change.id);
     }
 
     let item = order_service

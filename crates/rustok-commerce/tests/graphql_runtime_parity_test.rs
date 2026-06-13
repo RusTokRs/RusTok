@@ -947,6 +947,72 @@ fn admin_return_claim_decision_mutation(
     )
 }
 
+fn admin_complete_order_return_with_exchange_mutation(
+    tenant_id: Uuid,
+    return_id: Uuid,
+    preview_json: &str,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          completeOrderReturn(
+            tenantId: "{tenant_id}"
+            id: "{return_id}"
+            input: {{
+              resolutionType: "exchange"
+              exchange: {{
+                description: "GraphQL exchange completion"
+                preview: "{preview_json}"
+                metadata: "{{\\"operator\\":\\"exchange-desk\\"}}"
+              }}
+              metadata: "{{\\"source\\":\\"graphql-complete-exchange\\"}}"
+            }}
+          ) {{
+            id
+            status
+            resolutionType
+            orderChangeId
+            metadata
+          }}
+        }}
+        "#,
+        preview_json = preview_json.replace("\"", "\\\"")
+    )
+}
+
+fn admin_complete_order_return_with_claim_mutation(
+    tenant_id: Uuid,
+    return_id: Uuid,
+    preview_json: &str,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          completeOrderReturn(
+            tenantId: "{tenant_id}"
+            id: "{return_id}"
+            input: {{
+              resolutionType: "claim"
+              claim: {{
+                description: "GraphQL claim completion"
+                preview: "{preview_json}"
+                metadata: "{{\\"operator\\":\\"claim-desk\\"}}"
+              }}
+              metadata: "{{\\"source\\":\\"graphql-complete-claim\\"}}"
+            }}
+          ) {{
+            id
+            status
+            resolutionType
+            orderChangeId
+            metadata
+          }}
+        }}
+        "#,
+        preview_json = preview_json.replace("\"", "\\\"")
+    )
+}
+
 fn admin_create_fulfillment_mutation(
     tenant_id: Uuid,
     order_id: Uuid,
@@ -4479,6 +4545,240 @@ async fn admin_graphql_return_decision_creates_completed_claim_order_change() {
     );
     assert_eq!(change_preview["claim_type"], Value::from("damaged_item"));
     assert!(decision["refund"].is_null());
+}
+
+#[tokio::test]
+async fn admin_graphql_complete_return_with_exchange_helper() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: Some("merchant-exchange-id".to_string()),
+                    sku: Some("GRAPHQL-COMPLETE-EXCHANGE-1".to_string()),
+                    title: "GraphQL Complete Return Exchange Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("27.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-complete-exchange" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-complete-exchange" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let order_return = order_service
+        .create_return(
+            tenant_id,
+            order.id,
+            rustok_order::dto::CreateOrderReturnInput {
+                reason: Some("wrong-size".to_string()),
+                note: Some("needs larger size".to_string()),
+                items: vec![rustok_order::dto::CreateOrderReturnItemInput {
+                    line_item_id: order.line_items[0].id,
+                    quantity: 1,
+                    reason: Some("too small".to_string()),
+                    note: None,
+                    metadata: serde_json::json!({}),
+                }],
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+    let preview_json = r#"{"exchange_type":"size_exchange","items":[{"sku":"GRAPHQL-COMPLETE-EXCHANGE-2","quantity":1}]}"#;
+    let response = schema
+        .execute(Request::new(admin_complete_order_return_with_exchange_mutation(
+            tenant_id,
+            order_return.id,
+            preview_json,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL complete return exchange errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let completed_return = &json["completeOrderReturn"];
+    let order_change_id = completed_return["orderChangeId"]
+        .as_str()
+        .expect("order change id should be a string");
+
+    assert_eq!(completed_return["status"], Value::from("completed"));
+    assert_eq!(completed_return["resolutionType"], Value::from("exchange"));
+
+    // Verify created order change has correct context attached
+    let order_change = order_service
+        .get_order_change(tenant_id, Uuid::parse_str(order_change_id).unwrap())
+        .await
+        .expect("order change should exist");
+
+    assert_eq!(order_change.change_type, "exchange");
+    assert_eq!(
+        order_change.metadata["order_return_id"],
+        serde_json::json!(order_return.id.to_string())
+    );
+    assert_eq!(
+        order_change.metadata["return_decision_action"],
+        serde_json::json!("exchange")
+    );
+    assert_eq!(
+        order_change.metadata["return_decision_source"],
+        serde_json::json!("rustok-commerce")
+    );
+    assert_eq!(
+        order_change.preview["order_return_id"],
+        serde_json::json!(order_return.id.to_string())
+    );
+    assert_eq!(
+        order_change.preview["return_decision_action"],
+        serde_json::json!("exchange")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_complete_return_with_claim_helper() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let order = order_service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                shipping_total: Decimal::ZERO,
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: Some("merchant-claim-id".to_string()),
+                    sku: Some("GRAPHQL-COMPLETE-CLAIM-1".to_string()),
+                    title: "GraphQL Complete Return Claim Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("27.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-complete-claim" }),
+                }],
+                adjustments: Vec::new(),
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-complete-claim" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let order_return = order_service
+        .create_return(
+            tenant_id,
+            order.id,
+            rustok_order::dto::CreateOrderReturnInput {
+                reason: Some("damaged".to_string()),
+                note: Some("damaged on delivery".to_string()),
+                items: vec![rustok_order::dto::CreateOrderReturnItemInput {
+                    line_item_id: order.line_items[0].id,
+                    quantity: 1,
+                    reason: Some("broken".to_string()),
+                    note: None,
+                    metadata: serde_json::json!({}),
+                }],
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("return should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+    let preview_json = r#"{"claim_type":"damaged_item","resolution":"replacement"}"#;
+    let response = schema
+        .execute(Request::new(admin_complete_order_return_with_claim_mutation(
+            tenant_id,
+            order_return.id,
+            preview_json,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL complete return claim errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let completed_return = &json["completeOrderReturn"];
+    let order_change_id = completed_return["orderChangeId"]
+        .as_str()
+        .expect("order change id should be a string");
+
+    assert_eq!(completed_return["status"], Value::from("completed"));
+    assert_eq!(completed_return["resolutionType"], Value::from("claim"));
+
+    // Verify created order change has correct context attached
+    let order_change = order_service
+        .get_order_change(tenant_id, Uuid::parse_str(order_change_id).unwrap())
+        .await
+        .expect("order change should exist");
+
+    assert_eq!(order_change.change_type, "claim");
+    assert_eq!(
+        order_change.metadata["order_return_id"],
+        serde_json::json!(order_return.id.to_string())
+    );
+    assert_eq!(
+        order_change.metadata["return_decision_action"],
+        serde_json::json!("claim")
+    );
+    assert_eq!(
+        order_change.metadata["return_decision_source"],
+        serde_json::json!("rustok-commerce")
+    );
+    assert_eq!(
+        order_change.preview["order_return_id"],
+        serde_json::json!(order_return.id.to_string())
+    );
+    assert_eq!(
+        order_change.preview["return_decision_action"],
+        serde_json::json!("claim")
+    );
 }
 
 #[tokio::test]
