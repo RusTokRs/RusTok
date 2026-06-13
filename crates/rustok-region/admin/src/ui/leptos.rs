@@ -296,39 +296,27 @@ pub fn RegionAdmin() -> impl IntoView {
         set_busy.set(true);
         set_error.set(None);
         spawn_local(async move {
-            match crate::transport::fetch_region_detail(region_id).await {
-                Ok(detail) => apply_region_detail(
-                    &detail,
-                    set_editing_id,
-                    set_selected,
-                    set_name,
-                    set_currency_code,
-                    set_tax_provider_id,
-                    set_tax_rate,
-                    set_tax_included,
-                    set_country_tax_policies,
-                    set_countries,
-                    set_metadata,
+            let view_model = match crate::transport::fetch_region_detail(region_id).await {
+                Ok(detail) => crate::core::region_admin_open_detail_success(detail),
+                Err(err) => crate::core::region_admin_open_detail_error(
+                    load_region_error_label.as_str(),
+                    &err.to_string(),
                 ),
-                Err(err) => {
-                    clear_region_form(
-                        set_editing_id,
-                        set_selected,
-                        set_name,
-                        set_currency_code,
-                        set_tax_provider_id,
-                        set_tax_rate,
-                        set_tax_included,
-                        set_country_tax_policies,
-                        set_countries,
-                        set_metadata,
-                    );
-                    set_error.set(Some(crate::core::error_with_context(
-                        load_region_error_label.as_str(),
-                        &err.to_string(),
-                    )));
-                }
-            }
+            };
+            apply_region_open_detail_view_model(
+                view_model,
+                set_editing_id,
+                set_selected,
+                set_name,
+                set_currency_code,
+                set_tax_provider_id,
+                set_tax_rate,
+                set_tax_included,
+                set_country_tax_policies,
+                set_countries,
+                set_metadata,
+                set_error,
+            );
             set_busy.set(false);
         });
     });
@@ -685,6 +673,37 @@ fn apply_region_route_query_update(
         }
         None => {}
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_region_open_detail_view_model(
+    view_model: RegionAdminOpenDetailViewModel,
+    set_editing_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<RegionDetail>>,
+    set_name: WriteSignal<String>,
+    set_currency_code: WriteSignal<String>,
+    set_tax_provider_id: WriteSignal<String>,
+    set_tax_rate: WriteSignal<String>,
+    set_tax_included: WriteSignal<bool>,
+    set_country_tax_policies: WriteSignal<String>,
+    set_countries: WriteSignal<String>,
+    set_metadata: WriteSignal<String>,
+    set_error: WriteSignal<Option<String>>,
+) {
+    set_selected.set(view_model.selected);
+    apply_region_editor_form_state(
+        view_model.form_state,
+        set_editing_id,
+        set_name,
+        set_currency_code,
+        set_tax_provider_id,
+        set_tax_rate,
+        set_tax_included,
+        set_country_tax_policies,
+        set_countries,
+        set_metadata,
+    );
+    set_error.set(view_model.error);
 }
 
 #[allow(clippy::too_many_arguments)]
