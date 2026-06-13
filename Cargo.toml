@@ -16,7 +16,9 @@ members = [
     "crates/rustok-commerce/admin",
     "crates/rustok-commerce/storefront",
     "crates/rustok-cart/storefront",
+    "crates/rustok-payment/storefront",
     "crates/rustok-fulfillment/admin",
+    "crates/rustok-fulfillment/storefront",
     "crates/rustok-inventory/admin",
     "crates/rustok-product/admin",
     "crates/rustok-product/storefront",
@@ -24,6 +26,7 @@ members = [
     "crates/rustok-region/admin",
     "crates/rustok-region/storefront",
     "crates/rustok-order/admin",
+    "crates/rustok-order/storefront",
     "crates/rustok-pricing/admin",
     "crates/rustok-pricing/storefront",
     "crates/rustok-channel/admin",
@@ -180,6 +183,7 @@ rustok-events = { path = "crates/rustok-events" }
 rustok-commerce-foundation = { path = "crates/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/rustok-commerce" }
 rustok-cart = { path = "crates/rustok-cart" }
+rustok-cart-storefront = { path = "crates/rustok-cart/storefront" }
 rustok-customer = { path = "crates/rustok-customer" }
 rustok-product = { path = "crates/rustok-product" }
 rustok-profiles = { path = "crates/rustok-profiles" }
@@ -189,8 +193,11 @@ rustok-pricing = { path = "crates/rustok-pricing" }
 rustok-tax = { path = "crates/rustok-tax" }
 rustok-inventory = { path = "crates/rustok-inventory" }
 rustok-order = { path = "crates/rustok-order" }
+rustok-order-storefront = { path = "crates/rustok-order/storefront" }
 rustok-payment = { path = "crates/rustok-payment" }
+rustok-payment-storefront = { path = "crates/rustok-payment/storefront" }
 rustok-fulfillment = { path = "crates/rustok-fulfillment" }
+rustok-fulfillment-storefront = { path = "crates/rustok-fulfillment/storefront" }
 rustok-blog = { path = "crates/rustok-blog" }
 rustok-content = { path = "crates/rustok-content" }
 rustok-pages = { path = "crates/rustok-pages" }

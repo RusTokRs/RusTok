@@ -14,6 +14,7 @@ pub use request::{
     CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMutationRequest,
 };
 pub use view_model::{
-    cart_adjustment_view_model, cart_delivery_group_view_model, cart_line_item_view_model,
-    cart_summary_view_model, CartDisplayFallbacks,
+    cart_adjustment_view_model, cart_checkout_handoff_view_model, cart_delivery_group_view_model,
+    cart_line_item_view_model, cart_summary_view_model, CartCheckoutHandoffLabels,
+    CartCheckoutHandoffViewModel, CartDisplayFallbacks,
 };

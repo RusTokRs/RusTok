@@ -2,6 +2,17 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
+use rustok_cart_storefront::core::CartCheckoutHandoffLabels;
+use rustok_cart_storefront::CartCheckoutHandoffCard;
+use rustok_fulfillment_storefront::FulfillmentShippingHandoffNotice;
+use rustok_order_storefront::core::{
+    OrderCheckoutActionLabels, OrderCheckoutResultData, OrderCheckoutResultLabels,
+};
+use rustok_order_storefront::{OrderCheckoutCompleteButton, OrderCheckoutResultCard};
+use rustok_payment_storefront::core::{
+    PaymentCollectionActionLabels, PaymentCollectionCardData, PaymentCollectionCardLabels,
+};
+use rustok_payment_storefront::{PaymentCollectionActionButton, PaymentCollectionCard};
 
 use crate::i18n::t;
 use crate::model::{
@@ -233,10 +244,6 @@ fn CheckoutWorkspace(
                 Some((cart, payment_collection)) => {
                     let cart_id = cart.id.clone();
                     let cart_status = cart.status.clone();
-                    let create_pending_locale = locale.clone();
-                    let create_action_locale = locale.clone();
-                    let complete_pending_locale = locale.clone();
-                    let complete_action_locale = locale.clone();
                     view! {
                     <article class="rounded-3xl border border-border bg-background p-8">
                         <div class="space-y-3">
@@ -252,65 +259,39 @@ fn CheckoutWorkspace(
                         </div>
                         {move || {
                             completion.get().map(|result| {
-                                view! { <CheckoutCompletionCard result /> }
+                                view! { <OrderCheckoutResultCard result=order_checkout_result_data(result) labels=order_checkout_result_labels(locale.as_deref()) /> }
                             })
                         }}
-                        <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-                            {format!(
-                                "{}: {} · {}: {}",
-                                t(locale.as_deref(), "commerce.checkout.cart.id", "Cart"),
-                                cart_id,
-                                t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status"),
-                                cart_status
-                            )}
-                            <span class="ml-2">
-                                {t(locale.as_deref(), "commerce.checkout.cart.moduleOwnership", "Cart totals, line items and adjustments stay in the cart module workspace.")}
-                            </span>
-                        </div>
-                        <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
-                            {t(locale.as_deref(), "commerce.delivery.moduleOwnership", "Shipping options and fulfillment details stay in fulfillment-owned UI; commerce only triggers cross-module checkout orchestration.")}
-                        </div>
+                        <CartCheckoutHandoffCard
+                            cart_id=cart_id
+                            status=cart_status
+                            labels=cart_checkout_handoff_labels(locale.as_deref())
+                        />
+                        <FulfillmentShippingHandoffNotice
+                            message=t(locale.as_deref(), "commerce.delivery.moduleOwnership", "Shipping options and fulfillment details stay in fulfillment-owned UI; commerce only triggers cross-module checkout orchestration.")
+                        />
                         <div class="mt-6 grid gap-3 md:grid-cols-2">
                             <a class="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-card-foreground transition hover:bg-muted" href=cart_href>
                                 {t(locale.as_deref(), "commerce.checkout.openCart", "Open cart workspace")}
                             </a>
-                            <button
-                                type="button"
-                                class="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-card-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                                disabled=move || busy.get()
-                                on:click={
-                                    let cart_id = cart.id.clone();
-                                    move |_| on_create_payment_collection.run(cart_id.clone())
-                                }
-                            >
-                                {move || {
-                                    if busy.get() {
-                                        t(create_pending_locale.as_deref(), "commerce.checkout.pending", "Processing...")
-                                    } else {
-                                        t(create_action_locale.as_deref(), "commerce.checkout.createCollection", "Create or reuse payment collection")
-                                    }
-                                }}
-                            </button>
-                            <button
-                                type="button"
-                                class="inline-flex items-center justify-center rounded-full border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
-                                disabled=move || busy.get()
-                                on:click={
-                                    let cart_id = cart.id.clone();
-                                    move |_| on_complete_checkout.run(cart_id.clone())
-                                }
-                            >
-                                {move || {
-                                    if busy.get() {
-                                        t(complete_pending_locale.as_deref(), "commerce.checkout.pending", "Processing...")
-                                    } else {
-                                        t(complete_action_locale.as_deref(), "commerce.checkout.complete", "Complete checkout")
-                                    }
-                                }}
-                            </button>
+                            <PaymentCollectionActionButton
+                                cart_id=cart.id.clone()
+                                busy
+                                labels=payment_collection_action_labels(locale.as_deref())
+                                on_create_payment_collection
+                            />
+                            <OrderCheckoutCompleteButton
+                                cart_id=cart.id.clone()
+                                busy
+                                labels=order_checkout_action_labels(locale.as_deref())
+                                on_complete_checkout
+                            />
                         </div>
                         <div class="mt-6">
-                            <PaymentCollectionCard payment_collection />
+                            <PaymentCollectionCard
+                                payment_collection=payment_collection.map(payment_collection_card_data)
+                                labels=payment_collection_card_labels(locale.as_deref())
+                            />
                         </div>
                     </article>
                 }.into_any()
@@ -331,61 +312,69 @@ fn CheckoutWorkspace(
     }
 }
 
-#[component]
-fn PaymentCollectionCard(
-    payment_collection: Option<StorefrontCheckoutPaymentCollection>,
-) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-
-    let (collection_id, collection_status) = payment_collection
-        .map(|collection| (collection.id, collection.status))
-        .unwrap_or_else(|| {
-            (
-                t(
-                    locale.as_deref(),
-                    "commerce.payment.emptyId",
-                    "not attached",
-                ),
-                t(locale.as_deref(), "commerce.payment.emptyStatus", "pending"),
-            )
-        });
-
-    view! {
-        <article class="rounded-2xl border border-dashed border-border p-5">
-            <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                {t(locale.as_deref(), "commerce.payment.badge", "payment collection")}
-            </div>
-            <p class="mt-2 text-sm text-muted-foreground">
-                {t(locale.as_deref(), "commerce.payment.moduleOwnership", "Payment collection details stay in payment-owned UI; commerce only shows checkout orchestration handoff state.")}
-            </p>
-            <div class="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                {format!("{} · {}", collection_id, collection_status)}
-            </div>
-        </article>
+fn cart_checkout_handoff_labels(locale: Option<&str>) -> CartCheckoutHandoffLabels {
+    CartCheckoutHandoffLabels {
+        cart_label: t(locale, "commerce.checkout.cart.id", "Cart"),
+        status_label: t(locale, "commerce.checkout.cart.status", "Cart status"),
+        module_ownership: t(
+            locale,
+            "commerce.checkout.cart.moduleOwnership",
+            "Cart totals, line items and adjustments stay in the cart module workspace.",
+        ),
     }
 }
-#[component]
-fn CheckoutCompletionCard(result: StorefrontCheckoutCompletion) -> impl IntoView {
-    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
-    view! {
-        <article class="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5">
-            <div class="text-xs font-medium uppercase tracking-[0.18em] text-primary">
-                {t(locale.as_deref(), "commerce.checkout.result.badge", "checkout result")}
-            </div>
-            <h4 class="mt-2 text-base font-semibold text-card-foreground">{result.order_id}</h4>
-            <p class="mt-2 text-sm text-muted-foreground">
-                {t(locale.as_deref(), "commerce.checkout.result.moduleOwnership", "Order, payment, fulfillment and adjustment details remain in their module-owned workspaces; commerce shows only the aggregate checkout outcome.")}
-            </p>
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.orderStatus", "Order status") value=result.order_status />
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.collectionStatus", "Collection status") value=result.payment_collection_status />
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.fulfillments", "Fulfillments") value=result.fulfillment_count.to_string() />
-                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.locale", "Resolved locale") value=result.context_locale />
-            </div>
-        </article>
+fn payment_collection_action_labels(locale: Option<&str>) -> PaymentCollectionActionLabels {
+    PaymentCollectionActionLabels {
+        pending: t(locale, "commerce.checkout.pending", "Processing..."),
+        create_or_reuse: t(
+            locale,
+            "commerce.checkout.createCollection",
+            "Create or reuse payment collection",
+        ),
     }
 }
+
+fn order_checkout_action_labels(locale: Option<&str>) -> OrderCheckoutActionLabels {
+    OrderCheckoutActionLabels {
+        pending: t(locale, "commerce.checkout.pending", "Processing..."),
+        complete: t(locale, "commerce.checkout.complete", "Complete checkout"),
+    }
+}
+
+fn payment_collection_card_data(
+    payment_collection: StorefrontCheckoutPaymentCollection,
+) -> PaymentCollectionCardData {
+    PaymentCollectionCardData {
+        id: payment_collection.id,
+        status: payment_collection.status,
+    }
+}
+
+fn payment_collection_card_labels(locale: Option<&str>) -> PaymentCollectionCardLabels {
+    PaymentCollectionCardLabels {
+        badge: t(locale, "commerce.payment.badge", "payment collection"),
+        module_ownership: t(locale, "commerce.payment.moduleOwnership", "Payment collection details stay in payment-owned UI; commerce only shows checkout orchestration handoff state."),
+        empty_id: t(locale, "commerce.payment.emptyId", "not attached"),
+        empty_status: t(locale, "commerce.payment.emptyStatus", "pending"),
+    }
+}
+
+fn order_checkout_result_data(result: StorefrontCheckoutCompletion) -> OrderCheckoutResultData {
+    OrderCheckoutResultData {
+        order_id: result.order_id,
+        order_status: result.order_status,
+    }
+}
+
+fn order_checkout_result_labels(locale: Option<&str>) -> OrderCheckoutResultLabels {
+    OrderCheckoutResultLabels {
+        badge: t(locale, "commerce.checkout.result.badge", "checkout result"),
+        module_ownership: t(locale, "commerce.checkout.result.moduleOwnership", "Order, payment, fulfillment and adjustment details remain in their module-owned workspaces; commerce shows only the aggregate checkout outcome."),
+        order_status_label: t(locale, "commerce.checkout.result.orderStatus", "Order status"),
+    }
+}
+
 #[component]
 fn SurfaceRail() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();

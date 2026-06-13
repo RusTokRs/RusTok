@@ -6,11 +6,11 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## Execution checkpoint
 
 - Current phase: phase_b_ready
-- Last checkpoint: Cart storefront FFA Phase B считается закрытой: cart-owned storefront UI остаётся внутри `rustok-cart/storefront`, имеет `core/transport/ui` split, Leptos adapter не вызывает raw `api::*`, а cart-owned UI не перетаскивается в umbrella `rustok-commerce` или host-приложения.
-- Next step: Не продолжать механические FFA-переносы cart UI; следующий work item — parity/evidence hardening для SSR native path, GraphQL fallback, headless cart mutation contracts и DOM evidence, либо новый FFA-срез только при появлении реального cart-owned storefront функционала.
+- Last checkpoint: Cart storefront FFA reopened for an owner-module handoff slice: `CartCheckoutHandoffCard` and `CartCheckoutHandoffViewModel` now live in `rustok-cart/storefront` and are consumed by `rustok-commerce-storefront` instead of rendering cart status handoff inline.
+- Next step: Continue only with owner-module checkout handoff slices that remove real umbrella presentation leakage, or return to parity/evidence hardening for SSR native path, GraphQL fallback, headless cart mutation contracts and DOM evidence.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-12T13:20:43Z
+- Last updated at (UTC): 2026-06-13T22:20:00Z
 
 
 ## FFA/FBA status
@@ -20,9 +20,9 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
-  - storefront slice выделяет `core/` helpers для route/input normalization, UUID validation, adjustment metadata mapping, channel-slug normalization, decrement policy, typed fetch/decrement/remove request objects, GraphQL decrement command dispatch, stable serializable transport fallback error evidence, DOM evidence adapter и display/view-model mapping;
+  - storefront slice выделяет `core/` helpers для route/input normalization, UUID validation, adjustment metadata mapping, channel-slug normalization, decrement policy, typed fetch/decrement/remove request objects, GraphQL decrement command dispatch, stable serializable transport fallback error evidence, DOM evidence adapter, display/view-model mapping and checkout handoff summary view-model consumed by commerce orchestration;
   - `ui/leptos::CartView` теперь вызывает thin `transport` facade через core-owned request objects, получает prepared view-model values из `core/` и рендерит error evidence attributes `data-cart-transport-failed-path`, `data-cart-transport-fallback-attempted`, `data-cart-transport-native-error`, `data-cart-transport-graphql-error`; transport facade сохраняет validation errors без GraphQL retry и возвращает `CartTransportError` со stable `failed_path` (`native_server`/`graphql`), `fallback_attempted`, `native_error` и `graphql_error`, а native `#[server]` + GraphQL adapter calls остаются внутри API adapter layer, при этом API layer больше не пересчитывает GraphQL decrement policy;
-  - Phase B closure decision: cart storefront FFA больше не расширяется без нового cart-owned UI/transport surface; UI функционал cart подмодуля остаётся в `rustok-cart/storefront`, а umbrella `rustok-commerce` продолжает только checkout orchestration/handoff;
+  - Cart-owned checkout handoff decision: cart status/handoff presentation belongs to `rustok-cart/storefront`; umbrella `rustok-commerce` may pass checkout context but must consume the cart-owned component rather than owning cart presentation;
   - дальнейшее повышение до `parity_verified` выполняется только вместе с full parity evidence и обновлением local+central docs.
 - Last verified at (UTC): 2026-06-12T13:20:43Z
 - Owner: `rustok-cart` module team

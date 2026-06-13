@@ -5,20 +5,21 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: План синхронизирован с кросс-модульным приоритетом ускоренного FFA rollout по всей ecommerce family (раньше закрываем migration cost — меньше обратных переделок).
-- Next step: Выполнять ближайшие незавершённые пункты через FFA-first sequencing; FBA sequencing стартует только после FFA phase-gate (module-owned UI + boundary-ready service contracts + transport parity evidence) без откладывания на поздние фазы.
+- Current phase: storefront_ffa_slice
+- Last checkpoint: Payment storefront FFA slice introduced `rustok-payment/storefront`: payment-owned Leptos card/action presentation and Leptos-free view-model/fallback/action-label policy for checkout payment collection handoff, consumed by `rustok-commerce-storefront` instead of rendering payment copy inline.
+- Next step: Continue by moving payment collection transport/read actions behind payment-owned storefront transport when the host route is ready; keep commerce only as checkout orchestration until that cutover.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-24T20:10:00Z
+- Last updated at (UTC): 2026-06-13T21:55:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `not_started`
-- Structural shape: `no_ui_boundary`
+- Structural shape: `core_only`
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
+  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
 - Last verified at (UTC): 2026-05-24T00:00:00Z
 - Owner: `rustok-payment` module team
@@ -34,7 +35,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - `payment_collections`, `payments`, `PaymentModule` и `PaymentService` уже выделены;
 - модуль не владеет cart/order/customer, а только ссылается на них по identifiers;
 - базовый manual/default payment flow уже зафиксирован;
-- transport adapters по-прежнему публикуются фасадом `rustok-commerce`.
+- transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation уже принадлежит `rustok-payment/storefront`.
 
 ## Этапы
 

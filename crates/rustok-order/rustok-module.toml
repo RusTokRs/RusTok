@@ -20,3 +20,9 @@ nav_label = "Orders"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-order-storefront"
+slot = "checkout_result_handoff"
+route_segment = "orders"
+page_title = "Orders"

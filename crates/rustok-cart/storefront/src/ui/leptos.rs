@@ -457,3 +457,21 @@ fn LineItemsRail(
 fn MetricCard(title: String, value: String) -> impl IntoView {
     view! { <article class="rounded-2xl border border-border bg-card p-4"><div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</div><div class="mt-2 text-lg font-semibold text-card-foreground break-all">{value}</div></article> }
 }
+
+#[component]
+pub fn CartCheckoutHandoffCard(
+    cart_id: String,
+    status: String,
+    labels: crate::core::CartCheckoutHandoffLabels,
+) -> impl IntoView {
+    let view_model = crate::core::cart_checkout_handoff_view_model(cart_id, status, &labels);
+
+    view! {
+        <div class="mt-6 rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+            {view_model.summary}
+            <span class="ml-2">
+                {view_model.module_ownership}
+            </span>
+        </div>
+    }
+}

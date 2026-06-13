@@ -8,3 +8,9 @@ trust_level = "verified"
 ui_classification = "capability_only"
 [crate]
 entry_type = "PaymentModule"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-payment-storefront"
+slot = "checkout_payment_handoff"
+route_segment = "payment"
+page_title = "Payment"

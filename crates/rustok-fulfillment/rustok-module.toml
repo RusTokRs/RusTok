@@ -20,3 +20,9 @@ nav_label = "Fulfillment"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-fulfillment-storefront"
+slot = "checkout_shipping_handoff"
+route_segment = "fulfillment"
+page_title = "Fulfillment"

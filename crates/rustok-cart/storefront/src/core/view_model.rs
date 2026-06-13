@@ -246,3 +246,38 @@ mod tests {
         assert_eq!(group_view_model.available_option_count, "2");
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CartCheckoutHandoffLabels {
+    pub cart_label: String,
+    pub status_label: String,
+    pub module_ownership: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CartCheckoutHandoffViewModel {
+    pub cart_id: String,
+    pub status: String,
+    pub summary: String,
+    pub module_ownership: String,
+}
+
+pub fn cart_checkout_handoff_view_model(
+    cart_id: String,
+    status: String,
+    labels: &CartCheckoutHandoffLabels,
+) -> CartCheckoutHandoffViewModel {
+    let cart_id = cart_id.trim().to_string();
+    let status = status.trim().to_string();
+    let summary = format!(
+        "{}: {} · {}: {}",
+        labels.cart_label, cart_id, labels.status_label, status
+    );
+
+    CartCheckoutHandoffViewModel {
+        cart_id,
+        status,
+        summary,
+        module_ownership: labels.module_ownership.clone(),
+    }
+}

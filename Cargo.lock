@@ -10071,6 +10071,8 @@ dependencies = [
  "rustok-cart",
  "rustok-commerce",
  "rustok-customer",
+ "rustok-fulfillment-storefront",
+ "rustok-payment-storefront",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10298,6 +10300,13 @@ dependencies = [
  "rustok-api",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rustok-fulfillment-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.19",
 ]
 
 [[package]]
@@ -10653,6 +10662,13 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-payment-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.19",
 ]
 
 [[package]]
