@@ -9,7 +9,7 @@ Leptos admin UI package for the `rustok-order` module.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Consumes the existing `rustok-commerce` GraphQL order transport behind the module-owned `admin/src/transport/mod.rs` facade with `admin/src/transport/graphql_adapter.rs` while UI ownership moves to the module boundary.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.
-- Keeps framework-agnostic order list defaults, filter normalization, presentation policy and detail form-state fallback mapping in `admin/src/core.rs` so render adapters do not own pagination or selected-detail defaults.
+- Keeps framework-agnostic order list defaults, filter normalization, presentation policy and detail form-state fallback mapping in `admin/src/core/` so render adapters do not own pagination or selected-detail defaults.
 - Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; `admin/src/lib.rs` only wires modules and re-exports `OrderAdmin`.
 
 ## Entry Points

@@ -6,8 +6,8 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_transport_adapter_split
-- Last checkpoint: Moved the order admin GraphQL adapter from root `admin/src/api.rs` into `admin/src/transport/graphql_adapter.rs` and turned `admin/src/transport/mod.rs` into the module-owned transport facade; crate root no longer wires raw API transport directly, and the fast order boundary guardrail asserts the adapter split.
+- Current phase: ffa_admin_core_directory_split
+- Last checkpoint: Split the growing order admin `core.rs` into `admin/src/core/` submodules (`requests`, `commands`, `detail_form`, `presentation`) with `core/mod.rs` re-exporting the stable facade consumed by the Leptos adapter; the fast order boundary guardrail now asserts the core directory shape and Leptos-free policy files.
 - Next step: Move the next returns/refund/exchange/claim UI policy slice into core or add native/server-function parity without changing the existing GraphQL order contract.
 - Open blockers: серверный OpenAPI contract test под default features ранее упирался в существующие compile errors вне order/commerce (`rustok-pages-admin`, server build service/module lifecycle/graphql mutations); targeted order lifecycle и `rustok-commerce` check остаются основным gate для этого среза.
 - Hand-off notes for next agent: После каждого returns/refund/exchange/claim инкремента обновлять FFA evidence и FBA placeholder, README/admin docs и central registry в том же PR.
@@ -21,7 +21,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
-  - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list/filter request policy, module-owned `admin/src/transport/mod.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `OrderAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered order list/detail/lifecycle flows; latest admin slices moved mark-paid, ship, deliver and cancel action payload preparation into core-owned command helpers (`prepare_mark_paid_command`, `prepare_ship_order_command`, `prepare_deliver_order_command`, `prepare_cancel_order_command`) with unit-test evidence, then added fast boundary evidence via `scripts/verify/verify-order-admin-boundary.mjs` and the aggregate `npm run verify:ffa:ui:migration` pipeline; the presentation slices moved status labels/classes, order captions, detail summaries, timeline/action hints, optional display fallback and selected-detail form-state/default/fallback mapping into Leptos-free core while keeping signal setters in `helpers.rs`; the transport slice moved GraphQL code under `admin/src/transport/graphql_adapter.rs` behind `admin/src/transport/mod.rs`.
+  - admin FFA slice добавил framework-agnostic `admin/src/core/` list/filter request policy, module-owned `admin/src/transport/mod.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `OrderAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered order list/detail/lifecycle flows; latest admin slices moved mark-paid, ship, deliver and cancel action payload preparation into core-owned command helpers (`prepare_mark_paid_command`, `prepare_ship_order_command`, `prepare_deliver_order_command`, `prepare_cancel_order_command`) with unit-test evidence, then added fast boundary evidence via `scripts/verify/verify-order-admin-boundary.mjs` and the aggregate `npm run verify:ffa:ui:migration` pipeline; the presentation slices moved status labels/classes, order captions, detail summaries, timeline/action hints, optional display fallback and selected-detail form-state/default/fallback mapping into Leptos-free core while keeping signal setters in `helpers.rs`; the transport slice moved GraphQL code under `admin/src/transport/graphql_adapter.rs` behind `admin/src/transport/mod.rs`; the latest structure slice split the growing core into `admin/src/core/{requests,commands,detail_form,presentation}.rs`.
 - Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-order` module team
 
@@ -40,7 +40,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - write-side lifecycle и order events уже закреплены внутри модуля;
 - product/variant связи хранятся как snapshot references, без cross-module FK;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`;
-- `rustok-order/admin` публикует module-owned route для order list/detail/lifecycle с `admin/src/core.rs` request defaults, `admin/src/transport/mod.rs` facade и явным `admin/src/ui/leptos.rs` render adapter.
+- `rustok-order/admin` публикует module-owned route для order list/detail/lifecycle с `admin/src/core/` request defaults, `admin/src/transport/mod.rs` facade и явным `admin/src/ui/leptos.rs` render adapter.
 
 ## Этапы
 

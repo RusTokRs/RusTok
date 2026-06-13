@@ -10,7 +10,7 @@
 - `order_changes` для draft/edit preview-apply skeleton без payment/fulfillment side effects;
 - write-side lifecycle заказа: `pending -> confirmed -> paid -> shipped -> delivered/cancelled`;
 - публикация order events через transactional outbox;
-- module-owned admin UI пакет `rustok-order/admin` для order operations с разделением `admin/src/core.rs`, `admin/src/transport/mod.rs`, `admin/src/transport/graphql_adapter.rs` и `admin/src/ui/leptos.rs`.
+- module-owned admin UI пакет `rustok-order/admin` для order operations с разделением `admin/src/core/`, `admin/src/transport/mod.rs`, `admin/src/transport/graphql_adapter.rs` и `admin/src/ui/leptos.rs`.
 
 ## Зона ответственности
 
@@ -55,7 +55,7 @@
 
 ## Разделение FFA для admin
 
-Пакет admin теперь использует framework-agnostic defaults `admin/src/core.rs`, фасад `admin/src/transport/mod.rs` с GraphQL adapter `admin/src/transport/graphql_adapter.rs` и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `OrderAdmin`.
+Пакет admin теперь использует framework-agnostic defaults `admin/src/core/`, фасад `admin/src/transport/mod.rs` с GraphQL adapter `admin/src/transport/graphql_adapter.rs` и явный Leptos-адаптер отрисовки `admin/src/ui/leptos.rs`; корень crate только подключает слои модуля и повторно экспортирует `OrderAdmin`.
 
 ## Проверка
 

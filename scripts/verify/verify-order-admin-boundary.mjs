@@ -39,7 +39,11 @@ function assertNotContains(text, pattern, description) {
 }
 
 const libPath = "crates/rustok-order/admin/src/lib.rs";
-const corePath = "crates/rustok-order/admin/src/core.rs";
+const coreModPath = "crates/rustok-order/admin/src/core/mod.rs";
+const coreRequestsPath = "crates/rustok-order/admin/src/core/requests.rs";
+const coreCommandsPath = "crates/rustok-order/admin/src/core/commands.rs";
+const coreDetailFormPath = "crates/rustok-order/admin/src/core/detail_form.rs";
+const corePresentationPath = "crates/rustok-order/admin/src/core/presentation.rs";
 const uiPath = "crates/rustok-order/admin/src/ui/leptos.rs";
 const helpersPath = "crates/rustok-order/admin/src/helpers.rs";
 const transportPath = "crates/rustok-order/admin/src/transport/mod.rs";
@@ -49,7 +53,11 @@ const registryPath = "docs/modules/registry.md";
 
 for (const filePath of [
   libPath,
-  corePath,
+  coreModPath,
+  coreRequestsPath,
+  coreCommandsPath,
+  coreDetailFormPath,
+  corePresentationPath,
   uiPath,
   helpersPath,
   transportPath,
@@ -61,7 +69,9 @@ for (const filePath of [
 }
 
 const lib = readRepo(libPath);
-const core = readRepo(corePath);
+const core = [coreModPath, coreRequestsPath, coreCommandsPath, coreDetailFormPath, corePresentationPath]
+  .map((filePath) => readRepo(filePath))
+  .join("\n");
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
@@ -69,7 +79,11 @@ const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire raw API adapter at root after transport split`);
-assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
+assertContains(lib, "mod core;", `${libPath}: crate root must wire core directory`);
+assertContains(readRepo(coreModPath), "mod commands;", `${coreModPath}: core directory must split command policy`);
+assertContains(readRepo(coreModPath), "mod detail_form;", `${coreModPath}: core directory must split detail form-state policy`);
+assertContains(readRepo(coreModPath), "mod presentation;", `${coreModPath}: core directory must split presentation policy`);
+assertContains(readRepo(coreModPath), "mod requests;", `${coreModPath}: core directory must split request policy`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::OrderAdmin;", `${libPath}: crate root must re-export OrderAdmin`);
@@ -78,7 +92,7 @@ for (const marker of [/pub async fn fetch_/, /pub async fn mark_/, /pub async fn
 }
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
-  assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
+  assertNotContains(core, marker, `crates/rustok-order/admin/src/core/: core must stay Leptos/server-function free (${marker})`);
 }
 for (const marker of [
   "OrderListRequest",
@@ -102,7 +116,7 @@ for (const marker of [
   "OrderAdminDetailFormState",
   "order_detail_form_state",
 ]) {
-  assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
+  assertContains(core, marker, `crates/rustok-order/admin/src/core/: expected core-owned FFA helper ${marker}`);
 }
 
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
