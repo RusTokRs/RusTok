@@ -5,9 +5,9 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_product_admin_editor_copy_slice
-- Last checkpoint: Product admin editor field placeholders, new action label, shipping-profile empty option and keep-published checkbox copy now build through `ProductAdminEditorCopy` in `admin/src/core.rs`; Leptos only renders prepared editor copy and no longer owns those i18n bindings.
-- Next step: Continue FFA-first sequencing by extracting the next small admin render policy slice only where it reduces Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
+- Current phase: ffa_product_admin_error_copy_slice
+- Last checkpoint: Product admin transport/error base copy now builds through `ProductAdminErrorCopy` in `admin/src/core.rs`; Leptos effects reuse prepared error labels for load/save/status failure presentation while keeping native/GraphQL transport unchanged.
+- Next step: Continue FFA-first sequencing only for small policy/copy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-06-13T00:00:00Z
@@ -41,6 +41,7 @@
   - FFA slice: product admin list controls copy/search placeholder/status filter options are composed by `ProductAdminListControlsViewModel` in `admin/src/core.rs`; Leptos list controls only bind prepared labels/options;
   - FFA slice: product admin shell copy and shipping-profile panel loading/error/ready messages are composed by `ProductAdminShellViewModel` and `ProductAdminProfilePanelViewModel` in `admin/src/core.rs`; Leptos renders prepared strings without owning this copy/state policy;
   - FFA slice: product admin editor field placeholders, new action label, shipping-profile empty option and keep-published checkbox copy are composed by `ProductAdminEditorCopy` in `admin/src/core.rs`; Leptos editor rendering consumes prepared strings only;
+  - FFA slice: product admin transport/error base copy is composed by `ProductAdminErrorCopy` in `admin/src/core.rs`; Leptos effects reuse prepared load/save/status labels without owning those error message bindings;
   - FFA slice: product admin route/query selection writes are composed by `ProductAdminRouteQueryIntent` helpers in `admin/src/core.rs`; Leptos applies typed push/replace/clear intents without owning the product selection query policy;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
 - Last verified at (UTC): 2026-06-13T00:00:00Z
@@ -71,7 +72,7 @@
   `ProductAdminStatusMutationCommand` / `ProductAdminStatusTarget`, а delete command mapping — через
   `ProductAdminDeleteCommand`, а delete-result policy — через
   `ProductAdminDeleteResultViewModel` / `ProductAdminDeleteOutcome`, а list action labels/availability — через
-  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, editor field/action copy — через `ProductAdminEditorCopy`, а product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers в `admin/src/core.rs`; Leptos слой
+  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, editor field/action copy — через `ProductAdminEditorCopy`, transport/error base copy — через `ProductAdminErrorCopy`, а product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers в `admin/src/core.rs`; Leptos слой
   изолирован в `admin/src/ui/leptos.rs` как render/effect adapter;
 - module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
   подключён в manifest-driven storefront composition для published catalog

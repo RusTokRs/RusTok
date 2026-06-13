@@ -10,10 +10,10 @@ use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 use crate::core::{
     build_product_admin_delete_command, build_product_admin_delete_result_view_model,
     build_product_admin_editor_copy, build_product_admin_editor_form_state,
-    build_product_admin_editor_view_model, build_product_admin_list_action_labels,
-    build_product_admin_list_controls_view_model, build_product_admin_list_empty_view_model,
-    build_product_admin_list_error_view_model, build_product_admin_list_item_view_model,
-    build_product_admin_list_loading_view_model,
+    build_product_admin_editor_view_model, build_product_admin_error_copy,
+    build_product_admin_list_action_labels, build_product_admin_list_controls_view_model,
+    build_product_admin_list_empty_view_model, build_product_admin_list_error_view_model,
+    build_product_admin_list_item_view_model, build_product_admin_list_loading_view_model,
     build_product_admin_profile_panel_error_view_model,
     build_product_admin_profile_panel_loading_view_model,
     build_product_admin_profile_panel_ready_view_model, build_product_admin_save_command,
@@ -184,31 +184,12 @@ pub fn ProductAdmin() -> impl IntoView {
         },
     );
 
-    let _bootstrap_loading_label = t(
-        ui_locale.as_deref(),
-        "product.error.bootstrapLoading",
-        "Bootstrap is still loading.",
-    );
-    let load_product_error_label = t(
-        ui_locale.as_deref(),
-        "product.error.loadProduct",
-        "Failed to load product",
-    );
-    let product_not_found_label = t(
-        ui_locale.as_deref(),
-        "product.error.productNotFound",
-        "Product not found.",
-    );
-    let save_product_error_label = t(
-        ui_locale.as_deref(),
-        "product.error.saveProduct",
-        "Failed to save product",
-    );
-    let change_status_error_label = t(
-        ui_locale.as_deref(),
-        "product.error.changeStatus",
-        "Failed to change status",
-    );
+    let error_copy = build_product_admin_error_copy(ui_locale.as_deref());
+    let _bootstrap_loading_label = error_copy.bootstrap_loading.clone();
+    let load_product_error_label = error_copy.load_product.clone();
+    let product_not_found_label = error_copy.product_not_found.clone();
+    let save_product_error_label = error_copy.save_product.clone();
+    let change_status_error_label = error_copy.change_status.clone();
     let initial_product_not_found_label = product_not_found_label.clone();
     let initial_load_product_error_label = load_product_error_label.clone();
     Effect::new(move |_| match selected_product_query.get() {

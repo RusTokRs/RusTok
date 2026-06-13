@@ -291,6 +291,45 @@ pub(crate) fn build_selected_product_summary_view_model(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminErrorCopy {
+    pub bootstrap_loading: String,
+    pub load_product: String,
+    pub product_not_found: String,
+    pub save_product: String,
+    pub change_status: String,
+}
+
+pub(crate) fn build_product_admin_error_copy(locale: Option<&str>) -> ProductAdminErrorCopy {
+    ProductAdminErrorCopy {
+        bootstrap_loading: t(
+            locale,
+            "product.error.bootstrapLoading",
+            "Bootstrap is still loading.",
+        ),
+        load_product: t(
+            locale,
+            "product.error.loadProduct",
+            "Failed to load product",
+        ),
+        product_not_found: t(
+            locale,
+            "product.error.productNotFound",
+            "Product not found.",
+        ),
+        save_product: t(
+            locale,
+            "product.error.saveProduct",
+            "Failed to save product",
+        ),
+        change_status: t(
+            locale,
+            "product.error.changeStatus",
+            "Failed to change status",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProductAdminEditorCopy {
     pub new_action_label: String,
     pub handle_placeholder: String,
@@ -1412,6 +1451,17 @@ mod tests {
             edit.subtitle,
             "Single-SKU catalog editor backed by the existing commerce GraphQL contract."
         );
+    }
+
+    #[test]
+    fn product_admin_error_copy_is_core_owned() {
+        let copy = build_product_admin_error_copy(Some("en"));
+
+        assert_eq!(copy.bootstrap_loading, "Bootstrap is still loading.");
+        assert_eq!(copy.load_product, "Failed to load product");
+        assert_eq!(copy.product_not_found, "Product not found.");
+        assert_eq!(copy.save_product, "Failed to save product");
+        assert_eq!(copy.change_status, "Failed to change status");
     }
 
     #[test]
