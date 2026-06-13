@@ -67,7 +67,7 @@ pub fn CommerceView() -> impl IntoView {
             set_completion.set(None);
             spawn_local(async move {
                 match transport::create_storefront_payment_collection(
-                    core::build_cart_command_request(cart_id),
+                    core::build_payment_collection_command_request(cart_id),
                 )
                 .await
                 {
@@ -89,9 +89,9 @@ pub fn CommerceView() -> impl IntoView {
             set_action_busy.set(true);
             set_action_error.set(None);
             spawn_local(async move {
-                match transport::complete_storefront_checkout(core::build_cart_command_request(
-                    cart_id,
-                ))
+                match transport::complete_storefront_checkout(
+                    core::build_checkout_completion_command_request(cart_id),
+                )
                 .await
                 {
                     Ok(result) => {

@@ -2,7 +2,10 @@ mod graphql_adapter;
 mod native_server_adapter;
 
 use crate::api::ApiError;
-use crate::core::{CartCommandRequest, FetchCommerceRequest, SelectShippingOptionRequest};
+use crate::core::{
+    CheckoutCompletionCommandRequest, FetchCommerceRequest, PaymentCollectionCommandRequest,
+    SelectShippingOptionRequest,
+};
 use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };
@@ -20,7 +23,7 @@ pub async fn fetch_storefront_commerce(
 }
 
 pub async fn create_storefront_payment_collection(
-    request: CartCommandRequest,
+    request: PaymentCollectionCommandRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
     match native_server_adapter::create_storefront_payment_collection(request.clone()).await {
         Ok(collection) => Ok(collection),
@@ -42,7 +45,7 @@ pub async fn select_storefront_shipping_option(
 }
 
 pub async fn complete_storefront_checkout(
-    request: CartCommandRequest,
+    request: CheckoutCompletionCommandRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
     match native_server_adapter::complete_storefront_checkout(request.clone()).await {
         Ok(completion) => Ok(completion),

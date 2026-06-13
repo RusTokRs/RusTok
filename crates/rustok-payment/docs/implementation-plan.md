@@ -6,20 +6,20 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: storefront_ffa_slice
-- Last checkpoint: Payment storefront FFA slice introduced `rustok-payment/storefront`: payment-owned Leptos card/action presentation and Leptos-free view-model/fallback/action-label policy for checkout payment collection handoff, consumed by `rustok-commerce-storefront` instead of rendering payment copy inline.
-- Next step: Continue by moving payment collection transport/read actions behind payment-owned storefront transport when the host route is ready; keep commerce only as checkout orchestration until that cutover.
+- Last checkpoint: Payment storefront FFA slice now owns payment collection create/reuse command normalization in `storefront/src/transport.rs`; `rustok-commerce-storefront` builds payment commands through the payment-owned transport request before invoking the temporary commerce orchestration adapter.
+- Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration; keep commerce only as temporary checkout orchestration until that cutover.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-13T21:55:00Z
+- Last updated at (UTC): 2026-06-13T23:20:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `not_started`
-- Structural shape: `core_only`
+- Structural shape: `core_transport_ui`
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
-  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels;
+  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization consumed by commerce checkout orchestration during the compatibility window;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
 - Last verified at (UTC): 2026-05-24T00:00:00Z
 - Owner: `rustok-payment` module team
@@ -35,7 +35,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - `payment_collections`, `payments`, `PaymentModule` и `PaymentService` уже выделены;
 - модуль не владеет cart/order/customer, а только ссылается на них по identifiers;
 - базовый manual/default payment flow уже зафиксирован;
-- transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation уже принадлежит `rustok-payment/storefront`.
+- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation и create/reuse command normalization уже принадлежат `rustok-payment/storefront`.
 
 ## Этапы
 
