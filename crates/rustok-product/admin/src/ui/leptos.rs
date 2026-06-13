@@ -14,17 +14,20 @@ use crate::core::{
     build_product_admin_list_action_labels, build_product_admin_list_controls_view_model,
     build_product_admin_list_empty_view_model, build_product_admin_list_error_view_model,
     build_product_admin_list_item_view_model, build_product_admin_list_loading_view_model,
+    build_product_admin_open_product_view_model,
     build_product_admin_profile_panel_error_view_model,
     build_product_admin_profile_panel_loading_view_model,
     build_product_admin_profile_panel_ready_view_model, build_product_admin_save_command,
-    build_product_admin_shell_view_model, build_product_admin_status_mutation_command,
+    build_product_admin_seo_panel_copy, build_product_admin_shell_view_model,
+    build_product_admin_status_mutation_command,
     build_product_admin_status_mutation_result_view_model,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
-    primary_catalog_currency, product_admin_clear_product_query_intent,
-    product_admin_list_actions_disabled, product_admin_open_product_query_intent,
+    parse_product_admin_inventory_quantity_input, primary_catalog_currency,
+    product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
+    product_admin_open_product_query_intent, product_admin_pricing_preview_state_from_result,
     product_admin_saved_product_query_intent, shipping_profile_choice_label, text_or_none,
     ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
-    ProductAdminErrorCopy, ProductAdminListStateKind, ProductAdminPricingPreviewState,
+    ProductAdminErrorCopy, ProductAdminListStateKind, ProductAdminOpenProductViewModel,
     ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminStatusMutationOutcome,
     ProductAdminStatusTarget, SelectedProductSummaryViewModel,
 };
@@ -698,7 +701,9 @@ pub fn ProductAdmin() -> impl IntoView {
                                         _ => ().into_any(),
                                     }}
                                 </select>
-                                <input type="number" class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_copy.inventory_quantity_placeholder.clone() prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(event_target_value(&ev).parse().unwrap_or(0)) />
+                                <input type="number" class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_copy.inventory_quantity_placeholder.clone() prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(parse_product_admin_inventory_quantity_input(
+                                    &event_target_value(&ev),
+                                )) />
                             </div>
                             <label class="flex items-center gap-2 text-sm text-muted-foreground">
                                 <input type="checkbox" prop:checked=move || publish_now.get() on:change=move |ev| set_publish_now.set(event_target_checked(&ev)) />
@@ -746,26 +751,23 @@ pub fn ProductAdmin() -> impl IntoView {
                         </div>
                     </section>
 
-                    <SeoEntityPanel
-                        target_kind=SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug")
-                        target_id=Signal::derive(move || editing_id.get())
-                        locale=Signal::derive({
-                            let effective_locale = effective_locale.clone();
-                            move || effective_locale.clone().unwrap_or_default()
-                        })
-                        show_control_plane_widgets=true
-                        panel_title=t(effective_locale.as_deref(), "product.seo.title", "Product SEO")
-                        panel_subtitle=t(
-                            effective_locale.as_deref(),
-                            "product.seo.subtitle",
-                            "Explicit metadata, social tags and diagnostics for the selected product.",
-                        )
-                        empty_message=t(
-                            effective_locale.as_deref(),
-                            "product.seo.empty",
-                            "Create or open a product first. The SEO panel stays attached to the product editor.",
-                        )
-                    />
+                    {
+                        let seo_copy = build_product_admin_seo_panel_copy(effective_locale.as_deref());
+                        view! {
+                            <SeoEntityPanel
+                                target_kind=SeoTargetSlug::new(seo_builtin_slug::PRODUCT).expect("builtin SEO target slug")
+                                target_id=Signal::derive(move || editing_id.get())
+                                locale=Signal::derive({
+                                    let effective_locale = effective_locale.clone();
+                                    move || effective_locale.clone().unwrap_or_default()
+                                })
+                                show_control_plane_widgets=true
+                                panel_title=seo_copy.title
+                                panel_subtitle=seo_copy.subtitle
+                                empty_message=seo_copy.empty_message
+                            />
+                        }
+                    }
                 </section>
             </div>
         </section>
@@ -801,39 +803,28 @@ fn open_product_for_edit(
     set_busy.set(true);
     set_error.set(None);
     spawn_local(async move {
-        match transport::fetch_product(
+        let result = transport::fetch_product(
             token,
             tenant,
             bootstrap.current_tenant.id,
             product_id,
             requested_locale.clone(),
         )
-        .await
-        {
-            Ok(Some(product)) => apply_product(
-                &product,
-                requested_locale.as_deref(),
-                set_editing_id,
-                set_selected,
-                set_title,
-                set_handle,
-                set_description,
-                set_seller_id,
-                set_vendor,
-                set_product_type,
-                set_shipping_profile_slug,
-                set_sku,
-                set_barcode,
-                set_currency_code,
-                set_amount,
-                set_compare_at_amount,
-                set_inventory_quantity,
-                set_publish_now,
-            ),
-            Ok(None) => {
-                clear_product_form(
+        .await;
+
+        match build_product_admin_open_product_view_model(
+            requested_locale.as_deref(),
+            &error_copy,
+            result,
+        ) {
+            ProductAdminOpenProductViewModel::Ready {
+                product,
+                form_state,
+            } => {
+                set_selected.set(Some(product));
+                apply_product_editor_form_state(
+                    form_state,
                     set_editing_id,
-                    set_selected,
                     set_title,
                     set_handle,
                     set_description,
@@ -849,12 +840,15 @@ fn open_product_for_edit(
                     set_inventory_quantity,
                     set_publish_now,
                 );
-                set_error.set(Some(error_copy.product_not_found.clone()));
             }
-            Err(err) => {
-                clear_product_form(
+            ProductAdminOpenProductViewModel::Empty {
+                form_state,
+                error_message,
+            } => {
+                set_selected.set(None);
+                apply_product_editor_form_state(
+                    form_state,
                     set_editing_id,
-                    set_selected,
                     set_title,
                     set_handle,
                     set_description,
@@ -870,7 +864,7 @@ fn open_product_for_edit(
                     set_inventory_quantity,
                     set_publish_now,
                 );
-                set_error.set(Some(error_copy.load_product_failure(err)));
+                set_error.set(Some(error_message));
             }
         }
         set_busy.set(false);
@@ -1145,12 +1139,7 @@ fn SelectedProductSummary(
     pricing_state: Option<Result<Option<ProductPricingDetail>, String>>,
     pricing_route_base: String,
 ) -> impl IntoView {
-    let pricing_state = match pricing_state.as_ref() {
-        None => ProductAdminPricingPreviewState::Loading,
-        Some(Err(err)) => ProductAdminPricingPreviewState::Error(err.as_str()),
-        Some(Ok(None)) => ProductAdminPricingPreviewState::Unavailable,
-        Some(Ok(Some(pricing))) => ProductAdminPricingPreviewState::Ready(pricing),
-    };
+    let pricing_state = product_admin_pricing_preview_state_from_result(pricing_state.as_ref());
 
     match build_selected_product_summary_view_model(
         locale.as_deref(),
