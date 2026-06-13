@@ -5,7 +5,9 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
-use crate::core::{order_list_request, text_or_none};
+use crate::core::{
+    order_list_request, prepare_mark_paid_command, prepare_ship_order_command, text_or_none,
+};
 use crate::helpers::{
     action_hint, apply_order_detail, clear_order_detail, format_order_caption,
     handle_action_result, localized_order_status, order_status_badge, short_order_id,
@@ -271,12 +273,17 @@ pub fn OrderAdmin() -> impl IntoView {
             set_error.set(Some(mark_paid_action_requires_selection_label.clone()));
             return;
         };
-        let payment_id_value = payment_id.get_untracked().trim().to_string();
-        let payment_method_value = payment_method.get_untracked().trim().to_string();
-        if payment_id_value.is_empty() || payment_method_value.is_empty() {
-            set_error.set(Some(mark_paid_requirements_error_label.clone()));
-            return;
-        }
+        let mark_paid_command = match prepare_mark_paid_command(
+            payment_id.get_untracked(),
+            payment_method.get_untracked(),
+            mark_paid_requirements_error_label.clone(),
+        ) {
+            Ok(command) => command,
+            Err(error) => {
+                set_error.set(Some(error));
+                return;
+            }
+        };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let tenant_id = current_tenant.id.clone();
@@ -293,8 +300,8 @@ pub fn OrderAdmin() -> impl IntoView {
                 tenant_id.clone(),
                 user_id,
                 order_id.clone(),
-                payment_id_value,
-                payment_method_value,
+                mark_paid_command.payment_id,
+                mark_paid_command.payment_method,
             )
             .await;
             handle_action_result(
@@ -340,12 +347,17 @@ pub fn OrderAdmin() -> impl IntoView {
             set_error.set(Some(ship_action_requires_selection_label.clone()));
             return;
         };
-        let tracking_number_value = tracking_number.get_untracked().trim().to_string();
-        let carrier_value = carrier.get_untracked().trim().to_string();
-        if tracking_number_value.is_empty() || carrier_value.is_empty() {
-            set_error.set(Some(ship_requirements_error_label.clone()));
-            return;
-        }
+        let ship_command = match prepare_ship_order_command(
+            tracking_number.get_untracked(),
+            carrier.get_untracked(),
+            ship_requirements_error_label.clone(),
+        ) {
+            Ok(command) => command,
+            Err(error) => {
+                set_error.set(Some(error));
+                return;
+            }
+        };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let tenant_id = current_tenant.id.clone();
@@ -362,8 +374,8 @@ pub fn OrderAdmin() -> impl IntoView {
                 tenant_id.clone(),
                 user_id,
                 order_id.clone(),
-                tracking_number_value,
-                carrier_value,
+                ship_command.tracking_number,
+                ship_command.carrier,
             )
             .await;
             handle_action_result(
