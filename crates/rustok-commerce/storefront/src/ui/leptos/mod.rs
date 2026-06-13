@@ -4,7 +4,14 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 use rustok_cart_storefront::core::CartCheckoutHandoffLabels;
 use rustok_cart_storefront::CartCheckoutHandoffCard;
-use rustok_fulfillment_storefront::FulfillmentShippingHandoffNotice;
+use rustok_fulfillment_storefront::core::{
+    SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest, ShippingSelectionLabels,
+};
+use rustok_fulfillment_storefront::{
+    FulfillmentShippingHandoffNotice, FulfillmentShippingSelectionPanel,
+    StorefrontDeliveryGroup as FulfillmentDeliveryGroup,
+    StorefrontShippingOption as FulfillmentShippingOption,
+};
 use rustok_order_storefront::core::{
     OrderCheckoutActionLabels, OrderCheckoutResultData, OrderCheckoutResultLabels,
 };
@@ -82,6 +89,41 @@ pub fn CommerceView() -> impl IntoView {
         })
     };
 
+    let on_select_shipping_option = {
+        let action_error_label = action_error_label.clone();
+        Callback::new(
+            move |(cart, request): (
+                crate::model::StorefrontCheckoutCart,
+                FulfillmentSelectShippingOptionRequest,
+            )| {
+                let action_error_label = action_error_label.clone();
+                set_action_busy.set(true);
+                set_action_error.set(None);
+                set_completion.set(None);
+                spawn_local(async move {
+                    match transport::select_storefront_shipping_option(
+                        core::build_select_shipping_option_request(
+                            cart,
+                            request.shipping_profile_slug,
+                            request.seller_id,
+                            request.seller_scope,
+                            request.shipping_option_id,
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                        Err(err) => set_action_error.set(Some(core::error_with_context(
+                            action_error_label.as_str(),
+                            &err.to_string(),
+                        ))),
+                    }
+                    set_action_busy.set(false);
+                });
+            },
+        )
+    };
+
     let on_complete_checkout = {
         let action_error_label = action_error_label.clone();
         Callback::new(move |cart_id: String| {
@@ -139,6 +181,7 @@ pub fn CommerceView() -> impl IntoView {
                                         busy=action_busy
                                         completion
                                         on_create_payment_collection
+                                        on_select_shipping_option
                                         on_complete_checkout
                                     />
                                 }.into_any(),
@@ -158,6 +201,10 @@ fn CommerceShowcase(
     busy: ReadSignal<bool>,
     completion: ReadSignal<Option<StorefrontCheckoutCompletion>>,
     on_create_payment_collection: Callback<String>,
+    on_select_shipping_option: Callback<(
+        crate::model::StorefrontCheckoutCart,
+        FulfillmentSelectShippingOptionRequest,
+    )>,
     on_complete_checkout: Callback<String>,
 ) -> impl IntoView {
     view! {
@@ -170,6 +217,7 @@ fn CommerceShowcase(
                     busy
                     completion
                     on_create_payment_collection
+                    on_select_shipping_option
                     on_complete_checkout
                 />
                 <SurfaceRail />
@@ -216,6 +264,10 @@ fn CheckoutWorkspace(
     busy: ReadSignal<bool>,
     completion: ReadSignal<Option<StorefrontCheckoutCompletion>>,
     on_create_payment_collection: Callback<String>,
+    on_select_shipping_option: Callback<(
+        crate::model::StorefrontCheckoutCart,
+        FulfillmentSelectShippingOptionRequest,
+    )>,
     on_complete_checkout: Callback<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -270,6 +322,15 @@ fn CheckoutWorkspace(
                         <FulfillmentShippingHandoffNotice
                             message=t(locale.as_deref(), "commerce.delivery.moduleOwnership", "Shipping options and fulfillment details stay in fulfillment-owned UI; commerce only triggers cross-module checkout orchestration.")
                         />
+                        <FulfillmentShippingSelectionPanel
+                            delivery_groups=fulfillment_delivery_groups(cart.delivery_groups.clone())
+                            labels=fulfillment_shipping_selection_labels(locale.as_deref())
+                            busy
+                            on_select_shipping_option={
+                                let cart = cart.clone();
+                                Callback::new(move |request| on_select_shipping_option.run((cart.clone(), request)))
+                            }
+                        />
                         <div class="mt-6 grid gap-3 md:grid-cols-2">
                             <a class="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-card-foreground transition hover:bg-muted" href=cart_href>
                                 {t(locale.as_deref(), "commerce.checkout.openCart", "Open cart workspace")}
@@ -309,6 +370,61 @@ fn CheckoutWorkspace(
                 }.into_any(),
             }
         }
+    }
+}
+
+fn fulfillment_delivery_groups(
+    groups: Vec<crate::model::StorefrontCheckoutDeliveryGroup>,
+) -> Vec<FulfillmentDeliveryGroup> {
+    groups
+        .into_iter()
+        .map(|group| FulfillmentDeliveryGroup {
+            shipping_profile_slug: group.shipping_profile_slug,
+            seller_id: group.seller_id,
+            seller_scope: group.seller_scope,
+            line_item_count: group.line_item_count,
+            selected_shipping_option_id: group.selected_shipping_option_id,
+            available_shipping_options: group
+                .available_shipping_options
+                .into_iter()
+                .map(|option| FulfillmentShippingOption {
+                    id: option.id,
+                    name: option.name,
+                    currency_code: option.currency_code,
+                    amount: option.amount,
+                    provider_id: option.provider_id,
+                    active: option.active,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn fulfillment_shipping_selection_labels(locale: Option<&str>) -> ShippingSelectionLabels {
+    ShippingSelectionLabels {
+        badge: t(locale, "commerce.delivery.badge", "delivery"),
+        title: t(locale, "commerce.delivery.title", "Shipping selection"),
+        subtitle: t(
+            locale,
+            "commerce.delivery.subtitle",
+            "Select fulfillment-owned shipping options for each seller-aware delivery group.",
+        ),
+        empty: t(
+            locale,
+            "commerce.delivery.empty",
+            "No delivery groups are available for this cart yet.",
+        ),
+        group_label: t(locale, "commerce.delivery.group", "Delivery group"),
+        line_items_label: t(locale, "commerce.delivery.lineItems", "line items"),
+        provider_label: t(locale, "commerce.delivery.provider", "Provider"),
+        selected_label: t(locale, "commerce.delivery.selected", "Selected"),
+        select_label: t(locale, "commerce.delivery.select", "Select"),
+        pending_label: t(locale, "commerce.checkout.pending", "Processing..."),
+        no_selection_label: t(
+            locale,
+            "commerce.delivery.noSelection",
+            "No shipping option",
+        ),
     }
 }
 

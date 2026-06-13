@@ -1,3 +1,6 @@
+pub mod core;
+mod model;
 mod ui;
 
-pub use ui::FulfillmentShippingHandoffNotice;
+pub use model::{StorefrontDeliveryGroup, StorefrontShippingOption};
+pub use ui::{FulfillmentShippingHandoffNotice, FulfillmentShippingSelectionPanel};
