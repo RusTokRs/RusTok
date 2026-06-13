@@ -96,6 +96,7 @@ Structural shape фиксирует глубину code-level FFA split неза
 | `fulfillment` | admin | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-fulfillment/docs/implementation-plan.md` (slice: admin core list/filter policy + transport facade + explicit `ui/leptos.rs` render adapter over existing GraphQL shipping-option transport; CRUD behavior unchanged) |
 | `seo` | admin + storefront contracts | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-seo/docs/implementation-plan.md` (`rustok-seo-admin` slice: `core.rs` form/view-model helpers + index replay/sitemap guard/schema-fix prefill/busy-key policy, `transport.rs` native/server-function facade and explicit `ui/leptos.rs` render adapter; storefront parity wave D7..D9 regrouped as Milestones A..E, A/B runtime Next adapter cutover is in progress) |
 | `media` | admin | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-media/docs/implementation-plan.md` (admin FFA slice: crate root только связывает модули и реэкспортирует `MediaAdmin`; `admin/src/core.rs` владеет Leptos-free form/presentation helpers с unit tests; `admin/src/transport/` владеет native-first + GraphQL fallback + REST upload facade и split adapters `native_server_adapter.rs`/`graphql_adapter.rs`/`rest_adapter.rs`; `admin/src/ui/leptos.rs` — явный Leptos render adapter) |
+| `ai` | admin + Next admin | `in_progress` | `not_started` | `core_transport_ui` | `crates/rustok-ai/docs/implementation-plan.md` (capability-owned AI admin FFA slice: `admin/src/core.rs` owns Leptos-free request normalization, direct-job payload builders and diagnostics summary policy; `admin/src/transport/` owns the native server-function facade; `admin/src/ui/leptos.rs` is the explicit Leptos render adapter; Next.js GraphQL admin package remains the parallel headless/admin contract; fast guardrail: `scripts/verify/verify-ai-admin-boundary.mjs`) |
 
 ## Hotspot contract (DOC-12 / H1)
 
@@ -296,7 +297,7 @@ graph TD
 | `rustok-iggy-connector` | Embedded/remote connector layer для Iggy |
 | `rustok-telemetry` | Observability bootstrap и shared telemetry helpers |
 | `rustok-mcp` | MCP adapter/server tool surface |
-| `rustok-ai` | AI host/orchestrator capability with large operator/admin UI surfaces for Leptos and Next.js hosts; Leptos admin first core/transport/ui slice is tracked in the local AI implementation plan with native adapter `admin/src/transport/native_server_adapter.rs` and guardrail `scripts/verify/verify-ai-admin-boundary.mjs` |
+| `rustok-ai` | AI host/orchestrator capability with large operator/admin UI surfaces for Leptos and Next.js hosts; Leptos admin core/transport/ui slice is tracked in the local AI implementation plan with core-owned request/payload/diagnostics policy, native adapter `admin/src/transport/native_server_adapter.rs` and guardrail `scripts/verify/verify-ai-admin-boundary.mjs` |
 | `rustok-ai-content` | Domain-owned AI support crate for content moderation vertical registration and policy seams |
 | `rustok-ai-product` | Domain-owned AI support crate for product vertical registration (`product_copy`, `product_attributes`) |
 | `rustok-ai-order` | Domain-owned AI support crate for order vertical registration (`order_analytics`, `order_ops_assistant`) |

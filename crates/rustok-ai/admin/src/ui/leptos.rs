@@ -26,8 +26,8 @@ use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
 use crate::core::{
-    alloy_task_payload, blog_task_payload, image_task_payload, optional_text, parse_csv,
-    product_attributes_task_payload, product_task_payload,
+    alloy_task_payload, average_latency_ms, blog_task_payload, image_task_payload, optional_text,
+    parse_csv, product_attributes_task_payload, product_task_payload, summarize_recent_runs,
 };
 use crate::i18n::t;
 
@@ -1796,11 +1796,10 @@ pub fn AiAdmin() -> impl IntoView {
                                         <div>
                                             {average_run_latency_summary(
                                                 ui_locale_diagnostics.as_deref(),
-                                                if bootstrap.metrics.run_latency_samples == 0 {
-                                                    0
-                                                } else {
-                                                    bootstrap.metrics.run_latency_ms_total / bootstrap.metrics.run_latency_samples
-                                                }
+                                                average_latency_ms(
+                                                    bootstrap.metrics.run_latency_ms_total,
+                                                    bootstrap.metrics.run_latency_samples,
+                                                )
                                             )}
                                         </div>
                                         <div>
@@ -2505,26 +2504,20 @@ fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) 
         );
     }
 
-    let failed = runs.iter().filter(|run| run.status == "failed").count();
-    let waiting = runs
-        .iter()
-        .filter(|run| run.status == "waiting_approval")
-        .count();
-    let avg_latency = runs
-        .iter()
-        .map(|run| run.duration_ms.max(0) as u64)
-        .sum::<u64>()
-        / runs.len() as u64;
+    let stats = summarize_recent_runs(
+        runs.iter()
+            .map(|run| (run.status.as_str(), run.duration_ms)),
+    );
 
     t(
         locale,
         "ai.summary.recentRuns",
         "{count} run(s), {failed} failed, {waiting} waiting approval, avg {latency} ms",
     )
-    .replace("{count}", runs.len().to_string().as_str())
-    .replace("{failed}", failed.to_string().as_str())
-    .replace("{waiting}", waiting.to_string().as_str())
-    .replace("{latency}", avg_latency.to_string().as_str())
+    .replace("{count}", stats.total.to_string().as_str())
+    .replace("{failed}", stats.failed.to_string().as_str())
+    .replace("{waiting}", stats.waiting_approval.to_string().as_str())
+    .replace("{latency}", stats.average_latency_ms.to_string().as_str())
 }
 
 fn stream_event_kind_label(

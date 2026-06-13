@@ -63,8 +63,12 @@ assertContains(lib, "mod transport;", `${libPath}: crate root must wire transpor
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::leptos::AiAdmin;", `${libPath}: crate root must re-export the Leptos adapter surface`);
 assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
+assertContains(ui, "summarize_recent_runs", `${uiPath}: Leptos adapter must consume core-owned diagnostics summary policy`);
+assertContains(ui, "average_latency_ms", `${uiPath}: Leptos adapter must consume core-owned latency policy`);
 assertContains(ui, "product_attributes_task_payload", `${uiPath}: Leptos adapter must call core-owned payload builder`);
 assertNotContains(ui, "fn product_attributes_task_payload", `${uiPath}: payload builder must not live in the Leptos adapter`);
+assertNotContains(ui, "fn summarize_recent_runs", `${uiPath}: diagnostics summary policy must not live in the Leptos adapter`);
+assertNotContains(ui, "fn average_latency_ms", `${uiPath}: latency fallback policy must not live in the Leptos adapter`);
 assertNotContains(ui, "fn parse_csv(value: String)", `${uiPath}: CSV request normalization must not live in the Leptos adapter`);
 assertNotContains(ui, /t\(\s*locale,\s*locale,/, `${uiPath}: i18n helper calls must not pass locale twice`);
 assertContains(ui, "transport::fetch_bootstrap", `${uiPath}: Leptos adapter must call the AI transport facade`);
@@ -88,6 +92,8 @@ for (const marker of [
   "pub fn product_task_payload",
   "pub fn product_attributes_task_payload",
   "pub fn blog_task_payload",
+  "pub fn average_latency_ms",
+  "pub fn summarize_recent_runs",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned helper ${marker}`);
 }
