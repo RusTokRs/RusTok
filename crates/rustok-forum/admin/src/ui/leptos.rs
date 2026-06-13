@@ -9,13 +9,14 @@ use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
 
 use crate::core::{
     category_card_view_model, category_sidebar_total_count, category_sidebar_view_model,
-    deleted_selection_matches, format_count, forum_admin_header_view_model,
-    forum_admin_open_query_intent, forum_admin_reset_query_intent, forum_admin_saved_query_intent,
-    parse_tags, reply_card_view_model, reply_count_label, result_item_count, selected_query_id,
-    topic_card_view_model, topic_category_filter, CategoryFormSnapshot,
-    ForumAdminCategoryRenderLabels, ForumAdminFormError, ForumAdminHeaderLabels,
-    ForumAdminQuerySurface, ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation,
-    ForumAdminTopicRenderLabels, TopicFormSnapshot,
+    deleted_selection_matches, format_count, forum_admin_collection_state,
+    forum_admin_header_view_model, forum_admin_open_query_intent, forum_admin_reset_query_intent,
+    forum_admin_saved_query_intent, parse_tags, reply_card_view_model, reply_count_label,
+    result_item_count, selected_category_filter_label, selected_query_id, topic_card_view_model,
+    topic_category_filter, CategoryFormSnapshot, ForumAdminCategoryRenderLabels,
+    ForumAdminCollectionState, ForumAdminFormError, ForumAdminHeaderLabels, ForumAdminQuerySurface,
+    ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation, ForumAdminTopicRenderLabels,
+    TopicFormSnapshot,
 };
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
@@ -1269,20 +1270,13 @@ fn TopicsPage(
     );
     let preview_title = t(ui_locale.as_deref(), "forum.topics.previewTitle", "Replies");
     let shown_template = t(ui_locale.as_deref(), "forum.topics.shown", "{count} shown");
-    let selected_category_name = Memo::new(move |_| match categories.get() {
-        Some(Ok(items)) => {
-            let selected_id = filter_category_id.get();
-            if selected_id.is_empty() {
-                all_categories_label.clone()
-            } else {
-                items
-                    .into_iter()
-                    .find(|item| item.id == selected_id)
-                    .map(|item| item.name)
-                    .unwrap_or_else(|| filtered_category_label.clone())
-            }
-        }
-        _ => all_categories_label.clone(),
+    let selected_category_name = Memo::new(move |_| {
+        selected_category_filter_label(
+            categories.get(),
+            filter_category_id.get().as_str(),
+            all_categories_label.as_str(),
+            filtered_category_label.as_str(),
+        )
     });
     let topic_form_tag_count = move || {
         ready_template.replace(
@@ -1578,9 +1572,9 @@ fn render_category_grid(
         edit: t(locale.as_deref(), "forum.render.edit", "Edit"),
     };
     let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
-    match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
-        Ok(items) => view! {
+    match forum_admin_collection_state(result) {
+        ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
+        ForumAdminCollectionState::Ready(items) => view! {
             <div class="mt-6 grid gap-4 md:grid-cols-2">
                 {items.into_iter().map(|item| {
                     let vm = category_card_view_model(
@@ -1625,7 +1619,7 @@ fn render_category_grid(
                 }).collect_view()}
             </div>
         }.into_any(),
-        Err(err) => view! { <div class="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
+        ForumAdminCollectionState::Error(err) => view! { <div class="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
     }
 }
 
@@ -1645,9 +1639,9 @@ fn render_category_sidebar(
         "forum.topics.allCategories",
         "All categories",
     );
-    match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-4 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
-        Ok(items) => {
+    match forum_admin_collection_state(result) {
+        ForumAdminCollectionState::Empty => view! { <div class="mt-4 rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">{no_categories_label}</div> }.into_any(),
+        ForumAdminCollectionState::Ready(items) => {
             let total_count = category_sidebar_total_count(&items);
             view! {
             <div class="mt-4 space-y-2">
@@ -1671,7 +1665,7 @@ fn render_category_sidebar(
             </div>
         }.into_any()
         },
-        Err(err) => view! { <div class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
+        ForumAdminCollectionState::Error(err) => view! { <div class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
     }
 }
 
@@ -1697,9 +1691,9 @@ fn render_topic_feed(
     };
     let replies_label = t(locale.as_deref(), "forum.render.replies", "Replies");
     let delete_label = t(locale.as_deref(), "forum.render.delete", "Delete");
-    match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_topics_label}</div> }.into_any(),
-        Ok(items) => view! {
+    match forum_admin_collection_state(result) {
+        ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-8 text-sm text-muted-foreground">{no_topics_label}</div> }.into_any(),
+        ForumAdminCollectionState::Ready(items) => view! {
             <div class="mt-6 space-y-3">
                 {items.into_iter().map(|item| {
                     let vm = topic_card_view_model(
@@ -1738,7 +1732,7 @@ fn render_topic_feed(
                 }).collect_view()}
             </div>
         }.into_any(),
-        Err(err) => view! { <div class="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
+        ForumAdminCollectionState::Error(err) => view! { <div class="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
     }
 }
 
@@ -1751,9 +1745,9 @@ fn render_reply_stack(
         "forum.render.openTopicForReplies",
         "Open a topic card to preview replies.",
     );
-    match result {
-        Ok(items) if items.is_empty() => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-6 text-sm text-muted-foreground">{empty_label}</div> }.into_any(),
-        Ok(items) => view! {
+    match forum_admin_collection_state(result) {
+        ForumAdminCollectionState::Empty => view! { <div class="mt-6 rounded-[1.5rem] border border-dashed border-border p-6 text-sm text-muted-foreground">{empty_label}</div> }.into_any(),
+        ForumAdminCollectionState::Ready(items) => view! {
             <div class="mt-6 space-y-3">
                 {items.into_iter().map(|item| {
                     let vm = reply_card_view_model(&item);
@@ -1769,7 +1763,7 @@ fn render_reply_stack(
                 }).collect_view()}
             </div>
         }.into_any(),
-        Err(err) => view! { <div class="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
+        ForumAdminCollectionState::Error(err) => view! { <div class="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> }.into_any(),
     }
 }
 

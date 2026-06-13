@@ -124,6 +124,26 @@ pub fn category_sidebar_total_count(items: &[CategoryListItem]) -> usize {
     items.len()
 }
 
+pub fn selected_category_filter_label(
+    categories: Option<Result<Vec<CategoryListItem>, String>>,
+    selected_id: &str,
+    all_categories_label: &str,
+    filtered_category_label: &str,
+) -> String {
+    if selected_id.trim().is_empty() {
+        return all_categories_label.to_string();
+    }
+
+    match categories {
+        Some(Ok(items)) => items
+            .into_iter()
+            .find(|item| item.id == selected_id)
+            .map(|item| item.name)
+            .unwrap_or_else(|| filtered_category_label.to_string()),
+        _ => all_categories_label.to_string(),
+    }
+}
+
 pub fn reply_card_view_model(item: &ReplyListItem) -> ForumAdminReplyCardViewModel {
     ForumAdminReplyCardViewModel {
         status: item.status.clone(),
@@ -431,6 +451,23 @@ pub fn topic_status_class(status: &str) -> &'static str {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ForumAdminCollectionState<T> {
+    Empty,
+    Ready(Vec<T>),
+    Error(String),
+}
+
+pub fn forum_admin_collection_state<T>(
+    result: Result<Vec<T>, String>,
+) -> ForumAdminCollectionState<T> {
+    match result {
+        Ok(items) if items.is_empty() => ForumAdminCollectionState::Empty,
+        Ok(items) => ForumAdminCollectionState::Ready(items),
+        Err(err) => ForumAdminCollectionState::Error(err),
+    }
+}
+
 pub fn result_item_count<T>(result: Option<Result<Vec<T>, String>>) -> usize {
     match result {
         Some(Ok(items)) => items.len(),
@@ -445,6 +482,32 @@ pub fn reply_count_label(replies: Option<Result<Vec<ReplyListItem>, String>>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn category_item(id: &str, name: &str) -> CategoryListItem {
+        CategoryListItem {
+            id: id.to_string(),
+            locale: "en".to_string(),
+            effective_locale: "en".to_string(),
+            name: name.to_string(),
+            slug: name.to_ascii_lowercase(),
+            description: None,
+            icon: None,
+            color: None,
+            topic_count: 1,
+            reply_count: 2,
+        }
+    }
+
+    fn two_category_items() -> Vec<CategoryListItem> {
+        vec![
+            category_item("category-1", "General"),
+            category_item("category-2", "Support"),
+        ]
+    }
+
+    fn some_category_items() -> Result<Vec<CategoryListItem>, String> {
+        Ok(two_category_items())
+    }
 
     #[test]
     fn trims_topic_category_filter() {
@@ -530,6 +593,66 @@ mod tests {
         let topics = forum_admin_header_view_model(false, &labels);
         assert_eq!(topics.title, "Moderation workspace");
         assert_eq!(topics.body, "Review topic flow");
+    }
+
+    #[test]
+    fn resolves_selected_category_filter_label() {
+        assert_eq!(
+            selected_category_filter_label(
+                some_category_items(),
+                "category-2",
+                "All categories",
+                "Filtered category",
+            ),
+            "Support"
+        );
+        assert_eq!(
+            selected_category_filter_label(
+                some_category_items(),
+                "missing",
+                "All categories",
+                "Filtered category",
+            ),
+            "Filtered category"
+        );
+        assert_eq!(
+            selected_category_filter_label(
+                some_category_items(),
+                "  ",
+                "All categories",
+                "Filtered category",
+            ),
+            "All categories"
+        );
+        assert_eq!(
+            selected_category_filter_label(
+                Some(Err("boom".to_string())),
+                "category-2",
+                "All categories",
+                "Filtered category",
+            ),
+            "All categories"
+        );
+    }
+
+    #[test]
+    fn classifies_collection_state_for_empty_ready_and_error() {
+        assert!(matches!(
+            forum_admin_collection_state::<CategoryListItem>(Ok(Vec::new())),
+            ForumAdminCollectionState::Empty
+        ));
+        match forum_admin_collection_state(some_category_items()) {
+            ForumAdminCollectionState::Ready(items) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].id, "category-1");
+                assert_eq!(items[1].id, "category-2");
+            }
+            _ => panic!("expected ready collection state"),
+        }
+        match forum_admin_collection_state::<CategoryListItem>(Err("boom".to_string())) {
+            ForumAdminCollectionState::Error(err) => assert_eq!(err, "boom"),
+            _ => panic!("expected error collection state"),
+        }
     }
 
     #[test]
