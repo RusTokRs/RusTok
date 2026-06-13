@@ -121,7 +121,7 @@ assertContains(api, "RegionService", `${apiPath}: native adapter must own servic
 
 assertContains(implementationPlan, "FFA slice #31", `${implementationPlanPath}: local plan must record slice #31`);
 assertContains(implementationPlan, "verify-region-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fast boundary guardrail`);
-assertContains(registry, "slice #36", `${registryPath}: central readiness board must record slice #36`);
+assertContains(registry, "slice #37", `${registryPath}: central readiness board must record slice #37`);
 assertContains(registry, "verify-region-admin-boundary.mjs", `${registryPath}: central readiness board must mention the fast boundary guardrail`);
 
 if (failures.length > 0) {
