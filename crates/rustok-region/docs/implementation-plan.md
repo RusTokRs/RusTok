@@ -7,13 +7,11 @@
 ## Execution checkpoint
 
 - Current phase: ffa_ui_leptos_adapter_split_slice
-- Last checkpoint: FFA slice #26 перенесла admin list loading/error/empty/ready state mapping в Leptos-free core: `RegionAdminListStateViewModel` теперь собирает status copy, error context и ready item rows/open action до render слоя.
-- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer или добрать следующий небольшой admin detail empty/error state slice без изменения native/GraphQL contracts.
+- Last checkpoint: FFA slice #28 перенесла admin route/query writer policy в Leptos-free core: `RegionAdminRouteQueryUpdate` теперь описывает `PushSelected`/`ReplaceSelected`/`ClearSelected` для open/save/new действий, а Leptos adapter только применяет готовые host query updates.
+- Next step: Продолжить FFA-first sequencing к thin host-adapter smoke для route/query writer либо добрать следующий небольшой admin detail empty/error state slice без изменения native/GraphQL contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
-- Last updated at (UTC): 2026-06-12T00:00:00Z
-- Last updated at (UTC): 2026-06-12T12:00:00Z
-- Last updated at (UTC): 2026-06-12T13:00:00Z
+- Last updated at (UTC): 2026-06-13T00:00:00Z
 
 
 ## FFA/FBA status
@@ -49,8 +47,10 @@
   - FFA slice #23 добавила admin editor mode view-model (`RegionAdminEditorViewModel`) для create/edit title и create/save submit label selection без Leptos runtime;
   - FFA slice #24 добавила admin editor field view-model (`RegionAdminEditorFieldViewModel`) для placeholders, tax-included checkbox label и metadata/country-tax-policy copy без Leptos runtime, а также восстановила отсутствующие locale keys для `region.field.countryTaxPolicies` / `region.field.metadata`;
   - FFA slice #25 добавила admin shell/list header view-models (`RegionAdminShellViewModel`, `RegionAdminListHeaderViewModel`): tenant subtitle replacement и fallback policy выполняются в core, а Leptos adapter рендерит готовые header strings;
-  - FFA slice #26 добавила admin list state view-model (`RegionAdminListStateViewModel`) для loading/error/empty/ready branches, error context formatting, ready item rows и open action copy без Leptos runtime.
-- Last verified at (UTC): 2026-06-12T00:00:00Z
+  - FFA slice #26 добавила admin list state view-model (`RegionAdminListStateViewModel`) для loading/error/empty/ready branches, error context formatting, ready item rows и open action copy без Leptos runtime;
+  - FFA slice #27 добавила admin route/query intent (`RegionAdminRouteQueryIntent`) для selected-region query normalization и `Open`/`Clear` decision policy без Leptos runtime;
+  - FFA slice #28 добавила admin route/query writer update contract (`RegionAdminRouteQueryUpdate`, `REGION_ADMIN_SELECTED_QUERY_KEY`) для open/save/new host query mutations без Leptos-owned key/action policy.
+- Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ

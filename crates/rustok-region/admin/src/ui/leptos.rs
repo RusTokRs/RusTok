@@ -2,13 +2,14 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_api::UiRouteContext;
 
 use crate::core::{
     RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminEditorFieldLabels,
     RegionAdminEditorFormState, RegionAdminEditorLabels, RegionAdminListHeaderLabels,
     RegionAdminListLabels, RegionAdminListStateLabels, RegionAdminListStateViewModel,
-    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminShellLabels,
+    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent,
+    RegionAdminRouteQueryUpdate, RegionAdminShellLabels, REGION_ADMIN_SELECTED_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::model::RegionDetail;
@@ -29,7 +30,7 @@ where
 pub fn RegionAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let selected_region_query = use_route_query_value(AdminQueryKey::RegionId.as_str());
+    let selected_region_query = use_route_query_value(REGION_ADMIN_SELECTED_QUERY_KEY);
     let query_writer = use_route_query_writer();
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -38,11 +39,13 @@ pub fn RegionAdmin() -> impl IntoView {
     let (name, set_name) = signal(String::new());
     let (currency_code, set_currency_code) = signal(String::new());
     let (tax_provider_id, set_tax_provider_id) = signal(String::new());
-    let (tax_rate, set_tax_rate) = signal("0".to_string());
-    let (tax_included, set_tax_included) = signal(false);
-    let (country_tax_policies, set_country_tax_policies) = signal("[]".to_string());
-    let (countries, set_countries) = signal(String::new());
-    let (metadata, set_metadata) = signal("{}".to_string());
+    let empty_form_state = RegionAdminEditorFormState::empty();
+    let (tax_rate, set_tax_rate) = signal(empty_form_state.tax_rate.clone());
+    let (tax_included, set_tax_included) = signal(empty_form_state.tax_included);
+    let (country_tax_policies, set_country_tax_policies) =
+        signal(empty_form_state.country_tax_policies.clone());
+    let (countries, set_countries) = signal(empty_form_state.countries.clone());
+    let (metadata, set_metadata) = signal(empty_form_state.metadata.clone());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
@@ -244,16 +247,18 @@ pub fn RegionAdmin() -> impl IntoView {
     };
 
     let reset_form = move || {
-        set_editing_id.set(None);
-        set_selected.set(None);
-        set_name.set(String::new());
-        set_currency_code.set(String::new());
-        set_tax_provider_id.set(String::new());
-        set_tax_rate.set("0".to_string());
-        set_tax_included.set(false);
-        set_country_tax_policies.set("[]".to_string());
-        set_countries.set(String::new());
-        set_metadata.set("{}".to_string());
+        clear_region_form(
+            set_editing_id,
+            set_selected,
+            set_name,
+            set_currency_code,
+            set_tax_provider_id,
+            set_tax_rate,
+            set_tax_included,
+            set_country_tax_policies,
+            set_countries,
+            set_metadata,
+        );
         set_error.set(None);
     };
 
@@ -300,12 +305,10 @@ pub fn RegionAdmin() -> impl IntoView {
         });
     });
     let initial_open_region = open_region;
-    Effect::new(move |_| match selected_region_query.get() {
-        Some(region_id) if crate::core::optional_ui_text(region_id.as_str()).is_some() => {
-            initial_open_region.run(region_id);
-        }
-        _ => {
-            clear_region_form(
+    Effect::new(move |_| {
+        match crate::core::region_admin_route_query_intent(selected_region_query.get().as_deref()) {
+            RegionAdminRouteQueryIntent::Open { region_id } => initial_open_region.run(region_id),
+            RegionAdminRouteQueryIntent::Clear => clear_region_form(
                 set_editing_id,
                 set_selected,
                 set_name,
@@ -316,7 +319,7 @@ pub fn RegionAdmin() -> impl IntoView {
                 set_country_tax_policies,
                 set_countries,
                 set_metadata,
-            );
+            ),
         }
     });
 
@@ -385,7 +388,10 @@ pub fn RegionAdmin() -> impl IntoView {
                         set_metadata,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    submit_query_writer.replace_value(AdminQueryKey::RegionId.as_str(), detail_id);
+                    apply_region_route_query_update(
+                        &submit_query_writer,
+                        crate::core::region_admin_saved_query_update(&detail_id),
+                    );
                 }
                 Err(err) => set_error.set(Some(crate::core::error_with_context(
                     save_region_error_label.as_str(),
@@ -495,7 +501,7 @@ pub fn RegionAdmin() -> impl IntoView {
                                                             type="button"
                                                             class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                             disabled=move || busy.get()
-                                                            on:click=move |_| item_query_writer.push_value(AdminQueryKey::RegionId.as_str(), region_id.clone())
+                                                            on:click=move |_| apply_region_route_query_update(&item_query_writer, crate::core::region_admin_open_query_update(&region_id))
                                                         >
                                                             {open_action.clone()}
                                                         </button>
@@ -526,7 +532,10 @@ pub fn RegionAdmin() -> impl IntoView {
                                 class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                 disabled=move || busy.get()
                             on:click=move |_| {
-                                reset_query_writer.clear_key(AdminQueryKey::RegionId.as_str());
+                                apply_region_route_query_update(
+                                    &reset_query_writer,
+                                    Some(crate::core::region_admin_new_query_update()),
+                                );
                                 reset_form();
                             }
                             >
@@ -616,6 +625,24 @@ pub fn RegionAdmin() -> impl IntoView {
                 </section>
             </div>
         </section>
+    }
+}
+
+fn apply_region_route_query_update(
+    query_writer: &leptos_ui_routing::RouteQueryWriter,
+    update: Option<RegionAdminRouteQueryUpdate>,
+) {
+    match update {
+        Some(RegionAdminRouteQueryUpdate::PushSelected { key, region_id }) => {
+            query_writer.push_value(key, region_id);
+        }
+        Some(RegionAdminRouteQueryUpdate::ReplaceSelected { key, region_id }) => {
+            query_writer.replace_value(key, region_id);
+        }
+        Some(RegionAdminRouteQueryUpdate::ClearSelected { key }) => {
+            query_writer.clear_key(key);
+        }
+        None => {}
     }
 }
 
