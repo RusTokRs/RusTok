@@ -93,7 +93,7 @@ Commands:
 
 ## Текущие evidence notes
 
-- 2026-06-13, `blog`, slices #78-#79: admin editor form-state mapping/reset defaults moved into Leptos-free `BlogPostEditorFormState`, and admin table-row display/action state moved into Leptos-free `BlogPostAdminTableRowViewModel`; `node scripts/verify/verify-blog-admin-boundary.mjs` passed for both slices; long `cargo test -p rustok-blog-admin --lib` was stopped during slice #78 after dependency compilation started to avoid long compile; targeted `timeout 20s cargo test -p rustok-blog-admin --lib table_row_view_model_composes_row_policy_without_ui_runtime` reached the timeout during dependency compilation, so no long compile was allowed; native/GraphQL transport surfaces were not changed.
+- 2026-06-13, `blog`, slices #78-#80: admin editor form-state mapping/reset defaults moved into Leptos-free `BlogPostEditorFormState`, admin table-row display/action state moved into Leptos-free `BlogPostAdminTableRowViewModel`, and archive/delete row action presentation completed inside the same core view-model; `node scripts/verify/verify-blog-admin-boundary.mjs` passed for both slices; long `cargo test -p rustok-blog-admin --lib` was stopped during slice #78 after dependency compilation started to avoid long compile; targeted `timeout 20s cargo test -p rustok-blog-admin --lib table_row_view_model_composes_row_policy_without_ui_runtime` reached the timeout during dependency compilation, so no long compile was allowed; native/GraphQL transport surfaces were not changed.
 
 ## Связанные документы
 

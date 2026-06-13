@@ -335,8 +335,11 @@ pub struct BlogPostAdminTableRowViewModel {
     pub is_busy: bool,
     pub is_published: bool,
     pub is_archived: bool,
+    pub show_archive_action: bool,
     pub edit_label: String,
     pub publish_label: String,
+    pub archive_label: String,
+    pub delete_label: String,
 }
 
 pub struct BlogPostAdminTableRowLabels<'a> {
@@ -346,6 +349,8 @@ pub struct BlogPostAdminTableRowLabels<'a> {
     pub edit: &'a str,
     pub unpublish: &'a str,
     pub publish: &'a str,
+    pub archive: &'a str,
+    pub delete: &'a str,
 }
 
 pub fn blog_post_admin_table_row_view(
@@ -359,6 +364,7 @@ pub fn blog_post_admin_table_row_view(
     let is_busy = row_is_busy_for_post(busy_key, post_id.as_str());
     let is_published = is_published_status(post.status.as_str());
     let is_archived = is_archived_status(post.status.as_str());
+    let show_archive_action = should_show_archive_action(is_archived);
 
     BlogPostAdminTableRowViewModel {
         post_id,
@@ -371,6 +377,7 @@ pub fn blog_post_admin_table_row_view(
         is_busy,
         is_published,
         is_archived,
+        show_archive_action,
         edit_label: edit_action_label(
             is_editing,
             labels.editing.to_string(),
@@ -381,6 +388,8 @@ pub fn blog_post_admin_table_row_view(
             labels.unpublish.to_string(),
             labels.publish.to_string(),
         ),
+        archive_label: labels.archive.to_string(),
+        delete_label: labels.delete.to_string(),
     }
 }
 
@@ -640,6 +649,8 @@ mod tests {
                 edit: "Edit",
                 unpublish: "Unpublish",
                 publish: "Publish",
+                archive: "Archive",
+                delete: "Delete",
             },
         );
 
@@ -650,8 +661,11 @@ mod tests {
         assert!(row.is_busy);
         assert!(row.is_published);
         assert!(!row.is_archived);
+        assert!(row.show_archive_action);
         assert_eq!(row.edit_label, "Editing");
         assert_eq!(row.publish_label, "Unpublish");
+        assert_eq!(row.archive_label, "Archive");
+        assert_eq!(row.delete_label, "Delete");
     }
 
     #[test]

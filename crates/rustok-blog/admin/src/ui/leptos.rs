@@ -838,6 +838,8 @@ fn BlogPostsTable(
                                         edit: &t(locale.as_deref(), "blog.table.edit", "Edit"),
                                         unpublish: &t(locale.as_deref(), "blog.table.unpublish", "Unpublish"),
                                         publish: &t(locale.as_deref(), "blog.table.publish", "Publish"),
+                                        archive: &t(locale.as_deref(), "blog.table.archive", "Archive"),
+                                        delete: &t(locale.as_deref(), "blog.table.delete", "Delete"),
                                     },
                                 );
                                 let post_id_edit = row.post_id.clone();
@@ -887,7 +889,7 @@ fn BlogPostsTable(
                                                 >
                                                     {row.publish_label.clone()}
                                                 </button>
-                                                {if core::should_show_archive_action(row.is_archived) {
+                                                {if row.show_archive_action {
                                                     view! {
                                                         <button
                                                             type="button"
@@ -897,7 +899,7 @@ fn BlogPostsTable(
                                                                 move |_| on_archive.run((post_id_archive.clone(), post_locale_archive.clone()))
                                                             }
                                                         >
-                                                            {t(locale.as_deref(), "blog.table.archive", "Archive")}
+                                                            {row.archive_label.clone()}
                                                         </button>
                                                     }
                                                     .into_any()
@@ -912,7 +914,7 @@ fn BlogPostsTable(
                                                         move |_| on_delete.run(post_id_delete.clone())
                                                     }
                                                 >
-                                                    {t(locale.as_deref(), "blog.table.delete", "Delete")}
+                                                    {row.delete_label.clone()}
                                                 </button>
                                             </div>
                                         </td>

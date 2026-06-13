@@ -87,6 +87,9 @@ for (const marker of [
   "BlogPostEditorFormState",
   "BlogPostAdminTableRowViewModel",
   "blog_post_admin_table_row_view",
+  "show_archive_action",
+  "archive_label",
+  "delete_label",
   "selected_post_request",
   "issue_banner_class_or_hidden",
 ]) {
