@@ -45,6 +45,12 @@ for (const module of modules) {
   if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail(`${module} lib.rs must export ports`);
   if (!portSource.includes('rustok_api::{PortContext, PortError}')) fail(`${module} src/ports.rs must import neutral port primitives`);
 
+  if (registry.in_process_provider_impl) {
+    const implDeclaration = `impl ${registry.ports[0].name} for crate::${registry.in_process_provider_impl.service}`;
+    if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
+    if (!portSource.includes('require_write_semantics()?')) fail(`${module} in-process provider impl must enforce write semantics`);
+  }
+
   if (!plan.includes('- FBA status: `in_progress`')) fail(`${module} local plan FBA status drift`);
   if (!plan.includes(`${module}-fba-registry.json`)) fail(`${module} local plan lacks registry evidence`);
   if (!central.includes(`| \`${module}\` |`) || !central.includes(`crates/rustok-${module}/contracts/${module}-fba-registry.json`)) {

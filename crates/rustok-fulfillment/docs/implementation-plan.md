@@ -20,6 +20,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует `PortContext::require_write_semantics` и мапит `FulfillmentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `ShippingSelectionPort` и DTO для seller-aware shipping options/selection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;

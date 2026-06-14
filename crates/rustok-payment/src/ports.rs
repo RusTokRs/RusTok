@@ -62,3 +62,97 @@ impl PaymentCollectionStatusSnapshot {
         }
     }
 }
+
+#[async_trait]
+impl PaymentCollectionPort for crate::PaymentService {
+    async fn create_or_reuse_collection(
+        &self,
+        context: PortContext,
+        request: PaymentCollectionCreateOrReuseRequest,
+    ) -> Result<PaymentCollectionResponse, PortError> {
+        context.require_write_semantics()?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+
+        if let Some(cart_id) = request.cart_id {
+            if let Some(collection) = self
+                .find_reusable_collection_by_cart(tenant_id, cart_id)
+                .await
+                .map_err(payment_error_to_port_error)?
+            {
+                return Ok(collection);
+            }
+        }
+
+        self.create_collection(
+            tenant_id,
+            crate::CreatePaymentCollectionInput {
+                cart_id: request.cart_id,
+                order_id: request.order_id,
+                customer_id: request.customer_id,
+                currency_code: request.currency_code,
+                amount: request.amount,
+                metadata: request.metadata,
+            },
+        )
+        .await
+        .map_err(payment_error_to_port_error)
+    }
+
+    async fn read_collection_status(
+        &self,
+        context: PortContext,
+        request: PaymentCollectionStatusRequest,
+    ) -> Result<PaymentCollectionStatusSnapshot, PortError> {
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let response = self
+            .get_collection(tenant_id, request.collection_id)
+            .await
+            .map_err(payment_error_to_port_error)?;
+        Ok(PaymentCollectionStatusSnapshot::from_response(&response))
+    }
+}
+
+fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        PortError::validation(
+            "payment.tenant_id_invalid",
+            "PortContext.tenant_id must be a UUID for payment ports",
+        )
+    })
+}
+
+fn payment_error_to_port_error(error: crate::PaymentError) -> PortError {
+    match error {
+        crate::PaymentError::Validation(message) => {
+            PortError::validation("payment.validation", message)
+        }
+        crate::PaymentError::PaymentCollectionNotFound(id) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "payment.collection_not_found",
+            format!("payment collection {id} not found"),
+            false,
+        ),
+        crate::PaymentError::PaymentNotFound(id) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "payment.payment_not_found",
+            format!("payment for collection {id} not found"),
+            false,
+        ),
+        crate::PaymentError::RefundNotFound(id) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "payment.refund_not_found",
+            format!("refund {id} not found"),
+            false,
+        ),
+        crate::PaymentError::InvalidTransition { from, to } => PortError::new(
+            rustok_api::PortErrorKind::Conflict,
+            "payment.invalid_transition",
+            format!("invalid payment transition from `{from}` to `{to}`"),
+            false,
+        ),
+        crate::PaymentError::Database(error) => PortError::unavailable(
+            "payment.database_unavailable",
+            format!("payment storage unavailable: {error}"),
+        ),
+    }
+}

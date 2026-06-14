@@ -8,7 +8,10 @@
     {
       "name": "PaymentCollectionPort",
       "owner": "payment",
-      "operations": ["create_or_reuse_collection", "read_collection_status"],
+      "operations": [
+        "create_or_reuse_collection",
+        "read_collection_status"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
@@ -19,13 +22,24 @@
     {
       "module": "commerce",
       "profile": "checkout_orchestration",
-      "degraded_modes": ["reuse_existing_collection", "show_payment_handoff_retry"],
-      "fallback_profiles": ["embedded_native", "graphql_checkout_compat"]
+      "degraded_modes": [
+        "reuse_existing_collection",
+        "show_payment_handoff_retry"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
     }
   ],
   "evidence": {
     "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "PaymentService",
+    "source": "crates/rustok-payment/src/ports.rs",
+    "status": "implemented"
   }
 }
