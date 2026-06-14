@@ -106,13 +106,18 @@ pub fn BlogAdmin() -> impl IntoView {
         }
     });
     let editing_banner_locale = ui_locale.clone();
-    let editing_banner_text = Memo::new(move |_| {
-        let template = t(
-            editing_banner_locale.as_deref(),
-            "blog.form.editingBanner",
-            "Editing post {id}",
-        );
-        core::label_with_optional_id(template.as_str(), editing_post_id.get().as_deref())
+    let editing_banner_create_new_label = form_create_new_instead.clone();
+    let editing_banner_view = Memo::new(move |_| {
+        core::blog_post_admin_edit_banner_view(
+            editing_post_id.get().as_deref(),
+            t(
+                editing_banner_locale.as_deref(),
+                "blog.form.editingBanner",
+                "Editing post {id}",
+            )
+            .as_str(),
+            editing_banner_create_new_label.clone(),
+        )
     });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
@@ -632,13 +637,16 @@ pub fn BlogAdmin() -> impl IntoView {
                         <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
                     </div>
 
-                    <Show when=move || core::is_editing_mode(editing_post_id.get().as_deref())>
+                    <Show when=move || editing_banner_view.get().visible>
                         <BlogEditBanner
                             banner_text=Signal::derive({
-                                let editing_banner_text = editing_banner_text;
-                                move || editing_banner_text.get()
+                                let editing_banner_view = editing_banner_view;
+                                move || editing_banner_view.get().banner_text
                             })
-                            create_new_label=form_create_new_instead.clone()
+                            create_new_label=Signal::derive({
+                                let editing_banner_view = editing_banner_view;
+                                move || editing_banner_view.get().create_new_label
+                            })
                             on_reset=reset_current_post
                         />
                     </Show>
@@ -848,7 +856,7 @@ fn blog_form_view_model(
 #[component]
 fn BlogEditBanner(
     banner_text: Signal<String>,
-    create_new_label: String,
+    create_new_label: Signal<String>,
     on_reset: Callback<()>,
 ) -> impl IntoView {
     view! {
@@ -861,7 +869,7 @@ fn BlogEditBanner(
                 class="text-xs font-medium text-primary hover:underline"
                 on:click=move |_| on_reset.run(())
             >
-                {create_new_label}
+                {move || create_new_label.get()}
             </button>
         </div>
     }

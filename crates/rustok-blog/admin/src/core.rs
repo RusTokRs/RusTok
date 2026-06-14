@@ -499,6 +499,25 @@ pub fn blog_post_admin_form_view(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminEditBannerViewModel {
+    pub visible: bool,
+    pub banner_text: String,
+    pub create_new_label: String,
+}
+
+pub fn blog_post_admin_edit_banner_view(
+    editing_post_id: Option<&str>,
+    editing_template: &str,
+    create_new_label: String,
+) -> BlogPostAdminEditBannerViewModel {
+    BlogPostAdminEditBannerViewModel {
+        visible: is_editing_mode(editing_post_id),
+        banner_text: label_with_optional_id(editing_template, editing_post_id),
+        create_new_label,
+    }
+}
+
 pub fn is_markdown_format(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case("markdown")
 }
@@ -612,7 +631,6 @@ pub fn prepare_blog_post_archive_command(
         locale: locale_arg(post_locale),
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostLoadResultViewModel {
@@ -1315,6 +1333,23 @@ mod tests {
         assert_eq!(form.title, "Edit post");
         assert_eq!(form.submit_label, "Saving...");
         assert!(form.submit_disabled);
+
+        let edit_banner = blog_post_admin_edit_banner_view(
+            Some("post-1"),
+            "Editing post {id}",
+            "Create new instead".to_string(),
+        );
+        assert!(edit_banner.visible);
+        assert_eq!(edit_banner.banner_text, "Editing post post-1");
+        assert_eq!(edit_banner.create_new_label, "Create new instead");
+
+        let hidden_edit_banner = blog_post_admin_edit_banner_view(
+            None,
+            "Editing post {id}",
+            "Create new instead".to_string(),
+        );
+        assert!(!hidden_edit_banner.visible);
+        assert_eq!(hidden_edit_banner.banner_text, "");
 
         let create_form = blog_post_admin_form_view(
             None,
