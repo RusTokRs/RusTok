@@ -15,9 +15,9 @@ function writeFixtureFile(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function libSource({ publicTransportPassthrough = false } = {}) {
+function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false } = {}) {
   return `
-mod api;
+${includeLegacyApiMod ? "mod api;" : ""}
 mod core;
 mod i18n;
 mod model;
@@ -67,7 +67,7 @@ pub fn blog_post_admin_clear_post_query_intent() {}
 `;
 }
 
-function uiSource({ rawApiCall = false, rawServiceCall = false, omitSaveCommand = false, omitContractFallbackClassification = false } = {}) {
+function uiSource({ rawApiCall = false, rawServiceCall = false, omitSaveCommand = false } = {}) {
   return `
 use crate::{core, transport};
 
@@ -83,7 +83,7 @@ pub fn BlogAdmin() {
     let _status = core::prepare_blog_post_status_command;
     let _archive = core::prepare_blog_post_archive_command;
     let _delete = core::prepare_blog_post_delete_command;
-    ${omitContractFallbackClassification ? "" : "let _contract_fallback = transport::is_posts_contract_unavailable;"}
+    let _contract = transport::is_posts_contract_unavailable;
     ${rawApiCall ? "let _raw = api::fetch_posts;" : ""}
     ${rawServiceCall ? "let _service = PostService::new;" : ""}
 }
@@ -92,24 +92,26 @@ pub fn BlogAdmin() {
 
 function transportSource({ includeServerEndpoint = false } = {}) {
   return `
-use crate::api;
+mod graphql_adapter;
 
-pub fn is_posts_contract_unavailable() { api::is_posts_contract_unavailable(); }
-pub async fn fetch_posts() { api::fetch_posts().await; }
-pub async fn fetch_post() { api::fetch_post().await; }
-pub async fn create_post() { api::create_post().await; }
-pub async fn update_post() { api::update_post().await; }
-pub async fn publish_post() { api::publish_post().await; }
-pub async fn unpublish_post() { api::unpublish_post().await; }
-pub async fn archive_post() { api::archive_post().await; }
-pub async fn delete_post() { api::delete_post().await; }
+pub fn is_posts_contract_unavailable() { graphql_adapter::is_posts_contract_unavailable(); }
+pub async fn fetch_posts() { graphql_adapter::fetch_posts().await; }
+pub async fn fetch_post() { graphql_adapter::fetch_post().await; }
+pub async fn create_post() { graphql_adapter::create_post().await; }
+pub async fn update_post() { graphql_adapter::update_post().await; }
+pub async fn publish_post() { graphql_adapter::publish_post().await; }
+pub async fn unpublish_post() { graphql_adapter::unpublish_post().await; }
+pub async fn archive_post() { graphql_adapter::archive_post().await; }
+pub async fn delete_post() { graphql_adapter::delete_post().await; }
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
 
-function apiSource({ omitPostsContractMarkers = false } = {}) {
+function graphqlAdapterSource() {
   return `
 use leptos_graphql::GraphqlRequest;
+const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin { posts { total } }";
+pub fn is_posts_contract_unavailable() {}
 pub async fn fetch_posts() {}
 pub async fn fetch_post() {}
 pub async fn create_post() {}
@@ -118,9 +120,6 @@ pub async fn publish_post() {}
 pub async fn unpublish_post() {}
 pub async fn archive_post() {}
 pub async fn delete_post() {}
-pub fn is_posts_contract_unavailable() {
-  ${omitPostsContractMarkers ? "" : "// Unknown type \\\"PostsFilter\\\"\n  // Unknown field \\\"posts\\\""}
-}
 `;
 }
 
@@ -129,8 +128,11 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-blog/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", apiSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource());
+  if (options.includeLegacyApiFile) {
+    writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
+  }
   writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", "verify-blog-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-blog-admin-boundary.mjs");
   return root;
@@ -166,6 +168,29 @@ test("blog admin boundary verifier rejects Leptos-specific core", () => {
   }
 });
 
+
+test("blog admin boundary verifier rejects legacy api module wiring", () => {
+  const root = withFixture({ includeLegacyApiMod: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy api module wiring fixture to fail");
+    assert.match(result.stderr, /must not wire legacy api.rs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("blog admin boundary verifier rejects legacy api file", () => {
+  const root = withFixture({ includeLegacyApiFile: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy api file fixture to fail");
+    assert.match(result.stderr, /legacy GraphQL api adapter must live under transport\/graphql_adapter.rs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("blog admin boundary verifier rejects raw api calls from UI", () => {
   const root = withFixture({ rawApiCall: true });
   try {
@@ -194,29 +219,6 @@ test("blog admin boundary verifier rejects missing save command helper", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected missing save-command fixture to fail");
     assert.match(result.stderr, /prepare_blog_post_save_command/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-
-test("blog admin boundary verifier rejects missing posts contract fallback classification", () => {
-  const root = withFixture({ omitContractFallbackClassification: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected missing UI contract fallback classifier fixture to fail");
-    assert.match(result.stderr, /contract-unavailable classification/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("blog admin boundary verifier rejects missing GraphQL legacy posts markers", () => {
-  const root = withFixture({ omitPostsContractMarkers: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected missing GraphQL fallback marker fixture to fail");
-    assert.match(result.stderr, /missing PostsFilter|missing posts field/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

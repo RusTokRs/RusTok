@@ -41,17 +41,22 @@ function assertNotContains(text, pattern, description) {
 const libPath = "crates/rustok-blog/admin/src/lib.rs";
 const corePath = "crates/rustok-blog/admin/src/core.rs";
 const uiPath = "crates/rustok-blog/admin/src/ui/leptos.rs";
-const transportPath = "crates/rustok-blog/admin/src/transport.rs";
-const apiPath = "crates/rustok-blog/admin/src/api.rs";
+const transportPath = "crates/rustok-blog/admin/src/transport/mod.rs";
+const graphqlAdapterPath = "crates/rustok-blog/admin/src/transport/graphql_adapter.rs";
+const legacyApiPath = "crates/rustok-blog/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-blog/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: legacy GraphQL api adapter must live under transport/graphql_adapter.rs`);
+}
 
 for (const filePath of [
   libPath,
   corePath,
   uiPath,
   transportPath,
-  apiPath,
+  graphqlAdapterPath,
   implementationPlanPath,
   registryPath,
 ]) {
@@ -62,11 +67,12 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
-const api = readRepo(apiPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 
-assertContains(lib, "mod api;", `${libPath}: crate root must wire current GraphQL/api adapter privately`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
+assertNotContains(lib, "api;", `${libPath}: crate root must not reference legacy api module`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
@@ -126,7 +132,7 @@ assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use c
 assertContains(ui, "apply_blog_post_admin_route_query_intent", `${uiPath}: UI must apply core-owned route/query intents through the Leptos writer adapter`);
 assertContains(ui, "core::blog_post_admin_open_post_query_intent", `${uiPath}: UI must use core-owned open-post query intent`);
 assertContains(ui, "core::blog_post_admin_clear_post_query_intent", `${uiPath}: UI must use core-owned clear-post query intent`);
-assertContains(ui, "transport::is_posts_contract_unavailable", `${uiPath}: UI must use transport-owned posts contract-unavailable classification for GraphQL fallback parity`);
+assertContains(ui, "transport::is_posts_contract_unavailable", `${uiPath}: UI must use transport-owned posts contract-unavailable classification`);
 assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
 assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
@@ -148,11 +154,11 @@ for (const marker of [
 ]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
-assertContains(transport, "use crate::api", `${transportPath}: transport facade may delegate to the current GraphQL/api adapter`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must own the GraphQL adapter module`);
+assertContains(transport, "graphql_adapter::", `${transportPath}: transport facade must delegate through transport/graphql_adapter.rs`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the blog admin transport facade`);
-assertContains(api, "GraphqlRequest", `${apiPath}: blog admin api adapter must keep the GraphQL transport contract`);
-assertContains(api, "Unknown type \\\"PostsFilter\\\"", `${apiPath}: GraphQL adapter must classify missing PostsFilter for legacy contract fallback`);
-assertContains(api, "Unknown field \\\"posts\\\"", `${apiPath}: GraphQL adapter must classify missing posts field for legacy contract fallback`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: blog admin GraphQL adapter must keep the GraphQL transport contract`);
+assertContains(graphqlAdapter, "BLOG_POSTS_QUERY", `${graphqlAdapterPath}: GraphQL adapter must own blog posts query text`);
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);
 assertContains(registry, "verify-blog-admin-boundary.mjs", `${registryPath}: central readiness board must mention the blog fast boundary guardrail`);
