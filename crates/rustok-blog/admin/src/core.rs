@@ -584,6 +584,31 @@ pub fn prepare_blog_post_archive_command(
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostLoadResultViewModel {
+    pub apply_returned_post_to_form: bool,
+    pub reset_form: bool,
+}
+
+pub fn blog_post_load_result_view(
+    found: bool,
+    post_not_found_message: String,
+) -> Result<BlogPostLoadResultViewModel, WritePathIssue> {
+    if !found {
+        return Err(WritePathIssue::new(post_not_found_message));
+    }
+
+    Ok(BlogPostLoadResultViewModel {
+        apply_returned_post_to_form: true,
+        reset_form: false,
+    })
+}
+
+pub fn blog_post_transport_failure_issue(context: &str, error: &str) -> WritePathIssue {
+    WritePathIssue::with_context(context, error)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostSaveResultViewModel {
     pub refresh_posts: bool,
@@ -871,6 +896,27 @@ mod tests {
         let delete = prepare_blog_post_delete_command("post-4".to_string());
         assert_eq!(delete.post_id, "post-4");
         assert_eq!(delete.busy_key, "delete:post-4");
+    }
+
+    #[test]
+    fn load_result_view_model_maps_apply_reset_and_not_found_policy() {
+        let loaded = blog_post_load_result_view(true, "Post not found".to_string())
+            .expect("found post should apply returned form state");
+
+        assert!(loaded.apply_returned_post_to_form);
+        assert!(!loaded.reset_form);
+
+        let missing = blog_post_load_result_view(false, "Post not found".to_string())
+            .expect_err("missing post must become a typed write-path issue");
+
+        assert_eq!(missing.message, "Post not found");
+    }
+
+    #[test]
+    fn transport_failure_issue_keeps_context_mapping_in_core() {
+        let issue = blog_post_transport_failure_issue("Failed to load post", "timeout");
+
+        assert_eq!(issue.message, "Failed to load post: timeout");
     }
 
     #[test]

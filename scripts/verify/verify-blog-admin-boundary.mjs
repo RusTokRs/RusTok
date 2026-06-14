@@ -84,6 +84,9 @@ for (const marker of [
   "BlogPostSaveOperation",
   "BlogPostSaveCommand",
   "prepare_blog_post_save_command",
+  "BlogPostLoadResultViewModel",
+  "blog_post_load_result_view",
+  "blog_post_transport_failure_issue",
   "BlogPostSaveResultViewModel",
   "blog_post_save_result_view",
   "BlogPostEditorFormState",
@@ -113,6 +116,8 @@ for (const marker of [
 assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter must consume core and transport layers`);
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
+assertContains(ui, "core::blog_post_load_result_view", `${uiPath}: UI must use core-owned load result policy`);
+assertContains(ui, "core::blog_post_transport_failure_issue", `${uiPath}: UI must use core-owned transport failure issue mapping`);
 assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use core-owned save result policy`);
 assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);

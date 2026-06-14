@@ -138,31 +138,47 @@ pub fn BlogAdmin() -> impl IntoView {
             )
             .await
             {
-                Ok(Some(post)) => {
-                    apply_post_to_form(
-                        set_editing_post_id,
-                        set_title,
-                        set_slug,
-                        set_excerpt,
-                        set_body,
-                        set_locale,
-                        set_body_format,
-                        set_tags_input,
-                        set_publish_now,
-                        &post,
+                Ok(post) => {
+                    let result_view = core::blog_post_load_result_view(
+                        post.is_some(),
+                        t(
+                            ui_locale.as_deref(),
+                            "blog.error.postNotFound",
+                            "Post not found for editing.",
+                        ),
                     );
-                }
-                Ok(None) => {
-                    reset_form_to_defaults.run(());
-                    set_submit_error.set(Some(WritePathIssue::new(t(
-                        ui_locale.as_deref(),
-                        "blog.error.postNotFound",
-                        "Post not found for editing.",
-                    ))));
+
+                    match (result_view, post) {
+                        (Ok(view_model), Some(post)) => {
+                            if view_model.apply_returned_post_to_form {
+                                apply_post_to_form(
+                                    set_editing_post_id,
+                                    set_title,
+                                    set_slug,
+                                    set_excerpt,
+                                    set_body,
+                                    set_locale,
+                                    set_body_format,
+                                    set_tags_input,
+                                    set_publish_now,
+                                    &post,
+                                );
+                            }
+                        }
+                        (Ok(view_model), None) => {
+                            if view_model.reset_form {
+                                reset_form_to_defaults.run(());
+                            }
+                        }
+                        (Err(issue), _) => {
+                            reset_form_to_defaults.run(());
+                            set_submit_error.set(Some(issue));
+                        }
+                    }
                 }
                 Err(err) => {
                     reset_form_to_defaults.run(());
-                    set_submit_error.set(Some(WritePathIssue::with_context(
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.loadPost",
@@ -271,7 +287,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     }
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::with_context(
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                         &t(
                             submit_ui_locale.as_deref(),
                             "blog.error.savePost",
@@ -344,7 +360,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         }
                     }
                     Err(err) => {
-                        set_submit_error.set(Some(WritePathIssue::with_context(
+                        set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                             &t(
                                 ui_locale.as_deref(),
                                 "blog.error.updateStatus",
@@ -402,7 +418,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     }
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::with_context(
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.archivePost",
@@ -462,7 +478,7 @@ pub fn BlogAdmin() -> impl IntoView {
                     }
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(WritePathIssue::with_context(
+                    set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                         &t(
                             ui_locale.as_deref(),
                             "blog.error.deletePost",
