@@ -6,11 +6,11 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: storefront_action_request_boundary
-- Last checkpoint: Payment storefront action UI now emits `PaymentCollectionCreateRequest` via the payment-owned `storefront/src/transport.rs` facade, so `rustok-commerce-storefront` no longer rebuilds the payment request from a raw cart id inside its Leptos adapter.
+- Last checkpoint: Payment storefront action UI now emits `PaymentCollectionCreateRequest` via the payment-owned `storefront/src/transport.rs` facade, and the obsolete commerce-side payment request builder wrapper was removed so the compatibility host only forwards the owner DTO.
 - Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration; keep commerce only as temporary checkout orchestration until that cutover.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-14T00:00:00Z
+- Last updated at (UTC): 2026-06-14T00:30:00Z
 
 ## FFA/FBA status
 
@@ -19,7 +19,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - Structural shape: `core_transport_ui`
 - Evidence:
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
-  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, and `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window;
+  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce no longer exposes a duplicate payment request builder;
   - fast boundary guardrail `scripts/verify/verify-payment-storefront-boundary.mjs` is wired into `npm run verify:ffa:ui:migration` and checks the payment-owned core/transport/ui split without long Cargo compilation;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
 - Last verified at (UTC): 2026-05-24T00:00:00Z
