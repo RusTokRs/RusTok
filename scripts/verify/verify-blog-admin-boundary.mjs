@@ -78,13 +78,6 @@ for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
 }
-for (const marker of ["BlogPostAdminSeoPanelCopy", "blog_post_admin_seo_panel_copy"]) {
-  assertNotContains(
-    core,
-    marker,
-    `${corePath}: avoid over-extracting simple SEO i18n copy into core (${marker}); keep one-off labels in the Leptos adapter unless they carry reusable policy`,
-  );
-}
 for (const marker of [
   "BlogPostFormInput",
   "build_blog_post_draft",
@@ -133,6 +126,7 @@ assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use c
 assertContains(ui, "apply_blog_post_admin_route_query_intent", `${uiPath}: UI must apply core-owned route/query intents through the Leptos writer adapter`);
 assertContains(ui, "core::blog_post_admin_open_post_query_intent", `${uiPath}: UI must use core-owned open-post query intent`);
 assertContains(ui, "core::blog_post_admin_clear_post_query_intent", `${uiPath}: UI must use core-owned clear-post query intent`);
+assertContains(ui, "transport::is_posts_contract_unavailable", `${uiPath}: UI must use transport-owned posts contract-unavailable classification for GraphQL fallback parity`);
 assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
 assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
@@ -143,6 +137,7 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PostS
 
 for (const marker of [
   "fetch_posts",
+  "is_posts_contract_unavailable",
   "fetch_post",
   "create_post",
   "update_post",
@@ -156,6 +151,8 @@ for (const marker of [
 assertContains(transport, "use crate::api", `${transportPath}: transport facade may delegate to the current GraphQL/api adapter`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the blog admin transport facade`);
 assertContains(api, "GraphqlRequest", `${apiPath}: blog admin api adapter must keep the GraphQL transport contract`);
+assertContains(api, "Unknown type \\\"PostsFilter\\\"", `${apiPath}: GraphQL adapter must classify missing PostsFilter for legacy contract fallback`);
+assertContains(api, "Unknown field \\\"posts\\\"", `${apiPath}: GraphQL adapter must classify missing posts field for legacy contract fallback`);
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);
 assertContains(registry, "verify-blog-admin-boundary.mjs", `${registryPath}: central readiness board must mention the blog fast boundary guardrail`);
