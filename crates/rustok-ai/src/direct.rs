@@ -9,6 +9,10 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use loco_rs::app::AppContext;
+use rustok_ai_product::{
+    validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
+    GeneratedProductCopy,
+};
 use rustok_api::context::infer_user_role_from_permissions;
 use rustok_api::loco::transactional_event_bus_from_context;
 use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
@@ -483,15 +487,6 @@ impl DirectTaskHandler for MediaImageAssetHandler {
             }),
         })
     }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct GeneratedProductCopy {
-    title: Option<String>,
-    handle: Option<String>,
-    description: Option<String>,
-    meta_title: Option<String>,
-    meta_description: Option<String>,
 }
 
 #[async_trait]
@@ -995,26 +990,6 @@ pub(crate) struct GeneratedModerationDecision {
     recommended_action: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GeneratedProductAttributes {
-    brand: Option<String>,
-    material: Option<String>,
-    color: Option<String>,
-    size: Option<String>,
-    dimensions: Option<String>,
-    compatibility: Option<String>,
-    care_instructions: Option<String>,
-    hazmat: Option<String>,
-    #[serde(default)]
-    flex_attributes: Vec<GeneratedFlexAttribute>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GeneratedFlexAttribute {
-    key: String,
-    value: String,
-}
-
 fn resolve_blog_source_content(
     existing_post: Option<&rustok_blog::PostResponse>,
     input: &AiBlogDraftTaskInput,
@@ -1307,15 +1282,7 @@ pub(crate) async fn generate_product_attributes(
     let parsed = parse_json_object_from_text(&content)?;
     let generated: GeneratedProductAttributes =
         serde_json::from_value(parsed).map_err(AiError::Json)?;
-    if generated
-        .flex_attributes
-        .iter()
-        .any(|attr| attr.key.trim().is_empty() || attr.value.trim().is_empty())
-    {
-        return Err(AiError::Validation(
-            "product_attributes flex_attributes must contain non-empty key/value".to_string(),
-        ));
-    }
+    validate_product_attributes_payload(&generated).map_err(AiError::Validation)?;
     Ok(generated)
 }
 
@@ -1396,7 +1363,9 @@ async fn generate_product_copy(
     let content = response.assistant_message.content.ok_or_else(|| {
         AiError::Provider("provider returned empty content for product_copy".to_string())
     })?;
-    parse_generated_product_copy(&content)
+    let generated = parse_generated_product_copy(&content)?;
+    validate_product_copy_payload(&generated).map_err(AiError::Validation)?;
+    Ok(generated)
 }
 
 fn parse_generated_product_copy(content: &str) -> AiResult<GeneratedProductCopy> {
