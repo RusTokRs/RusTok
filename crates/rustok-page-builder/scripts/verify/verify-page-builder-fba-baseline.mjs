@@ -18,6 +18,7 @@ const checks = [
   "verify-page-builder-wave-evidence-packet.mjs",
   "verify-page-builder-runtime-fallback-gate.mjs",
   "verify-page-builder-pages-fallback-gate.mjs",
+  "verify-page-builder-pages-legacy-bridge.mjs",
   "verify-page-builder-next-admin-parity.mjs",
   "verify-page-builder-leptos-admin-parity.mjs",
   "verify-page-builder-flutter-parity.mjs",
