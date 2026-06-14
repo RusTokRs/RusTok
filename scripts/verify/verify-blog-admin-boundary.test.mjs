@@ -15,7 +15,7 @@ function writeFixtureFile(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false } = {}) {
+function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false, includeApiLikeText = false } = {}) {
   return `
 ${includeLegacyApiMod ? "mod api;" : ""}
 mod core;
@@ -26,6 +26,7 @@ mod ui;
 
 pub use ui::BlogAdmin;
 ${publicTransportPassthrough ? "pub async fn fetch_posts() {}" : ""}
+${includeApiLikeText ? "// harmless api; text must not be treated as module wiring" : ""}
 `;
 }
 
@@ -168,6 +169,17 @@ test("blog admin boundary verifier rejects Leptos-specific core", () => {
   }
 });
 
+
+
+test("blog admin boundary verifier allows non-module api text in crate root", () => {
+  const root = withFixture({ includeApiLikeText: true });
+  try {
+    const result = runVerifier(root);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("blog admin boundary verifier rejects legacy api module wiring", () => {
   const root = withFixture({ includeLegacyApiMod: true });
