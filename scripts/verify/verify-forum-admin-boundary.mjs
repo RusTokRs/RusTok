@@ -100,13 +100,28 @@ for (const marker of [
   "forum_admin_metric_accent_class",
   "ForumAdminActionButtonKind",
   "forum_admin_action_button_class",
-]) {
+  "ForumAdminCategoryMatrixLabels",
+  "forum_admin_category_matrix_labels",
+  "ForumAdminCategoryFormLabels",
+  "forum_admin_category_form_labels",
+  "ForumAdminTopicStreamLabels",
+  "forum_admin_topic_stream_labels",
+  "ForumAdminTopicFormLabels",
+  "forum_admin_topic_form_labels",
+  "ForumAdminReplyPreviewLabels",
+  "forum_admin_reply_preview_labels",
+  ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
-}
+  }
 
-assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
-assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
-assertContains(ui, "forum_admin_busy_key", `${uiPath}: UI must consume core-owned busy-key construction`);
+  assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
+  assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
+  assertContains(ui, "forum_admin_category_matrix_labels", `${uiPath}: UI must consume core-owned category matrix labels`);
+  assertContains(ui, "forum_admin_category_form_labels", `${uiPath}: UI must consume core-owned category form labels`);
+  assertContains(ui, "forum_admin_topic_stream_labels", `${uiPath}: UI must consume core-owned topic stream labels`);
+  assertContains(ui, "forum_admin_topic_form_labels", `${uiPath}: UI must consume core-owned topic form labels`);
+  assertContains(ui, "forum_admin_reply_preview_labels", `${uiPath}: UI must consume core-owned reply preview labels`);
+  assertContains(ui, "forum_admin_busy_key", `${uiPath}: UI must consume core-owned busy-key construction`);
 assertContains(ui, "forum_admin_form_error_message", `${uiPath}: UI must consume core-owned form error policy`);
 assertContains(ui, "forum_admin_transport_error_message", `${uiPath}: UI must consume core-owned transport error formatting`);
 assertContains(ui, "category_select_options", `${uiPath}: UI must consume core-owned category select options`);
