@@ -33,14 +33,15 @@
   - machine-readable registry фиксирует provider/consumer versions, fallback profiles, health states, degradation reasons и SLO thresholds;
   - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template и synthetic Wave 0 packet;
   - первый migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext` и enforce write semantics для `publish` без изменения DTO contract.
+  - server-side handler seam добавил permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` с `pages:manage` override и registry/manifest anti-drift проверкой.
 - Last verified at (UTC): 2026-06-14T00:00:00Z
 - Owner: `rustok-page-builder` module team
 
 ## Ближайшие шаги
 
 1. Довести transport-neutral DTO/contract package и `PortContext`-based service port для builder capabilities до publish-ready evidence.
-2. Добавить server-side stub handlers и permission checks.
-3. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync и Wave evidence формы.
+2. Подключить server-side handler seam к реальным transport adapters после выбора GraphQL/server-function entrypoints.
+3. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync и Wave evidence формы.
 4. Описать sunset path для legacy block-driven compatibility.
 
 ## Область работ

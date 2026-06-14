@@ -6,6 +6,7 @@ use crate::dto::{
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortErrorKind};
+use rustok_core::{Action, Permission, Resource};
 
 #[async_trait]
 pub trait PageBuilderCapabilityService: Send + Sync {
@@ -40,6 +41,8 @@ pub type PageBuilderServiceResult<T> = Result<T, PageBuilderServiceError>;
 pub enum PageBuilderServiceError {
     #[error("validation failed: {0}")]
     Validation(String),
+    #[error("forbidden: {0}")]
+    Forbidden(String),
     #[error("capability disabled: {0}")]
     CapabilityDisabled(String),
     #[error("runtime error: {0}")]
@@ -50,10 +53,97 @@ impl PageBuilderServiceError {
     pub fn from_port_error(error: rustok_api::PortError) -> Self {
         match error.kind {
             PortErrorKind::Validation => Self::Validation(error.message),
+            PortErrorKind::Forbidden => Self::Forbidden(error.message),
             PortErrorKind::Timeout => Self::Runtime(error.message),
             _ => Self::Runtime(error.message),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageBuilderCapabilityPermissions {
+    pub preview: Permission,
+    pub tree: Permission,
+    pub properties: Permission,
+    pub publish: Permission,
+}
+
+impl Default for PageBuilderCapabilityPermissions {
+    fn default() -> Self {
+        Self {
+            preview: Permission::new(Resource::Pages, Action::Read),
+            tree: Permission::new(Resource::Pages, Action::Read),
+            properties: Permission::new(Resource::Pages, Action::Update),
+            publish: Permission::new(Resource::Pages, Action::Publish),
+        }
+    }
+}
+
+impl PageBuilderCapabilityPermissions {
+    pub fn required_for(self, capability: BuilderCapabilityKind) -> Permission {
+        match capability {
+            BuilderCapabilityKind::Preview => self.preview,
+            BuilderCapabilityKind::Tree => self.tree,
+            BuilderCapabilityKind::Properties => self.properties,
+            BuilderCapabilityKind::Publish => self.publish,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderRequestAuth {
+    pub permissions: Vec<Permission>,
+}
+
+impl PageBuilderRequestAuth {
+    pub fn new(permissions: impl Into<Vec<Permission>>) -> Self {
+        Self {
+            permissions: permissions.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderCapabilityAuthorizer {
+    required: PageBuilderCapabilityPermissions,
+}
+
+impl PageBuilderCapabilityAuthorizer {
+    pub fn new(required: PageBuilderCapabilityPermissions) -> Self {
+        Self { required }
+    }
+
+    pub fn required_permission(&self, capability: BuilderCapabilityKind) -> Permission {
+        self.required.required_for(capability)
+    }
+
+    pub fn authorize(
+        &self,
+        auth: &PageBuilderRequestAuth,
+        capability: BuilderCapabilityKind,
+    ) -> PageBuilderServiceResult<()> {
+        let required = self.required_permission(capability);
+
+        if has_effective_permission(&auth.permissions, required) {
+            Ok(())
+        } else {
+            Err(PageBuilderServiceError::Forbidden(format!(
+                "{} capability requires {}",
+                capability, required
+            )))
+        }
+    }
+}
+
+impl Default for PageBuilderCapabilityAuthorizer {
+    fn default() -> Self {
+        Self::new(PageBuilderCapabilityPermissions::default())
+    }
+}
+
+fn has_effective_permission(permissions: &[Permission], required: Permission) -> bool {
+    permissions.contains(&required)
+        || permissions.contains(&Permission::new(required.resource, Action::Manage))
 }
 
 impl From<BuilderRolloutError> for PageBuilderServiceError {
@@ -120,6 +210,76 @@ where
             .require_write_semantics()
             .map_err(PageBuilderServiceError::from_port_error)?;
         self.inner.publish(context, input).await
+    }
+}
+
+pub struct AuthorizedPageBuilderHandlers<S> {
+    service: S,
+    authorizer: PageBuilderCapabilityAuthorizer,
+}
+
+impl<S> AuthorizedPageBuilderHandlers<S> {
+    pub fn new(service: S) -> Self {
+        Self {
+            service,
+            authorizer: PageBuilderCapabilityAuthorizer::default(),
+        }
+    }
+
+    pub fn with_authorizer(service: S, authorizer: PageBuilderCapabilityAuthorizer) -> Self {
+        Self {
+            service,
+            authorizer,
+        }
+    }
+}
+
+impl<S> AuthorizedPageBuilderHandlers<S>
+where
+    S: PageBuilderCapabilityService,
+{
+    pub async fn preview(
+        &self,
+        context: &PortContext,
+        auth: &PageBuilderRequestAuth,
+        input: PreviewPageBuilderInput,
+    ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
+        self.authorizer
+            .authorize(auth, BuilderCapabilityKind::Preview)?;
+        self.service.preview(context, input).await
+    }
+
+    pub async fn tree(
+        &self,
+        context: &PortContext,
+        auth: &PageBuilderRequestAuth,
+        input: BuilderTreeInput,
+    ) -> PageBuilderServiceResult<BuilderTreeResult> {
+        self.authorizer
+            .authorize(auth, BuilderCapabilityKind::Tree)?;
+        self.service.tree(context, input).await
+    }
+
+    pub async fn properties(
+        &self,
+        context: &PortContext,
+        auth: &PageBuilderRequestAuth,
+        input: BuilderNodePropertiesInput,
+    ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
+        self.authorizer
+            .authorize(auth, BuilderCapabilityKind::Properties)?;
+        self.service.properties(context, input).await
+    }
+
+    pub async fn publish(
+        &self,
+        context: &PortContext,
+        auth: &PageBuilderRequestAuth,
+        input: PublishPageBuilderInput,
+    ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
+        self.authorizer
+            .authorize(auth, BuilderCapabilityKind::Publish)?;
+        self.service.publish(context, input).await
     }
 }
 
@@ -219,6 +379,10 @@ mod tests {
             schema_version: "grapesjs_v1".to_string(),
             project_data: serde_json::json!({}),
         }
+    }
+
+    fn auth_with(permissions: Vec<Permission>) -> PageBuilderRequestAuth {
+        PageBuilderRequestAuth::new(permissions)
     }
 
     fn assert_disabled<T: std::fmt::Debug>(result: PageBuilderServiceResult<T>, capability: &str) {
@@ -344,5 +508,72 @@ mod tests {
             service.publish(&write_context(), publish_input()).await,
             "publish",
         );
+    }
+
+    #[test]
+    fn authorizer_maps_capabilities_to_stable_page_permissions() {
+        let authorizer = PageBuilderCapabilityAuthorizer::default();
+
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Preview),
+            Permission::new(Resource::Pages, Action::Read)
+        );
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Tree),
+            Permission::new(Resource::Pages, Action::Read)
+        );
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Properties),
+            Permission::new(Resource::Pages, Action::Update)
+        );
+        assert_eq!(
+            authorizer.required_permission(BuilderCapabilityKind::Publish),
+            Permission::new(Resource::Pages, Action::Publish)
+        );
+    }
+
+    #[tokio::test]
+    async fn authorized_handlers_enforce_permissions_before_service_call() {
+        let service =
+            CapabilityGuardedService::new(StubService, BuilderToggleProfile::AllOn.flags());
+        let handlers = AuthorizedPageBuilderHandlers::new(service);
+        let auth = auth_with(vec![Permission::new(Resource::Pages, Action::Read)]);
+
+        handlers
+            .preview(&read_context(), &auth, preview_input())
+            .await
+            .expect("preview is allowed by pages:read");
+        handlers
+            .tree(&read_context(), &auth, tree_input())
+            .await
+            .expect("tree is allowed by pages:read");
+
+        let err = handlers
+            .properties(&read_context(), &auth, properties_input())
+            .await
+            .expect_err("properties requires pages:update");
+        match err {
+            PageBuilderServiceError::Forbidden(message) => {
+                assert!(message.contains("properties capability requires pages:update"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn authorized_handlers_honor_manage_as_effective_permission() {
+        let service =
+            CapabilityGuardedService::new(StubService, BuilderToggleProfile::AllOn.flags());
+        let handlers = AuthorizedPageBuilderHandlers::new(service);
+        let auth = auth_with(vec![Permission::new(Resource::Pages, Action::Manage)]);
+
+        handlers
+            .properties(&read_context(), &auth, properties_input())
+            .await
+            .expect("pages:manage grants properties");
+        handlers
+            .publish(&write_context(), &auth, publish_input())
+            .await
+            .expect("pages:manage grants publish");
     }
 }

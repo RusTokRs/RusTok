@@ -77,6 +77,27 @@ function assertArraySame(errors, label, expected, actual) {
   }
 }
 
+function assertPermissionMap(errors, expected, actualPairs) {
+  const actual = Object.fromEntries(
+    actualPairs.map((pair) => {
+      const [capability, permission] = pair.split("=");
+      return [capability, permission];
+    }),
+  );
+  const expectedKey = Object.entries(expected)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([capability, permission]) => `${capability}=${permission}`)
+    .join(",");
+  const actualKey = Object.entries(actual)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([capability, permission]) => `${capability}=${permission}`)
+    .join(",");
+
+  if (expectedKey !== actualKey) {
+    errors.push(`provider.permission_map mismatch: registry=[${expectedKey}], manifest=[${actualKey}]`);
+  }
+}
+
 function parseVersion(version, label) {
   const parts = version.split(".");
   if (parts.length === 0) {
@@ -140,6 +161,16 @@ assertArraySame(
   provider.capabilities,
   extractArray(providerManifest, "capabilities", "provider capabilities"),
 );
+assertPermissionMap(
+  errors,
+  provider.permission_map,
+  extractArray(providerManifest, "permission_map", "provider permission_map"),
+);
+for (const capability of provider.capabilities ?? []) {
+  if (!(capability in (provider.permission_map ?? {}))) {
+    errors.push(`provider.permission_map missing '${capability}'`);
+  }
+}
 assertSame(
   errors,
   "provider.health_profile",
