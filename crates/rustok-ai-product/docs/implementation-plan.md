@@ -15,3 +15,4 @@
 
 - Создан начальный scaffold crate и документация.
 - Перенесены generated payload contracts и базовая валидация `product_copy` / `product_attributes` в `rustok-ai-product`; `rustok-ai` consume-ит эти validators в direct generation path.
+- Добавлен domain-owned registration metadata API (`product_ai_verticals`) для `product_copy` / `product_attributes`; runtime handler registration в `rustok-ai` использует эти task/tool constants.
