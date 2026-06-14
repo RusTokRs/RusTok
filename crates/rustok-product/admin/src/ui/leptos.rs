@@ -27,9 +27,9 @@ use crate::core::{
     product_admin_open_product_query_intent, product_admin_pricing_preview_state_from_result,
     product_admin_saved_product_query_intent, shipping_profile_choice_label, text_or_none,
     ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
-    ProductAdminErrorCopy, ProductAdminListStateKind, ProductAdminOpenProductViewModel,
-    ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminStatusMutationOutcome,
-    ProductAdminStatusTarget, SelectedProductSummaryViewModel,
+    ProductAdminErrorCopy, ProductAdminOpenProductViewModel, ProductAdminRouteQueryIntent,
+    ProductAdminSaveMode, ProductAdminStatusMutationOutcome, ProductAdminStatusTarget,
+    SelectedProductSummaryViewModel,
 };
 use crate::i18n::t;
 use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
@@ -45,17 +45,6 @@ where
     T: 'static,
 {
     LocalResource::new(move || fetcher(source()))
-}
-
-fn product_admin_list_state_class(kind: &ProductAdminListStateKind) -> &'static str {
-    match kind {
-        ProductAdminListStateKind::Loading | ProductAdminListStateKind::Empty => {
-            "rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground"
-        }
-        ProductAdminListStateKind::Error => {
-            "rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        }
-    }
 }
 
 fn apply_product_admin_route_query_intent(
@@ -460,7 +449,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     ui_locale_for_list.as_deref(),
                                 );
                                 view! {
-                                    <div class=product_admin_list_state_class(&state.kind)>
+                                    <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()
@@ -471,7 +460,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     err,
                                 );
                                 view! {
-                                    <div class=product_admin_list_state_class(&state.kind)>
+                                    <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()
@@ -481,7 +470,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     ui_locale_for_list.as_deref(),
                                 );
                                 view! {
-                                    <div class=product_admin_list_state_class(&state.kind)>
+                                    <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()

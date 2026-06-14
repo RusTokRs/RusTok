@@ -1087,13 +1087,29 @@ pub(crate) enum ProductAdminListStateKind {
 pub(crate) struct ProductAdminListStateViewModel {
     pub kind: ProductAdminListStateKind,
     pub message: String,
+    pub container_class: &'static str,
+}
+
+pub(crate) fn product_admin_list_state_container_class(
+    kind: &ProductAdminListStateKind,
+) -> &'static str {
+    match kind {
+        ProductAdminListStateKind::Loading | ProductAdminListStateKind::Empty => {
+            "rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground"
+        }
+        ProductAdminListStateKind::Error => {
+            "rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
 }
 
 pub(crate) fn build_product_admin_list_loading_view_model(
     locale: Option<&str>,
 ) -> ProductAdminListStateViewModel {
+    let kind = ProductAdminListStateKind::Loading;
     ProductAdminListStateViewModel {
-        kind: ProductAdminListStateKind::Loading,
+        container_class: product_admin_list_state_container_class(&kind),
+        kind,
         message: t(locale, "product.list.loading", "Loading products..."),
     }
 }
@@ -1101,8 +1117,10 @@ pub(crate) fn build_product_admin_list_loading_view_model(
 pub(crate) fn build_product_admin_list_empty_view_model(
     locale: Option<&str>,
 ) -> ProductAdminListStateViewModel {
+    let kind = ProductAdminListStateKind::Empty;
     ProductAdminListStateViewModel {
-        kind: ProductAdminListStateKind::Empty,
+        container_class: product_admin_list_state_container_class(&kind),
+        kind,
         message: t(locale, "product.list.empty", "No products yet."),
     }
 }
@@ -1111,8 +1129,10 @@ pub(crate) fn build_product_admin_list_error_view_model(
     locale: Option<&str>,
     error: impl std::fmt::Display,
 ) -> ProductAdminListStateViewModel {
+    let kind = ProductAdminListStateKind::Error;
     ProductAdminListStateViewModel {
-        kind: ProductAdminListStateKind::Error,
+        container_class: product_admin_list_state_container_class(&kind),
+        kind,
         message: format!(
             "{}: {error}",
             t(
@@ -1303,14 +1323,17 @@ mod tests {
         let loading = build_product_admin_list_loading_view_model(Some("en"));
         assert_eq!(loading.kind, ProductAdminListStateKind::Loading);
         assert_eq!(loading.message, "Loading products...");
+        assert!(loading.container_class.contains("border-dashed"));
 
         let empty = build_product_admin_list_empty_view_model(Some("en"));
         assert_eq!(empty.kind, ProductAdminListStateKind::Empty);
         assert_eq!(empty.message, "No products yet.");
+        assert_eq!(empty.container_class, loading.container_class);
 
         let error = build_product_admin_list_error_view_model(Some("en"), "network");
         assert_eq!(error.kind, ProductAdminListStateKind::Error);
         assert_eq!(error.message, "Failed to load products: network");
+        assert!(error.container_class.contains("destructive"));
     }
 
     #[test]
