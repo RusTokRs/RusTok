@@ -93,6 +93,38 @@
 4. **Нейтральные port primitives применяются только к новым/обновляемым портам.** Уже существующие FBA slices не переписываются механически без feature work; при следующем изменении они приводятся к тем же `context/error/idempotency/deadline` требованиям.
 5. **Повышение до `boundary_ready` или `transport_verified` требует evidence.** Наличие metadata или FFA split само по себе не считается remote/runtime verification.
 
+## 2.2 Структурный стандарт перевода модуля
+
+Да, единый стандарт есть. Для каждого нового FBA-инкремента обязательна одинаковая
+структура артефактов; отсутствие одного из пунктов ниже считается gap и не даёт повышать
+статус выше `in_progress`:
+
+1. **Local source of truth:** `crates/<module>/docs/implementation-plan.md` содержит
+   `## FFA/FBA status`, текущую роль (`provider`, `consumer`, `orchestrator`, `support`)
+   и evidence по boundary/metadata/verification.
+2. **Central status:** `docs/modules/registry.md` содержит синхронную строку readiness board
+   с тем же FBA-статусом и ссылкой на local plan.
+3. **Runtime metadata:** `rustok-module.toml` или module-owned machine-readable registry
+   фиксирует provider/consumer dependency profile, contract versions, degraded modes и
+   toggle/fallback profiles, если модуль участвует в provider/consumer track.
+4. **Contract location:** transport-neutral DTO/port/error contracts живут в owner module
+   или shared foundation crate только если они действительно cross-module; host apps не
+   становятся владельцами domain/application contract.
+5. **Verification location:** рядом с machine-readable metadata есть anti-drift/fallback gate
+   (`scripts/verify/*` или module-local verifier), а local plan перечисляет command/evidence.
+6. **Evidence packet:** для Wave/pilot rollout есть фактические или явно помеченные
+   synthetic before/after snapshots, smoke outcomes, metrics/traces и keep/rollback decision.
+7. **Docs sync:** если меняется FBA status, provider/consumer metadata, ports/events, routing,
+   tenancy, UI contract или observability, одновременно обновляются local docs, central board
+   и этот unified plan, если меняется сам стандарт.
+
+Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
+имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
+FFA/FBA status block. Теперь `page_builder` и `pages` отражены единообразно: local plan +
+central board + machine-readable registry/evidence. Оставшиеся gaps не являются нарушением
+стандарта, потому что явно зафиксированы как `not_started`/`deferred` или как compile/runtime
+blocker в verification output.
+
 ---
 
 ## 3) Этап A — Аудит и readiness matrix
