@@ -53,3 +53,10 @@ page_title = "Commerce"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
+
+[fba.consumer]
+registry = "contracts/commerce-fba-registry.json"
+contract_version = "commerce.checkout_orchestration.fba.v1"
+providers = ["pricing", "inventory", "order", "payment", "fulfillment"]
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"

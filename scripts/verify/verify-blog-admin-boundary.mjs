@@ -71,7 +71,8 @@ const graphqlAdapter = readRepo(graphqlAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 
-assertNotContains(lib, /^\s*mod\s+api\s*;/m, `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
+assertNotContains(lib, "api;", `${libPath}: crate root must not reference legacy api module`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
