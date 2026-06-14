@@ -163,6 +163,8 @@
 - `rustok-pages` slice #15: storefront open-link label composition moved to core (`open_link_label`).
 - `rustok-pages` slice #16: storefront label/value pair rendering moved to core (`label_value_pair`).
 - `rustok-pages` slice #17: storefront cleanup after full pages module-test evidence (remove unused import warning).
+- `rustok-pages` slice #19 evidence: admin capability-card presentation helpers (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`) moved into `admin/src/core.rs`; Leptos adapter keeps only signal wiring and callback execution.
+- `rustok-pages` slice #20 evidence: storefront published-page link/status presentation (`page_link_href`, `page_status_label`) moved into `storefront/src/core.rs`; dual-path transport contract unchanged.
 
 
 ### Перепроверка после slices #2-#8 (rustok-pages/admin)

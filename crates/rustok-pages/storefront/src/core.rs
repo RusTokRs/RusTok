@@ -105,6 +105,14 @@ pub fn open_link_label(prefix: &str, slug: &str) -> String {
     format!("{} {}", prefix, slug)
 }
 
+pub fn page_link_href(module_route_base: &str, slug: &str) -> String {
+    format!("{module_route_base}?slug={slug}")
+}
+
+pub fn page_status_label(status: &str) -> &str {
+    status
+}
+
 pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{}: {}", label, value)
 }
@@ -113,6 +121,12 @@ pub fn label_value_pair(label: &str, value: &str) -> String {
 mod tests {
     use super::*;
     use crate::model::{PageBody, PageDetail, PageTranslation};
+
+    #[test]
+    fn storefront_link_and_status_helpers_are_core_owned() {
+        assert_eq!(page_link_href("/pages", "home"), "/pages?slug=home");
+        assert_eq!(page_status_label("published"), "published");
+    }
 
     #[test]
     fn storefront_builder_fallback_profiles_keep_read_and_list_stable() {
