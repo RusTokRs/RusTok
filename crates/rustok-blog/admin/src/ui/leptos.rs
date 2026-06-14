@@ -23,6 +23,21 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
+fn apply_blog_post_admin_route_query_intent(
+    query_writer: &leptos_ui_routing::RouteQueryWriter,
+    intent: core::BlogPostAdminRouteQueryIntent,
+) {
+    match intent {
+        core::BlogPostAdminRouteQueryIntent::Push { key, value } => {
+            query_writer.push_value(key, value)
+        }
+        core::BlogPostAdminRouteQueryIntent::Replace { key, value } => {
+            query_writer.replace_value(key, value)
+        }
+        core::BlogPostAdminRouteQueryIntent::Clear { key } => query_writer.clear_key(key),
+    }
+}
+
 #[component]
 pub fn BlogAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -102,7 +117,10 @@ pub fn BlogAdmin() -> impl IntoView {
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
-            query_writer.clear_key(AdminQueryKey::PostId.as_str());
+            apply_blog_post_admin_route_query_intent(
+                &query_writer,
+                core::blog_post_admin_clear_post_query_intent(),
+            );
             reset_form_action.run(());
         }
     });
@@ -282,8 +300,8 @@ pub fn BlogAdmin() -> impl IntoView {
                     if result_view.refresh_posts {
                         set_refresh_nonce.update(|value| *value += 1);
                     }
-                    if let Some(post_id) = result_view.selected_post_query_value {
-                        submit_query_writer.replace_value(AdminQueryKey::PostId.as_str(), post_id);
+                    if let Some(intent) = result_view.selected_post_query_intent {
+                        apply_blog_post_admin_route_query_intent(&submit_query_writer, intent);
                     }
                 }
                 Err(err) => {
@@ -462,8 +480,11 @@ pub fn BlogAdmin() -> impl IntoView {
 
                     match delete_result {
                         Ok(view_model) => {
-                            if view_model.clear_selected_post_query {
-                                delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
+                            if let Some(intent) = view_model.selected_post_query_intent {
+                                apply_blog_post_admin_route_query_intent(
+                                    &delete_query_writer,
+                                    intent,
+                                );
                             }
                             if view_model.reset_form {
                                 reset_form_to_defaults.run(());
@@ -494,7 +515,10 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let open_query_writer = query_writer.clone();
     let open_post = Callback::new(move |(post_id, _requested_locale): (String, String)| {
-        open_query_writer.push_value(AdminQueryKey::PostId.as_str(), post_id);
+        apply_blog_post_admin_route_query_intent(
+            &open_query_writer,
+            core::blog_post_admin_open_post_query_intent(post_id),
+        );
     });
 
     view! {

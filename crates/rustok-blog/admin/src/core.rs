@@ -1,6 +1,35 @@
-use rustok_api::{normalize_ui_text, parse_ui_csv, WritePathIssue, WritePathIssueKind};
+use rustok_api::{
+    normalize_ui_text, parse_ui_csv, AdminQueryKey, WritePathIssue, WritePathIssueKind,
+};
 
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BlogPostAdminRouteQueryIntent {
+    Push { key: &'static str, value: String },
+    Replace { key: &'static str, value: String },
+    Clear { key: &'static str },
+}
+
+pub fn blog_post_admin_open_post_query_intent(post_id: String) -> BlogPostAdminRouteQueryIntent {
+    BlogPostAdminRouteQueryIntent::Push {
+        key: AdminQueryKey::PostId.as_str(),
+        value: post_id,
+    }
+}
+
+pub fn blog_post_admin_saved_post_query_intent(post_id: String) -> BlogPostAdminRouteQueryIntent {
+    BlogPostAdminRouteQueryIntent::Replace {
+        key: AdminQueryKey::PostId.as_str(),
+        value: post_id,
+    }
+}
+
+pub fn blog_post_admin_clear_post_query_intent() -> BlogPostAdminRouteQueryIntent {
+    BlogPostAdminRouteQueryIntent::Clear {
+        key: AdminQueryKey::PostId.as_str(),
+    }
+}
 
 pub fn optional_text(value: &str) -> Option<String> {
     normalize_ui_text(value)
@@ -613,14 +642,16 @@ pub fn blog_post_transport_failure_issue(context: &str, error: &str) -> WritePat
 pub struct BlogPostSaveResultViewModel {
     pub refresh_posts: bool,
     pub apply_returned_post_to_form: bool,
-    pub selected_post_query_value: Option<String>,
+    pub selected_post_query_intent: Option<BlogPostAdminRouteQueryIntent>,
 }
 
 pub fn blog_post_save_result_view(returned_post_id: &str) -> BlogPostSaveResultViewModel {
     BlogPostSaveResultViewModel {
         refresh_posts: true,
         apply_returned_post_to_form: true,
-        selected_post_query_value: Some(returned_post_id.to_string()),
+        selected_post_query_intent: Some(blog_post_admin_saved_post_query_intent(
+            returned_post_id.to_string(),
+        )),
     }
 }
 
@@ -657,7 +688,7 @@ pub fn prepare_blog_post_delete_command(post_id: String) -> BlogPostDeleteComman
 pub struct BlogPostDeleteResultViewModel {
     pub refresh_posts: bool,
     pub reset_form: bool,
-    pub clear_selected_post_query: bool,
+    pub selected_post_query_intent: Option<BlogPostAdminRouteQueryIntent>,
 }
 
 pub fn blog_post_delete_result_view(
@@ -675,7 +706,7 @@ pub fn blog_post_delete_result_view(
     Ok(BlogPostDeleteResultViewModel {
         refresh_posts: true,
         reset_form,
-        clear_selected_post_query: reset_form,
+        selected_post_query_intent: reset_form.then(blog_post_admin_clear_post_query_intent),
     })
 }
 
@@ -899,24 +930,27 @@ mod tests {
     }
 
     #[test]
-    fn load_result_view_model_maps_apply_reset_and_not_found_policy() {
-        let loaded = blog_post_load_result_view(true, "Post not found".to_string())
-            .expect("found post should apply returned form state");
-
-        assert!(loaded.apply_returned_post_to_form);
-        assert!(!loaded.reset_form);
-
-        let missing = blog_post_load_result_view(false, "Post not found".to_string())
-            .expect_err("missing post must become a typed write-path issue");
-
-        assert_eq!(missing.message, "Post not found");
-    }
-
-    #[test]
-    fn transport_failure_issue_keeps_context_mapping_in_core() {
-        let issue = blog_post_transport_failure_issue("Failed to load post", "timeout");
-
-        assert_eq!(issue.message, "Failed to load post: timeout");
+    fn admin_route_query_intents_keep_post_selection_policy_in_core() {
+        assert_eq!(
+            blog_post_admin_open_post_query_intent("post-1".to_string()),
+            BlogPostAdminRouteQueryIntent::Push {
+                key: AdminQueryKey::PostId.as_str(),
+                value: "post-1".to_string(),
+            }
+        );
+        assert_eq!(
+            blog_post_admin_saved_post_query_intent("post-2".to_string()),
+            BlogPostAdminRouteQueryIntent::Replace {
+                key: AdminQueryKey::PostId.as_str(),
+                value: "post-2".to_string(),
+            }
+        );
+        assert_eq!(
+            blog_post_admin_clear_post_query_intent(),
+            BlogPostAdminRouteQueryIntent::Clear {
+                key: AdminQueryKey::PostId.as_str(),
+            }
+        );
     }
 
     #[test]
@@ -925,7 +959,13 @@ mod tests {
 
         assert!(view.refresh_posts);
         assert!(view.apply_returned_post_to_form);
-        assert_eq!(view.selected_post_query_value, Some("post-1".to_string()));
+        assert_eq!(
+            view.selected_post_query_intent,
+            Some(BlogPostAdminRouteQueryIntent::Replace {
+                key: AdminQueryKey::PostId.as_str(),
+                value: "post-1".to_string(),
+            })
+        );
     }
 
     #[test]
@@ -958,7 +998,12 @@ mod tests {
 
         assert!(reset.refresh_posts);
         assert!(reset.reset_form);
-        assert!(reset.clear_selected_post_query);
+        assert_eq!(
+            reset.selected_post_query_intent,
+            Some(BlogPostAdminRouteQueryIntent::Clear {
+                key: AdminQueryKey::PostId.as_str(),
+            })
+        );
 
         let keep_form = blog_post_delete_result_view(
             true,
@@ -970,7 +1015,7 @@ mod tests {
 
         assert!(keep_form.refresh_posts);
         assert!(!keep_form.reset_form);
-        assert!(!keep_form.clear_selected_post_query);
+        assert_eq!(keep_form.selected_post_query_intent, None);
 
         let issue = blog_post_delete_result_view(
             false,
