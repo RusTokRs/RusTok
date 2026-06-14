@@ -507,25 +507,6 @@ pub fn should_show_raw_body_warning(body_format: &str) -> bool {
     !is_markdown_format(body_format)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlogPostAdminSeoPanelCopy {
-    pub title: String,
-    pub subtitle: String,
-    pub empty_message: String,
-}
-
-pub fn blog_post_admin_seo_panel_copy(
-    title: String,
-    subtitle: String,
-    empty_message: String,
-) -> BlogPostAdminSeoPanelCopy {
-    BlogPostAdminSeoPanelCopy {
-        title,
-        subtitle,
-        empty_message,
-    }
-}
-
 pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {
     match kind {
         WritePathIssueKind::Validation => {
@@ -1348,14 +1329,5 @@ mod tests {
         assert_eq!(create_form.title, "Create post");
         assert_eq!(create_form.submit_label, "Create post");
         assert!(!create_form.submit_disabled);
-
-        let seo_copy = blog_post_admin_seo_panel_copy(
-            "Post SEO".to_string(),
-            "Diagnostics for the selected blog post".to_string(),
-            "Create or open a post first".to_string(),
-        );
-        assert_eq!(seo_copy.title, "Post SEO");
-        assert_eq!(seo_copy.subtitle, "Diagnostics for the selected blog post");
-        assert_eq!(seo_copy.empty_message, "Create or open a post first");
     }
 }

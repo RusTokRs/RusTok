@@ -78,6 +78,13 @@ for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
 }
+for (const marker of ["BlogPostAdminSeoPanelCopy", "blog_post_admin_seo_panel_copy"]) {
+  assertNotContains(
+    core,
+    marker,
+    `${corePath}: avoid over-extracting simple SEO i18n copy into core (${marker}); keep one-off labels in the Leptos adapter unless they carry reusable policy`,
+  );
+}
 for (const marker of [
   "BlogPostFormInput",
   "build_blog_post_draft",
@@ -96,8 +103,6 @@ for (const marker of [
   "blog_post_admin_table_view",
   "BlogPostAdminFormViewModel",
   "blog_post_admin_form_view",
-  "BlogPostAdminSeoPanelCopy",
-  "blog_post_admin_seo_panel_copy",
   "show_archive_action",
   "archive_label",
   "delete_label",
@@ -127,7 +132,6 @@ assertContains(ui, "core::blog_post_transport_failure_issue", `${uiPath}: UI mus
 assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use core-owned save result policy`);
 assertContains(ui, "apply_blog_post_admin_route_query_intent", `${uiPath}: UI must apply core-owned route/query intents through the Leptos writer adapter`);
 assertContains(ui, "core::blog_post_admin_open_post_query_intent", `${uiPath}: UI must use core-owned open-post query intent`);
-assertContains(ui, "core::blog_post_admin_seo_panel_copy", `${uiPath}: UI must use core-owned SEO panel copy view-model`);
 assertContains(ui, "core::blog_post_admin_clear_post_query_intent", `${uiPath}: UI must use core-owned clear-post query intent`);
 assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);

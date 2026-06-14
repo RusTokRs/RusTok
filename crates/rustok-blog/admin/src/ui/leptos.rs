@@ -44,19 +44,6 @@ pub fn BlogAdmin() -> impl IntoView {
     let ui_locale = route_context.locale.clone();
     let seo_locale = ui_locale.clone();
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
-    let seo_panel_copy = core::blog_post_admin_seo_panel_copy(
-        t(seo_locale.as_deref(), "blog.seo.title", "Post SEO"),
-        t(
-            seo_locale.as_deref(),
-            "blog.seo.subtitle",
-            "Explicit metadata, social tags and diagnostics for the selected blog post.",
-        ),
-        t(
-            seo_locale.as_deref(),
-            "blog.seo.empty",
-            "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
-        ),
-    );
     let selected_post_query = use_route_query_value(AdminQueryKey::PostId.as_str());
     let query_writer = use_route_query_writer();
     let token = use_token();
@@ -822,9 +809,17 @@ pub fn BlogAdmin() -> impl IntoView {
                         move || host_locale_for_seo.clone()
                     })
                     show_control_plane_widgets=true
-                    panel_title=seo_panel_copy.title.clone()
-                    panel_subtitle=seo_panel_copy.subtitle.clone()
-                    empty_message=seo_panel_copy.empty_message.clone()
+                    panel_title=t(seo_locale.as_deref(), "blog.seo.title", "Post SEO")
+                    panel_subtitle=t(
+                        seo_locale.as_deref(),
+                        "blog.seo.subtitle",
+                        "Explicit metadata, social tags and diagnostics for the selected blog post.",
+                    )
+                    empty_message=t(
+                        seo_locale.as_deref(),
+                        "blog.seo.empty",
+                        "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
+                    )
                 />
                 </div>
             </section>

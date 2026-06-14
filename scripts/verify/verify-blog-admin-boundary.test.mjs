@@ -29,7 +29,7 @@ ${publicTransportPassthrough ? "pub async fn fetch_posts() {}" : ""}
 `;
 }
 
-function coreSource({ includeLeptos = false, omitSaveCommand = false } = {}) {
+function coreSource({ includeLeptos = false, omitSaveCommand = false, includeSeoCopyOverExtraction = false } = {}) {
   return `
 ${includeLeptos ? "use leptos::prelude::*;" : ""}
 pub struct BlogPostFormInput;
@@ -42,8 +42,6 @@ pub struct BlogPostAdminTableViewModel;
 pub fn blog_post_admin_table_view() {}
 pub struct BlogPostAdminFormViewModel;
 pub fn blog_post_admin_form_view() {}
-pub struct BlogPostAdminSeoPanelCopy;
-pub fn blog_post_admin_seo_panel_copy() {}
 pub fn selected_post_request() {}
 pub fn issue_banner_class_or_hidden() {}
 pub fn show_archive_action() {}
@@ -66,6 +64,7 @@ pub enum BlogPostAdminRouteQueryIntent {}
 pub fn blog_post_admin_open_post_query_intent() {}
 pub fn blog_post_admin_saved_post_query_intent() {}
 pub fn blog_post_admin_clear_post_query_intent() {}
+${includeSeoCopyOverExtraction ? "pub struct BlogPostAdminSeoPanelCopy;\npub fn blog_post_admin_seo_panel_copy() {}" : ""}
 `;
 }
 
@@ -81,7 +80,6 @@ pub fn BlogAdmin() {
     let _saved = core::blog_post_save_result_view;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;
-    let _seo = core::blog_post_admin_seo_panel_copy;
     let _clear = core::blog_post_admin_clear_post_query_intent;
     let _status = core::prepare_blog_post_status_command;
     let _archive = core::prepare_blog_post_archive_command;
@@ -192,6 +190,18 @@ test("blog admin boundary verifier rejects missing save command helper", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected missing save-command fixture to fail");
     assert.match(result.stderr, /prepare_blog_post_save_command/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("blog admin boundary verifier rejects one-off SEO copy over-extraction", () => {
+  const root = withFixture({ includeSeoCopyOverExtraction: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected SEO copy over-extraction fixture to fail");
+    assert.match(result.stderr, /avoid over-extracting simple SEO i18n copy into core/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
