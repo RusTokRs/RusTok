@@ -67,8 +67,10 @@ availability из побочных эффектов регистрации.
    `ScriptError::Aborted` означает intentional business rejection, а
    `OperationLimit`, `Timeout` и `ResourceLimit` указывают на sandbox pressure.
 4. Используйте execution log как canonical operator history перед replay script.
-   Replay должен сохранять тот же phase и tenant context, чтобы bridge/helper
-   availability оставалась phase-aware.
+   `ScriptExecutor` пишет execution-history запись для каждого runtime path,
+   подключённого через `AlloyRuntime`: GraphQL/HTTP manual runs, hooks,
+   on-commit scripts и scheduler jobs. Replay должен сохранять тот же phase и
+   tenant context, чтобы bridge/helper availability оставалась phase-aware.
 5. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.

@@ -171,11 +171,6 @@ pub async fn run_script(
         .await
         .map_err(script_error)?;
 
-    let _ = runtime
-        .execution_log
-        .record_with_context(&result, None, Some(tenant.id))
-        .await;
-
     Ok(Json(run_response(result)))
 }
 
@@ -204,11 +199,6 @@ pub async fn run_script_by_name(
         .run_manual_with_entity(&script.name, params, entity, None)
         .await
         .map_err(script_error)?;
-
-    let _ = runtime
-        .execution_log
-        .record_with_context(&result, None, Some(tenant.id))
-        .await;
 
     Ok(Json(run_response(result)))
 }
