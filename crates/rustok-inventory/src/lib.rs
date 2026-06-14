@@ -4,8 +4,10 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod migrations;
+pub mod ports;
 pub mod services;
 
+pub use ports::*;
 pub use rustok_commerce_foundation::entities::product::ProductStatus;
 pub use services::{
     check_public_channel_inventory_request, check_variant_availability_for_public_channel,

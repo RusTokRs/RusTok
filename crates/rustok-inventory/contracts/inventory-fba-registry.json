@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "module": "inventory",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "inventory.reservation.v1",
+  "ports": [
+    {
+      "name": "InventoryReservationPort",
+      "owner": "inventory",
+      "operations": [
+        "check_availability",
+        "reserve_inventory",
+        "release_inventory_reservation"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_inventory_reservation",
+      "degraded_modes": [
+        "block_checkout_with_stock_refresh",
+        "preserve_cart_inventory_snapshot"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
+    },
+    {
+      "module": "product",
+      "profile": "storefront_inventory_projection",
+      "degraded_modes": [
+        "hide_stock_badge",
+        "show_inventory_unavailable"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "storefront_projection_compat"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-inventory/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "InventoryService",
+    "source": "crates/rustok-inventory/src/ports.rs",
+    "status": "implemented"
+  }
+}

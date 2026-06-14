@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const modules = ['payment', 'fulfillment', 'order', 'pricing'];
+const modules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory'];
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const fail = (message) => {
@@ -60,4 +60,4 @@ for (const module of modules) {
   }
 }
 
-console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing');
+console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory');
