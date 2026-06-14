@@ -9,6 +9,7 @@ description = "Inventory domain module extracted from rustok-commerce"
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
+rustok-api.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
