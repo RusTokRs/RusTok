@@ -44,6 +44,100 @@ pub fn forum_admin_header_view_model(
 }
 
 #[derive(Clone, Debug)]
+pub struct ForumAdminTitleEnvelopeLabels {
+    pub edit_title: String,
+    pub create_title: String,
+    pub active_badge: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminTitleEnvelopeViewModel {
+    pub title: String,
+    pub active_badge: Option<String>,
+}
+
+pub fn forum_admin_title_envelope_view_model(
+    is_editing: bool,
+    labels: &ForumAdminTitleEnvelopeLabels,
+) -> ForumAdminTitleEnvelopeViewModel {
+    ForumAdminTitleEnvelopeViewModel {
+        title: if is_editing {
+            labels.edit_title.clone()
+        } else {
+            labels.create_title.clone()
+        },
+        active_badge: is_editing.then(|| labels.active_badge.clone()),
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ForumAdminPlaceholderPolicy {
+    pub locale: String,
+    pub category_name: String,
+    pub category_slug: String,
+    pub category_description: String,
+    pub category_icon: String,
+    pub category_color: String,
+    pub category_position: String,
+    pub topic_title: String,
+    pub topic_slug: String,
+    pub topic_body_format: String,
+    pub topic_tags: String,
+    pub topic_body: String,
+}
+
+pub fn forum_admin_placeholder_policy(default_locale: &str) -> ForumAdminPlaceholderPolicy {
+    ForumAdminPlaceholderPolicy {
+        locale: if default_locale.trim().is_empty() {
+            "en"
+        } else {
+            default_locale.trim()
+        }
+        .to_string(),
+        category_name: "General discussion".to_string(),
+        category_slug: "general-discussion".to_string(),
+        category_description: "Space for announcements, introductions, and open questions."
+            .to_string(),
+        category_icon: "chat".to_string(),
+        category_color: "#f59e0b".to_string(),
+        category_position: "0".to_string(),
+        topic_title: "How should we structure weekly updates?".to_string(),
+        topic_slug: "weekly-updates-structure".to_string(),
+        topic_body_format: "markdown".to_string(),
+        topic_tags: "release, roadmap, updates".to_string(),
+        topic_body: "Write the first post here...".to_string(),
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ForumAdminSeoCopyLabels {
+    pub title: String,
+    pub subtitle: String,
+    pub empty_message: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumAdminSeoSurface {
+    Category,
+    Topic,
+}
+
+pub fn forum_admin_seo_copy_labels(
+    surface: ForumAdminSeoSurface,
+    title: String,
+    subtitle: String,
+    empty_message: String,
+) -> ForumAdminSeoCopyLabels {
+    match surface {
+        ForumAdminSeoSurface::Category | ForumAdminSeoSurface::Topic => ForumAdminSeoCopyLabels {
+            title,
+            subtitle,
+            empty_message,
+        },
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ForumAdminCategoryRenderLabels {
     pub no_description: String,
     pub topics_count_template: String,
@@ -828,6 +922,48 @@ mod tests {
             forum_admin_transport_error_message("Failed to save category:", "boom"),
             "Failed to save category: boom"
         );
+    }
+
+    #[test]
+    fn builds_title_envelopes_placeholders_and_seo_copy() {
+        let labels = ForumAdminTitleEnvelopeLabels {
+            edit_title: "Edit category".to_string(),
+            create_title: "Create category".to_string(),
+            active_badge: "Live edit".to_string(),
+        };
+
+        assert_eq!(
+            forum_admin_title_envelope_view_model(true, &labels),
+            ForumAdminTitleEnvelopeViewModel {
+                title: "Edit category".to_string(),
+                active_badge: Some("Live edit".to_string()),
+            }
+        );
+        assert_eq!(
+            forum_admin_title_envelope_view_model(false, &labels),
+            ForumAdminTitleEnvelopeViewModel {
+                title: "Create category".to_string(),
+                active_badge: None,
+            }
+        );
+
+        let placeholders = forum_admin_placeholder_policy(" ru ");
+        assert_eq!(placeholders.locale, "ru");
+        assert_eq!(placeholders.category_slug, "general-discussion");
+        assert_eq!(placeholders.topic_body_format, "markdown");
+
+        let default_placeholders = forum_admin_placeholder_policy("   ");
+        assert_eq!(default_placeholders.locale, "en");
+
+        let seo_copy = forum_admin_seo_copy_labels(
+            ForumAdminSeoSurface::Topic,
+            "Topic SEO".to_string(),
+            "Diagnostics".to_string(),
+            "Open a topic first".to_string(),
+        );
+        assert_eq!(seo_copy.title, "Topic SEO");
+        assert_eq!(seo_copy.subtitle, "Diagnostics");
+        assert_eq!(seo_copy.empty_message, "Open a topic first");
     }
 
     #[test]

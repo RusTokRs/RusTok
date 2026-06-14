@@ -216,6 +216,7 @@ impl FlexStandaloneSeaOrmService {
 
     async fn load_entry_localization_map(
         &self,
+        tenant_id: Uuid,
         entry_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, Vec<flex_entry_localized_values::Model>>, FlexError> {
         if entry_ids.is_empty() {
@@ -223,6 +224,7 @@ impl FlexStandaloneSeaOrmService {
         }
 
         let rows = flex_entry_localized_values::Entity::find()
+            .filter(flex_entry_localized_values::Column::TenantId.eq(tenant_id))
             .filter(flex_entry_localized_values::Column::EntryId.is_in(entry_ids.iter().copied()))
             .all(&self.db)
             .await
@@ -519,7 +521,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
         let entry_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
-        let localized = self.load_entry_localization_map(&entry_ids).await?;
+        let localized = self
+            .load_entry_localization_map(tenant_id, &entry_ids)
+            .await?;
 
         Ok(rows
             .into_iter()
@@ -553,7 +557,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             return Ok(None);
         };
 
-        let localized = self.load_entry_localization_map(&[row.id]).await?;
+        let localized = self
+            .load_entry_localization_map(tenant_id, &[row.id])
+            .await?;
         let localized_data = localized
             .get(&row.id)
             .and_then(|items| Self::select_entry_localization(items, &preferred_locale))
@@ -644,7 +650,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
         if resolved_localized_data.is_none() {
-            let localized = self.load_entry_localization_map(&[updated.id]).await?;
+            let localized = self
+                .load_entry_localization_map(tenant_id, &[updated.id])
+                .await?;
             resolved_localized_data = localized
                 .get(&updated.id)
                 .and_then(|items| Self::select_entry_localization(items, &locale))

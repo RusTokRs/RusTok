@@ -11,16 +11,17 @@ use crate::core::{
     category_card_view_model, category_select_options, category_sidebar_total_count,
     category_sidebar_view_model, format_count, forum_admin_busy_key, forum_admin_collection_state,
     forum_admin_delete_outcome, forum_admin_editing_thread_label, forum_admin_form_error_message,
-    forum_admin_header_view_model, forum_admin_open_query_intent, forum_admin_position_value,
-    forum_admin_reset_query_intent, forum_admin_saved_query_intent,
-    forum_admin_sidebar_category_class, forum_admin_status_badge_class, forum_admin_tag_chips,
+    forum_admin_header_view_model, forum_admin_open_query_intent, forum_admin_placeholder_policy,
+    forum_admin_position_value, forum_admin_reset_query_intent, forum_admin_saved_query_intent,
+    forum_admin_seo_copy_labels, forum_admin_sidebar_category_class,
+    forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model,
     forum_admin_topic_tag_count_label, forum_admin_transport_error_message, reply_card_view_model,
     reply_count_label, result_item_count, selected_category_filter_label, selected_query_id,
     topic_card_view_model, topic_category_filter, CategoryFormSnapshot, ForumAdminBusyAction,
     ForumAdminBusySurface, ForumAdminCategoryRenderLabels, ForumAdminCollectionState,
-    ForumAdminFormError, ForumAdminFormErrorLabels, ForumAdminHeaderLabels,
-    ForumAdminQuerySurface, ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation,
-    ForumAdminTopicRenderLabels, TopicFormSnapshot,
+    ForumAdminFormError, ForumAdminFormErrorLabels, ForumAdminHeaderLabels, ForumAdminQuerySurface,
+    ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation, ForumAdminSeoSurface,
+    ForumAdminTitleEnvelopeLabels, ForumAdminTopicRenderLabels, TopicFormSnapshot,
 };
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
@@ -838,6 +839,7 @@ fn CategoriesPage(
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
+    let placeholders = forum_admin_placeholder_policy(locale.get_untracked().as_str());
     let matrix_label = t(
         ui_locale.as_deref(),
         "forum.categories.matrixLabel",
@@ -909,6 +911,13 @@ fn CategoriesPage(
         "forum.categories.liveEdit",
         "Live edit",
     );
+    let category_title_labels = ForumAdminTitleEnvelopeLabels {
+        edit_title: edit_title.clone(),
+        create_title: create_title.clone(),
+        active_badge: live_edit_label.clone(),
+    };
+    let category_heading_labels = category_title_labels.clone();
+    let category_badge_labels = category_title_labels.clone();
     let locale_label = t(ui_locale.as_deref(), "forum.form.locale", "Locale");
     let locale_hint = t(
         ui_locale.as_deref(),
@@ -976,6 +985,24 @@ fn CategoriesPage(
         "Create category",
     );
     let reset_label = t(ui_locale.as_deref(), "forum.form.reset", "Reset");
+    let category_seo_copy = forum_admin_seo_copy_labels(
+        ForumAdminSeoSurface::Category,
+        t(
+            locale.get_untracked().as_str().into(),
+            "forum.categories.seo.title",
+            "Category SEO",
+        ),
+        t(
+            locale.get_untracked().as_str().into(),
+            "forum.categories.seo.subtitle",
+            "Explicit metadata, social tags and diagnostics for the selected forum category.",
+        ),
+        t(
+            locale.get_untracked().as_str().into(),
+            "forum.categories.seo.empty",
+            "Create or open a category first. SEO stays attached to the forum category editor.",
+        ),
+    );
     view! {
         <section class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_24rem]">
             <div class="space-y-6">
@@ -1033,14 +1060,16 @@ fn CategoriesPage(
                             {composer_label.clone()}
                         </p>
                         <h2 class="mt-2 text-xl font-semibold text-card-foreground">
-                            {move || if editing_id.get().is_some() { edit_title.clone() } else { create_title.clone() }}
+                            {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &category_heading_labels).title}
                         </h2>
                     </div>
-                    {move || editing_id.get().map(|_| view! {
-                        <span class="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                            {live_edit_label.clone()}
-                        </span>
-                    })}
+                    {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &category_badge_labels)
+                        .active_badge
+                        .map(|label| view! {
+                            <span class="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                {label}
+                            </span>
+                        })}
                 </div>
                 <form class="mt-6 space-y-4" on:submit=on_submit>
                     <FieldShell label=locale_label hint=locale_hint>
@@ -1048,7 +1077,7 @@ fn CategoriesPage(
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || locale.get()
                             on:input=move |ev| set_locale.set(event_target_value(&ev))
-                            placeholder="en"
+                            placeholder=placeholders.locale.clone()
                         />
                     </FieldShell>
                     <FieldShell label=name_label hint=name_hint>
@@ -1056,7 +1085,7 @@ fn CategoriesPage(
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || name.get()
                             on:input=move |ev| set_name.set(event_target_value(&ev))
-                            placeholder="General discussion"
+                            placeholder=placeholders.category_name.clone()
                         />
                     </FieldShell>
                     <FieldShell label=slug_label hint=slug_hint>
@@ -1064,7 +1093,7 @@ fn CategoriesPage(
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                             prop:value=move || slug.get()
                             on:input=move |ev| set_slug.set(event_target_value(&ev))
-                            placeholder="general-discussion"
+                            placeholder=placeholders.category_slug.clone()
                         />
                     </FieldShell>
                     <FieldShell label=description_label hint=description_hint>
@@ -1072,7 +1101,7 @@ fn CategoriesPage(
                             class="min-h-24 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || description.get()
                             on:input=move |ev| set_description.set(event_target_value(&ev))
-                            placeholder="Space for announcements, introductions, and open questions."
+                            placeholder=placeholders.category_description.clone()
                         ></textarea>
                     </FieldShell>
                     <div class="grid gap-4 sm:grid-cols-2">
@@ -1081,7 +1110,7 @@ fn CategoriesPage(
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                 prop:value=move || icon.get()
                                 on:input=move |ev| set_icon.set(event_target_value(&ev))
-                                placeholder="chat"
+                                placeholder=placeholders.category_icon.clone()
                             />
                         </FieldShell>
                         <FieldShell label=color_label hint=color_hint>
@@ -1089,7 +1118,7 @@ fn CategoriesPage(
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                 prop:value=move || color.get()
                                 on:input=move |ev| set_color.set(event_target_value(&ev))
-                                placeholder="#f59e0b"
+                                placeholder=placeholders.category_color.clone()
                             />
                         </FieldShell>
                     </div>
@@ -1098,7 +1127,7 @@ fn CategoriesPage(
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                             prop:value=move || position.get().to_string()
                             on:input=move |ev| set_position.set(forum_admin_position_value(event_target_value(&ev).as_str()))
-                            placeholder="0"
+                            placeholder=placeholders.category_position.clone()
                         />
                     </FieldShell>
                     <label class="flex items-start gap-3 rounded-2xl border border-border bg-background px-4 py-4 text-sm">
@@ -1142,21 +1171,15 @@ fn CategoriesPage(
                             move || host_locale_for_seo.clone()
                         })
                         show_control_plane_widgets=true
-                        panel_title=move || t(
-                            locale.get().as_str().into(),
-                            "forum.categories.seo.title",
-                            "Category SEO",
-                        )
-                        panel_subtitle=move || t(
-                            locale.get().as_str().into(),
-                            "forum.categories.seo.subtitle",
-                            "Explicit metadata, social tags and diagnostics for the selected forum category.",
-                        )
-                        empty_message=move || t(
-                            locale.get().as_str().into(),
-                            "forum.categories.seo.empty",
-                            "Create or open a category first. SEO stays attached to the forum category editor.",
-                        )
+                        panel_title={
+                            let category_seo_copy = category_seo_copy.clone();
+                            move || category_seo_copy.title.clone()
+                        }
+                        panel_subtitle={
+                            let category_seo_copy = category_seo_copy.clone();
+                            move || category_seo_copy.subtitle.clone()
+                        }
+                        empty_message=move || category_seo_copy.empty_message.clone()
                     />
                 </div>
             </section>
@@ -1194,6 +1217,7 @@ fn TopicsPage(
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
+    let placeholders = forum_admin_placeholder_policy(locale.get_untracked().as_str());
     let all_categories_label = t(
         ui_locale.as_deref(),
         "forum.topics.allCategories",
@@ -1274,6 +1298,13 @@ fn TopicsPage(
         "forum.topics.threadOpen",
         "Thread open",
     );
+    let topic_title_labels = ForumAdminTitleEnvelopeLabels {
+        edit_title: edit_topic_title.clone(),
+        create_title: compose_topic_title.clone(),
+        active_badge: thread_open_label.clone(),
+    };
+    let topic_heading_labels = topic_title_labels.clone();
+    let topic_badge_labels = topic_title_labels.clone();
     let locale_label = t(ui_locale.as_deref(), "forum.form.locale", "Locale");
     let locale_hint = t(
         ui_locale.as_deref(),
@@ -1335,6 +1366,24 @@ fn TopicsPage(
     );
     let preview_title = t(ui_locale.as_deref(), "forum.topics.previewTitle", "Replies");
     let shown_template = t(ui_locale.as_deref(), "forum.topics.shown", "{count} shown");
+    let topic_seo_copy = forum_admin_seo_copy_labels(
+        ForumAdminSeoSurface::Topic,
+        t(
+            locale.get_untracked().as_str().into(),
+            "forum.topics.seo.title",
+            "Topic SEO",
+        ),
+        t(
+            locale.get_untracked().as_str().into(),
+            "forum.topics.seo.subtitle",
+            "Explicit metadata, social tags and diagnostics for the selected forum topic.",
+        ),
+        t(
+            locale.get_untracked().as_str().into(),
+            "forum.topics.seo.empty",
+            "Create or open a topic first. SEO stays attached to the forum thread editor.",
+        ),
+    );
     let selected_category_name = Memo::new(move |_| {
         selected_category_filter_label(
             categories.get(),
@@ -1436,14 +1485,16 @@ fn TopicsPage(
                                 {inspector_label.clone()}
                             </p>
                             <h2 class="mt-2 text-xl font-semibold text-card-foreground">
-                                {move || if editing_id.get().is_some() { edit_topic_title.clone() } else { compose_topic_title.clone() }}
+                                {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &topic_heading_labels).title}
                             </h2>
                         </div>
-                        {move || editing_id.get().map(|_| view! {
-                            <span class="rounded-full bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">
-                                {thread_open_label.clone()}
-                            </span>
-                        })}
+                        {move || forum_admin_title_envelope_view_model(editing_id.get().is_some(), &topic_badge_labels)
+                            .active_badge
+                            .map(|label| view! {
+                                <span class="rounded-full bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">
+                                    {label}
+                                </span>
+                            })}
                     </div>
 
                     <form class="mt-6 space-y-4" on:submit=on_submit>
@@ -1452,7 +1503,7 @@ fn TopicsPage(
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                 prop:value=move || locale.get()
                                 on:input=move |ev| set_locale.set(event_target_value(&ev))
-                                placeholder="en"
+                                placeholder=placeholders.locale.clone()
                             />
                         </FieldShell>
                         <FieldShell label=category_label hint=category_hint>
@@ -1484,7 +1535,7 @@ fn TopicsPage(
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                 prop:value=move || title.get()
                                 on:input=move |ev| set_title.set(event_target_value(&ev))
-                                placeholder="How should we structure weekly updates?"
+                                placeholder=placeholders.topic_title.clone()
                             />
                         </FieldShell>
                         <FieldShell label=slug_label hint=slug_hint>
@@ -1492,7 +1543,7 @@ fn TopicsPage(
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                 prop:value=move || slug.get()
                                 on:input=move |ev| set_slug.set(event_target_value(&ev))
-                                placeholder="weekly-updates-structure"
+                                placeholder=placeholders.topic_slug.clone()
                             />
                         </FieldShell>
                         <div class="grid gap-4 sm:grid-cols-2">
@@ -1501,7 +1552,7 @@ fn TopicsPage(
                                     class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                     prop:value=move || body_format.get()
                                     on:input=move |ev| set_body_format.set(event_target_value(&ev))
-                                    placeholder="markdown"
+                                    placeholder=placeholders.topic_body_format.clone()
                                 />
                             </FieldShell>
                             <FieldShell label=tags_label hint=tags_hint>
@@ -1509,7 +1560,7 @@ fn TopicsPage(
                                     class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
                                     prop:value=move || tags.get()
                                     on:input=move |ev| set_tags.set(event_target_value(&ev))
-                                    placeholder="release, roadmap, updates"
+                                    placeholder=placeholders.topic_tags.clone()
                                 />
                             </FieldShell>
                         </div>
@@ -1534,7 +1585,7 @@ fn TopicsPage(
                                 class="min-h-72 w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
                                 prop:value=move || body.get()
                                 on:input=move |ev| set_body.set(event_target_value(&ev))
-                                placeholder="Write the first post here..."
+                                placeholder=placeholders.topic_body.clone()
                             ></textarea>
                         </FieldShell>
 
@@ -1582,21 +1633,15 @@ fn TopicsPage(
                         move || host_locale_for_seo.clone()
                     })
                     show_control_plane_widgets=true
-                    panel_title=move || t(
-                        locale.get().as_str().into(),
-                        "forum.topics.seo.title",
-                        "Topic SEO",
-                    )
-                    panel_subtitle=move || t(
-                        locale.get().as_str().into(),
-                        "forum.topics.seo.subtitle",
-                        "Explicit metadata, social tags and diagnostics for the selected forum topic.",
-                    )
-                    empty_message=move || t(
-                        locale.get().as_str().into(),
-                        "forum.topics.seo.empty",
-                        "Create or open a topic first. SEO stays attached to the forum thread editor.",
-                    )
+                    panel_title={
+                        let topic_seo_copy = topic_seo_copy.clone();
+                        move || topic_seo_copy.title.clone()
+                    }
+                    panel_subtitle={
+                        let topic_seo_copy = topic_seo_copy.clone();
+                        move || topic_seo_copy.subtitle.clone()
+                    }
+                    empty_message=move || topic_seo_copy.empty_message.clone()
                 />
             </div>
         </section>

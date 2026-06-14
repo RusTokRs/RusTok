@@ -83,6 +83,9 @@ for (const marker of [
   "forum_admin_sidebar_category_class",
   "forum_admin_status_badge_class",
   "forum_admin_tag_chips",
+  "forum_admin_title_envelope_view_model",
+  "forum_admin_placeholder_policy",
+  "forum_admin_seo_copy_labels",
   "forum_admin_form_error_message",
   "forum_admin_transport_error_message",
   "selected_category_filter_label",
@@ -105,6 +108,9 @@ assertContains(ui, "forum_admin_position_value", `${uiPath}: UI must consume cor
 assertContains(ui, "forum_admin_sidebar_category_class", `${uiPath}: UI must consume core-owned sidebar class policy`);
 assertContains(ui, "forum_admin_status_badge_class", `${uiPath}: UI must consume core-owned status badge class policy`);
 assertContains(ui, "forum_admin_tag_chips", `${uiPath}: UI must consume core-owned tag chip parsing policy`);
+assertContains(ui, "forum_admin_title_envelope_view_model", `${uiPath}: UI must consume core-owned title envelope policy`);
+assertContains(ui, "forum_admin_placeholder_policy", `${uiPath}: UI must consume core-owned placeholder policy`);
+assertContains(ui, "forum_admin_seo_copy_labels", `${uiPath}: UI must consume core-owned SEO copy mapping`);
 assertContains(ui, "forum_admin_delete_outcome", `${uiPath}: UI must consume core-owned delete outcome policy`);
 assertContains(ui, "CategoryFormSnapshot", `${uiPath}: UI must consume core-owned category form snapshots`);
 assertContains(ui, "TopicFormSnapshot", `${uiPath}: UI must consume core-owned topic form snapshots`);
