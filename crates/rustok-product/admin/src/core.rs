@@ -1228,7 +1228,7 @@ pub(crate) fn build_product_admin_list_item_view_model(
         id: product.id.clone(),
         status: product.status.clone(),
         status_label: localized_product_status(locale, product.status.as_str()),
-        status_badge_class: status_badge(product.status.as_str()),
+        status_badge_class: product_admin_status_badge_container_class(product.status.as_str()),
         type_label: product
             .product_type
             .clone()
@@ -1261,12 +1261,22 @@ pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
     value.trim().parse().unwrap_or(0)
 }
 
-pub(crate) fn status_badge(status: &str) -> &'static str {
+const PRODUCT_ADMIN_STATUS_BADGE_BASE_CLASS: &str =
+    "inline-flex rounded-full border px-3 py-1 text-xs font-semibold";
+
+pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'static str {
     match status {
-        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
+        "ACTIVE" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-emerald-200 bg-emerald-50 text-emerald-700",
+        "ARCHIVED" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-slate-200 bg-slate-100 text-slate-700",
+        _ => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-amber-200 bg-amber-50 text-amber-700",
     }
+}
+
+pub(crate) fn status_badge(status: &str) -> &'static str {
+    product_admin_status_badge_container_class(status)
+        .strip_prefix(PRODUCT_ADMIN_STATUS_BADGE_BASE_CLASS)
+        .and_then(|class| class.strip_prefix(' '))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -1711,6 +1721,7 @@ mod tests {
             Some("profile standard".to_string())
         );
         assert_eq!(view_model.timestamp_label, "2026-01-02T00:00:00Z");
+        assert!(view_model.status_badge_class.starts_with("inline-flex"));
         assert!(view_model.status_badge_class.contains("emerald"));
     }
 
@@ -1840,7 +1851,8 @@ mod tests {
     #[test]
     fn admin_status_labels_and_badges_are_framework_agnostic() {
         assert_eq!(localized_product_status(Some("en"), "ACTIVE"), "Active");
-        assert!(status_badge("ARCHIVED").contains("slate"));
+        assert!(product_admin_status_badge_container_class("ACTIVE").starts_with("inline-flex"));
+        assert!(product_admin_status_badge_container_class("ARCHIVED").contains("slate"));
         assert!(status_badge("DRAFT").contains("amber"));
     }
 

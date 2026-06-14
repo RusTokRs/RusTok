@@ -513,7 +513,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                                     <div class="space-y-2">
                                                         <div class="flex flex-wrap items-center gap-2">
-                                                            <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", item_status_badge_class)>
+                                                            <span class=item_status_badge_class>
                                                                 {item_status_label.clone()}
                                                             </span>
                                                             <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
