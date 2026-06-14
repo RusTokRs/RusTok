@@ -1,11 +1,17 @@
 use leptos::prelude::*;
-use leptos_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use rustok_fulfillment_storefront::transport::{
-    SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest, ShippingSelectionError,
     build_shipping_selection_plan,
+    SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest, ShippingSelectionError,
+};
+use rustok_order_storefront::transport::{
+    CheckoutCompletionCommandMetadata, CompleteCheckoutRequest,
+};
+use rustok_payment_storefront::transport::{
+    PaymentCollectionCommandMetadata, PaymentCollectionCreateRequest,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -955,17 +961,17 @@ pub async fn select_storefront_shipping_option_graphql(
 }
 
 pub async fn create_storefront_payment_collection_server(
-    cart_id: String,
+    request: PaymentCollectionCreateRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    storefront_create_payment_collection(cart_id)
+    storefront_create_payment_collection(request.cart_id, request.metadata)
         .await
         .map_err(ApiError::from)
 }
 
 pub async fn create_storefront_payment_collection_graphql(
-    cart_id: String,
+    request: PaymentCollectionCreateRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(cart_id))? else {
+    let Some((_, parsed_cart_id)) = parse_cart_id(Some(request.cart_id.clone()))? else {
         return Err(ApiError::Validation(
             "cart_id must not be empty".to_string(),
         ));
@@ -976,7 +982,7 @@ pub async fn create_storefront_payment_collection_graphql(
         CreateStorefrontPaymentCollectionVariables {
             input: CreateStorefrontPaymentCollectionInput {
                 cart_id: parsed_cart_id,
-                metadata: None,
+                metadata: Some(payment_collection_command_metadata(request.metadata)),
             },
         },
     )
@@ -986,17 +992,17 @@ pub async fn create_storefront_payment_collection_graphql(
 }
 
 pub async fn complete_storefront_checkout_server(
-    cart_id: String,
+    request: CompleteCheckoutRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    storefront_complete_checkout(cart_id)
+    storefront_complete_checkout(request.cart_id, request.metadata)
         .await
         .map_err(ApiError::from)
 }
 
 pub async fn complete_storefront_checkout_graphql(
-    cart_id: String,
+    request: CompleteCheckoutRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(cart_id))? else {
+    let Some((_, parsed_cart_id)) = parse_cart_id(Some(request.cart_id.clone()))? else {
         return Err(ApiError::Validation(
             "cart_id must not be empty".to_string(),
         ));
@@ -1007,14 +1013,33 @@ pub async fn complete_storefront_checkout_graphql(
         CompleteStorefrontCheckoutVariables {
             input: CompleteStorefrontCheckoutInput {
                 cart_id: parsed_cart_id,
-                create_fulfillment: true,
-                metadata: None,
+                create_fulfillment: request.metadata.create_fulfillment,
+                metadata: Some(checkout_completion_command_metadata(request.metadata)),
             },
         },
     )
     .await?;
 
     Ok(map_graphql_checkout_completion(response.completion))
+}
+
+fn payment_collection_command_metadata(metadata: PaymentCollectionCommandMetadata) -> Value {
+    json!({
+        "source_module": metadata.source_module,
+        "source_surface": metadata.source_surface,
+        "command": metadata.command,
+        "owner_module": metadata.owner_module,
+    })
+}
+
+fn checkout_completion_command_metadata(metadata: CheckoutCompletionCommandMetadata) -> Value {
+    json!({
+        "source_module": metadata.source_module,
+        "source_surface": metadata.source_surface,
+        "command": metadata.command,
+        "owner_module": metadata.owner_module,
+        "create_fulfillment": metadata.create_fulfillment,
+    })
 }
 
 #[server(prefix = "/api/fn", endpoint = "commerce/storefront-data")]
@@ -1110,6 +1135,7 @@ async fn storefront_commerce_native(
 #[server(prefix = "/api/fn", endpoint = "commerce/create-payment-collection")]
 async fn storefront_create_payment_collection(
     cart_id: String,
+    command_metadata: PaymentCollectionCommandMetadata,
 ) -> Result<StorefrontCheckoutPaymentCollection, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1184,7 +1210,10 @@ async fn storefront_create_payment_collection(
                     customer_id: cart.customer_id,
                     currency_code: cart.currency_code.clone(),
                     amount: cart.total_amount,
-                    metadata: merge_metadata(json!({}), cart_context_metadata(&cart, &context)),
+                    metadata: merge_metadata(
+                        payment_collection_command_metadata(command_metadata),
+                        cart_context_metadata(&cart, &context),
+                    ),
                 },
             )
             .await
@@ -1410,6 +1439,7 @@ fn storefront_cart_pricing_update(
 #[server(prefix = "/api/fn", endpoint = "commerce/complete-checkout")]
 async fn storefront_complete_checkout(
     cart_id: String,
+    command_metadata: CheckoutCompletionCommandMetadata,
 ) -> Result<StorefrontCheckoutCompletion, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
@@ -1464,8 +1494,8 @@ async fn storefront_complete_checkout(
                 region_id: None,
                 country_code: None,
                 locale: None,
-                create_fulfillment: true,
-                metadata: json!({}),
+                create_fulfillment: command_metadata.create_fulfillment,
+                metadata: checkout_completion_command_metadata(command_metadata),
             },
         )
         .await
