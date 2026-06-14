@@ -8,9 +8,6 @@
 
 Связка [Fluid Frontend Architecture (FFA)](./fluid-frontend-architecture.md) и [Fluid Backend Architecture (FBA)](./fluid-backend-architecture.md) даёт RusTok переносимость модулей между embedded и headless/remote профилями без переписывания core-логики.
 
-The combination of [Fluid Frontend Architecture (FFA)](./fluid-frontend-architecture.md) and [Fluid Backend Architecture (FBA)](./fluid-backend-architecture.md) gives RusTok topology portability (embedded ↔ headless/remote) without rewriting core module logic.
-
-
 
 ## 0) Визуальный контекст админок (UI parity)
 
@@ -75,6 +72,109 @@ The combination of [Fluid Frontend Architecture (FFA)](./fluid-frontend-architec
 
 Переход к следующему этапу допускается только после выполнения Exit Criteria текущего.
 
+## 2.1 Текущие FBA-треки и единый шаблон
+
+На 2026-06-14 в репозитории уже есть несколько FBA-треков. Они не должны переводиться
+разными способами: новые и существующие инкременты обязаны сходиться к одному шаблону
+`provider/consumer metadata + нейтральные ports + typed errors + fallback/rollout evidence`.
+
+| Модуль | Текущая роль | Статус | Единообразный следующий шаг | Источник evidence |
+|---|---|---|---|---|
+| `page_builder` | reference provider для `preview/tree/properties/publish` | `in_progress` | Продолжить после первого migration slice: `PageBuilderCapabilityService` уже принимает `PortContext`, следующий шаг — capability handlers и contract tests до `boundary_ready` без смены provider/consumer metadata format | `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`, `crates/rustok-page-builder/docs/implementation-plan.md` |
+| `pages` | первый consumer reference provider-а `page_builder` | `in_progress` | Заменить synthetic Wave 0 evidence фактическими tenant before/after snapshots и smoke/trace packet | `crates/rustok-pages/docs/implementation-plan.md`, registry page-builder |
+| `commerce` | umbrella orchestration/readiness-hardening для ecommerce slices | `in_progress` | Выравнивать checkout/post-order boundaries под тот же шаблон: owner-module ports, typed errors/context, events и отсутствие rules в transport/UI | `crates/rustok-commerce/docs/implementation-plan.md` |
+| `forum` | deferred consumer candidate для `page_builder` | `not_started` | Не повышать статус до появления local consumer evidence; держать запись как deferred в provider registry | `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` |
+
+Правила единообразия:
+
+1. **FBA остаётся названием rollout-а, а не обязательным префиксом типов.** Code-facing контракты используют нейтральные имена (`PortContext`, `PortError`, `*Port`, `provider`, `consumer`).
+2. **Источник статуса — local `docs/implementation-plan.md`, центральный board синхронизируется в том же изменении.** Нельзя оставлять `not_started`, если есть активный FBA provider/consumer evidence.
+3. **Machine-readable metadata обязательна для provider/consumer tracks.** Для `page_builder -> pages` источником является `page-builder-fba-registry.json`; следующие tracks должны переиспользовать тот же формат или явно расширять его в этом плане, а не создавать параллельный формат.
+4. **Нейтральные port primitives применяются только к новым/обновляемым портам.** Уже существующие FBA slices не переписываются механически без feature work; при следующем изменении они приводятся к тем же `context/error/idempotency/deadline` требованиям.
+5. **Повышение до `boundary_ready` или `transport_verified` требует evidence.** Наличие metadata или FFA split само по себе не считается remote/runtime verification.
+
+## 2.2 Структурный стандарт перевода модуля
+
+Да, единый стандарт есть. Для каждого нового FBA-инкремента обязательна одинаковая
+структура артефактов; отсутствие одного из пунктов ниже считается gap и не даёт повышать
+статус выше `in_progress`:
+
+1. **Local source of truth:** `crates/<module>/docs/implementation-plan.md` содержит
+   `## FFA/FBA status`, текущую роль (`provider`, `consumer`, `orchestrator`, `support`)
+   и evidence по boundary/metadata/verification.
+2. **Central status:** `docs/modules/registry.md` содержит синхронную строку readiness board
+   с тем же FBA-статусом и ссылкой на local plan.
+3. **Runtime metadata:** `rustok-module.toml` или module-owned machine-readable registry
+   фиксирует provider/consumer dependency profile, contract versions, degraded modes и
+   toggle/fallback profiles, если модуль участвует в provider/consumer track.
+4. **Contract location:** transport-neutral DTO/port/error contracts живут в owner module
+   или shared foundation crate только если они действительно cross-module; host apps не
+   становятся владельцами domain/application contract.
+5. **Verification location:** рядом с machine-readable metadata есть anti-drift/fallback gate
+   (`scripts/verify/*` или module-local verifier), а local plan перечисляет command/evidence.
+6. **Evidence packet:** для Wave/pilot rollout есть фактические или явно помеченные
+   synthetic before/after snapshots, smoke outcomes, metrics/traces и keep/rollback decision.
+7. **Docs sync:** если меняется FBA status, provider/consumer metadata, ports/events, routing,
+   tenancy, UI contract или observability, одновременно обновляются local docs, central board
+   и этот unified plan, если меняется сам стандарт.
+
+Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
+имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
+FFA/FBA status block. Теперь `page_builder` и `pages` отражены единообразно: local plan +
+central board + machine-readable registry/evidence. Оставшиеся gaps не являются нарушением
+стандарта, потому что явно зафиксированы как `not_started`/`deferred` или как compile/runtime
+blocker в verification output.
+
+## 2.3 Соответствие целевой crate-структуре
+
+Предложенная ранее схема близка к целевой модели, но в RusTok она применяется с поправками
+на текущую модульную платформу:
+
+```text
+crates/rustok-<module>/
+  src/dto|domain|error      # доменные типы, DTO, errors; название папок может отличаться
+  src/services|ports        # service layer и/или явные порты owner-модуля
+  src/entities|migrations   # SeaORM storage ownership; repository interfaces появляются, когда нужен remote/test seam
+  src/graphql|controllers   # transport adapters, thin mapping поверх service/port
+  admin|storefront          # optional module-owned UI packages with core/transport/ui split
+  rustok-module.toml        # runtime metadata, dependencies, provider/consumer FBA sections
+  contracts/                # optional machine-readable registry/evidence для provider/consumer tracks
+
+crates/rustok-<module>-grpc/ # optional late-stage adapter crate, не default requirement
+  proto/schema              # gRPC/protobuf contract только после ADR/DoR
+  server adapter            # вызывает тот же service/port, не содержит domain rules
+  client adapter            # remote implementation того же port
+  PortContext/error mapping # mapping нейтральных port primitives в transport metadata/status
+
+apps/server/
+  composition/root wiring   # module registry, GraphQL/REST/controllers, health/metrics
+  transport selection       # future per-module runtime profile; сейчас в основном in-process/native/GraphQL
+  public API                # host API не владеет domain rules
+```
+
+Ключевые отличия от схемы `service trait + in-process impl + repository interfaces` как
+обязательного шаблона:
+
+1. **Trait-порт вводится не механически.** Если модуль ещё не готов к remote/profile split,
+   service struct остаётся допустимым owner service layer; trait/adapter выделяется при первом
+   реальном boundary или contract-test инкременте.
+2. **Repository interfaces не обязательны с первого PR.** Сейчас многие модули владеют SeaORM
+   entities/migrations напрямую; abstraction seam добавляется, когда нужен remote adapter,
+   test double или запрет foreign-table доступа.
+3. **`rustok-<module>-grpc` — поздний optional adapter.** До закрытия DoR нельзя заводить gRPC
+   crate только ради формы; сначала нужны stable port, `PortContext`, typed errors, events/outbox,
+   contract tests и ADR.
+4. **Transport adapters уже существуют, но не все remote.** GraphQL/REST/`#[server]` живут как
+   thin adapters поверх owner service/port; gRPC станет ещё одним adapter profile, а не новой
+   реализацией бизнес-логики.
+5. **Machine-readable provider/consumer metadata уже является частью структуры.** Для
+   `page_builder -> pages` это `page-builder-fba-registry.json` + `rustok-module.toml`; новые
+   provider/consumer tracks должны повторять этот паттерн или расширять его в едином плане.
+
+Итого: концепция совпадает по слоям (`domain/service-port/implementation/storage/adapter/server
+wiring`), но RusTok standard не требует создавать все папки и `*-grpc` crate заранее. Структура
+эволюционирует по readiness gates, чтобы не получить формальные интерфейсы без evidence.
+
 ---
 
 ## 3) Этап A — Аудит и readiness matrix
@@ -103,7 +203,9 @@ The combination of [Fluid Frontend Architecture (FFA)](./fluid-frontend-architec
 
 ## 4) Этап B — Базовые FBA-контракты (Ports before transports)
 
-## 4.1 Единый `FbaContext`
+## 4.1 Единый `PortContext`
+
+Стартовая shared-реализация находится в `rustok-api::ports` и намеренно остаётся transport-agnostic: это контрактный примитив для портов/адаптеров, а не доменный сервис.
 
 Обязательные поля:
 
@@ -138,7 +240,7 @@ The combination of [Fluid Frontend Architecture (FFA)](./fluid-frontend-architec
 ## 4.5 Критерии готовности этапа B
 
 - Все целевые порты определены в transport-agnostic виде.
-- `FbaContext` и error model используются во всех новых/обновлённых портовых вызовах.
+- `PortContext` и error model используются во всех новых/обновлённых портовых вызовах.
 - Новые прямые foreign-table доступы не допускаются.
 
 ---
@@ -248,7 +350,7 @@ The combination of [Fluid Frontend Architecture (FFA)](./fluid-frontend-architec
 Модуль можно переводить в remote profile только при выполнении **всех** условий:
 
 1. Stable transport-agnostic port + contract tests (in-process/remote).
-2. Полный `FbaContext` на всех командах/запросах.
+2. Полный `PortContext` на всех командах/запросах.
 3. Outbox + versioned events + replay/idempotency policy.
 4. Отсутствие foreign-table доступа вне owner boundary.
 5. Write методы имеют idempotency key и deadline semantics.

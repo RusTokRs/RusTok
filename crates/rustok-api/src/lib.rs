@@ -4,6 +4,7 @@ pub mod graphql;
 #[cfg(feature = "loco-adapter")]
 pub mod loco;
 pub mod manifest_hash;
+pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
 pub mod route_selection;
@@ -21,6 +22,7 @@ pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
     ChannelResolutionTraceStep,
 };
+pub use ports::{PortActor, PortActorKind, PortContext, PortError, PortErrorKind};
 #[cfg(feature = "server")]
 pub use request::RequestContext;
 pub use route_selection::{

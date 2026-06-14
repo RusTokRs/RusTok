@@ -9,12 +9,14 @@ description = "Standalone FBA-first visual page builder reference module"
 default = ["server"]
 server = [
   "dep:async-trait",
+  "dep:rustok-api",
   "dep:rustok-core",
   "dep:sea-orm-migration",
   "dep:thiserror",
 ]
 
 [dependencies]
+rustok-api = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }

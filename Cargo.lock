@@ -10574,6 +10574,7 @@ name = "rustok-page-builder"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "rustok-api",
  "rustok-core",
  "sea-orm-migration",
  "serde",

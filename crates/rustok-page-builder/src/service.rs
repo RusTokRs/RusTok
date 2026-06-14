@@ -5,23 +5,31 @@ use crate::dto::{
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
+use rustok_api::{PortContext, PortErrorKind};
 
 #[async_trait]
 pub trait PageBuilderCapabilityService: Send + Sync {
     async fn preview(
         &self,
+        context: &PortContext,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult>;
 
-    async fn tree(&self, input: BuilderTreeInput) -> PageBuilderServiceResult<BuilderTreeResult>;
+    async fn tree(
+        &self,
+        context: &PortContext,
+        input: BuilderTreeInput,
+    ) -> PageBuilderServiceResult<BuilderTreeResult>;
 
     async fn properties(
         &self,
+        context: &PortContext,
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult>;
 
     async fn publish(
         &self,
+        context: &PortContext,
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult>;
 }
@@ -36,6 +44,16 @@ pub enum PageBuilderServiceError {
     CapabilityDisabled(String),
     #[error("runtime error: {0}")]
     Runtime(String),
+}
+
+impl PageBuilderServiceError {
+    pub fn from_port_error(error: rustok_api::PortError) -> Self {
+        match error.kind {
+            PortErrorKind::Validation => Self::Validation(error.message),
+            PortErrorKind::Timeout => Self::Runtime(error.message),
+            _ => Self::Runtime(error.message),
+        }
+    }
 }
 
 impl From<BuilderRolloutError> for PageBuilderServiceError {
@@ -67,31 +85,41 @@ where
 {
     async fn preview(
         &self,
+        context: &PortContext,
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Preview)?;
-        self.inner.preview(input).await
+        self.inner.preview(context, input).await
     }
 
-    async fn tree(&self, input: BuilderTreeInput) -> PageBuilderServiceResult<BuilderTreeResult> {
+    async fn tree(
+        &self,
+        context: &PortContext,
+        input: BuilderTreeInput,
+    ) -> PageBuilderServiceResult<BuilderTreeResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Tree)?;
-        self.inner.tree(input).await
+        self.inner.tree(context, input).await
     }
 
     async fn properties(
         &self,
+        context: &PortContext,
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Properties)?;
-        self.inner.properties(input).await
+        self.inner.properties(context, input).await
     }
 
     async fn publish(
         &self,
+        context: &PortContext,
         input: PublishPageBuilderInput,
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;
-        self.inner.publish(input).await
+        context
+            .require_write_semantics()
+            .map_err(PageBuilderServiceError::from_port_error)?;
+        self.inner.publish(context, input).await
     }
 }
 
@@ -99,6 +127,7 @@ where
 mod tests {
     use super::*;
     use crate::rollout::BuilderToggleProfile;
+    use rustok_api::PortActor;
 
     struct StubService;
 
@@ -106,6 +135,7 @@ mod tests {
     impl PageBuilderCapabilityService for StubService {
         async fn preview(
             &self,
+            _context: &PortContext,
             input: PreviewPageBuilderInput,
         ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
             Ok(PreviewPageBuilderResult {
@@ -116,6 +146,7 @@ mod tests {
 
         async fn tree(
             &self,
+            _context: &PortContext,
             input: BuilderTreeInput,
         ) -> PageBuilderServiceResult<BuilderTreeResult> {
             Ok(BuilderTreeResult {
@@ -126,6 +157,7 @@ mod tests {
 
         async fn properties(
             &self,
+            _context: &PortContext,
             input: BuilderNodePropertiesInput,
         ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
             Ok(BuilderNodePropertiesResult {
@@ -137,6 +169,7 @@ mod tests {
 
         async fn publish(
             &self,
+            _context: &PortContext,
             input: PublishPageBuilderInput,
         ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
             Ok(PublishPageBuilderResult {
@@ -145,6 +178,16 @@ mod tests {
                 published: true,
             })
         }
+    }
+
+    fn read_context() -> PortContext {
+        PortContext::new("tenant-a", PortActor::user("editor-a"), "ru", "corr-read")
+    }
+
+    fn write_context() -> PortContext {
+        PortContext::new("tenant-a", PortActor::user("editor-a"), "ru", "corr-write")
+            .with_idempotency_key("idem-a")
+            .with_deadline(std::time::Duration::from_secs(3))
     }
 
     fn preview_input() -> PreviewPageBuilderInput {
@@ -186,7 +229,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn guarded_service_blocks_disabled_publish() {
+    async fn guarded_service_blocks_disabled_publish_before_write_semantics() {
         let flags = BuilderCapabilityFlags {
             builder_enabled: true,
             preview_enabled: true,
@@ -197,17 +240,30 @@ mod tests {
         let service = CapabilityGuardedService::new(StubService, flags);
 
         let err = service
-            .publish(PublishPageBuilderInput {
-                page_id: "home".to_string(),
-                revision_id: "rev-1".to_string(),
-                schema_version: "grapesjs_v1".to_string(),
-                project_data: serde_json::json!({}),
-            })
+            .publish(&read_context(), publish_input())
             .await
-            .expect_err("publish should be blocked");
+            .expect_err("publish should be blocked by capability before context validation");
 
         match err {
             PageBuilderServiceError::CapabilityDisabled(name) => assert_eq!(name, "publish"),
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_requires_write_port_semantics() {
+        let service =
+            CapabilityGuardedService::new(StubService, BuilderToggleProfile::AllOn.flags());
+
+        let err = service
+            .publish(&read_context(), publish_input())
+            .await
+            .expect_err("publish requires write semantics");
+
+        match err {
+            PageBuilderServiceError::Validation(message) => {
+                assert!(message.contains("idempotency key"));
+            }
             other => panic!("unexpected error: {other:?}"),
         }
     }
@@ -217,47 +273,76 @@ mod tests {
         let service =
             CapabilityGuardedService::new(StubService, BuilderToggleProfile::AllOn.flags());
         service
-            .preview(preview_input())
+            .preview(&read_context(), preview_input())
             .await
             .expect("preview enabled");
-        service.tree(tree_input()).await.expect("tree enabled");
         service
-            .properties(properties_input())
+            .tree(&read_context(), tree_input())
+            .await
+            .expect("tree enabled");
+        service
+            .properties(&read_context(), properties_input())
             .await
             .expect("properties enabled");
         service
-            .publish(publish_input())
+            .publish(&write_context(), publish_input())
             .await
             .expect("publish enabled");
 
         let service =
             CapabilityGuardedService::new(StubService, BuilderToggleProfile::PublishOff.flags());
         service
-            .preview(preview_input())
+            .preview(&read_context(), preview_input())
             .await
             .expect("preview enabled");
-        service.tree(tree_input()).await.expect("tree enabled");
         service
-            .properties(properties_input())
+            .tree(&read_context(), tree_input())
+            .await
+            .expect("tree enabled");
+        service
+            .properties(&read_context(), properties_input())
             .await
             .expect("properties enabled");
-        assert_disabled(service.publish(publish_input()).await, "publish");
+        assert_disabled(
+            service.publish(&write_context(), publish_input()).await,
+            "publish",
+        );
 
         let service =
             CapabilityGuardedService::new(StubService, BuilderToggleProfile::PreviewOff.flags());
-        assert_disabled(service.preview(preview_input()).await, "preview");
-        service.tree(tree_input()).await.expect("tree enabled");
+        assert_disabled(
+            service.preview(&read_context(), preview_input()).await,
+            "preview",
+        );
         service
-            .properties(properties_input())
+            .tree(&read_context(), tree_input())
+            .await
+            .expect("tree enabled");
+        service
+            .properties(&read_context(), properties_input())
             .await
             .expect("properties enabled");
-        assert_disabled(service.publish(publish_input()).await, "publish");
+        assert_disabled(
+            service.publish(&write_context(), publish_input()).await,
+            "publish",
+        );
 
         let service =
             CapabilityGuardedService::new(StubService, BuilderToggleProfile::BuilderOff.flags());
-        assert_disabled(service.preview(preview_input()).await, "preview");
-        assert_disabled(service.tree(tree_input()).await, "tree");
-        assert_disabled(service.properties(properties_input()).await, "properties");
-        assert_disabled(service.publish(publish_input()).await, "publish");
+        assert_disabled(
+            service.preview(&read_context(), preview_input()).await,
+            "preview",
+        );
+        assert_disabled(service.tree(&read_context(), tree_input()).await, "tree");
+        assert_disabled(
+            service
+                .properties(&read_context(), properties_input())
+                .await,
+            "properties",
+        );
+        assert_disabled(
+            service.publish(&write_context(), publish_input()).await,
+            "publish",
+        );
     }
 }

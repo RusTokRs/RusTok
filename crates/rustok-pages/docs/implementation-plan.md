@@ -51,15 +51,16 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress` (consumer baseline для `rustok-page-builder`; remote runtime profile ещё не включён)
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board;
+  - FBA consumer metadata синхронизирована с `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`, `rustok-module.toml` и baseline gate;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FFA maintenance slice: create-page draft normalization, channel slug CSV parsing and route text checks переиспользуют shared UI helpers из `rustok-api` без изменения native/GraphQL транспорта;
   - FFA admin slice: Leptos render/effect adapter живёт в `admin/src/ui/leptos.rs`, transport facade — в `admin/src/transport/`, GraphQL adapter — в `admin/src/api.rs`; внешний GraphQL contract не менялся;
   - FFA storefront slice: Leptos render/bind adapter живёт в `storefront/src/ui/leptos.rs`, crate root только wires modules/re-export `PagesView`, transport facade — в `storefront/src/transport.rs`, native/GraphQL adapter — в `storefront/src/api.rs`; fast boundary guardrail `scripts/verify/verify-pages-ui-boundary.mjs` фиксирует admin/storefront split, Leptos-free core и docs sync.
-- Last verified at (UTC): 2026-06-13T00:00:00Z
+- Last verified at (UTC): 2026-06-14T00:00:00Z
 - Owner: `rustok-pages` module team
 
 ## PB-FBA immediate sprint (продолжение page builder разработки)
