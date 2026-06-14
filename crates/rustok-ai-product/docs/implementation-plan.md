@@ -14,3 +14,4 @@
 ## Execution checkpoint
 
 - Создан начальный scaffold crate и документация.
+- Перенесены generated payload contracts и базовая валидация `product_copy` / `product_attributes` в `rustok-ai-product`; `rustok-ai` consume-ит эти validators в direct generation path.
