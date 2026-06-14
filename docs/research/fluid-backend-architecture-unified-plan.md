@@ -125,6 +125,56 @@ central board + machine-readable registry/evidence. Оставшиеся gaps н
 стандарта, потому что явно зафиксированы как `not_started`/`deferred` или как compile/runtime
 blocker в verification output.
 
+## 2.3 Соответствие целевой crate-структуре
+
+Предложенная ранее схема близка к целевой модели, но в RusTok она применяется с поправками
+на текущую модульную платформу:
+
+```text
+crates/rustok-<module>/
+  src/dto|domain|error      # доменные типы, DTO, errors; название папок может отличаться
+  src/services|ports        # service layer и/или явные порты owner-модуля
+  src/entities|migrations   # SeaORM storage ownership; repository interfaces появляются, когда нужен remote/test seam
+  src/graphql|controllers   # transport adapters, thin mapping поверх service/port
+  admin|storefront          # optional module-owned UI packages with core/transport/ui split
+  rustok-module.toml        # runtime metadata, dependencies, provider/consumer FBA sections
+  contracts/                # optional machine-readable registry/evidence для provider/consumer tracks
+
+crates/rustok-<module>-grpc/ # optional late-stage adapter crate, не default requirement
+  proto/schema              # gRPC/protobuf contract только после ADR/DoR
+  server adapter            # вызывает тот же service/port, не содержит domain rules
+  client adapter            # remote implementation того же port
+  PortContext/error mapping # mapping нейтральных port primitives в transport metadata/status
+
+apps/server/
+  composition/root wiring   # module registry, GraphQL/REST/controllers, health/metrics
+  transport selection       # future per-module runtime profile; сейчас в основном in-process/native/GraphQL
+  public API                # host API не владеет domain rules
+```
+
+Ключевые отличия от схемы `service trait + in-process impl + repository interfaces` как
+обязательного шаблона:
+
+1. **Trait-порт вводится не механически.** Если модуль ещё не готов к remote/profile split,
+   service struct остаётся допустимым owner service layer; trait/adapter выделяется при первом
+   реальном boundary или contract-test инкременте.
+2. **Repository interfaces не обязательны с первого PR.** Сейчас многие модули владеют SeaORM
+   entities/migrations напрямую; abstraction seam добавляется, когда нужен remote adapter,
+   test double или запрет foreign-table доступа.
+3. **`rustok-<module>-grpc` — поздний optional adapter.** До закрытия DoR нельзя заводить gRPC
+   crate только ради формы; сначала нужны stable port, `PortContext`, typed errors, events/outbox,
+   contract tests и ADR.
+4. **Transport adapters уже существуют, но не все remote.** GraphQL/REST/`#[server]` живут как
+   thin adapters поверх owner service/port; gRPC станет ещё одним adapter profile, а не новой
+   реализацией бизнес-логики.
+5. **Machine-readable provider/consumer metadata уже является частью структуры.** Для
+   `page_builder -> pages` это `page-builder-fba-registry.json` + `rustok-module.toml`; новые
+   provider/consumer tracks должны повторять этот паттерн или расширять его в едином плане.
+
+Итого: концепция совпадает по слоям (`domain/service-port/implementation/storage/adapter/server
+wiring`), но RusTok standard не требует создавать все папки и `*-grpc` crate заранее. Структура
+эволюционирует по readiness gates, чтобы не получить формальные интерфейсы без evidence.
+
 ---
 
 ## 3) Этап A — Аудит и readiness matrix
