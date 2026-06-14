@@ -420,22 +420,34 @@ pub fn BlogAdmin() -> impl IntoView {
 
         spawn_local(async move {
             match transport::delete_post(token_value, tenant_value, command.post_id.clone()).await {
-                Ok(true) => {
-                    if core::should_reset_form_after_delete(
+                Ok(deleted) => {
+                    let delete_result = core::blog_post_delete_result_view(
+                        deleted,
                         editing_post_id.get_untracked().as_deref(),
                         command.post_id.as_str(),
-                    ) {
-                        delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
-                        reset_form_to_defaults.run(());
+                        t(
+                            ui_locale.as_deref(),
+                            "blog.error.deleteReturnedFalse",
+                            "Delete post returned false. Unpublish or archive it first.",
+                        ),
+                    );
+
+                    match delete_result {
+                        Ok(view_model) => {
+                            if view_model.clear_selected_post_query {
+                                delete_query_writer.clear_key(AdminQueryKey::PostId.as_str());
+                            }
+                            if view_model.reset_form {
+                                reset_form_to_defaults.run(());
+                            }
+                            if view_model.refresh_posts {
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                        }
+                        Err(issue) => {
+                            set_submit_error.set(Some(issue));
+                        }
                     }
-                    set_refresh_nonce.update(|value| *value += 1);
-                }
-                Ok(false) => {
-                    set_submit_error.set(Some(WritePathIssue::new(t(
-                        ui_locale.as_deref(),
-                        "blog.error.deleteReturnedFalse",
-                        "Delete post returned false. Unpublish or archive it first.",
-                    ))));
                 }
                 Err(err) => {
                     set_submit_error.set(Some(WritePathIssue::with_context(

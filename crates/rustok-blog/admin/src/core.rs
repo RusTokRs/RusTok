@@ -597,6 +597,32 @@ pub fn prepare_blog_post_delete_command(post_id: String) -> BlogPostDeleteComman
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostDeleteResultViewModel {
+    pub refresh_posts: bool,
+    pub reset_form: bool,
+    pub clear_selected_post_query: bool,
+}
+
+pub fn blog_post_delete_result_view(
+    deleted: bool,
+    editing_post_id: Option<&str>,
+    deleted_post_id: &str,
+    delete_returned_false_message: String,
+) -> Result<BlogPostDeleteResultViewModel, WritePathIssue> {
+    if !deleted {
+        return Err(WritePathIssue::new(delete_returned_false_message));
+    }
+
+    let reset_form = should_reset_form_after_delete(editing_post_id, deleted_post_id);
+
+    Ok(BlogPostDeleteResultViewModel {
+        refresh_posts: true,
+        reset_form,
+        clear_selected_post_query: reset_form,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubmitButtonState {
     Saving,
@@ -814,6 +840,43 @@ mod tests {
         let delete = prepare_blog_post_delete_command("post-4".to_string());
         assert_eq!(delete.post_id, "post-4");
         assert_eq!(delete.busy_key, "delete:post-4");
+    }
+
+    #[test]
+    fn delete_result_view_model_maps_reset_and_false_outcomes() {
+        let reset = blog_post_delete_result_view(
+            true,
+            Some("post-1"),
+            "post-1",
+            "Delete post returned false".to_string(),
+        )
+        .expect("successful delete should produce apply instructions");
+
+        assert!(reset.refresh_posts);
+        assert!(reset.reset_form);
+        assert!(reset.clear_selected_post_query);
+
+        let keep_form = blog_post_delete_result_view(
+            true,
+            Some("post-2"),
+            "post-1",
+            "Delete post returned false".to_string(),
+        )
+        .expect("deleting a non-edited row should not reset the current form");
+
+        assert!(keep_form.refresh_posts);
+        assert!(!keep_form.reset_form);
+        assert!(!keep_form.clear_selected_post_query);
+
+        let issue = blog_post_delete_result_view(
+            false,
+            Some("post-1"),
+            "post-1",
+            "Delete post returned false".to_string(),
+        )
+        .expect_err("false delete result must become a typed write-path issue");
+
+        assert_eq!(issue.message, "Delete post returned false");
     }
 
     #[test]
