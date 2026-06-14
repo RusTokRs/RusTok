@@ -15,6 +15,9 @@ for (const module of modules) {
   const registry = JSON.parse(read(registryPath));
   const plan = read(`crates/rustok-${module}/docs/implementation-plan.md`);
   const manifest = read(`crates/rustok-${module}/rustok-module.toml`);
+  const cargo = read(`crates/rustok-${module}/Cargo.toml`);
+  const portSource = read(`crates/rustok-${module}/src/ports.rs`);
+  const libSource = read(`crates/rustok-${module}/src/lib.rs`);
 
   if (registry.module !== module) fail(`${registryPath} has module=${registry.module}`);
   if (registry.status !== 'in_progress') fail(`${module} registry status must be in_progress`);
@@ -27,6 +30,10 @@ for (const module of modules) {
     if (port.error !== 'rustok_api::ports::PortError') fail(`${module}.${port.name} must use PortError`);
     if (!Array.isArray(port.operations) || port.operations.length === 0) fail(`${module}.${port.name} has no operations`);
     if (port.deadline_required !== true) fail(`${module}.${port.name} must declare deadline_required=true`);
+    if (!portSource.includes(`trait ${port.name}`)) fail(`${module} src/ports.rs lacks trait ${port.name}`);
+    for (const operation of port.operations) {
+      if (!portSource.includes(`${operation}(`)) fail(`${module}.${port.name} lacks operation ${operation}`);
+    }
   }
 
   if (!manifest.includes('[fba.provider]')) fail(`${module} manifest lacks [fba.provider]`);
@@ -34,6 +41,9 @@ for (const module of modules) {
   if (!manifest.includes(`contract_version = "${registry.contract_version}"`)) fail(`${module} manifest contract version drift`);
   if (!manifest.includes('context = "rustok_api::ports::PortContext"')) fail(`${module} manifest context drift`);
   if (!manifest.includes('error = "rustok_api::ports::PortError"')) fail(`${module} manifest error drift`);
+  if (!cargo.includes('rustok-api.workspace = true')) fail(`${module} Cargo.toml lacks rustok-api dependency`);
+  if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail(`${module} lib.rs must export ports`);
+  if (!portSource.includes('rustok_api::{PortContext, PortError}')) fail(`${module} src/ports.rs must import neutral port primitives`);
 
   if (!plan.includes('- FBA status: `in_progress`')) fail(`${module} local plan FBA status drift`);
   if (!plan.includes(`${module}-fba-registry.json`)) fail(`${module} local plan lacks registry evidence`);

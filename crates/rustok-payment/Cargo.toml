@@ -10,6 +10,7 @@ async-trait.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
 rustok-core.workspace = true
+rustok-api.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
