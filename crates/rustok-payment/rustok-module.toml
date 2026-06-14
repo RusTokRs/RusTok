@@ -14,3 +14,15 @@ leptos_crate = "rustok-payment-storefront"
 slot = "checkout_payment_handoff"
 route_segment = "payment"
 page_title = "Payment"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "payment.checkout.v1"
+registry = "contracts/payment-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "graphql_checkout_compat"]
+degraded_modes = ["typed_retry", "preserve_owner_snapshot"]

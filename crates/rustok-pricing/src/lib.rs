@@ -4,7 +4,10 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod migrations;
+pub mod ports;
 pub mod services;
+
+pub use ports::*;
 
 pub use services::{
     ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,

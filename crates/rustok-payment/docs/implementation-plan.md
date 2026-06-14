@@ -15,10 +15,12 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
+  - in-process реализация `PaymentCollectionPort for PaymentService` добавлена в `src/ports.rs`: create/reuse path требует `PortContext::require_write_semantics`, переиспользует reusable cart collection перед созданием новой и мапит `PaymentError` в `PortError`;
+  - `src/ports.rs` теперь экспортирует `PaymentCollectionPort` и DTO для create/reuse/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
+  - метаданные FBA-provider открыты для `payment collection create/reuse` через `crates/rustok-payment/contracts/payment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce no longer exposes a duplicate payment request builder;
   - fast boundary guardrail `scripts/verify/verify-payment-storefront-boundary.mjs` is wired into `npm run verify:ffa:ui:migration`, self-checks package wiring, and checks the payment-owned core/transport/ui split without long Cargo compilation;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
