@@ -8,11 +8,11 @@ SPI и post-order delivery changes ещё остаются в активном b
 ## Execution checkpoint
 
 - Current phase: ffa_storefront_selection_boundary
-- Last checkpoint: Fulfillment storefront now owns seller-aware shipping selection DTOs, Leptos selection panel and request normalization; commerce checkout route renders that owner UI and keeps only the transitional aggregate transport callback until fulfillment-owned transport is ready. Fast source guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` covers the boundary.
+- Last checkpoint: Fulfillment storefront now owns seller-aware shipping selection DTOs, Leptos selection panel and request normalization; commerce checkout route renders that owner UI and keeps only the transitional aggregate transport callback until fulfillment-owned transport is ready. Fast source guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` covers the boundary and is wired into aggregate `npm run verify:ffa:ui:migration`.
 - Next step: Move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-13T22:35:00Z
+- Last updated at (UTC): 2026-06-14T01:00:00Z
 
 ## FFA/FBA status
 
@@ -23,7 +23,7 @@ SPI и post-order delivery changes ещё остаются в активном b
   - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
-  - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core split while commerce temporarily retains transport callback.
+  - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core split and aggregate package wiring while commerce temporarily retains transport callback.
 - Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 

@@ -45,8 +45,9 @@ const uiPath = "crates/rustok-fulfillment/storefront/src/ui/leptos.rs";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const planPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+const packagePath = "package.json";
 
-for (const filePath of [libPath, modelPath, corePath, uiPath, commerceUiPath, planPath, registryPath]) {
+for (const filePath of [libPath, modelPath, corePath, uiPath, commerceUiPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected fulfillment storefront FFA file`);
 }
 
@@ -57,6 +58,7 @@ const ui = readRepo(uiPath);
 const commerceUi = readRepo(commerceUiPath);
 const plan = readRepo(planPath);
 const registry = readRepo(registryPath);
+const packageJson = readRepo(packagePath);
 
 for (const marker of [
   "mod model;",
@@ -101,6 +103,8 @@ assertContains(commerceUi, "FulfillmentShippingSelectionPanel", `${commerceUiPat
 assertContains(commerceUi, "transport::select_storefront_shipping_option", `${commerceUiPath}: commerce host may keep transitional aggregate transport callback`);
 assertContains(plan, "verify-fulfillment-storefront-boundary.mjs", `${planPath}: local plan must mention storefront boundary guardrail`);
 assertContains(registry, "verify-fulfillment-storefront-boundary.mjs", `${registryPath}: central registry must mention storefront boundary guardrail`);
+assertContains(packageJson, "verify:fulfillment:storefront-boundary", `${packagePath}: expected fulfillment storefront boundary script`);
+assertContains(packageJson, "npm run verify:fulfillment:storefront-boundary", `${packagePath}: aggregate FFA migration verification must include storefront fulfillment boundary`);
 
 if (failures.length > 0) {
   console.error("fulfillment storefront boundary verification failed:");
