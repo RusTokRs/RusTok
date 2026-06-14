@@ -918,7 +918,7 @@ fn BlogPostsTable(
                                                     on:click={
                                                         move |_| on_toggle_publish.run((
                                                             post_id_publish.clone(),
-                                                            core::next_publish_state(row.is_published),
+                                                            row.next_publish_state,
                                                             post_locale_publish.clone(),
                                                         ))
                                                     }

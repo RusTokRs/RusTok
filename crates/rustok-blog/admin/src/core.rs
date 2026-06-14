@@ -335,6 +335,7 @@ pub struct BlogPostAdminTableRowViewModel {
     pub is_busy: bool,
     pub is_published: bool,
     pub is_archived: bool,
+    pub next_publish_state: bool,
     pub show_archive_action: bool,
     pub edit_label: String,
     pub publish_label: String,
@@ -377,6 +378,7 @@ pub fn blog_post_admin_table_row_view(
         is_busy,
         is_published,
         is_archived,
+        next_publish_state: next_publish_state(is_published),
         show_archive_action,
         edit_label: edit_action_label(
             is_editing,
@@ -848,6 +850,7 @@ mod tests {
         assert!(row.is_busy);
         assert!(row.is_published);
         assert!(!row.is_archived);
+        assert!(!row.next_publish_state);
         assert!(row.show_archive_action);
         assert_eq!(row.edit_label, "Editing");
         assert_eq!(row.publish_label, "Unpublish");

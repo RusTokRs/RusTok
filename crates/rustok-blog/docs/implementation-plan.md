@@ -7,15 +7,15 @@ packages и module metadata синхронизированы.
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_action_command_core_boundary
-- Last checkpoint: FFA slice #82 moved admin publish/unpublish, archive and delete action command preparation into Leptos-free core command view-models, so the Leptos adapter dispatches prepared operation/locale/busy-key envelopes through the existing transport facade.
+- Current phase: ffa_admin_row_action_policy_core_boundary
+- Last checkpoint: FFA slice #83 moved admin row publish-toggle next-state policy into `BlogPostAdminTableRowViewModel`, so the Leptos table adapter emits a prepared action value instead of recalculating publish/unpublish intent in the click binding.
 - Next step: Continue with small admin render/command fragments that reduce real coupling without changing the dual-path contract, or add adapter-level parity evidence around transport failure classification.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-06-13T00:00:00Z
+- Last updated at (UTC): 2026-06-14T00:00:00Z
 
 ## FFA/FBA status
 
@@ -26,8 +26,8 @@ packages и module metadata синхронизированы.
   - storefront/admin helper slices продолжают вынос UI decision logic в `core` без изменения dual-path transport contract; storefront shell copy and selected-post route/query state now use framework-agnostic core view-model/state; storefront native and GraphQL transport paths are separated into explicit adapter modules; transport adapters consume core-owned fetch request state instead of raw UI tuples; admin calls now go through a module-owned `admin/src/transport.rs` facade instead of direct `api::*` calls from the Leptos adapter;
   - native `#[server]` + GraphQL fallback остаются параллельными путями, GraphQL removal/replacement не выполнялся;
   - backend boundary пока работает в in-process модели; remote extraction readiness ведётся как эволюционный трек без смены ownership/contract;
-  - FFA slice #75 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а crate roots стали тонким module wiring/re-export слоем; FFA slice #76 перенесла admin save-command preparation в `admin/src/core.rs`: required-field validation, validation issue construction, create/update operation selection и busy-key policy теперь Leptos-free, поэтому adapter только собирает form state/локализованный текст и вызывает module-owned transport facade; FFA slice #77 закрепила это быстрым source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs`; FFA slice #78 перенесла admin editor form-state mapping/reset defaults в `BlogPostEditorFormState` внутри `admin/src/core.rs`, оставив Leptos adapter тонким signal-application слоем; FFA slice #79 перенесла admin table-row display/action state в `BlogPostAdminTableRowViewModel`, оставив Leptos table fragment markup/event-binding слоем; FFA slice #80 завершила row action presentation переносом archive/delete labels и archive visibility в этот же core-owned row view-model; FFA slice #81 перенесла issue banner visibility/class/label/message mapping в `BlogPostAdminIssueBannerViewModel`, оставив Leptos adapter без write-path presentation policy; FFA slice #82 перенесла publish/unpublish, archive и delete action command preparation в core-owned `BlogPostStatusCommand`, `BlogPostArchiveCommand` и `BlogPostDeleteCommand`, оставив Leptos adapter только выбирать transport call по подготовленной операции.
-- Last verified at (UTC): 2026-06-13T00:00:00Z
+  - FFA slice #75 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а crate roots стали тонким module wiring/re-export слоем; FFA slice #76 перенесла admin save-command preparation в `admin/src/core.rs`: required-field validation, validation issue construction, create/update operation selection и busy-key policy теперь Leptos-free, поэтому adapter только собирает form state/локализованный текст и вызывает module-owned transport facade; FFA slice #77 закрепила это быстрым source-level guardrail `scripts/verify/verify-blog-admin-boundary.mjs`; FFA slice #78 перенесла admin editor form-state mapping/reset defaults в `BlogPostEditorFormState` внутри `admin/src/core.rs`, оставив Leptos adapter тонким signal-application слоем; FFA slice #79 перенесла admin table-row display/action state в `BlogPostAdminTableRowViewModel`, оставив Leptos table fragment markup/event-binding слоем; FFA slice #80 завершила row action presentation переносом archive/delete labels и archive visibility в этот же core-owned row view-model; FFA slice #81 перенесла issue banner visibility/class/label/message mapping в `BlogPostAdminIssueBannerViewModel`, оставив Leptos adapter без write-path presentation policy; FFA slice #82 перенесла publish/unpublish, archive и delete action command preparation в core-owned `BlogPostStatusCommand`, `BlogPostArchiveCommand` и `BlogPostDeleteCommand`, оставив Leptos adapter только выбирать transport call по подготовленной операции; FFA slice #83 перенесла publish-toggle next-state policy в `BlogPostAdminTableRowViewModel`, чтобы Leptos table adapter отправлял уже подготовленное значение действия без повторного вычисления intent в event binding.
+- Last verified at (UTC): 2026-06-14T00:00:00Z
 - Owner: `rustok-blog` module team
 
 ## Область работ
@@ -206,6 +206,7 @@ packages и module metadata синхронизированы.
 - [x] Slice 80: admin table archive/delete action labels and archive visibility moved into `core::BlogPostAdminTableRowViewModel`, completing the row action presentation slice without changing callbacks, transport, or GraphQL/native contracts. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`.
 - [x] Slice 81: admin write-path issue banner presentation moved to `core::BlogPostAdminIssueBannerViewModel`; Leptos now asks core for visible/class/label/message and renders only markup, keeping validation/runtime issue display policy portable. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; targeted `timeout 20s cargo test -p rustok-blog-admin --lib blog_post_admin_issue_banner --config profile.dev.debug=0` reached the timeout during dependency compilation, so no long compile was allowed.
 - [x] Slice 82: admin publish/unpublish, archive and delete action command preparation moved to core (`BlogPostStatusCommand`, `BlogPostArchiveCommand`, `BlogPostDeleteCommand`); Leptos now sets busy state and dispatches transport from prepared command envelopes instead of composing operation/locale/busy-key policy inline. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; no Cargo compilation was run by request.
+- [x] Slice 83: admin table-row publish-toggle next-state policy moved into `BlogPostAdminTableRowViewModel`; Leptos click binding now emits the prepared `row.next_publish_state` value and remains markup/event plumbing. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; no Cargo compilation was run by request.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 
