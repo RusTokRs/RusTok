@@ -19,7 +19,7 @@ use crate::core::{
     build_product_admin_profile_panel_loading_view_model,
     build_product_admin_profile_panel_ready_view_model, build_product_admin_save_command,
     build_product_admin_seo_panel_copy, build_product_admin_shell_view_model,
-    build_product_admin_status_mutation_command,
+    build_product_admin_shipping_profile_options, build_product_admin_status_mutation_command,
     build_product_admin_status_mutation_result_view_model,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
     parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
@@ -678,11 +678,14 @@ pub fn ProductAdmin() -> impl IntoView {
                                 <select class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || shipping_profile_slug.get() on:change=move |ev| set_shipping_profile_slug.set(event_target_value(&ev))>
                                     <option value="">{editor_copy.no_shipping_profile_label.clone()}</option>
                                     {move || match shipping_profiles.get() {
-                                        Some(Ok(list)) => list.items.into_iter().map(|profile| {
-                                            let slug = profile.slug.clone();
-                                            let label = shipping_profile_choice_label(ui_locale_for_profiles.as_deref(), &profile);
-                                            view! { <option value=slug.clone()>{label}</option> }
-                                        }).collect_view().into_any(),
+                                        Some(Ok(list)) => build_product_admin_shipping_profile_options(
+                                            ui_locale_for_profiles.as_deref(),
+                                            &list.items,
+                                        )
+                                        .into_iter()
+                                        .map(|option| view! { <option value=option.value>{option.label}</option> })
+                                        .collect_view()
+                                        .into_any(),
                                         _ => ().into_any(),
                                     }}
                                 </select>

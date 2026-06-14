@@ -996,6 +996,25 @@ pub(crate) fn format_known_shipping_profiles(
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminShippingProfileOption {
+    pub value: String,
+    pub label: String,
+}
+
+pub(crate) fn build_product_admin_shipping_profile_options(
+    locale: Option<&str>,
+    profiles: &[ShippingProfile],
+) -> Vec<ProductAdminShippingProfileOption> {
+    profiles
+        .iter()
+        .map(|profile| ProductAdminShippingProfileOption {
+            value: profile.slug.clone(),
+            label: shipping_profile_choice_label(locale, profile),
+        })
+        .collect()
+}
+
 pub(crate) fn shipping_profile_choice_label(
     locale: Option<&str>,
     profile: &ShippingProfile,
@@ -1784,6 +1803,26 @@ mod tests {
             ProductAdminProfilePanelViewModel::Ready {
                 message: "Known profiles: standard".to_string(),
             },
+        );
+    }
+
+    #[test]
+    fn product_admin_shipping_profile_options_are_core_owned() {
+        let active = shipping_profile("standard", true);
+        let inactive = shipping_profile("legacy", false);
+
+        assert_eq!(
+            build_product_admin_shipping_profile_options(Some("en"), &[active, inactive]),
+            vec![
+                ProductAdminShippingProfileOption {
+                    value: "standard".to_string(),
+                    label: "Standard (standard)".to_string(),
+                },
+                ProductAdminShippingProfileOption {
+                    value: "legacy".to_string(),
+                    label: "Standard (legacy, inactive)".to_string(),
+                },
+            ],
         );
     }
 
