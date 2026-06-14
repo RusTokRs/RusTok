@@ -72,7 +72,7 @@ pub use config::{
     EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig, SerializationFormat,
     TopologyConfig,
 };
-pub use consumer::{ConsumerGroup, ConsumerGroupManager};
+pub use consumer::{ConsumedEvent, ConsumerGroup, ConsumerGroupManager};
 pub use dlq::{DlqEntry, DlqManager};
 pub use health::{health_check, HealthCheckResult, HealthStatus};
 pub use partitioning::{calculate_partition, partition_key};

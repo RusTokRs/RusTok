@@ -6,6 +6,7 @@ use crate::config::SerializationFormat;
 pub trait EventSerializer: Send + Sync {
     fn format(&self) -> SerializationFormat;
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>>;
+    fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope>;
 }
 
 #[derive(Debug, Default)]
@@ -19,6 +20,10 @@ impl EventSerializer for JsonSerializer {
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
         Ok(serde_json::to_vec(envelope)?)
     }
+
+    fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
+        Ok(serde_json::from_slice(payload)?)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -31,6 +36,10 @@ impl EventSerializer for PostcardSerializer {
 
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
         postcard::to_stdvec(envelope).map_err(|err| rustok_core::Error::External(err.to_string()))
+    }
+
+    fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
+        postcard::from_bytes(payload).map_err(|err| rustok_core::Error::External(err.to_string()))
     }
 }
 
@@ -97,7 +106,19 @@ mod tests {
         let envelope = create_test_envelope();
 
         let bytes = serializer.serialize(&envelope).unwrap();
-        let deserialized: EventEnvelope = serde_json::from_slice(&bytes).unwrap();
+        let deserialized = serializer.deserialize(&bytes).unwrap();
+
+        assert_eq!(envelope.id, deserialized.id);
+        assert_eq!(envelope.tenant_id, deserialized.tenant_id);
+    }
+
+    #[test]
+    fn postcard_roundtrip() {
+        let serializer = PostcardSerializer;
+        let envelope = create_test_envelope();
+
+        let bytes = serializer.serialize(&envelope).unwrap();
+        let deserialized = serializer.deserialize(&bytes).unwrap();
 
         assert_eq!(envelope.id, deserialized.id);
         assert_eq!(envelope.tenant_id, deserialized.tenant_id);

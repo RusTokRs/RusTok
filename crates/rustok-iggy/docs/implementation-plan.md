@@ -6,12 +6,12 @@ production-grade уровня.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Current phase: real_integration_hardening
+- Last checkpoint: no-compile инкремент: добавлен transport-level consume_next_as_group поверх connector subscribe, JSON/Postcard deserialize contract и targeted fake-connector tests; попутно исправлен connector is_connected state read.
+- Next step: довести offset/ack semantics и DLQ/replay movement поверх расширенного connector subscriber contract.
+- Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
+- Hand-off notes for next agent: Следующий инкремент должен формализовать ack/offset metadata в rustok-iggy-connector, затем связать retry_from_dlq/replay с consume path.
+- Last updated at (UTC): 2026-06-14T00:00:00Z
 
 ## Область работ
 
@@ -32,12 +32,14 @@ production-grade уровня.
 
 - [x] закрепить transport boundary поверх connector crate;
 - [x] удерживать transport-facing abstractions внутри `rustok-iggy`;
-- [ ] удерживать sync между transport contracts, connector expectations и local docs.
+- [x] удерживать sync между transport contracts, connector expectations и local docs.
 
 ### 2. Real integration hardening
 
 - [ ] довести full Iggy SDK integration path;
 - [ ] закрыть реальные consumption, offset management, DLQ movement и replay flows;
+  - [x] добавить первый transport-owned consume path поверх connector `subscribe` и serializer deserialize;
+  - [ ] добавить offset/ack metadata и wire-up для DLQ/replay movement;
 - [ ] покрывать performance/recovery/security edge-cases targeted tests и drills.
 
 ### 3. Operability
@@ -51,7 +53,7 @@ production-grade уровня.
 контрактные тесты покрывают все публичные use-case
 
 - [ ] контрактные тесты покрывают все публичные use-case orchestration и surface contracts.
-- targeted compile/tests для configuration, serialization, topology, consumer groups и replay/DLQ contracts;
+- targeted compile/tests для configuration, serialization, topology, consumer groups и replay/DLQ contracts (текущий no-compile инкремент добавил fake-connector unit coverage, запуск отложен);
 - integration tests для реального Iggy backend path;
 - docs sync между transport и connector layers.
 
@@ -64,6 +66,7 @@ production-grade уровня.
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены roundtrip deserialize и consume_next fake-connector tests.
+- [ ] Добавить offset/ack/DLQ replay tests после расширения connector subscriber contract.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

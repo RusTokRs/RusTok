@@ -87,6 +87,16 @@ impl IggyTransport {
         self.consumers.ensure_group(group).await
     }
 
+    pub async fn consume_next_as_group(
+        &self,
+        group: &str,
+        partition: u32,
+    ) -> Result<Option<crate::consumer::ConsumedEvent>> {
+        self.consumers
+            .consume_next(&*self.connector, &*self.serializer, group, partition)
+            .await
+    }
+
     pub async fn replay(&self) -> Result<()> {
         if !self.topology.is_initialized().await {
             return Err(rustok_core::Error::External(

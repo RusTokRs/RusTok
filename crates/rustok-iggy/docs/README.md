@@ -13,8 +13,8 @@
 ## Зона ответственности
 
 - `IggyTransport` и transport-facing configuration;
-- JSON/Postcard serialization;
-- topology management, consumer groups, DLQ, replay и health abstractions;
+- JSON/Postcard-сериализация и десериализация для путей публикации и чтения;
+- управление topology, consumer groups, первый wrapper `consume_next_as_group`, DLQ, replay и health abstractions;
 - observability hooks для transport layer;
 - отсутствие ownership над embedded/remote connection lifecycle.
 
@@ -27,7 +27,7 @@
 
 ## Проверка
 
-- targeted compile/tests для transport configuration, serialization, topology и replay/DLQ abstractions;
+- targeted compile/tests для transport configuration, serialization/deserialization, consumer consume path, topology и replay/DLQ abstractions;
 - integration tests нужны при изменении реального Iggy SDK path;
 - structural verification для local docs и connector/transport boundary.
 

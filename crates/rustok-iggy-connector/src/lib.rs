@@ -382,7 +382,10 @@ impl IggyConnector for RemoteConnector {
     }
 
     fn is_connected(&self) -> bool {
-        false
+        self.connected
+            .try_read()
+            .map(|connected| *connected)
+            .unwrap_or(false)
     }
 
     async fn publish(&self, request: PublishRequest) -> Result<(), ConnectorError> {
@@ -596,7 +599,10 @@ impl IggyConnector for EmbeddedConnector {
     }
 
     fn is_connected(&self) -> bool {
-        false
+        self.connected
+            .try_read()
+            .map(|connected| *connected)
+            .unwrap_or(false)
     }
 
     async fn publish(&self, request: PublishRequest) -> Result<(), ConnectorError> {

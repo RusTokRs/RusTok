@@ -5,8 +5,8 @@
 
 ## Основные публичные типы и сигнатуры
 - `pub struct IggyTransport` (реализация `EventTransport`)
-- `pub trait EventSerializer` + `JsonSerializer`, `PostcardSerializer`
-- `pub struct TopologyManager`, `ConsumerGroupManager`, `DlqManager`, `ReplayManager`
+- `pub trait EventSerializer` + `JsonSerializer`, `PostcardSerializer` (serialize/deserialize)
+- `pub struct TopologyManager`, `ConsumerGroupManager`, `ConsumedEvent`, `DlqManager`, `ReplayManager`
 - `pub fn health_check(...) -> HealthCheckResult`
 
 ## События
