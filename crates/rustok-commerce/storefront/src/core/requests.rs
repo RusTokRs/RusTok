@@ -4,9 +4,7 @@ use rustok_fulfillment_storefront::transport::{
     SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest,
     ShippingSelectionDeliveryGroup,
 };
-use rustok_order_storefront::transport::{
-    build_complete_checkout_request, CompleteCheckoutRequest,
-};
+use rustok_order_storefront::transport::CompleteCheckoutRequest;
 use rustok_payment_storefront::transport::PaymentCollectionCreateRequest;
 
 pub const SELECTED_CART_QUERY_KEY: &str = "cart_id";
@@ -54,12 +52,6 @@ pub fn build_fetch_commerce_request(
         selected_cart_id: normalize_optional(selected_cart_id),
         locale: normalize_optional(locale),
     }
-}
-
-pub fn build_checkout_completion_command_request(
-    cart_id: String,
-) -> CheckoutCompletionCommandRequest {
-    build_complete_checkout_request(cart_id)
 }
 
 #[allow(dead_code)]
@@ -139,11 +131,5 @@ mod tests {
         let request = build_fetch_commerce_request(Some(" cart-1 ".into()), Some(" ru ".into()));
         assert_eq!(request.selected_cart_id.as_deref(), Some("cart-1"));
         assert_eq!(request.locale.as_deref(), Some("ru"));
-    }
-
-    #[test]
-    fn checkout_completion_command_request_is_owner_built() {
-        let request = build_checkout_completion_command_request(" cart-1 ".into());
-        assert_eq!(request.cart_id, "cart-1");
     }
 }

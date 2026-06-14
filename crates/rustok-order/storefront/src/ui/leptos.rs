@@ -4,6 +4,7 @@ use crate::core::{
     build_order_checkout_result_view_model, order_checkout_action_label, OrderCheckoutActionLabels,
     OrderCheckoutResultData, OrderCheckoutResultLabels,
 };
+use crate::transport::{build_complete_checkout_request, CompleteCheckoutRequest};
 
 #[component]
 pub fn OrderCheckoutResultCard(
@@ -40,7 +41,7 @@ pub fn OrderCheckoutCompleteButton(
     cart_id: String,
     busy: ReadSignal<bool>,
     labels: OrderCheckoutActionLabels,
-    on_complete_checkout: Callback<String>,
+    on_complete_checkout: Callback<CompleteCheckoutRequest>,
 ) -> impl IntoView {
     view! {
         <button
@@ -49,7 +50,7 @@ pub fn OrderCheckoutCompleteButton(
             disabled=move || busy.get()
             on:click={
                 let cart_id = cart_id.clone();
-                move |_| on_complete_checkout.run(cart_id.clone())
+                move |_| on_complete_checkout.run(build_complete_checkout_request(cart_id.clone()))
             }
         >
             {move || order_checkout_action_label(busy.get(), &labels)}
