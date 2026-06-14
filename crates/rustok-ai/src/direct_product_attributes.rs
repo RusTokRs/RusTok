@@ -12,6 +12,7 @@ use crate::model::{AiProductAttributesTaskInput, DirectExecutionTarget, ToolTrac
 use crate::service::AiOperatorContext;
 use crate::{AiError, AiResult};
 use loco_rs::app::AppContext;
+use rustok_ai_product::{PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_ATTRIBUTES_TOOL_NAME};
 use rustok_api::loco::transactional_event_bus_from_context;
 use rustok_commerce::CatalogService;
 
@@ -20,7 +21,7 @@ pub struct ProductAttributesHandler;
 #[async_trait]
 impl DirectTaskHandler for ProductAttributesHandler {
     fn task_slug(&self) -> &'static str {
-        "product_attributes"
+        PRODUCT_ATTRIBUTES_TASK_SLUG
     }
 
     async fn execute(
@@ -55,7 +56,7 @@ impl DirectTaskHandler for ProductAttributesHandler {
             generated.flex_attributes.len()
         );
         let trace = ToolTrace {
-            tool_name: "direct.commerce.product_attributes".to_string(),
+            tool_name: PRODUCT_ATTRIBUTES_TOOL_NAME.to_string(),
             input_payload: request.task_input_json.clone(),
             output_payload: Some(operation_payload.clone()),
             status: "completed".to_string(),
