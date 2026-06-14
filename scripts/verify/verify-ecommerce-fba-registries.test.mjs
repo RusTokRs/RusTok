@@ -112,3 +112,19 @@ test('verifyEcommerceFbaRegistries rejects fallback-smoke drift', () => {
     },
   );
 });
+
+test('verifyEcommerceFbaRegistries rejects evidence drift', () => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.evidence.local_plan = 'crates/rustok-pricing/docs/old-plan.md';
+    },
+  });
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing registry local_plan evidence drift',
+    },
+  );
+});

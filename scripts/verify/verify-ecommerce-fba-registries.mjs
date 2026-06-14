@@ -34,7 +34,9 @@ export function verifyEcommerceFbaRegistries({
     const portSource = read(`crates/rustok-${module}/src/ports.rs`);
     const libSource = read(`crates/rustok-${module}/src/lib.rs`);
 
+    if (registry.schema_version !== 1) fail(`${registryPath} schema_version must be 1`);
     if (registry.module !== module) fail(`${registryPath} has module=${registry.module}`);
+    if (registry.role !== 'provider') fail(`${module} registry role must be provider`);
     if (registry.status !== 'in_progress') fail(`${module} registry status must be in_progress`);
     if (!Array.isArray(registry.ports) || registry.ports.length === 0) fail(`${module} has no ports`);
     if (!Array.isArray(registry.consumers) || registry.consumers.length === 0) fail(`${module} has no consumers`);
@@ -43,6 +45,9 @@ export function verifyEcommerceFbaRegistries({
     }
     if (registry.contract_tests.runner !== 'scripts/verify/verify-ecommerce-fba-registries.mjs') {
       fail(`${module} contract test runner drift`);
+    }
+    if (registry.contract_tests.source !== registryPath) {
+      fail(`${module} contract test source drift`);
     }
     if (!Array.isArray(registry.contract_tests.profiles) || !registry.contract_tests.profiles.includes('in_process') || !registry.contract_tests.profiles.includes('remote_adapter_placeholder')) {
       fail(`${module} contract tests must cover in_process and remote_adapter_placeholder profiles`);
@@ -94,6 +99,15 @@ export function verifyEcommerceFbaRegistries({
 
     if (!plan.includes('- FBA status: `in_progress`')) fail(`${module} local plan FBA status drift`);
     if (!plan.includes(`${module}-fba-registry.json`)) fail(`${module} local plan lacks registry evidence`);
+    if (registry.evidence?.local_plan !== `crates/rustok-${module}/docs/implementation-plan.md`) {
+      fail(`${module} registry local_plan evidence drift`);
+    }
+    if (registry.evidence?.central_board !== 'docs/modules/registry.md') {
+      fail(`${module} registry central_board evidence drift`);
+    }
+    if (registry.evidence?.verifier !== 'scripts/verify/verify-ecommerce-fba-registries.mjs') {
+      fail(`${module} registry verifier evidence drift`);
+    }
     if (!central.includes(`| \`${module}\` |`) || !central.includes(`crates/rustok-${module}/contracts/${module}-fba-registry.json`)) {
       fail(`${module} central readiness board lacks registry evidence`);
     }

@@ -78,7 +78,7 @@ npm run test:verify:ecommerce:fba-registries
 **Ecommerce FBA provider registry gate** — проверяет provider metadata для `payment`, `fulfillment`, `order`, `pricing` и `inventory`.
 
 Что делает:
-- сверяет module-owned `contracts/*-fba-registry.json` с `rustok-module.toml`, `Cargo.toml`, `src/lib.rs`, `src/ports.rs`, local implementation plan и центральным readiness board;
+- сверяет module-owned `contracts/*-fba-registry.json` с `rustok-module.toml`, `Cargo.toml`, `src/lib.rs`, `src/ports.rs`, local implementation plan, центральным readiness board и evidence path-ами внутри registry;
 - требует нейтральные `PortContext`/`PortError`, per-operation port declarations и in-process provider implementation marker, если он заявлен в registry;
 - фиксирует `contract_tests.status = planned_cases_locked`, наличие `in_process` + `remote_adapter_placeholder` profiles, case на каждую port operation и baseline assertions `typed_port_error_mapping`/`context_deadline_preserved`;
 - проверяет, что planned fallback-smoke profile set покрывает все consumer fallback profiles, чтобы future runtime evidence не расходился с provider/consumer metadata.
