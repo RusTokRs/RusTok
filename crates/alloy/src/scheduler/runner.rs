@@ -127,7 +127,8 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
 
         info!("Executing scheduled script: {}", script.name);
 
-        let ctx = ExecutionContext::new(ExecutionPhase::Scheduled);
+        let ctx = ExecutionContext::new(ExecutionPhase::Scheduled)
+            .with_tenant(script.tenant_id.to_string());
         let result = self.executor.execute(&script, &ctx, None).await;
 
         self.update_schedule(&script).await;

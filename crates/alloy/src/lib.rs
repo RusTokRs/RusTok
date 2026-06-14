@@ -28,7 +28,9 @@ pub use context::{ExecutionContext, ExecutionPhase};
 pub use controllers::routes;
 pub use engine::{EngineConfig, ScriptEngine};
 pub use error::{ScriptError, ScriptResult};
-pub use execution_log::{ExecutionLogEntry, ScriptExecutionsMigration, SeaOrmExecutionLog};
+pub use execution_log::{
+    ExecutionLogEntry, ExecutionLogSink, ScriptExecutionsMigration, SeaOrmExecutionLog,
+};
 pub use graphql::{AlloyMutation, AlloyQuery};
 pub use integration::{BeforeHookResult, HookExecutor, ScriptableEntity};
 pub use migration::ScriptsMigration;
