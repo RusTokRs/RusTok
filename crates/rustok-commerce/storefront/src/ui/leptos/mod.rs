@@ -19,6 +19,7 @@ use rustok_order_storefront::{OrderCheckoutCompleteButton, OrderCheckoutResultCa
 use rustok_payment_storefront::core::{
     PaymentCollectionActionLabels, PaymentCollectionCardData, PaymentCollectionCardLabels,
 };
+use rustok_payment_storefront::transport::PaymentCollectionCreateRequest;
 use rustok_payment_storefront::{PaymentCollectionActionButton, PaymentCollectionCard};
 
 use crate::i18n::t;
@@ -67,17 +68,13 @@ pub fn CommerceView() -> impl IntoView {
 
     let on_create_payment_collection = {
         let action_error_label = action_error_label.clone();
-        Callback::new(move |cart_id: String| {
+        Callback::new(move |request: PaymentCollectionCreateRequest| {
             let action_error_label = action_error_label.clone();
             set_action_busy.set(true);
             set_action_error.set(None);
             set_completion.set(None);
             spawn_local(async move {
-                match transport::create_storefront_payment_collection(
-                    core::build_payment_collection_command_request(cart_id),
-                )
-                .await
-                {
+                match transport::create_storefront_payment_collection(request).await {
                     Ok(_) => set_refresh_nonce.update(|value| *value += 1),
                     Err(err) => set_action_error.set(Some(core::error_with_context(
                         action_error_label.as_str(),
@@ -200,7 +197,7 @@ fn CommerceShowcase(
     data: StorefrontCommerceData,
     busy: ReadSignal<bool>,
     completion: ReadSignal<Option<StorefrontCheckoutCompletion>>,
-    on_create_payment_collection: Callback<String>,
+    on_create_payment_collection: Callback<PaymentCollectionCreateRequest>,
     on_select_shipping_option: Callback<(
         crate::model::StorefrontCheckoutCart,
         FulfillmentSelectShippingOptionRequest,
@@ -263,7 +260,7 @@ fn CheckoutWorkspace(
     checkout: Option<StorefrontCheckoutWorkspace>,
     busy: ReadSignal<bool>,
     completion: ReadSignal<Option<StorefrontCheckoutCompletion>>,
-    on_create_payment_collection: Callback<String>,
+    on_create_payment_collection: Callback<PaymentCollectionCreateRequest>,
     on_select_shipping_option: Callback<(
         crate::model::StorefrontCheckoutCart,
         FulfillmentSelectShippingOptionRequest,

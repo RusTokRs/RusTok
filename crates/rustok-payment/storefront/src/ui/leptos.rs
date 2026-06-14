@@ -4,6 +4,7 @@ use crate::core::{
     build_payment_collection_card_view_model, payment_collection_action_label,
     PaymentCollectionActionLabels, PaymentCollectionCardData, PaymentCollectionCardLabels,
 };
+use crate::transport::{build_payment_collection_create_request, PaymentCollectionCreateRequest};
 
 #[component]
 pub fn PaymentCollectionCard(
@@ -32,7 +33,7 @@ pub fn PaymentCollectionActionButton(
     cart_id: String,
     busy: ReadSignal<bool>,
     labels: PaymentCollectionActionLabels,
-    on_create_payment_collection: Callback<String>,
+    on_create_payment_collection: Callback<PaymentCollectionCreateRequest>,
 ) -> impl IntoView {
     view! {
         <button
@@ -41,7 +42,9 @@ pub fn PaymentCollectionActionButton(
             disabled=move || busy.get()
             on:click={
                 let cart_id = cart_id.clone();
-                move |_| on_create_payment_collection.run(cart_id.clone())
+                move |_| {
+                    on_create_payment_collection.run(build_payment_collection_create_request(cart_id.clone()))
+                }
             }
         >
             {move || payment_collection_action_label(busy.get(), &labels)}

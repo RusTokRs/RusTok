@@ -33,7 +33,7 @@ rg -n "Если изменение добавляет больше boilerplate, 
 rg -n "если обнаружен over-extraction, откатить его" "$PLAN" >/dev/null
 
 echo "[3/4] Поиск Leptos-зависимостей внутри core-слоя (core.rs и core/)..."
-CORE_HITS=$(rg -n --no-heading -S "leptos|leptos_router|leptos_ui_routing" crates --glob "**/core/**" --glob "**/core.rs" || true)
+CORE_HITS=$(rg -n --no-heading -S "use .*leptos|leptos::|leptos_router|leptos_ui_routing|#\[component|#\[server|IntoView|ReadSignal|WriteSignal|Resource<" crates --glob "**/core/**" --glob "**/core.rs" || true)
 if [[ -n "$CORE_HITS" ]]; then
   echo "Найдены Leptos-зависимости в core-слое:" >&2
   echo "$CORE_HITS" >&2
