@@ -8,7 +8,10 @@
     {
       "name": "PricingReadPort",
       "owner": "pricing",
-      "operations": ["resolve_product_price", "read_price_list_projection"],
+      "operations": [
+        "resolve_product_price",
+        "read_price_list_projection"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": false,
@@ -19,19 +22,36 @@
     {
       "module": "commerce",
       "profile": "checkout_pricing_projection",
-      "degraded_modes": ["use_cart_price_snapshot", "show_price_refresh_required"],
-      "fallback_profiles": ["embedded_native", "graphql_checkout_compat"]
+      "degraded_modes": [
+        "use_cart_price_snapshot",
+        "show_price_refresh_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
     },
     {
       "module": "product",
       "profile": "storefront_price_projection",
-      "degraded_modes": ["hide_price_badge", "show_price_unavailable"],
-      "fallback_profiles": ["embedded_native", "graphql_storefront_compat"]
+      "degraded_modes": [
+        "hide_price_badge",
+        "show_price_unavailable"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_storefront_compat"
+      ]
     }
   ],
   "evidence": {
     "local_plan": "crates/rustok-pricing/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "PricingService",
+    "source": "crates/rustok-pricing/src/ports.rs",
+    "status": "implemented"
   }
 }

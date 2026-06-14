@@ -48,7 +48,9 @@ for (const module of modules) {
   if (registry.in_process_provider_impl) {
     const implDeclaration = `impl ${registry.ports[0].name} for crate::${registry.in_process_provider_impl.service}`;
     if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
-    if (!portSource.includes('require_write_semantics()?')) fail(`${module} in-process provider impl must enforce write semantics`);
+    if (registry.ports.some((port) => port.idempotency_required === true) && !portSource.includes('require_write_semantics()?')) {
+      fail(`${module} in-process provider impl must enforce write semantics`);
+    }
   }
 
   if (!plan.includes('- FBA status: `in_progress`')) fail(`${module} local plan FBA status drift`);

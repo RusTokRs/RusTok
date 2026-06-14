@@ -20,6 +20,7 @@ rule и scope write paths, а полный promotions engine и остально
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - in-process реализация `PricingReadPort for PricingService` добавлена в `src/ports.rs`: price resolution вызывает owner `resolve_variant_price`, projection читает active price-list snapshot, а `CommerceError` мапится в `PortError`;
   - `src/ports.rs` теперь экспортирует `PricingReadPort` и DTO для product price resolution/price-list projection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `pricing read projection` через `crates/rustok-pricing/contracts/pricing-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - storefront pricing route теперь использует framework-agnostic `storefront/src/core.rs` для summary/label/effective context formatting, query href building и shared `StorefrontPricingQuery`; Leptos `lib.rs` больше не владеет этой presentation/request policy;
