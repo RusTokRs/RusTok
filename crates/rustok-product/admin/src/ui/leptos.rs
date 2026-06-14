@@ -19,15 +19,15 @@ use crate::core::{
     build_product_admin_profile_panel_loading_view_model,
     build_product_admin_profile_panel_ready_view_model, build_product_admin_save_command,
     build_product_admin_seo_panel_copy, build_product_admin_shell_view_model,
-    build_product_admin_status_mutation_command,
+    build_product_admin_shipping_profile_options, build_product_admin_status_mutation_command,
     build_product_admin_status_mutation_result_view_model,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
-    parse_product_admin_inventory_quantity_input, primary_catalog_currency,
-    product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
-    product_admin_open_product_query_intent, product_admin_pricing_preview_state_from_result,
-    product_admin_saved_product_query_intent, shipping_profile_choice_label, text_or_none,
-    ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
-    ProductAdminErrorCopy, ProductAdminListStateKind, ProductAdminOpenProductViewModel,
+    parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
+    product_admin_list_actions_disabled, product_admin_open_product_query_intent,
+    product_admin_pricing_preview_request_from_product,
+    product_admin_pricing_preview_state_from_result, product_admin_saved_product_query_intent,
+    shipping_profile_choice_label, text_or_none, ProductAdminDeleteOutcome, ProductAdminDraftForm,
+    ProductAdminEditorFormState, ProductAdminErrorCopy, ProductAdminOpenProductViewModel,
     ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminStatusMutationOutcome,
     ProductAdminStatusTarget, SelectedProductSummaryViewModel,
 };
@@ -45,17 +45,6 @@ where
     T: 'static,
 {
     LocalResource::new(move || fetcher(source()))
-}
-
-fn product_admin_list_state_class(kind: &ProductAdminListStateKind) -> &'static str {
-    match kind {
-        ProductAdminListStateKind::Loading | ProductAdminListStateKind::Empty => {
-            "rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground"
-        }
-        ProductAdminListStateKind::Error => {
-            "rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        }
-    }
 }
 
 fn apply_product_admin_route_query_intent(
@@ -160,17 +149,13 @@ pub fn ProductAdmin() -> impl IntoView {
                 tenant.get(),
                 refresh_nonce.get(),
                 effective_locale_for_selected_pricing.clone(),
-                selected.get().map(|product| {
-                    (
-                        product.id.clone(),
-                        primary_catalog_currency(Some(&product))
-                            .unwrap_or_else(|| "USD".to_string()),
-                    )
-                }),
+                selected
+                    .get()
+                    .map(|product| product_admin_pricing_preview_request_from_product(&product)),
             )
         },
         move |(token_value, tenant_value, _, locale_value, selected_product)| async move {
-            let Some((product_id, currency_code)) = selected_product else {
+            let Some(request) = selected_product else {
                 return Ok(None);
             };
             let bootstrap = transport::fetch_bootstrap(token_value.clone(), tenant_value.clone())
@@ -180,9 +165,9 @@ pub fn ProductAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 bootstrap.current_tenant.id,
-                product_id,
+                request.product_id,
                 locale_value,
-                Some(currency_code),
+                Some(request.currency_code),
             )
             .await
             .map_err(|err| err.to_string())
@@ -460,7 +445,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     ui_locale_for_list.as_deref(),
                                 );
                                 view! {
-                                    <div class=product_admin_list_state_class(&state.kind)>
+                                    <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()
@@ -471,7 +456,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     err,
                                 );
                                 view! {
-                                    <div class=product_admin_list_state_class(&state.kind)>
+                                    <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()
@@ -481,7 +466,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                     ui_locale_for_list.as_deref(),
                                 );
                                 view! {
-                                    <div class=product_admin_list_state_class(&state.kind)>
+                                    <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()
@@ -528,7 +513,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                                                     <div class="space-y-2">
                                                         <div class="flex flex-wrap items-center gap-2">
-                                                            <span class=format!("inline-flex rounded-full border px-3 py-1 text-xs font-semibold {}", item_status_badge_class)>
+                                                            <span class=item_status_badge_class>
                                                                 {item_status_label.clone()}
                                                             </span>
                                                             <span class="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -693,11 +678,14 @@ pub fn ProductAdmin() -> impl IntoView {
                                 <select class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || shipping_profile_slug.get() on:change=move |ev| set_shipping_profile_slug.set(event_target_value(&ev))>
                                     <option value="">{editor_copy.no_shipping_profile_label.clone()}</option>
                                     {move || match shipping_profiles.get() {
-                                        Some(Ok(list)) => list.items.into_iter().map(|profile| {
-                                            let slug = profile.slug.clone();
-                                            let label = shipping_profile_choice_label(ui_locale_for_profiles.as_deref(), &profile);
-                                            view! { <option value=slug.clone()>{label}</option> }
-                                        }).collect_view().into_any(),
+                                        Some(Ok(list)) => build_product_admin_shipping_profile_options(
+                                            ui_locale_for_profiles.as_deref(),
+                                            &list.items,
+                                        )
+                                        .into_iter()
+                                        .map(|option| view! { <option value=option.value>{option.label}</option> })
+                                        .collect_view()
+                                        .into_any(),
                                         _ => ().into_any(),
                                     }}
                                 </select>
