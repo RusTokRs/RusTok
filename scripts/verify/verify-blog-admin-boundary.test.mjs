@@ -42,6 +42,8 @@ pub struct BlogPostAdminTableViewModel;
 pub fn blog_post_admin_table_view() {}
 pub struct BlogPostAdminFormViewModel;
 pub fn blog_post_admin_form_view() {}
+pub struct BlogPostAdminSeoPanelCopy;
+pub fn blog_post_admin_seo_panel_copy() {}
 pub fn selected_post_request() {}
 pub fn issue_banner_class_or_hidden() {}
 pub fn show_archive_action() {}
@@ -49,6 +51,21 @@ pub fn archive_label() {}
 pub fn delete_label() {}
 pub struct BlogPostAdminIssueBannerViewModel;
 pub fn blog_post_admin_issue_banner_view() {}
+pub struct BlogPostLoadResultViewModel;
+pub fn blog_post_load_result_view() {}
+pub fn blog_post_transport_failure_issue() {}
+pub struct BlogPostSaveResultViewModel;
+pub fn blog_post_save_result_view() {}
+pub struct BlogPostStatusCommand;
+pub fn prepare_blog_post_status_command() {}
+pub struct BlogPostArchiveCommand;
+pub fn prepare_blog_post_archive_command() {}
+pub struct BlogPostDeleteCommand;
+pub fn prepare_blog_post_delete_command() {}
+pub enum BlogPostAdminRouteQueryIntent {}
+pub fn blog_post_admin_open_post_query_intent() {}
+pub fn blog_post_admin_saved_post_query_intent() {}
+pub fn blog_post_admin_clear_post_query_intent() {}
 `;
 }
 
@@ -59,6 +76,16 @@ use crate::{core, transport};
 pub fn BlogAdmin() {
     let _posts = transport::fetch_posts;
     ${omitSaveCommand ? "" : "let _save = core::prepare_blog_post_save_command;\n    let _op = core::BlogPostSaveOperation::Create;"}
+    let _load = core::blog_post_load_result_view;
+    let _failure = core::blog_post_transport_failure_issue;
+    let _saved = core::blog_post_save_result_view;
+    let _apply = apply_blog_post_admin_route_query_intent;
+    let _open = core::blog_post_admin_open_post_query_intent;
+    let _seo = core::blog_post_admin_seo_panel_copy;
+    let _clear = core::blog_post_admin_clear_post_query_intent;
+    let _status = core::prepare_blog_post_status_command;
+    let _archive = core::prepare_blog_post_archive_command;
+    let _delete = core::prepare_blog_post_delete_command;
     ${rawApiCall ? "let _raw = api::fetch_posts;" : ""}
     ${rawServiceCall ? "let _service = PostService::new;" : ""}
 }
