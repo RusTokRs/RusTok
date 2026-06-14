@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "module": "payment",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "payment.checkout.v1",
+  "ports": [
+    {
+      "name": "PaymentCollectionPort",
+      "owner": "payment",
+      "operations": ["create_or_reuse_collection", "read_collection_status"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_orchestration",
+      "degraded_modes": ["reuse_existing_collection", "show_payment_handoff_retry"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat"]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-payment/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  }
+}
