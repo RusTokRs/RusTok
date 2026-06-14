@@ -111,6 +111,8 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
   write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
   write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
   write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
+  write('crates/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
+  write('crates/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
 
   return pathToFileURL(`${rootPath}/`);
 };

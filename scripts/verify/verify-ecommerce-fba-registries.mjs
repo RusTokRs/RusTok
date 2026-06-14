@@ -120,6 +120,8 @@ export function verifyEcommerceFbaRegistries({
   const commerceRegistry = JSON.parse(read(commerceRegistryPath));
   const commerceManifest = read('crates/rustok-commerce/rustok-module.toml');
   const commercePlan = read('crates/rustok-commerce/docs/implementation-plan.md');
+  const commerceLib = read('crates/rustok-commerce/src/lib.rs');
+  const commerceFbaSource = read('crates/rustok-commerce/src/fba.rs');
 
   if (commerceRegistry.schema_version !== 1) fail(`${commerceRegistryPath} schema_version must be 1`);
   if (commerceRegistry.module !== 'commerce') fail('commerce FBA registry module must be commerce');
@@ -135,6 +137,10 @@ export function verifyEcommerceFbaRegistries({
   if (!commercePlan.includes('commerce-fba-registry.json')) fail('commerce local plan lacks consumer registry evidence');
   if (!central.includes('crates/rustok-commerce/contracts/commerce-fba-registry.json')) {
     fail('commerce central readiness board lacks consumer registry evidence');
+  }
+  if (!commerceLib.includes('pub mod fba;')) fail('commerce lib.rs must export fba registry module');
+  if (!commerceFbaSource.includes('include_str!("../contracts/commerce-fba-registry.json")')) {
+    fail('commerce fba.rs must embed commerce FBA registry');
   }
 
   for (const module of modules) {
