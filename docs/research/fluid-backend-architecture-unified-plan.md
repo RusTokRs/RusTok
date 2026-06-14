@@ -76,7 +76,7 @@
 
 На 2026-06-14 в репозитории уже есть несколько FBA-треков. Они не должны переводиться
 разными способами: новые и существующие инкременты обязаны сходиться к одному шаблону
-`provider/consumer metadata + нейтральные ports + typed errors + fallback/rollout evidence`.
+`provider/consumer metadata + нейтральные ports + typed errors + locked contract-test/fallback-smoke metadata + fallback/rollout evidence`.
 
 | Модуль | Текущая роль | Статус | Единообразный следующий шаг | Источник evidence |
 |---|---|---|---|---|

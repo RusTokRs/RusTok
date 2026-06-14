@@ -23,6 +23,15 @@ for (const module of modules) {
   if (registry.status !== 'in_progress') fail(`${module} registry status must be in_progress`);
   if (!Array.isArray(registry.ports) || registry.ports.length === 0) fail(`${module} has no ports`);
   if (!Array.isArray(registry.consumers) || registry.consumers.length === 0) fail(`${module} has no consumers`);
+  if (!registry.contract_tests || registry.contract_tests.status !== 'planned_cases_locked') {
+    fail(`${module} must lock planned contract test cases before boundary_ready`);
+  }
+  if (registry.contract_tests.runner !== 'scripts/verify/verify-ecommerce-fba-registries.mjs') {
+    fail(`${module} contract test runner drift`);
+  }
+  if (!Array.isArray(registry.contract_tests.profiles) || !registry.contract_tests.profiles.includes('in_process') || !registry.contract_tests.profiles.includes('remote_adapter_placeholder')) {
+    fail(`${module} contract tests must cover in_process and remote_adapter_placeholder profiles`);
+  }
 
   for (const port of registry.ports) {
     if (port.owner !== module) fail(`${module}.${port.name} owner must be ${module}`);
@@ -33,7 +42,22 @@ for (const module of modules) {
     if (!portSource.includes(`trait ${port.name}`)) fail(`${module} src/ports.rs lacks trait ${port.name}`);
     for (const operation of port.operations) {
       if (!portSource.includes(`${operation}(`)) fail(`${module}.${port.name} lacks operation ${operation}`);
+      const testCase = registry.contract_tests.cases.find((entry) => entry.operation === operation);
+      if (!testCase) fail(`${module}.${port.name} lacks contract test case for ${operation}`);
+      if (!testCase.profiles.includes('in_process') || !testCase.profiles.includes('remote_adapter_placeholder')) {
+        fail(`${module}.${operation} contract test case lacks both execution profiles`);
+      }
+      if (!testCase.assertions.includes('typed_port_error_mapping') || !testCase.assertions.includes('context_deadline_preserved')) {
+        fail(`${module}.${operation} contract test case lacks baseline assertions`);
+      }
     }
+  }
+
+  const fallbackSmoke = registry.contract_tests.fallback_smoke;
+  if (!fallbackSmoke || fallbackSmoke.status !== 'planned') fail(`${module} fallback smoke status must remain planned until evidence lands`);
+  const consumerFallbacks = registry.consumers.flatMap((consumer) => consumer.fallback_profiles || []);
+  for (const profile of consumerFallbacks) {
+    if (!fallbackSmoke.profiles.includes(profile)) fail(`${module} fallback smoke missing ${profile}`);
   }
 
   if (!manifest.includes('[fba.provider]')) fail(`${module} manifest lacks [fba.provider]`);
