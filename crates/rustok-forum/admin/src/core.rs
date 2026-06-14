@@ -8,6 +8,300 @@ use crate::model::{
 const DEFAULT_CATEGORY_ACCENT_STYLE: &str =
     "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminModeratorNotesLabels {
+    pub notes_label: String,
+    pub note_icon_title: String,
+    pub note_icon_body: String,
+    pub note_position_title: String,
+    pub note_position_body: String,
+    pub note_moderated_title: String,
+    pub note_moderated_body: String,
+}
+
+pub fn forum_admin_moderator_notes_copy_labels(
+    notes_label: String,
+    note_icon_title: String,
+    note_icon_body: String,
+    note_position_title: String,
+    note_position_body: String,
+    note_moderated_title: String,
+    note_moderated_body: String,
+) -> ForumAdminModeratorNotesLabels {
+    ForumAdminModeratorNotesLabels {
+        notes_label,
+        note_icon_title,
+        note_icon_body,
+        note_position_title,
+        note_position_body,
+        note_moderated_title,
+        note_moderated_body,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminSidebarLabels {
+    pub navigation_label: String,
+    pub navigation_title: String,
+    pub navigation_body: String,
+    pub filter_title: String,
+    pub clear_label: String,
+    pub active_filter_label: String,
+    pub draft_tags_label: String,
+    pub editing_thread_label: String,
+}
+
+pub fn forum_admin_sidebar_copy_labels(
+    navigation_label: String,
+    navigation_title: String,
+    navigation_body: String,
+    filter_title: String,
+    clear_label: String,
+    active_filter_label: String,
+    draft_tags_label: String,
+    editing_thread_label: String,
+) -> ForumAdminSidebarLabels {
+    ForumAdminSidebarLabels {
+        navigation_label,
+        navigation_title,
+        navigation_body,
+        filter_title,
+        clear_label,
+        active_filter_label,
+        draft_tags_label,
+        editing_thread_label,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumAdminMetricSurface {
+    Categories,
+    Topics,
+    ReplyPreview,
+}
+
+pub fn forum_admin_metric_accent_class(surface: ForumAdminMetricSurface) -> &'static str {
+    match surface {
+        ForumAdminMetricSurface::Categories => "bg-sky-500",
+        ForumAdminMetricSurface::Topics => "bg-amber-500",
+        ForumAdminMetricSurface::ReplyPreview => "bg-emerald-500",
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForumAdminActionButtonKind {
+    Action,
+    Delete,
+}
+
+pub fn forum_admin_action_button_class(kind: ForumAdminActionButtonKind) -> &'static str {
+    match kind {
+        ForumAdminActionButtonKind::Action => {
+            "rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted"
+        }
+        ForumAdminActionButtonKind::Delete => {
+            "rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15"
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminCategoryMatrixLabels {
+    pub matrix_label: String,
+    pub matrix_title: String,
+    pub matrix_body: String,
+    pub new_category_label: String,
+}
+
+pub fn forum_admin_category_matrix_labels(
+    matrix_label: String,
+    matrix_title: String,
+    matrix_body: String,
+    new_category_label: String,
+) -> ForumAdminCategoryMatrixLabels {
+    ForumAdminCategoryMatrixLabels {
+        matrix_label,
+        matrix_title,
+        matrix_body,
+        new_category_label,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminCategoryFormLabels {
+    pub composer_label: String,
+    pub locale_label: String,
+    pub locale_hint: String,
+    pub name_label: String,
+    pub name_hint: String,
+    pub slug_label: String,
+    pub slug_hint: String,
+    pub description_label: String,
+    pub description_hint: String,
+    pub icon_label: String,
+    pub icon_hint: String,
+    pub color_label: String,
+    pub color_hint: String,
+    pub position_label: String,
+    pub position_hint: String,
+    pub moderated_title: String,
+    pub moderated_hint: String,
+    pub save_category_label: String,
+    pub create_category_label: String,
+    pub reset_label: String,
+}
+
+pub fn forum_admin_category_form_labels(
+    composer_label: String,
+    locale_label: String,
+    locale_hint: String,
+    name_label: String,
+    name_hint: String,
+    slug_label: String,
+    slug_hint: String,
+    description_label: String,
+    description_hint: String,
+    icon_label: String,
+    icon_hint: String,
+    color_label: String,
+    color_hint: String,
+    position_label: String,
+    position_hint: String,
+    moderated_title: String,
+    moderated_hint: String,
+    save_category_label: String,
+    create_category_label: String,
+    reset_label: String,
+) -> ForumAdminCategoryFormLabels {
+    ForumAdminCategoryFormLabels {
+        composer_label,
+        locale_label,
+        locale_hint,
+        name_label,
+        name_hint,
+        slug_label,
+        slug_hint,
+        description_label,
+        description_hint,
+        icon_label,
+        icon_hint,
+        color_label,
+        color_hint,
+        position_label,
+        position_hint,
+        moderated_title,
+        moderated_hint,
+        save_category_label,
+        create_category_label,
+        reset_label,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminTopicStreamLabels {
+    pub stream_label: String,
+    pub stream_body: String,
+    pub new_topic_label: String,
+}
+
+pub fn forum_admin_topic_stream_labels(
+    stream_label: String,
+    stream_body: String,
+    new_topic_label: String,
+) -> ForumAdminTopicStreamLabels {
+    ForumAdminTopicStreamLabels {
+        stream_label,
+        stream_body,
+        new_topic_label,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminTopicFormLabels {
+    pub inspector_label: String,
+    pub locale_label: String,
+    pub locale_hint: String,
+    pub category_label: String,
+    pub category_hint: String,
+    pub choose_category_label: String,
+    pub title_label: String,
+    pub title_hint: String,
+    pub slug_label: String,
+    pub slug_hint: String,
+    pub body_format_label: String,
+    pub body_format_hint: String,
+    pub tags_label: String,
+    pub tags_hint: String,
+    pub body_label: String,
+    pub body_hint: String,
+    pub save_topic_label: String,
+    pub publish_topic_label: String,
+    pub reset_label: String,
+}
+
+pub fn forum_admin_topic_form_labels(
+    inspector_label: String,
+    locale_label: String,
+    locale_hint: String,
+    category_label: String,
+    category_hint: String,
+    choose_category_label: String,
+    title_label: String,
+    title_hint: String,
+    slug_label: String,
+    slug_hint: String,
+    body_format_label: String,
+    body_format_hint: String,
+    tags_label: String,
+    tags_hint: String,
+    body_label: String,
+    body_hint: String,
+    save_topic_label: String,
+    publish_topic_label: String,
+    reset_label: String,
+) -> ForumAdminTopicFormLabels {
+    ForumAdminTopicFormLabels {
+        inspector_label,
+        locale_label,
+        locale_hint,
+        category_label,
+        category_hint,
+        choose_category_label,
+        title_label,
+        title_hint,
+        slug_label,
+        slug_hint,
+        body_format_label,
+        body_format_hint,
+        tags_label,
+        tags_hint,
+        body_label,
+        body_hint,
+        save_topic_label,
+        publish_topic_label,
+        reset_label,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumAdminReplyPreviewLabels {
+    pub preview_label: String,
+    pub preview_title: String,
+    pub shown_template: String,
+}
+
+pub fn forum_admin_reply_preview_labels(
+    preview_label: String,
+    preview_title: String,
+    shown_template: String,
+) -> ForumAdminReplyPreviewLabels {
+    ForumAdminReplyPreviewLabels {
+        preview_label,
+        preview_title,
+        shown_template,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ForumAdminHeaderLabels {
     pub badge: String,
@@ -1326,5 +1620,197 @@ mod tests {
         assert_eq!(vm.status_class, "warning");
         assert_eq!(vm.effective_locale, "en");
         assert_eq!(vm.content_preview, "Thanks for the update");
+    }
+
+    #[test]
+    fn maps_moderator_notes_copy_labels() {
+        let labels = forum_admin_moderator_notes_copy_labels(
+            "Notes".to_string(),
+            "Icon".to_string(),
+            "Icon body".to_string(),
+            "Position".to_string(),
+            "Position body".to_string(),
+            "Moderated".to_string(),
+            "Moderated body".to_string(),
+        );
+        assert_eq!(labels.notes_label, "Notes");
+        assert_eq!(labels.note_icon_title, "Icon");
+        assert_eq!(labels.note_icon_body, "Icon body");
+        assert_eq!(labels.note_position_title, "Position");
+        assert_eq!(labels.note_position_body, "Position body");
+        assert_eq!(labels.note_moderated_title, "Moderated");
+        assert_eq!(labels.note_moderated_body, "Moderated body");
+    }
+
+    #[test]
+    fn maps_sidebar_copy_labels() {
+        let labels = forum_admin_sidebar_copy_labels(
+            "Nav".to_string(),
+            "Feed".to_string(),
+            "Body".to_string(),
+            "Filter".to_string(),
+            "Clear".to_string(),
+            "Active".to_string(),
+            "Draft".to_string(),
+            "Editing".to_string(),
+        );
+        assert_eq!(labels.navigation_label, "Nav");
+        assert_eq!(labels.navigation_title, "Feed");
+        assert_eq!(labels.navigation_body, "Body");
+        assert_eq!(labels.filter_title, "Filter");
+        assert_eq!(labels.clear_label, "Clear");
+        assert_eq!(labels.active_filter_label, "Active");
+        assert_eq!(labels.draft_tags_label, "Draft");
+        assert_eq!(labels.editing_thread_label, "Editing");
+    }
+
+    #[test]
+    fn evaluates_metric_accent_policy() {
+        assert_eq!(
+            forum_admin_metric_accent_class(ForumAdminMetricSurface::Categories),
+            "bg-sky-500"
+        );
+        assert_eq!(
+            forum_admin_metric_accent_class(ForumAdminMetricSurface::Topics),
+            "bg-amber-500"
+        );
+        assert_eq!(
+            forum_admin_metric_accent_class(ForumAdminMetricSurface::ReplyPreview),
+            "bg-emerald-500"
+        );
+    }
+
+    #[test]
+    fn evaluates_action_button_style_policy() {
+        assert_eq!(
+            forum_admin_action_button_class(ForumAdminActionButtonKind::Action),
+            "rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted"
+        );
+        assert_eq!(
+            forum_admin_action_button_class(ForumAdminActionButtonKind::Delete),
+            "rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15"
+        );
+    }
+
+    #[test]
+    fn maps_category_matrix_and_form_labels() {
+        let matrix = forum_admin_category_matrix_labels(
+            "Matrix".to_string(),
+            "Sections".to_string(),
+            "Body".to_string(),
+            "New".to_string(),
+        );
+        assert_eq!(matrix.matrix_label, "Matrix");
+        assert_eq!(matrix.matrix_title, "Sections");
+        assert_eq!(matrix.matrix_body, "Body");
+        assert_eq!(matrix.new_category_label, "New");
+
+        let form = forum_admin_category_form_labels(
+            "Comp".to_string(),
+            "Loc".to_string(),
+            "Loc hint".to_string(),
+            "Name".to_string(),
+            "Name hint".to_string(),
+            "Slug".to_string(),
+            "Slug hint".to_string(),
+            "Desc".to_string(),
+            "Desc hint".to_string(),
+            "Icon".to_string(),
+            "Icon hint".to_string(),
+            "Color".to_string(),
+            "Color hint".to_string(),
+            "Pos".to_string(),
+            "Pos hint".to_string(),
+            "Mod".to_string(),
+            "Mod hint".to_string(),
+            "Save".to_string(),
+            "Create".to_string(),
+            "Reset".to_string(),
+        );
+        assert_eq!(form.composer_label, "Comp");
+        assert_eq!(form.locale_label, "Loc");
+        assert_eq!(form.locale_hint, "Loc hint");
+        assert_eq!(form.name_label, "Name");
+        assert_eq!(form.name_hint, "Name hint");
+        assert_eq!(form.slug_label, "Slug");
+        assert_eq!(form.slug_hint, "Slug hint");
+        assert_eq!(form.description_label, "Desc");
+        assert_eq!(form.description_hint, "Desc hint");
+        assert_eq!(form.icon_label, "Icon");
+        assert_eq!(form.icon_hint, "Icon hint");
+        assert_eq!(form.color_label, "Color");
+        assert_eq!(form.color_hint, "Color hint");
+        assert_eq!(form.position_label, "Pos");
+        assert_eq!(form.position_hint, "Pos hint");
+        assert_eq!(form.moderated_title, "Mod");
+        assert_eq!(form.moderated_hint, "Mod hint");
+        assert_eq!(form.save_category_label, "Save");
+        assert_eq!(form.create_category_label, "Create");
+        assert_eq!(form.reset_label, "Reset");
+    }
+
+    #[test]
+    fn maps_topic_stream_and_form_labels() {
+        let stream = forum_admin_topic_stream_labels(
+            "Stream".to_string(),
+            "Body".to_string(),
+            "New".to_string(),
+        );
+        assert_eq!(stream.stream_label, "Stream");
+        assert_eq!(stream.stream_body, "Body");
+        assert_eq!(stream.new_topic_label, "New");
+
+        let form = forum_admin_topic_form_labels(
+            "Insp".to_string(),
+            "Loc".to_string(),
+            "Loc hint".to_string(),
+            "Cat".to_string(),
+            "Cat hint".to_string(),
+            "Choose".to_string(),
+            "Title".to_string(),
+            "Title hint".to_string(),
+            "Slug".to_string(),
+            "Slug hint".to_string(),
+            "Format".to_string(),
+            "Format hint".to_string(),
+            "Tags".to_string(),
+            "Tags hint".to_string(),
+            "Body".to_string(),
+            "Body hint".to_string(),
+            "Save".to_string(),
+            "Publish".to_string(),
+            "Reset".to_string(),
+        );
+        assert_eq!(form.inspector_label, "Insp");
+        assert_eq!(form.locale_label, "Loc");
+        assert_eq!(form.locale_hint, "Loc hint");
+        assert_eq!(form.category_label, "Cat");
+        assert_eq!(form.category_hint, "Cat hint");
+        assert_eq!(form.choose_category_label, "Choose");
+        assert_eq!(form.title_label, "Title");
+        assert_eq!(form.title_hint, "Title hint");
+        assert_eq!(form.slug_label, "Slug");
+        assert_eq!(form.slug_hint, "Slug hint");
+        assert_eq!(form.body_format_label, "Format");
+        assert_eq!(form.body_format_hint, "Format hint");
+        assert_eq!(form.tags_label, "Tags");
+        assert_eq!(form.tags_hint, "Tags hint");
+        assert_eq!(form.body_label, "Body");
+        assert_eq!(form.body_hint, "Body hint");
+        assert_eq!(form.save_topic_label, "Save");
+        assert_eq!(form.publish_topic_label, "Publish");
+        assert_eq!(form.reset_label, "Reset");
+    }
+
+    #[test]
+    fn maps_reply_preview_labels() {
+        let preview = forum_admin_reply_preview_labels(
+            "Preview".to_string(),
+            "Title".to_string(),
+            "Template".to_string(),
+        );
+        assert_eq!(preview.preview_label, "Preview");
+        assert_eq!(preview.preview_title, "Title");
+        assert_eq!(preview.shown_template, "Template");
     }
 }
