@@ -203,11 +203,11 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                         let slug = page.slug.unwrap_or_else(|| {
                             t(locale.as_deref(), "pages.list.missingSlug", "missing-slug")
                         });
-                        let href = format!("{module_route_base}?slug={slug}");
+                        let href = core::page_link_href(module_route_base.as_str(), slug.as_str());
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
                                 <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                                    {page.status}
+                                    {core::page_status_label(page.status.as_str()).to_string()}
                                 </div>
                                 <h4 class="mt-2 text-base font-semibold text-foreground">
                                     {page.title.unwrap_or_else(|| {

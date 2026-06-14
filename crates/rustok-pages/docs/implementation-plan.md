@@ -31,6 +31,7 @@
 - Last updated at (UTC): 2026-06-13T00:00:00Z
 - Last updated at (UTC): 2026-06-14T00:00:00Z
 - Last updated at (UTC): 2026-06-14T12:00:00Z
+- Last updated at (UTC): 2026-06-14T18:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
@@ -38,6 +39,7 @@
 - Latest FFA update: storefront UI получил matching split `core` + `transport` + `ui/leptos`; crate root re-export-ит `PagesView`, Leptos adapter вызывает только `storefront/src/transport.rs`, а native/GraphQL transport contract не менялся. Быстрый guardrail `scripts/verify/verify-pages-ui-boundary.mjs` закрепляет admin/storefront boundary без full-workspace compile.
 - Latest FBA rollout update: manifest `fba.builder_consumer.rollout_policy` теперь закрепляет control-plane audit trail, mandatory before/after tenant snapshots, keep/rollback decision, owner sign-off, rollback target <= 10 минут без redeploy, SLO rollback triggers и pilot smoke `preview -> properties -> publish(dry)`; `verify-page-builder-consumer-readiness.mjs pages` проверяет эти markers без компиляции.
 - Latest legacy bridge update: `verify-page-builder-pages-legacy-bridge.mjs` добавлен в FBA baseline и фиксирует read/bridge semantics для legacy `blocks`: import/create разрешён, visual-builder body writes не удаляют blocks, update surface не получает новый block write contract, admin/storefront показывают compatibility evidence.
+- Latest FFA maintenance update: admin capability-card presentation helpers (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`) и storefront list helpers (`page_link_href`, `page_status_label`) вынесены в `core`, а `verify-pages-ui-boundary.mjs` теперь фиксирует эти no-compile boundary markers.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -301,6 +303,8 @@ Rollback target: переключение tenant flags назад должно �
 - [x] Slice 16: storefront label/value pair rendering moved to core (`label_value_pair`).
 - [x] Slice 17: storefront core extraction cleanup after full module test evidence (unused import removal).
 - [x] Slice 18: storefront Leptos render/bind code moved to explicit `storefront/src/ui/leptos.rs` adapter; crate root now only wires modules and re-exports `PagesView`.
+- [x] Slice 19: admin capability-card view helpers moved to core (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`).
+- [x] Slice 20: storefront published-page link/status presentation moved to core (`page_link_href`, `page_status_label`).
 
 
 ## Phase B pilot closure (rustok-pages)
