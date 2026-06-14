@@ -1261,22 +1261,12 @@ pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
     value.trim().parse().unwrap_or(0)
 }
 
-const PRODUCT_ADMIN_STATUS_BADGE_BASE_CLASS: &str =
-    "inline-flex rounded-full border px-3 py-1 text-xs font-semibold";
-
 pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'static str {
     match status {
         "ACTIVE" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-emerald-200 bg-emerald-50 text-emerald-700",
         "ARCHIVED" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-slate-200 bg-slate-100 text-slate-700",
         _ => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-amber-200 bg-amber-50 text-amber-700",
     }
-}
-
-pub(crate) fn status_badge(status: &str) -> &'static str {
-    product_admin_status_badge_container_class(status)
-        .strip_prefix(PRODUCT_ADMIN_STATUS_BADGE_BASE_CLASS)
-        .and_then(|class| class.strip_prefix(' '))
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -1853,7 +1843,7 @@ mod tests {
         assert_eq!(localized_product_status(Some("en"), "ACTIVE"), "Active");
         assert!(product_admin_status_badge_container_class("ACTIVE").starts_with("inline-flex"));
         assert!(product_admin_status_badge_container_class("ARCHIVED").contains("slate"));
-        assert!(status_badge("DRAFT").contains("amber"));
+        assert!(product_admin_status_badge_container_class("DRAFT").contains("amber"));
     }
 
     #[test]

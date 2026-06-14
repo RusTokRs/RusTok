@@ -5,8 +5,8 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_product_admin_status_badge_container_slice
-- Last checkpoint: Product admin list row status badge container class now comes from `ProductAdminListItemViewModel.status_badge_class`; Leptos row rendering no longer composes base badge classes with status-specific policy.
+- Current phase: ffa_product_admin_status_badge_cleanup_slice
+- Last checkpoint: Product admin status badge policy now exposes only the full core-owned container class through `product_admin_status_badge_container_class`; the obsolete suffix helper/base-class split was removed to avoid a split CSS contract.
 - Next step: Continue FFA-first sequencing only for small result/input/copy/state policy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -50,6 +50,7 @@
   - FFA slice: product admin pricing preview async-resource state mapping is composed by `product_admin_pricing_preview_state_from_result` in `admin/src/core.rs`; Leptos selected-summary rendering no longer owns loading/error/unavailable/ready classification for pricing preview results;
   - FFA slice: product admin pricing-preview request construction and primary-currency/default fallback are composed by `ProductAdminPricingPreviewRequest` / `product_admin_pricing_preview_request_from_product` in `admin/src/core.rs`; Leptos selected-pricing resource only forwards the prepared request to transport;
   - FFA slice: product admin list row status badge container class is composed by `ProductAdminListItemViewModel.status_badge_class` / `product_admin_status_badge_container_class` in `admin/src/core.rs`; Leptos row rendering no longer joins base badge classes with status-specific CSS policy;
+  - FFA cleanup: product admin status badge policy no longer exposes a separate suffix helper/base-class split; tests and row view-models assert the full core-owned container class contract directly;
   - FFA slice: product admin list loading/empty/error container class policy is composed by `ProductAdminListStateViewModel.container_class` in `admin/src/core.rs`; Leptos list rendering consumes the prepared class without owning state-to-CSS branching;
   - FFA guardrail: `scripts/verify/verify-product-admin-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline with fixture coverage in `scripts/verify/verify-product-admin-boundary.test.mjs` and checks product admin core/transport/ui split without long Cargo compilation;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
