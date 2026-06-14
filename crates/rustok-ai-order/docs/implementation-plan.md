@@ -14,3 +14,4 @@
 ## Execution checkpoint
 
 - Создан начальный scaffold crate и документация.
+- Добавлен domain-owned registration metadata API (`order_ai_verticals`) для `order_analytics` / `order_ops_assistant`; runtime handler registration в `rustok-ai` использует эти task/tool constants.

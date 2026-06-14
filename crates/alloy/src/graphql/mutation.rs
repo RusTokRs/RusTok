@@ -171,16 +171,6 @@ impl AlloyMutation {
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
-        let tenant_id = ctx
-            .data::<rustok_api::TenantContext>()
-            .map(|tenant| tenant.id)
-            .ok();
-
-        let _ = runtime
-            .execution_log
-            .record_with_context(&result, user_id, tenant_id)
-            .await;
-
         let (success, error, return_value, changes) = match result.outcome {
             ExecutionOutcome::Success {
                 ref return_value,

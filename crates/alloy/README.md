@@ -36,7 +36,7 @@
 and map-size limits. Runs that exceed the wall-clock budget return
 `ScriptError::Timeout`; Rhai operation pressure returns `ScriptError::OperationLimit`;
 data-size pressure returns `ScriptError::ResourceLimit`. Use
-`EngineConfig::limits()` to expose the effective sandbox profile to operators. `PhaseCapabilities` exposes the helper families enabled for each execution phase so integrations do not infer bridge availability from registration side effects.
+`EngineConfig::limits()` to expose the effective sandbox profile to operators. Runtime-created orchestrators and the scheduler attach `SeaOrmExecutionLog` directly to `ScriptExecutor`, so manual GraphQL/HTTP runs, hooks, on-commit scripts, and cron jobs persist one canonical execution-history row with user and tenant context when available. `PhaseCapabilities` exposes the helper families enabled for each execution phase so integrations do not infer bridge availability from registration side effects.
 
 ## Docs
 

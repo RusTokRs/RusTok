@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use loco_rs::app::AppContext;
+use rustok_ai_content::{validate_moderation_decision, GeneratedModerationDecision};
 use rustok_ai_product::{
     validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
     GeneratedProductCopy,
@@ -979,17 +980,6 @@ struct BlogSourceContent {
     seo_description: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct GeneratedModerationDecision {
-    decision: String,
-    #[serde(default)]
-    labels: Vec<String>,
-    severity: u8,
-    explanation: String,
-    requires_human: bool,
-    recommended_action: String,
-}
-
 fn resolve_blog_source_content(
     existing_post: Option<&rustok_blog::PostResponse>,
     input: &AiBlogDraftTaskInput,
@@ -1191,25 +1181,7 @@ pub(crate) async fn generate_content_moderation(
     let decision: GeneratedModerationDecision =
         serde_json::from_value(parsed).map_err(AiError::Json)?;
 
-    let decision_slug = decision.decision.trim().to_ascii_lowercase();
-    if !matches!(decision_slug.as_str(), "allow" | "review" | "block") {
-        return Err(AiError::Validation(
-            "content_moderation decision must be one of: allow, review, block".to_string(),
-        ));
-    }
-    if decision.severity > 100 {
-        return Err(AiError::Validation(
-            "content_moderation severity must be between 0 and 100".to_string(),
-        ));
-    }
-    Ok(GeneratedModerationDecision {
-        decision: decision_slug,
-        labels: decision.labels,
-        severity: decision.severity,
-        explanation: decision.explanation,
-        requires_human: decision.requires_human,
-        recommended_action: decision.recommended_action,
-    })
+    validate_moderation_decision(&decision).map_err(AiError::Validation)
 }
 
 pub(crate) async fn generate_product_attributes(

@@ -12,13 +12,14 @@ use crate::model::{AiContentModerationTaskInput, DirectExecutionTarget, ToolTrac
 use crate::service::AiOperatorContext;
 use crate::{AiError, AiResult};
 use loco_rs::app::AppContext;
+use rustok_ai_content::{CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME};
 
 pub struct ContentModerationHandler;
 
 #[async_trait]
 impl DirectTaskHandler for ContentModerationHandler {
     fn task_slug(&self) -> &'static str {
-        "content_moderation"
+        CONTENT_MODERATION_TASK_SLUG
     }
 
     async fn execute(
@@ -44,7 +45,7 @@ impl DirectTaskHandler for ContentModerationHandler {
             generated.decision, generated.severity
         );
         let trace = ToolTrace {
-            tool_name: "direct.content.moderation".to_string(),
+            tool_name: CONTENT_MODERATION_TOOL_NAME.to_string(),
             input_payload: request.task_input_json.clone(),
             output_payload: Some(operation_payload.clone()),
             status: "completed".to_string(),

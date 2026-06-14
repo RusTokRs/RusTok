@@ -7,7 +7,7 @@ description = "Domain-owned AI verticals for content moderation flows"
 
 [features]
 default = []
-server = ["rustok-ai/server"]
+server = []
 
 [dependencies]
-rustok-ai = { workspace = true }
+serde.workspace = true

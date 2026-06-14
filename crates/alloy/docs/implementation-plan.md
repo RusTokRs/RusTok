@@ -6,8 +6,8 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Enforced Rhai operation/call/data limits, converted wall-clock timeout into `ScriptError::Timeout`, documented runtime guarantees and scheduler/hook debugging runbook.
-- Next step: Wire execution log persistence into every executor/scheduler path and add targeted integration coverage.
+- Last checkpoint: Wired `SeaOrmExecutionLog` into runtime-created executors/orchestrators and scheduler jobs so every supported execution path persists canonical history with user/tenant context when available.
+- Next step: Add targeted integration coverage for execution log persistence across manual, hook, on-commit and scheduler paths.
 - Open blockers: None.
 - Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests.
 - Last updated at (UTC): 2026-06-14T00:00:00Z
@@ -37,14 +37,14 @@ contract приведены к единому формату.
 ### 2. Runtime hardening
 
 - [x] довести resource limits, timeout semantics и sandbox guarantees до стабильного production contract;
-- [ ] удерживать audit log и execution history как каноническую операторскую поверхность;
+- [x] удерживать audit log и execution history как каноническую операторскую поверхность;
 - [x] расширять integration helpers только через явные phase-aware contracts.
 
 ### 3. Operability
 
 - [x] развить runbook для scheduler/runtime failures и hook debugging;
 - [ ] покрыть execution, scheduler и bridge invariants точечными integration tests;
-- [ ] документировать новые runtime guarantees одновременно с изменением capability surface.
+- [x] документировать новые runtime guarantees одновременно с изменением capability surface.
 
 ## Проверка
 

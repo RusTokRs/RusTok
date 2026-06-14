@@ -6,6 +6,7 @@ use rhai::Dynamic;
 use crate::context::{ExecutionContext, ExecutionPhase};
 use crate::engine::ScriptEngine;
 use crate::error::{ScriptError, ScriptResult};
+use crate::execution_log::ExecutionLogSink;
 use crate::model::{EntityProxy, EventType, Script};
 use crate::storage::{ScriptQuery, ScriptRegistry};
 
@@ -21,6 +22,18 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
     pub fn new(engine: Arc<ScriptEngine>, registry: Arc<R>) -> Self {
         Self {
             executor: ScriptExecutor::new(engine, Arc::clone(&registry)),
+            registry,
+        }
+    }
+
+    pub fn with_execution_log(
+        engine: Arc<ScriptEngine>,
+        registry: Arc<R>,
+        execution_log: Arc<dyn ExecutionLogSink>,
+    ) -> Self {
+        Self {
+            executor: ScriptExecutor::new(engine, Arc::clone(&registry))
+                .with_execution_log(execution_log),
             registry,
         }
     }
@@ -54,7 +67,11 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
         for script in scripts {
             let result = self
                 .executor
-                .execute(&script, &ctx, Some(current_entity.clone()))
+                .execute(
+                    &script,
+                    &self.context_for_script(&ctx, &script),
+                    Some(current_entity.clone()),
+                )
                 .await;
 
             if let ExecutionOutcome::Aborted { ref reason } = result.outcome {
@@ -122,7 +139,11 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
         for script in scripts {
             let result = self
                 .executor
-                .execute(&script, &ctx, Some(entity.clone()))
+                .execute(
+                    &script,
+                    &self.context_for_script(&ctx, &script),
+                    Some(entity.clone()),
+                )
                 .await;
 
             if let ExecutionOutcome::Aborted { ref reason } = result.outcome {
@@ -171,7 +192,11 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
         for script in scripts {
             let result = self
                 .executor
-                .execute(&script, &ctx, Some(entity.clone()))
+                .execute(
+                    &script,
+                    &self.context_for_script(&ctx, &script),
+                    Some(entity.clone()),
+                )
                 .await;
             results.push(result);
         }
@@ -194,7 +219,10 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
             ctx = ctx.with_user(uid);
         }
 
-        Ok(self.executor.execute(&script, &ctx, None).await)
+        Ok(self
+            .executor
+            .execute(&script, &self.context_for_script(&ctx, &script), None)
+            .await)
     }
 
     pub async fn run_manual_with_entity(
@@ -213,7 +241,10 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
             ctx = ctx.with_user(uid);
         }
 
-        Ok(self.executor.execute(&script, &ctx, entity).await)
+        Ok(self
+            .executor
+            .execute(&script, &self.context_for_script(&ctx, &script), entity)
+            .await)
     }
 
     pub async fn run_api(
@@ -241,7 +272,17 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
             ctx = ctx.with_user(uid);
         }
 
-        Ok(self.executor.execute(&script, &ctx, None).await)
+        Ok(self
+            .executor
+            .execute(&script, &self.context_for_script(&ctx, &script), None)
+            .await)
+    }
+
+    fn context_for_script(&self, ctx: &ExecutionContext, script: &Script) -> ExecutionContext {
+        match &ctx.tenant_id {
+            Some(_) => ctx.clone(),
+            None => ctx.clone().with_tenant(script.tenant_id.to_string()),
+        }
     }
 
     async fn find_scripts(&self, entity_type: &str, event: EventType) -> ScriptResult<Vec<Script>> {

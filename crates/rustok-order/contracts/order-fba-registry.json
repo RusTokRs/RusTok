@@ -8,7 +8,11 @@
     {
       "name": "CheckoutCompletionPort",
       "owner": "order",
-      "operations": ["complete_checkout", "read_checkout_result", "read_order_status"],
+      "operations": [
+        "complete_checkout",
+        "read_checkout_result",
+        "read_order_status"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
@@ -19,13 +23,76 @@
     {
       "module": "commerce",
       "profile": "checkout_completion_orchestration",
-      "degraded_modes": ["show_completion_retry", "preserve_cart_checkout_state"],
-      "fallback_profiles": ["embedded_native", "graphql_checkout_compat"]
+      "degraded_modes": [
+        "show_completion_retry",
+        "preserve_cart_checkout_state"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
     }
   ],
   "evidence": {
     "local_plan": "crates/rustok-order/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-order/contracts/order-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "complete_checkout",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_checkout_result",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      },
+      {
+        "operation": "read_order_status",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "show_completion_retry",
+        "preserve_cart_checkout_state"
+      ]
+    }
   }
 }
