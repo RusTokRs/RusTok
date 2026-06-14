@@ -75,13 +75,14 @@ npm run test:verify:ecommerce:fba-registries
 ## Описание скриптов
 
 ### `verify-ecommerce-fba-registries.mjs`
-**Ecommerce FBA provider registry gate** — проверяет provider metadata для `payment`, `fulfillment`, `order`, `pricing` и `inventory`.
+**Ecommerce FBA provider/consumer registry gate** — проверяет provider metadata для `payment`, `fulfillment`, `order`, `pricing`, `inventory` и consumer metadata для `commerce`.
 
 Что делает:
 - сверяет module-owned `contracts/*-fba-registry.json` с `rustok-module.toml`, `Cargo.toml`, `src/lib.rs`, `src/ports.rs`, local implementation plan, центральным readiness board и evidence path-ами внутри registry;
 - требует нейтральные `PortContext`/`PortError`, per-operation port declarations и in-process provider implementation marker, если он заявлен в registry;
 - фиксирует `contract_tests.status = planned_cases_locked`, наличие `in_process` + `remote_adapter_placeholder` profiles, case на каждую port operation и baseline assertions `typed_port_error_mapping`/`context_deadline_preserved`;
-- проверяет, что planned fallback-smoke profile set покрывает все consumer fallback profiles, чтобы future runtime evidence не расходился с provider/consumer metadata.
+- проверяет, что planned fallback-smoke profile set покрывает все consumer fallback profiles, чтобы future runtime evidence не расходился с provider/consumer metadata;
+- сверяет `crates/rustok-commerce/contracts/commerce-fba-registry.json` с provider registries, чтобы checkout orchestration не ссылался на устаревшие contract versions, profiles, degraded modes или fallback profiles.
 
 Unit guardrail для самого verifier-а: `node scripts/verify/verify-ecommerce-fba-registries.test.mjs` или `npm run test:verify:ecommerce:fba-registries`.
 

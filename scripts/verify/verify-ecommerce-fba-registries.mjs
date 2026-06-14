@@ -24,6 +24,7 @@ export function verifyEcommerceFbaRegistries({
 } = {}) {
   const read = createReader(root);
   const central = read('docs/modules/registry.md');
+  const providerRegistries = new Map();
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
@@ -110,6 +111,61 @@ export function verifyEcommerceFbaRegistries({
     }
     if (!central.includes(`| \`${module}\` |`) || !central.includes(`crates/rustok-${module}/contracts/${module}-fba-registry.json`)) {
       fail(`${module} central readiness board lacks registry evidence`);
+    }
+
+    providerRegistries.set(module, registry);
+  }
+
+  const commerceRegistryPath = 'crates/rustok-commerce/contracts/commerce-fba-registry.json';
+  const commerceRegistry = JSON.parse(read(commerceRegistryPath));
+  const commerceManifest = read('crates/rustok-commerce/rustok-module.toml');
+  const commercePlan = read('crates/rustok-commerce/docs/implementation-plan.md');
+
+  if (commerceRegistry.schema_version !== 1) fail(`${commerceRegistryPath} schema_version must be 1`);
+  if (commerceRegistry.module !== 'commerce') fail('commerce FBA registry module must be commerce');
+  if (commerceRegistry.role !== 'orchestrator_consumer') fail('commerce FBA registry role must be orchestrator_consumer');
+  if (commerceRegistry.status !== 'in_progress') fail('commerce FBA registry status must be in_progress');
+  if (!Array.isArray(commerceRegistry.providers) || commerceRegistry.providers.length !== modules.length) {
+    fail('commerce FBA registry must list every ecommerce provider');
+  }
+  if (!commerceManifest.includes('[fba.consumer]')) fail('commerce manifest lacks [fba.consumer]');
+  if (!commerceManifest.includes('registry = "contracts/commerce-fba-registry.json"')) {
+    fail('commerce manifest consumer registry path drift');
+  }
+  if (!commercePlan.includes('commerce-fba-registry.json')) fail('commerce local plan lacks consumer registry evidence');
+  if (!central.includes('crates/rustok-commerce/contracts/commerce-fba-registry.json')) {
+    fail('commerce central readiness board lacks consumer registry evidence');
+  }
+
+  for (const module of modules) {
+    const provider = providerRegistries.get(module);
+    const consumer = commerceRegistry.providers.find((entry) => entry.module === module);
+    if (!consumer) fail(`commerce FBA registry lacks provider ${module}`);
+    if (consumer.contract_version !== provider.contract_version) {
+      fail(`commerce provider ${module} contract version drift`);
+    }
+    if (consumer.registry !== `crates/rustok-${module}/contracts/${module}-fba-registry.json`) {
+      fail(`commerce provider ${module} registry path drift`);
+    }
+    for (const port of provider.ports) {
+      if (!consumer.ports.includes(port.name)) {
+        fail(`commerce provider ${module} port drift`);
+      }
+    }
+    const commerceConsumer = provider.consumers.find((entry) => entry.module === 'commerce');
+    if (!commerceConsumer) fail(`${module} provider registry lacks commerce consumer`);
+    if (!consumer.profiles.includes(commerceConsumer.profile)) {
+      fail(`commerce provider ${module} consumer profile drift`);
+    }
+    for (const profile of commerceConsumer.fallback_profiles || []) {
+      if (!consumer.fallback_profiles.includes(profile)) {
+        fail(`commerce provider ${module} fallback profile drift`);
+      }
+    }
+    for (const mode of commerceConsumer.degraded_modes || []) {
+      if (!consumer.degraded_modes.includes(mode)) {
+        fail(`commerce provider ${module} degraded mode drift`);
+      }
     }
   }
 }

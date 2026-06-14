@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "module": "commerce",
+  "role": "orchestrator_consumer",
+  "status": "in_progress",
+  "contract_version": "commerce.checkout_orchestration.fba.v1",
+  "providers": [
+    {
+      "module": "pricing",
+      "contract_version": "pricing.read_projection.v1",
+      "registry": "crates/rustok-pricing/contracts/pricing-fba-registry.json",
+      "ports": [
+        "PricingReadPort"
+      ],
+      "profiles": [
+        "checkout_pricing_projection"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "show_price_refresh_required",
+        "use_cart_price_snapshot"
+      ]
+    },
+    {
+      "module": "inventory",
+      "contract_version": "inventory.reservation.v1",
+      "registry": "crates/rustok-inventory/contracts/inventory-fba-registry.json",
+      "ports": [
+        "InventoryReservationPort"
+      ],
+      "profiles": [
+        "checkout_inventory_reservation"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "block_checkout_with_stock_refresh",
+        "preserve_cart_inventory_snapshot"
+      ]
+    },
+    {
+      "module": "order",
+      "contract_version": "order.checkout_completion.v1",
+      "registry": "crates/rustok-order/contracts/order-fba-registry.json",
+      "ports": [
+        "CheckoutCompletionPort"
+      ],
+      "profiles": [
+        "checkout_completion_orchestration"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "preserve_cart_checkout_state",
+        "show_completion_retry"
+      ]
+    },
+    {
+      "module": "payment",
+      "contract_version": "payment.checkout.v1",
+      "registry": "crates/rustok-payment/contracts/payment-fba-registry.json",
+      "ports": [
+        "PaymentCollectionPort"
+      ],
+      "profiles": [
+        "checkout_orchestration"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "reuse_existing_collection",
+        "show_payment_handoff_retry"
+      ]
+    },
+    {
+      "module": "fulfillment",
+      "contract_version": "fulfillment.shipping_selection.v1",
+      "registry": "crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
+      "ports": [
+        "ShippingSelectionPort"
+      ],
+      "profiles": [
+        "checkout_shipping_orchestration"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "keep_previous_selection",
+        "show_shipping_handoff_retry"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-commerce/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "rollout": {
+    "profiles": [
+      "embedded_native",
+      "graphql_checkout_compat"
+    ],
+    "remote_profile": "not_enabled",
+    "boundary_status": "consumer_metadata_locked"
+  }
+}

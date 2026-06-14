@@ -77,13 +77,40 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
 
   mutateRegistry?.(registry);
 
-  write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pricing/docs/implementation-plan.md` (`crates/rustok-pricing/contracts/pricing-fba-registry.json`) |\n');
+  const commerceRegistry = {
+    schema_version: 1,
+    module: 'commerce',
+    role: 'orchestrator_consumer',
+    status: 'in_progress',
+    contract_version: 'commerce.checkout_orchestration.fba.v1',
+    providers: [
+      {
+        module: moduleSlug,
+        contract_version: registry.contract_version,
+        registry: 'crates/rustok-pricing/contracts/pricing-fba-registry.json',
+        ports: ['PricingReadPort'],
+        profiles: ['checkout_pricing_projection'],
+        fallback_profiles: ['embedded_native', 'graphql_checkout_compat'],
+        degraded_modes: ['use_cart_price_snapshot'],
+      },
+    ],
+    evidence: {
+      local_plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+      central_board: 'docs/modules/registry.md',
+      verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
+    },
+  };
+
+  write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pricing/docs/implementation-plan.md` (`crates/rustok-pricing/contracts/pricing-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
   write('crates/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
   write('crates/rustok-pricing/docs/implementation-plan.md', '# Plan\n- FBA status: `in_progress`\n`pricing-fba-registry.json`\n');
   write('crates/rustok-pricing/rustok-module.toml', '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
   write('crates/rustok-pricing/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
   write('crates/rustok-pricing/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
   write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService {}\n');
+  write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
+  write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
+  write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
 
   return pathToFileURL(`${rootPath}/`);
 };
