@@ -38,7 +38,8 @@
 - Page builder compatibility is explicit: `body.format = "grapesjs_v1"` is the canonical
   visual-builder payload, while legacy `blocks` remain an independent migration surface.
 - Pages may legitimately exist with legacy blocks and no `body`; adding or updating a body does
-  not auto-convert, overwrite, or delete existing blocks.
+  not auto-convert, overwrite, or delete existing blocks. This read/bridge invariant is checked
+  without compilation by `verify-page-builder-pages-legacy-bridge.mjs`.
 - Page CRUD and block CRUD now run on module-owned tables: `pages`, `page_translations`,
   `page_bodies`, and `page_blocks`.
 - Menu CRUD now runs on module-owned tables: `menus`, `menu_translations`,
