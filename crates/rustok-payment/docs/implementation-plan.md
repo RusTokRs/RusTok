@@ -6,7 +6,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: storefront_action_request_boundary
-- Last checkpoint: Payment storefront action UI now emits `PaymentCollectionCreateRequest` via the payment-owned `storefront/src/transport.rs` facade, and the obsolete commerce-side payment request builder wrapper was removed so the compatibility host only forwards the owner DTO.
+- Last checkpoint: Payment storefront action UI now emits `PaymentCollectionCreateRequest` with payment-owned create/reuse command metadata via the payment-owned `storefront/src/transport.rs` facade, and the compatibility host forwards the owner DTO into native/GraphQL orchestration payload metadata instead of creating anonymous commerce-side command metadata.
 - Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration; keep commerce only as temporary checkout orchestration until that cutover.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -21,7 +21,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
   - in-process реализация `PaymentCollectionPort for PaymentService` добавлена в `src/ports.rs`: create/reuse path требует `PortContext::require_write_semantics`, переиспользует reusable cart collection перед созданием новой и мапит `PaymentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `PaymentCollectionPort` и DTO для create/reuse/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `payment collection create/reuse` через `crates/rustok-payment/contracts/payment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
-  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce no longer exposes a duplicate payment request builder;
+  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization and command metadata, `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce maps the owner DTO metadata into native/GraphQL payloads instead of exposing a duplicate payment request builder;
   - fast boundary guardrail `scripts/verify/verify-payment-storefront-boundary.mjs` is wired into `npm run verify:ffa:ui:migration`, self-checks package wiring, and checks the payment-owned core/transport/ui split without long Cargo compilation;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
 - Last verified at (UTC): 2026-05-24T00:00:00Z

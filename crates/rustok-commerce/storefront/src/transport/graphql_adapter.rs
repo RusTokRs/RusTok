@@ -16,7 +16,7 @@ pub async fn fetch_storefront_commerce(
 pub async fn create_storefront_payment_collection(
     request: PaymentCollectionCommandRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    api::create_storefront_payment_collection_graphql(request.cart_id).await
+    api::create_storefront_payment_collection_graphql(request).await
 }
 
 #[allow(dead_code)]
@@ -29,5 +29,5 @@ pub async fn select_storefront_shipping_option(
 pub async fn complete_storefront_checkout(
     request: CheckoutCompletionCommandRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    api::complete_storefront_checkout_graphql(request.cart_id).await
+    api::complete_storefront_checkout_graphql(request).await
 }
