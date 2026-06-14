@@ -24,8 +24,8 @@
 - использует `rustok-storage` как контракт backend-хранилища;
 - `apps/server` остаётся composition root и wiring-слоем для media routes/graphql;
 - runtime guard опирается на tenant-scoped module enablement для публичных поверхностей;
-- загрузка остаётся REST-first path, GraphQL сохраняется для read/mutation flows без multipart-расширения, а Leptos admin adapter вызывает transport facade вместо raw API module; transport facade внутри admin package разделяет native server functions, GraphQL fallback и REST upload adapters;
-- `rustok-seo` и owner SEO providers потребляют `MediaImageDescriptor` как единственную image boundary для OG/Twitter/schema fallback.
+- загрузка остаётся REST-first path, GraphQL сохраняется для read/mutation flows без multipart-расширения, а Leptos admin adapter вызывает transport facade вместо raw API module; transport facade внутри admin package разделяет native server functions, GraphQL fallback и REST upload adapters, а upload/detail presentation state остаётся в Leptos-free `admin/src/core.rs`;
+- `rustok-seo` и owner SEO providers потребляют `MediaImageDescriptor` как единственную image boundary для OG/Twitter/schema fallback; descriptor normalization покрывает explicit MIME, invalid dimensions и query/fragment cleanup.
 
 ## Проверка
 
