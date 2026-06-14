@@ -7,12 +7,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase45_product_metadata_patch
-- Last checkpoint: Product-side Flex attached metadata update drift reduced without compilation: `catalog.rs` now preserves existing reserved product metadata while applying Flex custom-field patches, and product metadata split/merge helper tests were added.
+- Current phase: phase5_standalone_guardrails
+- Last checkpoint: Standalone Flex guardrails tightened without compilation: schema slugs, standalone field keys and attached `entity_type` values must now be already-normalized (no trim-before-validate drift), tests cover untrimmed rejection paths, and standalone localized entry reads now filter parallel rows by tenant.
 - Next step: When compilations are allowed, run `cargo test -p rustok-product --lib` first, then `cargo test -p rustok-server --lib` plus Flex-targeted integration scenarios and record evidence here.
-- Open blockers: None.
-- Hand-off notes for next agent: User explicitly requested no compilations for this iteration; only `cargo fmt --all` and the Node multilingual drift gate were run. Verify the new product metadata unit tests once compilation/test execution is allowed.
-- Last updated at (UTC): 2026-06-13T00:00:00Z
+- Open blockers: User explicitly requested no compilations for this iteration.
+- Hand-off notes for next agent: Only non-compilation checks were run (`cargo fmt --all` and `node scripts/verify/verify-flex-multilingual-contract.mjs`). Verify the new standalone validation and tenant-scoped localization changes with targeted Rust tests once compilation/test execution is allowed.
+- Last updated at (UTC): 2026-06-14T07:03:17Z
 
 ## Область работ
 
@@ -298,7 +298,8 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - `apps/server` теперь также держит standalone GraphQL roundtrip для schema/entry CRUD и explicit denial-path для `flex_entries:create`.
   - Flex GraphQL tests в `apps/server` теперь используют isolated SQLite bootstrap вместо полного workspace migrator, чтобы не тянуть посторонние migration slices в flex verification path.
   - Repo-side multilingual drift gate проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
-  - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил product-side fix и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
+  - 2026-06-14 no-compile iteration: standalone contract guardrail tests added for untrimmed schema slugs, field keys and `entity_type`; localized entry row loading now includes tenant filtering to keep the parallel storage lookup tenant-scoped.
+  - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone guardrail fix и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
   - Rollout / governance contract для standalone surface задокументирован как completed

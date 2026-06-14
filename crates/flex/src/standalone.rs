@@ -81,7 +81,7 @@ pub struct UpdateFlexEntryCommand {
 
 /// Validate standalone schema command before handing it to adapter/service layer.
 pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result<(), FlexError> {
-    if !is_valid_field_key(input.slug.trim()) {
+    if !is_valid_field_key(&input.slug) {
         return Err(FlexError::InvalidFieldKey(
             "schema slug must match ^[a-z][a-z0-9_]{0,127}$".to_string(),
         ));
@@ -108,15 +108,13 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
     }
 
     if let Some(entity_type) = &input.entity_type {
-        let normalized_entity_type = entity_type.trim();
-
-        if !is_valid_field_key(normalized_entity_type) {
+        if !is_valid_field_key(entity_type) {
             return Err(FlexError::InvalidFieldKey(
                 "entity_type must match ^[a-z][a-z0-9_]{0,127}$".to_string(),
             ));
         }
 
-        if normalized_entity_type == FLEX_ENTRY_ENTITY_TYPE {
+        if entity_type == FLEX_ENTRY_ENTITY_TYPE {
             return Err(FlexError::InvalidFieldKey(
                 "standalone flex entries cannot attach to flex_entry; max relation depth is 1"
                     .to_string(),
@@ -361,7 +359,7 @@ pub async fn delete_entry_with_event(
 fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexError> {
     let mut unique = std::collections::HashSet::new();
     for def in definitions {
-        if !is_valid_field_key(def.field_key.trim()) {
+        if !is_valid_field_key(&def.field_key) {
             return Err(FlexError::InvalidFieldKey(format!(
                 "invalid field key in fields_config: {}",
                 def.field_key
@@ -532,6 +530,31 @@ mod tests {
     }
 
     #[test]
+    fn validate_schema_command_rejects_untrimmed_slug_and_field_keys() {
+        let untrimmed_slug = CreateFlexSchemaCommand {
+            slug: " landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![],
+            settings: None,
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&untrimmed_slug).is_err());
+
+        let untrimmed_field_key = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![sample_definition("title ")],
+            settings: None,
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&untrimmed_field_key).is_err());
+    }
+
+    #[test]
     fn validate_update_schema_command_rejects_empty_name_and_duplicate_keys() {
         let empty_name = UpdateFlexSchemaCommand {
             name: Some("   ".to_string()),
@@ -584,6 +607,19 @@ mod tests {
         };
 
         assert!(validate_create_entry_command(&valid).is_ok());
+    }
+
+    #[test]
+    fn validate_entry_command_rejects_untrimmed_entity_type() {
+        let invalid = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: Some(" product".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            data: json!({"title": "Hello"}),
+            status: Some("draft".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&invalid).is_err());
     }
 
     #[test]
