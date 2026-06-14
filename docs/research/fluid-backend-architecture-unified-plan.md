@@ -100,9 +100,9 @@
 
 ## 4) Этап B — Базовые FBA-контракты (Ports before transports)
 
-## 4.1 Единый `FbaContext`
+## 4.1 Единый `PortContext`
 
-Стартовая shared-реализация находится в `rustok-api::fba` и намеренно остаётся transport-agnostic: это контрактный примитив для портов/адаптеров, а не доменный сервис.
+Стартовая shared-реализация находится в `rustok-api::ports` и намеренно остаётся transport-agnostic: это контрактный примитив для портов/адаптеров, а не доменный сервис.
 
 Обязательные поля:
 
@@ -137,7 +137,7 @@
 ## 4.5 Критерии готовности этапа B
 
 - Все целевые порты определены в transport-agnostic виде.
-- `FbaContext` и error model используются во всех новых/обновлённых портовых вызовах.
+- `PortContext` и error model используются во всех новых/обновлённых портовых вызовах.
 - Новые прямые foreign-table доступы не допускаются.
 
 ---
@@ -247,7 +247,7 @@
 Модуль можно переводить в remote profile только при выполнении **всех** условий:
 
 1. Stable transport-agnostic port + contract tests (in-process/remote).
-2. Полный `FbaContext` на всех командах/запросах.
+2. Полный `PortContext` на всех командах/запросах.
 3. Outbox + versioned events + replay/idempotency policy.
 4. Отсутствие foreign-table доступа вне owner boundary.
 5. Write методы имеют idempotency key и deadline semantics.

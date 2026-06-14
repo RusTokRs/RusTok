@@ -2,11 +2,11 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// Transport-agnostic context that must cross every Fluid Backend Architecture port.
+/// Transport-agnostic context that must cross module service ports.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FbaContext {
+pub struct PortContext {
     pub tenant_id: String,
-    pub actor: FbaActor,
+    pub actor: PortActor,
     pub claims: Vec<String>,
     pub roles: Vec<String>,
     pub channel: Option<String>,
@@ -18,10 +18,10 @@ pub struct FbaContext {
     pub deadline_ms: Option<u64>,
 }
 
-impl FbaContext {
+impl PortContext {
     pub fn new(
         tenant_id: impl Into<String>,
-        actor: FbaActor,
+        actor: PortActor,
         locale: impl Into<String>,
         correlation_id: impl Into<String>,
     ) -> Self {
@@ -50,21 +50,21 @@ impl FbaContext {
         self
     }
 
-    pub fn require_write_semantics(&self) -> Result<(), FbaError> {
+    pub fn require_write_semantics(&self) -> Result<(), PortError> {
         if self
             .idempotency_key
             .as_deref()
             .unwrap_or_default()
             .is_empty()
         {
-            return Err(FbaError::validation(
-                "fba.idempotency_key_required",
+            return Err(PortError::validation(
+                "port.idempotency_key_required",
                 "write port calls require a non-empty idempotency key",
             ));
         }
         if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(FbaError::timeout(
-                "fba.deadline_required",
+            return Err(PortError::timeout(
+                "port.deadline_required",
                 "write port calls require deadline semantics",
             ));
         }
@@ -73,22 +73,22 @@ impl FbaContext {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FbaActor {
-    pub kind: FbaActorKind,
+pub struct PortActor {
+    pub kind: PortActorKind,
     pub id: String,
 }
 
-impl FbaActor {
+impl PortActor {
     pub fn user(id: impl Into<String>) -> Self {
         Self {
-            kind: FbaActorKind::User,
+            kind: PortActorKind::User,
             id: id.into(),
         }
     }
 
     pub fn service(id: impl Into<String>) -> Self {
         Self {
-            kind: FbaActorKind::Service,
+            kind: PortActorKind::Service,
             id: id.into(),
         }
     }
@@ -96,35 +96,35 @@ impl FbaActor {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum FbaActorKind {
+pub enum PortActorKind {
     User,
     Service,
     System,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FbaError {
-    pub kind: FbaErrorKind,
+pub struct PortError {
+    pub kind: PortErrorKind,
     pub code: String,
     pub message: String,
     pub retryable: bool,
 }
 
-impl FbaError {
+impl PortError {
     pub fn validation(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::new(FbaErrorKind::Validation, code, message, false)
+        Self::new(PortErrorKind::Validation, code, message, false)
     }
 
     pub fn timeout(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::new(FbaErrorKind::Timeout, code, message, true)
+        Self::new(PortErrorKind::Timeout, code, message, true)
     }
 
     pub fn unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::new(FbaErrorKind::Unavailable, code, message, true)
+        Self::new(PortErrorKind::Unavailable, code, message, true)
     }
 
     pub fn new(
-        kind: FbaErrorKind,
+        kind: PortErrorKind,
         code: impl Into<String>,
         message: impl Into<String>,
         retryable: bool,
@@ -140,7 +140,7 @@ impl FbaError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum FbaErrorKind {
+pub enum PortErrorKind {
     Validation,
     NotFound,
     Conflict,
@@ -156,11 +156,11 @@ mod tests {
 
     #[test]
     fn write_semantics_require_idempotency_key_and_deadline() {
-        let context = FbaContext::new("tenant-a", FbaActor::user("user-a"), "ru", "corr-a");
+        let context = PortContext::new("tenant-a", PortActor::user("user-a"), "ru", "corr-a");
 
         assert_eq!(
             context.require_write_semantics().unwrap_err().kind,
-            FbaErrorKind::Validation
+            PortErrorKind::Validation
         );
 
         let context = context
@@ -171,9 +171,9 @@ mod tests {
 
     #[test]
     fn unavailable_errors_are_retryable() {
-        let error = FbaError::unavailable("inventory.remote_unavailable", "try later");
+        let error = PortError::unavailable("inventory.remote_unavailable", "try later");
 
-        assert_eq!(error.kind, FbaErrorKind::Unavailable);
+        assert_eq!(error.kind, PortErrorKind::Unavailable);
         assert!(error.retryable);
     }
 }
