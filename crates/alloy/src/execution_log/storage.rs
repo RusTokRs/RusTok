@@ -5,7 +5,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::context::ExecutionPhase;
+use crate::context::{ExecutionContext, ExecutionPhase};
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::ScriptId;
 use crate::runner::{ExecutionOutcome, ExecutionResult};
@@ -45,7 +45,15 @@ pub struct ExecutionLogEntry {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone)]
+#[async_trait::async_trait]
+pub trait ExecutionLogSink: Send + Sync {
+    async fn record_result(
+        &self,
+        result: &ExecutionResult,
+        ctx: &ExecutionContext,
+    ) -> ScriptResult<()>;
+}
+
 pub struct SeaOrmExecutionLog {
     db: DatabaseConnection,
 }
@@ -125,7 +133,6 @@ impl SeaOrmExecutionLog {
 
         Ok(())
     }
-
     pub async fn list_for_script(
         &self,
         script_id: ScriptId,
@@ -151,6 +158,23 @@ impl SeaOrmExecutionLog {
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
         Ok(models.into_iter().map(model_to_entry).collect())
+    }
+}
+
+#[async_trait::async_trait]
+impl ExecutionLogSink for SeaOrmExecutionLog {
+    async fn record_result(
+        &self,
+        result: &ExecutionResult,
+        ctx: &ExecutionContext,
+    ) -> ScriptResult<()> {
+        let tenant_id = ctx
+            .tenant_id
+            .as_deref()
+            .and_then(|tenant_id| Uuid::parse_str(tenant_id).ok());
+
+        self.record_with_context(result, ctx.user_id.clone(), tenant_id)
+            .await
     }
 }
 

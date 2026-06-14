@@ -1,4 +1,94 @@
-use crate::model::{MediaTranslationPayload, MediaUsageSnapshot, UpsertTranslationPayload};
+use crate::model::{
+    MediaListItem, MediaTranslationPayload, MediaUsageSnapshot, UpsertTranslationPayload,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MediaAdminBusyKey {
+    Upload,
+    Translation,
+    Delete(String),
+}
+
+impl MediaAdminBusyKey {
+    pub fn as_storage_key(&self) -> String {
+        match self {
+            Self::Upload => "upload".to_string(),
+            Self::Translation => "translation".to_string(),
+            Self::Delete(media_id) => format!("delete:{media_id}"),
+        }
+    }
+}
+
+pub fn is_busy_key(current: Option<&str>, expected: MediaAdminBusyKey) -> bool {
+    current == Some(expected.as_storage_key().as_str())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaUploadSuccessState {
+    pub selected_media_id: String,
+    pub should_refresh: bool,
+}
+
+pub fn media_upload_success_state(media_id: impl Into<String>) -> MediaUploadSuccessState {
+    MediaUploadSuccessState {
+        selected_media_id: media_id.into(),
+        should_refresh: true,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaDetailLineViewModel {
+    pub label: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaDetailLabels {
+    pub original_name: String,
+    pub id: String,
+    pub mime: String,
+    pub storage: String,
+    pub public_url: String,
+    pub size: String,
+    pub created: String,
+}
+
+pub fn media_detail_lines(
+    item: &MediaListItem,
+    labels: MediaDetailLabels,
+    bytes_template: &str,
+) -> Vec<MediaDetailLineViewModel> {
+    vec![
+        MediaDetailLineViewModel {
+            label: labels.original_name,
+            value: item.original_name.clone(),
+        },
+        MediaDetailLineViewModel {
+            label: labels.id,
+            value: item.id.clone(),
+        },
+        MediaDetailLineViewModel {
+            label: labels.mime,
+            value: item.mime_type.clone(),
+        },
+        MediaDetailLineViewModel {
+            label: labels.storage,
+            value: item.storage_driver.clone(),
+        },
+        MediaDetailLineViewModel {
+            label: labels.public_url,
+            value: item.public_url.clone(),
+        },
+        MediaDetailLineViewModel {
+            label: labels.size,
+            value: bytes_template.replace("{count}", &item.size.to_string()),
+        },
+        MediaDetailLineViewModel {
+            label: labels.created,
+            value: item.created_at.clone(),
+        },
+    ]
+}
 
 /// Trims user-entered optional metadata and keeps the transport payload free of
 /// empty strings. This helper is framework-agnostic so future FFA adapters can
@@ -109,6 +199,23 @@ pub fn media_usage_stat_cards(
 mod tests {
     use super::*;
 
+    fn media_item() -> MediaListItem {
+        MediaListItem {
+            id: "media-1".to_string(),
+            tenant_id: "tenant-1".to_string(),
+            uploaded_by: None,
+            filename: "hero.webp".to_string(),
+            original_name: "Hero.webp".to_string(),
+            mime_type: "image/webp".to_string(),
+            size: 2048,
+            storage_driver: "s3".to_string(),
+            public_url: "https://cdn.example.test/hero.webp".to_string(),
+            width: Some(1200),
+            height: Some(630),
+            created_at: "2026-06-08T11:43:16Z".to_string(),
+        }
+    }
+
     fn translation(locale: &str, title: Option<&str>) -> MediaTranslationPayload {
         MediaTranslationPayload {
             id: format!("translation-{locale}"),
@@ -118,6 +225,53 @@ mod tests {
             alt_text: Some(format!("alt-{locale}")),
             caption: None,
         }
+    }
+
+    #[test]
+    fn busy_key_helpers_keep_transport_action_keys_stable() {
+        assert_eq!(MediaAdminBusyKey::Upload.as_storage_key(), "upload");
+        assert_eq!(
+            MediaAdminBusyKey::Translation.as_storage_key(),
+            "translation"
+        );
+        assert_eq!(
+            MediaAdminBusyKey::Delete("media-1".to_string()).as_storage_key(),
+            "delete:media-1"
+        );
+        assert!(is_busy_key(Some("upload"), MediaAdminBusyKey::Upload));
+        assert!(!is_busy_key(Some("translation"), MediaAdminBusyKey::Upload));
+    }
+
+    #[test]
+    fn upload_success_state_selects_uploaded_asset_and_requests_refresh() {
+        assert_eq!(
+            media_upload_success_state("media-1"),
+            MediaUploadSuccessState {
+                selected_media_id: "media-1".to_string(),
+                should_refresh: true,
+            }
+        );
+    }
+
+    #[test]
+    fn detail_lines_preserve_admin_detail_order_and_size_format() {
+        let lines = media_detail_lines(
+            &media_item(),
+            MediaDetailLabels {
+                original_name: "Original".to_string(),
+                id: "ID".to_string(),
+                mime: "MIME".to_string(),
+                storage: "Storage".to_string(),
+                public_url: "URL".to_string(),
+                size: "Size".to_string(),
+                created: "Created".to_string(),
+            },
+            "{count} bytes",
+        );
+
+        assert_eq!(lines[0].value, "Hero.webp");
+        assert_eq!(lines[5].value, "2048 bytes");
+        assert_eq!(lines[6].label, "Created");
     }
 
     #[test]

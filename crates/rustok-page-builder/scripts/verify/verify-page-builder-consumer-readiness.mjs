@@ -103,5 +103,42 @@ if (arg === "pages") {
   }
 }
 
+if (arg === "forum") {
+  const forumManifestMarkers = [
+    "[fba.builder_consumer.degraded_modes]",
+    `builder_disabled = "forum_widgets_readonly_keep_forum_routes"`,
+    `preview_disabled = "forum_widget_preview_hidden_keep_forum_routes"`,
+    `publish_disabled = "forum_widget_publish_feature_disabled_keep_forum_routes"`,
+    `fallback_mode = "readonly"`,
+    `fallback_mode = "degraded"`,
+    `fallback_mode = "hidden"`,
+    "builder_off = [",
+    "publish_off = [",
+    "builder.enabled=false",
+    "builder.publish.enabled=false",
+  ];
+  for (const marker of forumManifestMarkers) {
+    if (!moduleToml.includes(marker)) {
+      fail(`${arg}: manifest fallback hardening missing marker '${marker}'`);
+    }
+  }
+
+  const forumPlanMarkers = [
+    "FW-2",
+    "builder_off",
+    "publish_off",
+    "readonly",
+    "hidden",
+    "degraded",
+    "npm run verify:page-builder:consumer:forum",
+    "без 5xx",
+  ];
+  for (const marker of forumPlanMarkers) {
+    if (!implPlan.includes(marker)) {
+      fail(`${arg}: implementation-plan fallback hardening missing marker '${marker}'`);
+    }
+  }
+}
+
 console.log("[verify-page-builder-consumer-readiness] PASS");
 console.log(`module=${arg}; crate=${crateName}; consumer_manifest_markers=${hasConsumerManifestMarkers}`);

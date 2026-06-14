@@ -7,6 +7,7 @@ use tracing::{debug, warn, Instrument};
 use crate::context::ExecutionContext;
 use crate::engine::ScriptEngine;
 use crate::error::ScriptError;
+use crate::execution_log::ExecutionLogSink;
 use crate::model::{EntityProxy, Script};
 use crate::storage::ScriptRegistry;
 
@@ -16,6 +17,7 @@ pub struct ScriptExecutor<R: ScriptRegistry> {
     engine: Arc<ScriptEngine>,
     registry: Arc<R>,
     max_chain_depth: usize,
+    execution_log: Option<Arc<dyn ExecutionLogSink>>,
 }
 
 impl<R: ScriptRegistry> ScriptExecutor<R> {
@@ -24,11 +26,17 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
             engine,
             registry,
             max_chain_depth: 3,
+            execution_log: None,
         }
     }
 
     pub fn with_max_chain_depth(mut self, depth: usize) -> Self {
         self.max_chain_depth = depth;
+        self
+    }
+
+    pub fn with_execution_log(mut self, execution_log: Arc<dyn ExecutionLogSink>) -> Self {
+        self.execution_log = Some(execution_log);
         self
     }
 
@@ -67,7 +75,7 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
                 max_depth = self.max_chain_depth,
                 "Max call depth exceeded"
             );
-            return ExecutionResult {
+            let result = ExecutionResult {
                 script_id: script.id,
                 script_name: script.name.clone(),
                 execution_id,
@@ -80,6 +88,8 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
                     },
                 },
             };
+            self.record_execution(&result, ctx).await;
+            return result;
         }
 
         let ctx_with_entity = match entity {
@@ -145,7 +155,7 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
             );
         }
 
-        ExecutionResult {
+        let result = ExecutionResult {
             script_id: script.id,
             script_name: script.name.clone(),
             execution_id,
@@ -153,6 +163,22 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
             started_at,
             finished_at: Utc::now(),
             outcome,
+        };
+
+        self.record_execution(&result, &ctx_with_entity).await;
+        result
+    }
+
+    async fn record_execution(&self, result: &ExecutionResult, ctx: &ExecutionContext) {
+        if let Some(execution_log) = &self.execution_log {
+            if let Err(error) = execution_log.record_result(result, ctx).await {
+                warn!(
+                    script.id = %result.script_id,
+                    execution.id = %result.execution_id,
+                    error = %error,
+                    "Failed to persist Alloy execution log"
+                );
+            }
         }
     }
 }

@@ -2,10 +2,41 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Domain-owned registration entrypoint for product AI verticals.
-pub fn register_product_ai_verticals() {
-    // Placeholder: runtime adapter registration remains in rustok-ai until the
-    // direct handler trait is extracted from the core runtime crate.
+pub const PRODUCT_COPY_TASK_SLUG: &str = "product_copy";
+pub const PRODUCT_ATTRIBUTES_TASK_SLUG: &str = "product_attributes";
+pub const PRODUCT_COPY_TOOL_NAME: &str = "direct.commerce.product_copy";
+pub const PRODUCT_ATTRIBUTES_TOOL_NAME: &str = "direct.commerce.product_attributes";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProductAiVerticalDescriptor {
+    pub task_slug: &'static str,
+    pub tool_name: &'static str,
+    pub sensitive: bool,
+}
+
+pub const PRODUCT_AI_VERTICALS: &[ProductAiVerticalDescriptor] = &[
+    ProductAiVerticalDescriptor {
+        task_slug: PRODUCT_COPY_TASK_SLUG,
+        tool_name: PRODUCT_COPY_TOOL_NAME,
+        sensitive: false,
+    },
+    ProductAiVerticalDescriptor {
+        task_slug: PRODUCT_ATTRIBUTES_TASK_SLUG,
+        tool_name: PRODUCT_ATTRIBUTES_TOOL_NAME,
+        sensitive: false,
+    },
+];
+
+/// Domain-owned registration entrypoint for product AI vertical metadata.
+pub fn product_ai_verticals() -> &'static [ProductAiVerticalDescriptor] {
+    PRODUCT_AI_VERTICALS
+}
+
+/// Backward-compatible entrypoint kept for callers that only need to touch the
+/// product vertical package during composition. Runtime registration consumes
+/// [`product_ai_verticals`] so task identity remains owned by this crate.
+pub fn register_product_ai_verticals() -> &'static [ProductAiVerticalDescriptor] {
+    product_ai_verticals()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -73,9 +104,22 @@ pub fn validate_product_copy_payload(payload: &GeneratedProductCopy) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_product_attributes_payload, validate_product_copy_payload, GeneratedFlexAttribute,
-        GeneratedProductAttributes, GeneratedProductCopy,
+        product_ai_verticals, validate_product_attributes_payload, validate_product_copy_payload,
+        GeneratedFlexAttribute, GeneratedProductAttributes, GeneratedProductCopy,
+        PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_COPY_TASK_SLUG,
     };
+
+    #[test]
+    fn exposes_product_vertical_descriptors() {
+        let slugs = product_ai_verticals()
+            .iter()
+            .map(|vertical| vertical.task_slug)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            slugs,
+            vec![PRODUCT_COPY_TASK_SLUG, PRODUCT_ATTRIBUTES_TASK_SLUG]
+        );
+    }
 
     #[test]
     fn accepts_product_attributes_without_flex_attributes() {

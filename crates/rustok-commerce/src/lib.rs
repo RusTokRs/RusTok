@@ -7,6 +7,7 @@ pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod fba;
 pub mod graphql;
 pub mod migrations;
 mod search;

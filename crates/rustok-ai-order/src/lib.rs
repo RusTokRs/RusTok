@@ -3,9 +3,41 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Domain-owned registration entrypoint for order AI verticals.
-pub fn register_order_ai_verticals() {
-    // Placeholder for runtime-side registration wiring.
+pub const ORDER_ANALYTICS_TASK_SLUG: &str = "order_analytics";
+pub const ORDER_OPS_ASSISTANT_TASK_SLUG: &str = "order_ops_assistant";
+pub const ORDER_ANALYTICS_TOOL_NAME: &str = "direct.orders.analytics";
+pub const ORDER_OPS_ASSISTANT_TOOL_NAME: &str = "direct.orders.ops_assistant";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OrderAiVerticalDescriptor {
+    pub task_slug: &'static str,
+    pub tool_name: &'static str,
+    pub sensitive: bool,
+}
+
+pub const ORDER_AI_VERTICALS: &[OrderAiVerticalDescriptor] = &[
+    OrderAiVerticalDescriptor {
+        task_slug: ORDER_ANALYTICS_TASK_SLUG,
+        tool_name: ORDER_ANALYTICS_TOOL_NAME,
+        sensitive: false,
+    },
+    OrderAiVerticalDescriptor {
+        task_slug: ORDER_OPS_ASSISTANT_TASK_SLUG,
+        tool_name: ORDER_OPS_ASSISTANT_TOOL_NAME,
+        sensitive: true,
+    },
+];
+
+/// Domain-owned registration entrypoint for order AI vertical metadata.
+pub fn order_ai_verticals() -> &'static [OrderAiVerticalDescriptor] {
+    ORDER_AI_VERTICALS
+}
+
+/// Backward-compatible entrypoint kept for composition callers. Runtime
+/// registration consumes [`order_ai_verticals`] so task identity remains owned
+/// by this crate.
+pub fn register_order_ai_verticals() -> &'static [OrderAiVerticalDescriptor] {
+    order_ai_verticals()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,9 +90,24 @@ pub fn validate_order_ops_assistant_payload(
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_order_analytics_payload, validate_order_ops_assistant_confidence,
-        validate_order_ops_assistant_payload, GeneratedOrderAnalytics, GeneratedOrderOpsAssistant,
+        order_ai_verticals, validate_order_analytics_payload,
+        validate_order_ops_assistant_confidence, validate_order_ops_assistant_payload,
+        GeneratedOrderAnalytics, GeneratedOrderOpsAssistant, ORDER_ANALYTICS_TASK_SLUG,
+        ORDER_OPS_ASSISTANT_TASK_SLUG,
     };
+
+    #[test]
+    fn exposes_order_vertical_descriptors() {
+        let slugs = order_ai_verticals()
+            .iter()
+            .map(|vertical| vertical.task_slug)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            slugs,
+            vec![ORDER_ANALYTICS_TASK_SLUG, ORDER_OPS_ASSISTANT_TASK_SLUG]
+        );
+        assert!(order_ai_verticals()[1].sensitive);
+    }
 
     #[test]
     fn accepts_confidence_bounds() {

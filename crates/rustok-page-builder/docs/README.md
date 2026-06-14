@@ -22,6 +22,7 @@
 ## Точки входа
 
 - `src/lib.rs` — runtime metadata и permission surface;
+- `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, feature-flag guard и server-side handler seam с RBAC permission checks;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 
@@ -34,6 +35,17 @@
 ## Provider health and SLO baseline
 
 Machine-readable provider metadata now includes the health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) and pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. The registry and Wave evidence packet gates must keep these thresholds synchronized before Wave 1 promotion.
+
+## Capability permission map
+
+Server-side capability handlers enforce a stable page permission map before delegating to the provider service. `pages:manage` remains an effective override for every builder capability.
+
+| Capability | Required permission | Notes |
+|---|---|---|
+| `preview` | `pages:read` | Read-only preview generation path. |
+| `tree` | `pages:read` | Read-only node tree inspection path. |
+| `properties` | `pages:update` | Editor-side property update path. |
+| `publish` | `pages:publish` | Publish path; still requires `PortContext` write semantics (`idempotency_key` + deadline). |
 
 ## Fallback matrix
 
