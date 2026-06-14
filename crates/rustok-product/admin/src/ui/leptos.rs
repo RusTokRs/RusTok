@@ -22,14 +22,14 @@ use crate::core::{
     build_product_admin_status_mutation_command,
     build_product_admin_status_mutation_result_view_model,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
-    parse_product_admin_inventory_quantity_input, primary_catalog_currency,
-    product_admin_clear_product_query_intent, product_admin_list_actions_disabled,
-    product_admin_open_product_query_intent, product_admin_pricing_preview_state_from_result,
-    product_admin_saved_product_query_intent, shipping_profile_choice_label, text_or_none,
-    ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
-    ProductAdminErrorCopy, ProductAdminOpenProductViewModel, ProductAdminRouteQueryIntent,
-    ProductAdminSaveMode, ProductAdminStatusMutationOutcome, ProductAdminStatusTarget,
-    SelectedProductSummaryViewModel,
+    parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
+    product_admin_list_actions_disabled, product_admin_open_product_query_intent,
+    product_admin_pricing_preview_request_from_product,
+    product_admin_pricing_preview_state_from_result, product_admin_saved_product_query_intent,
+    shipping_profile_choice_label, text_or_none, ProductAdminDeleteOutcome, ProductAdminDraftForm,
+    ProductAdminEditorFormState, ProductAdminErrorCopy, ProductAdminOpenProductViewModel,
+    ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminStatusMutationOutcome,
+    ProductAdminStatusTarget, SelectedProductSummaryViewModel,
 };
 use crate::i18n::t;
 use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
@@ -149,17 +149,13 @@ pub fn ProductAdmin() -> impl IntoView {
                 tenant.get(),
                 refresh_nonce.get(),
                 effective_locale_for_selected_pricing.clone(),
-                selected.get().map(|product| {
-                    (
-                        product.id.clone(),
-                        primary_catalog_currency(Some(&product))
-                            .unwrap_or_else(|| "USD".to_string()),
-                    )
-                }),
+                selected
+                    .get()
+                    .map(|product| product_admin_pricing_preview_request_from_product(&product)),
             )
         },
         move |(token_value, tenant_value, _, locale_value, selected_product)| async move {
-            let Some((product_id, currency_code)) = selected_product else {
+            let Some(request) = selected_product else {
                 return Ok(None);
             };
             let bootstrap = transport::fetch_bootstrap(token_value.clone(), tenant_value.clone())
@@ -169,9 +165,9 @@ pub fn ProductAdmin() -> impl IntoView {
                 token_value,
                 tenant_value,
                 bootstrap.current_tenant.id,
-                product_id,
+                request.product_id,
                 locale_value,
-                Some(currency_code),
+                Some(request.currency_code),
             )
             .await
             .map_err(|err| err.to_string())

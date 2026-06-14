@@ -5,8 +5,8 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_product_admin_list_state_container_policy_slice
-- Last checkpoint: Product admin list loading/empty/error container CSS policy now lives in `ProductAdminListStateViewModel.container_class`; Leptos list rendering consumes the prepared class and no longer owns list-state class branching.
+- Current phase: ffa_product_admin_pricing_preview_request_slice
+- Last checkpoint: Product admin pricing-preview request construction now lives in `ProductAdminPricingPreviewRequest` / `product_admin_pricing_preview_request_from_product`; Leptos selected-pricing resource forwards the prepared product id and currency fallback into transport.
 - Next step: Continue FFA-first sequencing only for small result/input/copy/state policy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -48,6 +48,7 @@
   - FFA slice: product admin inventory quantity input normalization is composed by `parse_product_admin_inventory_quantity_input` in `admin/src/core.rs`; Leptos forwards raw input text and no longer owns invalid-number fallback policy;
   - FFA slice: product admin open-product result policy is composed by `ProductAdminOpenProductViewModel` / `build_product_admin_open_product_view_model` in `admin/src/core.rs`; Leptos applies prepared selected-product/form-state/error outcomes without owning not-found/load-error reset policy;
   - FFA slice: product admin pricing preview async-resource state mapping is composed by `product_admin_pricing_preview_state_from_result` in `admin/src/core.rs`; Leptos selected-summary rendering no longer owns loading/error/unavailable/ready classification for pricing preview results;
+  - FFA slice: product admin pricing-preview request construction and primary-currency/default fallback are composed by `ProductAdminPricingPreviewRequest` / `product_admin_pricing_preview_request_from_product` in `admin/src/core.rs`; Leptos selected-pricing resource only forwards the prepared request to transport;
   - FFA slice: product admin list loading/empty/error container class policy is composed by `ProductAdminListStateViewModel.container_class` in `admin/src/core.rs`; Leptos list rendering consumes the prepared class without owning state-to-CSS branching;
   - FFA guardrail: `scripts/verify/verify-product-admin-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline with fixture coverage in `scripts/verify/verify-product-admin-boundary.test.mjs` and checks product admin core/transport/ui split without long Cargo compilation;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
@@ -79,7 +80,7 @@
   `ProductAdminStatusMutationCommand` / `ProductAdminStatusTarget`, status mutation result policy — через `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel`, а delete command mapping — через
   `ProductAdminDeleteCommand`, а delete-result policy — через
   `ProductAdminDeleteResultViewModel` / `ProductAdminDeleteOutcome`, а list action labels/availability — через
-  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, editor field/action copy — через `ProductAdminEditorCopy`, transport/error base copy and failure formatting — через `ProductAdminErrorCopy`, product SEO panel copy — через `ProductAdminSeoPanelCopy`, inventory quantity input normalization — через `parse_product_admin_inventory_quantity_input`, open-product result policy — через `ProductAdminOpenProductViewModel`, pricing preview state mapping — через `product_admin_pricing_preview_state_from_result`, list-state container class policy — через `ProductAdminListStateViewModel.container_class`, а product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers в `admin/src/core.rs`; Leptos слой
+  `ProductAdminListActionLabels` / `product_admin_list_actions_disabled`, loading/empty/error list state — через `ProductAdminListStateViewModel` helpers, а list controls/search/status options — через `ProductAdminListControlsViewModel`, shell/profile-panel copy — через `ProductAdminShellViewModel` / `ProductAdminProfilePanelViewModel`, editor field/action copy — через `ProductAdminEditorCopy`, transport/error base copy and failure formatting — через `ProductAdminErrorCopy`, product SEO panel copy — через `ProductAdminSeoPanelCopy`, inventory quantity input normalization — через `parse_product_admin_inventory_quantity_input`, open-product result policy — через `ProductAdminOpenProductViewModel`, pricing preview state mapping — через `product_admin_pricing_preview_state_from_result`, pricing-preview request construction — через `ProductAdminPricingPreviewRequest`, list-state container class policy — через `ProductAdminListStateViewModel.container_class`, а product selection route/query writes — через `ProductAdminRouteQueryIntent` helpers в `admin/src/core.rs`; Leptos слой
   изолирован в `admin/src/ui/leptos.rs` как render/effect adapter;
 - module-owned storefront UI пакет `rustok-product/storefront` уже поднят и
   подключён в manifest-driven storefront composition для published catalog

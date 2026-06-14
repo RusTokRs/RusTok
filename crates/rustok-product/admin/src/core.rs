@@ -186,6 +186,23 @@ pub(crate) enum ProductAdminPricingPreviewState<'a> {
     Ready(&'a ProductPricingDetail),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminPricingPreviewRequest {
+    pub product_id: String,
+    pub currency_code: String,
+}
+
+pub(crate) fn product_admin_pricing_preview_request_from_product(
+    product: &ProductDetail,
+) -> ProductAdminPricingPreviewRequest {
+    ProductAdminPricingPreviewRequest {
+        product_id: product.id.clone(),
+        currency_code: primary_catalog_currency(Some(product))
+            .filter(|currency_code| !currency_code.trim().is_empty())
+            .unwrap_or_else(|| "USD".to_string()),
+    }
+}
+
 pub(crate) fn product_admin_pricing_preview_state_from_result<'a>(
     pricing_state: Option<&'a Result<Option<ProductPricingDetail>, String>>,
 ) -> ProductAdminPricingPreviewState<'a> {
@@ -1836,6 +1853,27 @@ mod tests {
         assert_eq!(
             format_product_shipping_profile(Some("en"), "standard"),
             "profile standard",
+        );
+    }
+
+    #[test]
+    fn product_admin_pricing_preview_request_uses_primary_catalog_currency_or_default() {
+        let mut product = product_detail();
+        product.id = "product-preview".to_string();
+        product.variants[0].prices[0].currency_code = "EUR".to_string();
+
+        assert_eq!(
+            product_admin_pricing_preview_request_from_product(&product),
+            ProductAdminPricingPreviewRequest {
+                product_id: "product-preview".to_string(),
+                currency_code: "EUR".to_string(),
+            },
+        );
+
+        product.variants.clear();
+        assert_eq!(
+            product_admin_pricing_preview_request_from_product(&product).currency_code,
+            "USD",
         );
     }
 
