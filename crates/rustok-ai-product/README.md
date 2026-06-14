@@ -6,18 +6,20 @@
 
 ## Responsibilities
 
-- Hold product-scoped AI vertical contracts (`product_copy`, `product_attributes`).
+- Hold product-scoped AI vertical contracts (`product_copy`, `product_attributes`) and generated payload validators.
 - Keep product AI logic owned by product/ecommerce domain instead of `rustok-ai` core runtime.
 - Provide registration and validation seams for product AI handlers.
 
 ## Interactions
 
-- Uses `rustok-ai` runtime/orchestrator as execution host.
+- Exposes generated payload contracts consumed by the `rustok-ai` runtime/orchestrator execution host.
 - Integrates with `rustok-product` / `rustok-commerce` service contracts.
 
 ## Entry points
 
 - `register_product_ai_verticals`
+- `GeneratedProductCopy`, `GeneratedProductAttributes`, `GeneratedFlexAttribute`
+- `validate_product_copy_payload`, `validate_product_attributes_payload`
 
 ## Docs
 

@@ -613,6 +613,31 @@ pub fn prepare_blog_post_archive_command(
     }
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostLoadResultViewModel {
+    pub apply_returned_post_to_form: bool,
+    pub reset_form: bool,
+}
+
+pub fn blog_post_load_result_view(
+    found: bool,
+    post_not_found_message: String,
+) -> Result<BlogPostLoadResultViewModel, WritePathIssue> {
+    if !found {
+        return Err(WritePathIssue::new(post_not_found_message));
+    }
+
+    Ok(BlogPostLoadResultViewModel {
+        apply_returned_post_to_form: true,
+        reset_form: false,
+    })
+}
+
+pub fn blog_post_transport_failure_issue(context: &str, error: &str) -> WritePathIssue {
+    WritePathIssue::with_context(context, error)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostSaveResultViewModel {
     pub refresh_posts: bool,

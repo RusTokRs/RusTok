@@ -11,12 +11,12 @@
 ## Зона ответственности
 
 - registration seam для product AI verticals;
-- typed contracts и policy hooks для product AI задач;
+- typed generated-payload contracts и validators для product AI задач;
 - координация с `rustok-product`/`rustok-commerce` по read/write контрактам.
 
 ## Интеграция
 
-- execution host: `rustok-ai`;
+- generated payload contracts consumed by execution host: `rustok-ai`;
 - domain services: `rustok-product`, `rustok-commerce`;
 - operator surface: `rustok-ai` admin packages.
 
