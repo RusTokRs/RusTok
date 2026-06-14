@@ -106,6 +106,10 @@ for (const marker of [
   "prepare_blog_post_archive_command",
   "BlogPostDeleteCommand",
   "prepare_blog_post_delete_command",
+  "BlogPostAdminRouteQueryIntent",
+  "blog_post_admin_open_post_query_intent",
+  "blog_post_admin_saved_post_query_intent",
+  "blog_post_admin_clear_post_query_intent",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
 }
@@ -114,6 +118,9 @@ assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter m
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use core-owned save result policy`);
+assertContains(ui, "apply_blog_post_admin_route_query_intent", `${uiPath}: UI must apply core-owned route/query intents through the Leptos writer adapter`);
+assertContains(ui, "core::blog_post_admin_open_post_query_intent", `${uiPath}: UI must use core-owned open-post query intent`);
+assertContains(ui, "core::blog_post_admin_clear_post_query_intent", `${uiPath}: UI must use core-owned clear-post query intent`);
 assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must use core-owned status command preparation`);
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
 assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
