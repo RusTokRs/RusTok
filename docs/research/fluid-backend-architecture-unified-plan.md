@@ -72,6 +72,27 @@
 
 Переход к следующему этапу допускается только после выполнения Exit Criteria текущего.
 
+## 2.1 Текущие FBA-треки и единый шаблон
+
+На 2026-06-14 в репозитории уже есть несколько FBA-треков. Они не должны переводиться
+разными способами: новые и существующие инкременты обязаны сходиться к одному шаблону
+`provider/consumer metadata + нейтральные ports + typed errors + fallback/rollout evidence`.
+
+| Модуль | Текущая роль | Статус | Единообразный следующий шаг | Источник evidence |
+|---|---|---|---|---|
+| `page_builder` | reference provider для `preview/tree/properties/publish` | `in_progress` | Довести capability handlers и contract tests до `boundary_ready`, не меняя provider/consumer metadata format | `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`, `crates/rustok-page-builder/docs/implementation-plan.md` |
+| `pages` | первый consumer reference provider-а `page_builder` | `in_progress` | Заменить synthetic Wave 0 evidence фактическими tenant before/after snapshots и smoke/trace packet | `crates/rustok-pages/docs/implementation-plan.md`, registry page-builder |
+| `commerce` | umbrella orchestration/readiness-hardening для ecommerce slices | `in_progress` | Выравнивать checkout/post-order boundaries под тот же шаблон: owner-module ports, typed errors/context, events и отсутствие rules в transport/UI | `crates/rustok-commerce/docs/implementation-plan.md` |
+| `forum` | deferred consumer candidate для `page_builder` | `not_started` | Не повышать статус до появления local consumer evidence; держать запись как deferred в provider registry | `crates/rustok-page-builder/contracts/page-builder-fba-registry.json` |
+
+Правила единообразия:
+
+1. **FBA остаётся названием rollout-а, а не обязательным префиксом типов.** Code-facing контракты используют нейтральные имена (`PortContext`, `PortError`, `*Port`, `provider`, `consumer`).
+2. **Источник статуса — local `docs/implementation-plan.md`, центральный board синхронизируется в том же изменении.** Нельзя оставлять `not_started`, если есть активный FBA provider/consumer evidence.
+3. **Machine-readable metadata обязательна для provider/consumer tracks.** Для `page_builder -> pages` источником является `page-builder-fba-registry.json`; следующие tracks должны переиспользовать тот же формат или явно расширять его в этом плане, а не создавать параллельный формат.
+4. **Нейтральные port primitives применяются только к новым/обновляемым портам.** Уже существующие FBA slices не переписываются механически без feature work; при следующем изменении они приводятся к тем же `context/error/idempotency/deadline` требованиям.
+5. **Повышение до `boundary_ready` или `transport_verified` требует evidence.** Наличие metadata или FFA split само по себе не считается remote/runtime verification.
+
 ---
 
 ## 3) Этап A — Аудит и readiness matrix

@@ -22,6 +22,19 @@
 - server feature wiring (`mod-page-builder`) подключён;
 - capability handlers пока в статусе planned (Phase 1).
 
+
+## FFA/FBA status
+
+- FFA status: `not_started` (у reference provider пока нет module-owned UI)
+- FBA status: `in_progress`
+- Structural shape: `no_ui_boundary`
+- Evidence:
+  - модуль существует как самостоятельный reference provider для `preview/tree/properties/publish`;
+  - machine-readable registry фиксирует provider/consumer versions, fallback profiles, health states, degradation reasons и SLO thresholds;
+  - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template и synthetic Wave 0 packet.
+- Last verified at (UTC): 2026-06-14T00:00:00Z
+- Owner: `rustok-page-builder` module team
+
 ## Ближайшие шаги
 
 1. Довести transport-neutral DTO/contract package для builder capabilities до publish-ready evidence.
