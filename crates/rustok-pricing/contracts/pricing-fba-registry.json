@@ -53,5 +53,52 @@
     "service": "PricingService",
     "source": "crates/rustok-pricing/src/ports.rs",
     "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-pricing/contracts/pricing-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "resolve_product_price",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_price_list_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat",
+        "graphql_storefront_compat"
+      ],
+      "degraded_modes": [
+        "use_cart_price_snapshot",
+        "show_price_refresh_required",
+        "hide_price_badge",
+        "show_price_unavailable"
+      ]
+    }
   }
 }

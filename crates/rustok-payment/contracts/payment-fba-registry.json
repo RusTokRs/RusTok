@@ -41,5 +41,50 @@
     "service": "PaymentService",
     "source": "crates/rustok-payment/src/ports.rs",
     "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-payment/contracts/payment-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "create_or_reuse_collection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_collection_status",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "reuse_existing_collection",
+        "show_payment_handoff_retry"
+      ]
+    }
   }
 }
