@@ -186,6 +186,23 @@ pub(crate) enum ProductAdminPricingPreviewState<'a> {
     Ready(&'a ProductPricingDetail),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminPricingPreviewRequest {
+    pub product_id: String,
+    pub currency_code: String,
+}
+
+pub(crate) fn product_admin_pricing_preview_request_from_product(
+    product: &ProductDetail,
+) -> ProductAdminPricingPreviewRequest {
+    ProductAdminPricingPreviewRequest {
+        product_id: product.id.clone(),
+        currency_code: primary_catalog_currency(Some(product))
+            .filter(|currency_code| !currency_code.trim().is_empty())
+            .unwrap_or_else(|| "USD".to_string()),
+    }
+}
+
 pub(crate) fn product_admin_pricing_preview_state_from_result<'a>(
     pricing_state: Option<&'a Result<Option<ProductPricingDetail>, String>>,
 ) -> ProductAdminPricingPreviewState<'a> {
@@ -979,6 +996,25 @@ pub(crate) fn format_known_shipping_profiles(
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminShippingProfileOption {
+    pub value: String,
+    pub label: String,
+}
+
+pub(crate) fn build_product_admin_shipping_profile_options(
+    locale: Option<&str>,
+    profiles: &[ShippingProfile],
+) -> Vec<ProductAdminShippingProfileOption> {
+    profiles
+        .iter()
+        .map(|profile| ProductAdminShippingProfileOption {
+            value: profile.slug.clone(),
+            label: shipping_profile_choice_label(locale, profile),
+        })
+        .collect()
+}
+
 pub(crate) fn shipping_profile_choice_label(
     locale: Option<&str>,
     profile: &ShippingProfile,
@@ -1087,13 +1123,29 @@ pub(crate) enum ProductAdminListStateKind {
 pub(crate) struct ProductAdminListStateViewModel {
     pub kind: ProductAdminListStateKind,
     pub message: String,
+    pub container_class: &'static str,
+}
+
+pub(crate) fn product_admin_list_state_container_class(
+    kind: &ProductAdminListStateKind,
+) -> &'static str {
+    match kind {
+        ProductAdminListStateKind::Loading | ProductAdminListStateKind::Empty => {
+            "rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground"
+        }
+        ProductAdminListStateKind::Error => {
+            "rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        }
+    }
 }
 
 pub(crate) fn build_product_admin_list_loading_view_model(
     locale: Option<&str>,
 ) -> ProductAdminListStateViewModel {
+    let kind = ProductAdminListStateKind::Loading;
     ProductAdminListStateViewModel {
-        kind: ProductAdminListStateKind::Loading,
+        container_class: product_admin_list_state_container_class(&kind),
+        kind,
         message: t(locale, "product.list.loading", "Loading products..."),
     }
 }
@@ -1101,8 +1153,10 @@ pub(crate) fn build_product_admin_list_loading_view_model(
 pub(crate) fn build_product_admin_list_empty_view_model(
     locale: Option<&str>,
 ) -> ProductAdminListStateViewModel {
+    let kind = ProductAdminListStateKind::Empty;
     ProductAdminListStateViewModel {
-        kind: ProductAdminListStateKind::Empty,
+        container_class: product_admin_list_state_container_class(&kind),
+        kind,
         message: t(locale, "product.list.empty", "No products yet."),
     }
 }
@@ -1111,8 +1165,10 @@ pub(crate) fn build_product_admin_list_error_view_model(
     locale: Option<&str>,
     error: impl std::fmt::Display,
 ) -> ProductAdminListStateViewModel {
+    let kind = ProductAdminListStateKind::Error;
     ProductAdminListStateViewModel {
-        kind: ProductAdminListStateKind::Error,
+        container_class: product_admin_list_state_container_class(&kind),
+        kind,
         message: format!(
             "{}: {error}",
             t(
@@ -1191,7 +1247,7 @@ pub(crate) fn build_product_admin_list_item_view_model(
         id: product.id.clone(),
         status: product.status.clone(),
         status_label: localized_product_status(locale, product.status.as_str()),
-        status_badge_class: status_badge(product.status.as_str()),
+        status_badge_class: product_admin_status_badge_container_class(product.status.as_str()),
         type_label: product
             .product_type
             .clone()
@@ -1224,11 +1280,11 @@ pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
     value.trim().parse().unwrap_or(0)
 }
 
-pub(crate) fn status_badge(status: &str) -> &'static str {
+pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'static str {
     match status {
-        "ACTIVE" => "border-emerald-200 bg-emerald-50 text-emerald-700",
-        "ARCHIVED" => "border-slate-200 bg-slate-100 text-slate-700",
-        _ => "border-amber-200 bg-amber-50 text-amber-700",
+        "ACTIVE" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-emerald-200 bg-emerald-50 text-emerald-700",
+        "ARCHIVED" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-slate-200 bg-slate-100 text-slate-700",
+        _ => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-amber-200 bg-amber-50 text-amber-700",
     }
 }
 
@@ -1303,14 +1359,17 @@ mod tests {
         let loading = build_product_admin_list_loading_view_model(Some("en"));
         assert_eq!(loading.kind, ProductAdminListStateKind::Loading);
         assert_eq!(loading.message, "Loading products...");
+        assert!(loading.container_class.contains("border-dashed"));
 
         let empty = build_product_admin_list_empty_view_model(Some("en"));
         assert_eq!(empty.kind, ProductAdminListStateKind::Empty);
         assert_eq!(empty.message, "No products yet.");
+        assert_eq!(empty.container_class, loading.container_class);
 
         let error = build_product_admin_list_error_view_model(Some("en"), "network");
         assert_eq!(error.kind, ProductAdminListStateKind::Error);
         assert_eq!(error.message, "Failed to load products: network");
+        assert!(error.container_class.contains("destructive"));
     }
 
     #[test]
@@ -1671,6 +1730,7 @@ mod tests {
             Some("profile standard".to_string())
         );
         assert_eq!(view_model.timestamp_label, "2026-01-02T00:00:00Z");
+        assert!(view_model.status_badge_class.starts_with("inline-flex"));
         assert!(view_model.status_badge_class.contains("emerald"));
     }
 
@@ -1747,6 +1807,26 @@ mod tests {
     }
 
     #[test]
+    fn product_admin_shipping_profile_options_are_core_owned() {
+        let active = shipping_profile("standard", true);
+        let inactive = shipping_profile("legacy", false);
+
+        assert_eq!(
+            build_product_admin_shipping_profile_options(Some("en"), &[active, inactive]),
+            vec![
+                ProductAdminShippingProfileOption {
+                    value: "standard".to_string(),
+                    label: "Standard (standard)".to_string(),
+                },
+                ProductAdminShippingProfileOption {
+                    value: "legacy".to_string(),
+                    label: "Standard (legacy, inactive)".to_string(),
+                },
+            ],
+        );
+    }
+
+    #[test]
     fn text_or_none_trims_empty_admin_filters() {
         assert_eq!(text_or_none("  ".to_string()), None);
         assert_eq!(
@@ -1800,8 +1880,9 @@ mod tests {
     #[test]
     fn admin_status_labels_and_badges_are_framework_agnostic() {
         assert_eq!(localized_product_status(Some("en"), "ACTIVE"), "Active");
-        assert!(status_badge("ARCHIVED").contains("slate"));
-        assert!(status_badge("DRAFT").contains("amber"));
+        assert!(product_admin_status_badge_container_class("ACTIVE").starts_with("inline-flex"));
+        assert!(product_admin_status_badge_container_class("ARCHIVED").contains("slate"));
+        assert!(product_admin_status_badge_container_class("DRAFT").contains("amber"));
     }
 
     #[test]
@@ -1813,6 +1894,27 @@ mod tests {
         assert_eq!(
             format_product_shipping_profile(Some("en"), "standard"),
             "profile standard",
+        );
+    }
+
+    #[test]
+    fn product_admin_pricing_preview_request_uses_primary_catalog_currency_or_default() {
+        let mut product = product_detail();
+        product.id = "product-preview".to_string();
+        product.variants[0].prices[0].currency_code = "EUR".to_string();
+
+        assert_eq!(
+            product_admin_pricing_preview_request_from_product(&product),
+            ProductAdminPricingPreviewRequest {
+                product_id: "product-preview".to_string(),
+                currency_code: "EUR".to_string(),
+            },
+        );
+
+        product.variants.clear();
+        assert_eq!(
+            product_admin_pricing_preview_request_from_product(&product).currency_code,
+            "USD",
         );
     }
 
