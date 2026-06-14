@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "module": "order",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "order.checkout_completion.v1",
+  "ports": [
+    {
+      "name": "CheckoutCompletionPort",
+      "owner": "order",
+      "operations": ["complete_checkout", "read_checkout_result", "read_order_status"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_completion_orchestration",
+      "degraded_modes": ["show_completion_retry", "preserve_cart_checkout_state"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat"]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-order/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  }
+}

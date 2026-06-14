@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "module": "fulfillment",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "fulfillment.shipping_selection.v1",
+  "ports": [
+    {
+      "name": "ShippingSelectionPort",
+      "owner": "fulfillment",
+      "operations": [
+        "list_seller_shipping_options",
+        "select_shipping_option"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_shipping_orchestration",
+      "degraded_modes": [
+        "keep_previous_selection",
+        "show_shipping_handoff_retry"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-fulfillment/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "FulfillmentService",
+    "source": "crates/rustok-fulfillment/src/ports.rs",
+    "status": "implemented"
+  }
+}

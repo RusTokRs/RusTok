@@ -11,6 +11,7 @@ chrono.workspace = true
 flex.workspace = true
 rust_decimal.workspace = true
 rustok-core.workspace = true
+rustok-api.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 sea-orm.workspace = true

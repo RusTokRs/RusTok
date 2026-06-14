@@ -26,3 +26,15 @@ leptos_crate = "rustok-fulfillment-storefront"
 slot = "checkout_shipping_handoff"
 route_segment = "fulfillment"
 page_title = "Fulfillment"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "fulfillment.shipping_selection.v1"
+registry = "contracts/fulfillment-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "graphql_checkout_compat"]
+degraded_modes = ["typed_retry", "preserve_owner_snapshot"]

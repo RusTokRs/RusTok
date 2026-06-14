@@ -17,10 +17,12 @@ SPI и post-order delivery changes ещё остаются в активном b
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
+  - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует `PortContext::require_write_semantics` и мапит `FulfillmentError` в `PortError`;
+  - `src/ports.rs` теперь экспортирует `ShippingSelectionPort` и DTO для seller-aware shipping options/selection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
+  - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
   - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core split and aggregate package wiring while commerce temporarily retains transport callback.

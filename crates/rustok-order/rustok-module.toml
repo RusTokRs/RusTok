@@ -26,3 +26,15 @@ leptos_crate = "rustok-order-storefront"
 slot = "checkout_result_handoff"
 route_segment = "orders"
 page_title = "Orders"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "order.checkout_completion.v1"
+registry = "contracts/order-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "graphql_checkout_compat"]
+degraded_modes = ["typed_retry", "preserve_owner_snapshot"]
