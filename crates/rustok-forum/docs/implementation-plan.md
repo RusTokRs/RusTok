@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ffa_admin_storefront_transport_ui_split
-- Last checkpoint: Forum admin FFA slice дополнительно перенёс category matrix/composer-form labels, topic stream/inspector-form labels, reply preview labels, moderator-note/sidebar copy envelopes, metric accent policy и action-button style policy в framework-agnostic `admin/src/core.rs`: Leptos adapter больше не держит эти presentation/styling decisions локально, а только применяет core-owned values к markup/signals. REST transport и storefront native/GraphQL fallback contracts не менялись.
-- Next step: Продолжать валидацию паритета и накопление evidence readiness, готовиться к будущим интеграциям и стабилизировать граничные контракты.
+- Last checkpoint: Forum FW-2 design-hardening slice закрепил machine-readable fallback markers для `builder_off`/`publish_off` в consumer readiness gate: manifest должен сохранять degraded modes, widget fallback modes `readonly`/`degraded`/`hidden`, toggle profiles и документацию о no-5xx baseline forum routes. REST transport и storefront native/GraphQL fallback contracts не менялись.
+- Next step: Продолжать FW-2 без компиляционного rollout: расширять static/evidence checks для no-5xx read/moderation paths и готовить будущий smoke-пакет после закрытия `P5`.
 - Open blockers: Activation delivery по FW-2..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-15T00:00:00Z
+- Last updated at (UTC): 2026-06-15T01:00:00Z
 
 ## FFA/FBA status
 
@@ -23,8 +23,8 @@
   - regression coverage расширено: storefront reply read-path подтверждает approved-only visibility semantics;
   - storefront FFA slice добавил `storefront/src/core.rs` для framework-agnostic href/status/rich-content policy, `storefront/src/transport.rs` facade поверх existing native-first + GraphQL fallback API и explicit Leptos adapter `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` теперь только wires modules и re-export `ForumView`;
   - admin FFA slice добавил `admin/src/core.rs` для framework-agnostic tag parsing, category-filter normalization, selected category filter label policy, count/status helpers, collection empty/ready/error classification, category/topic form snapshots, submit validation и category/topic card view-model mapping, category sidebar mapping, reply-stack view-model mapping, page-level header selection, loaded-result metric count policy, route/query intent policy, category matrix/composer-form labels, topic stream/inspector-form labels, reply preview labels, `admin/src/transport.rs` facade поверх existing REST API и explicit Leptos adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `ForumAdmin`;
-  - parity evidence: storefront/native+GraphQL contracts не затронуты; admin pure-core coverage расширено unit-тестами для selected category filter label policy, collection state classification, category/topic form snapshots, submit validation и card view-model mapping, category sidebar mapping, reply-stack view-model mapping, header selection, loaded-result counting и route/query intents, typed busy-key construction, form/transport error message policy, topic form/sidebar presentation helpers, tag-chip/position parsing, sidebar/status CSS class policy, title envelope policy, placeholder policy, SEO copy mapping, delete outcome policy, exact item-id matching для busy/deleted-selection state, category matrix/composer-form labels, topic stream/inspector-form labels, reply preview labels, moderator-note/sidebar copy envelopes, metric accent policy и action-button style policy, а fast boundary guardrail `scripts/verify/verify-forum-admin-boundary.mjs` закрепляет admin core/transport/ui split без долгой компиляции; полный `cargo test -p rustok-forum-admin --lib` остаётся targeted gate для следующего verification run;
-- Last verified at (UTC): 2026-06-15T00:00:00Z
+  - parity evidence: storefront/native+GraphQL contracts не затронуты; admin pure-core coverage расширено unit-тестами для selected category filter label policy, collection state classification, category/topic form snapshots, submit validation и card view-model mapping, category sidebar mapping, reply-stack view-model mapping, header selection, loaded-result counting и route/query intents, typed busy-key construction, form/transport error message policy, topic form/sidebar presentation helpers, tag-chip/position parsing, sidebar/status CSS class policy, title envelope policy, placeholder policy, SEO copy mapping, delete outcome policy, exact item-id matching для busy/deleted-selection state, category matrix/composer-form labels, topic stream/inspector-form labels, reply preview labels, moderator-note/sidebar copy envelopes, metric accent policy и action-button style policy, а fast boundary guardrail `scripts/verify/verify-forum-admin-boundary.mjs` закрепляет admin core/transport/ui split без долгой компиляции; `npm run verify:page-builder:consumer:forum` теперь дополнительно фиксирует FW-2 fallback contract markers (`builder_off`, `publish_off`, `readonly`, `degraded`, `hidden`, no-5xx forum routes) без запуска компиляции; полный `cargo test -p rustok-forum-admin --lib` остаётся targeted gate для следующего verification run;
+- Last verified at (UTC): 2026-06-15T01:00:00Z
 - Owner: `rustok-forum` module team
 
 ## Область работ
@@ -99,8 +99,8 @@
 ### FW-2 — Fallback hardening
 
 - [ ] Подтвердить `builder_off` и `publish_off` без 5xx для forum read/moderation paths.
-- [ ] Зафиксировать fallback semantics (`readonly/hidden/degraded`) по каждому widget type.
-- [ ] Добавить regression checklist для visibility/RBAC parity под partial disable capability layer.
+- [x] Зафиксировать fallback semantics (`readonly/hidden/degraded`) по каждому widget type в manifest + consumer readiness gate.
+- [x] Добавить static regression checklist для visibility/RBAC parity под partial disable capability layer через `npm run verify:page-builder:consumer:forum` (без компиляции).
 
 ### FW-3 — Pilot readiness
 
