@@ -91,6 +91,10 @@ assertContains(graphqlAdapter, "pub const AI_BOOTSTRAP_QUERY", `${graphqlAdapter
 assertContains(graphqlAdapter, "pub fn bootstrap_request", `${graphqlAdapterPath}: GraphQL adapter must expose a bootstrap request builder`);
 assertContains(graphqlAdapter, "pub fn session_request", `${graphqlAdapterPath}: GraphQL adapter must expose a session request builder`);
 assertContains(graphqlAdapter, "pub fn session_events_subscription_request", `${graphqlAdapterPath}: GraphQL adapter must expose the subscription request builder`);
+assertContains(graphqlAdapter, "pub fn graphql_ws_url_from_location", `${graphqlAdapterPath}: GraphQL adapter must own WebSocket endpoint policy`);
+assertContains(graphqlAdapter, "pub fn connection_init_message", `${graphqlAdapterPath}: GraphQL adapter must own GraphQL WS connection-init payload construction`);
+assertContains(graphqlAdapter, "pub fn session_events_subscribe_message", `${graphqlAdapterPath}: GraphQL adapter must own subscription message construction`);
+assertNotContains(ui, "const AI_SESSION_EVENTS_SUBSCRIPTION", `${uiPath}: Leptos adapter must not duplicate the GraphQL subscription document`);
 assertContains(graphqlAdapter, "aiRecentRuns(limit: 20)", `${graphqlAdapterPath}: GraphQL adapter must include recent persisted run diagnostics`);
 assertContains(graphqlAdapter, "aiRecentRunStreamEvents(limit: 20)", `${graphqlAdapterPath}: GraphQL adapter must include recent stream diagnostics`);
 for (const marker of ["leptos::", "#[component]", "#[server]", "RwSignal", "LocalResource", "web_sys::"]) {

@@ -144,6 +144,73 @@ pub struct AiSessionEventsVariables {
     pub session_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AiGraphqlWsConnectionPayload {
+    pub token: String,
+    #[serde(rename = "tenantSlug")]
+    pub tenant_slug: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AiGraphqlWsMessage<P> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(rename = "type")]
+    pub message_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<P>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AiGraphqlWsSubscribePayload<V> {
+    pub query: &'static str,
+    pub variables: V,
+}
+
+pub fn graphql_ws_url_from_location(protocol: Option<&str>, host: Option<&str>) -> String {
+    let protocol = protocol.unwrap_or("http:");
+    let host = host.unwrap_or("localhost:5150");
+    let ws_scheme = if protocol.eq_ignore_ascii_case("https:") {
+        "wss"
+    } else {
+        "ws"
+    };
+    format!("{ws_scheme}://{host}/api/graphql/ws")
+}
+
+pub fn connection_init_message(
+    token: impl Into<String>,
+    tenant_slug: impl Into<String>,
+    locale: Option<String>,
+) -> AiGraphqlWsMessage<AiGraphqlWsConnectionPayload> {
+    AiGraphqlWsMessage {
+        id: None,
+        message_type: "connection_init",
+        payload: Some(AiGraphqlWsConnectionPayload {
+            token: token.into(),
+            tenant_slug: tenant_slug.into(),
+            locale,
+        }),
+    }
+}
+
+pub fn session_events_subscribe_message(
+    message_id: impl Into<String>,
+    session_id: impl Into<String>,
+) -> AiGraphqlWsMessage<AiGraphqlWsSubscribePayload<AiSessionEventsVariables>> {
+    let request = session_events_subscription_request(session_id);
+    AiGraphqlWsMessage {
+        id: Some(message_id.into()),
+        message_type: "subscribe",
+        payload: Some(AiGraphqlWsSubscribePayload {
+            query: request.query,
+            variables: request.variables,
+        }),
+    }
+}
+
 pub fn bootstrap_request() -> AiGraphqlRequest<EmptyVariables> {
     AiGraphqlRequest {
         operation_name: AI_BOOTSTRAP_OPERATION,
@@ -177,6 +244,32 @@ pub fn session_events_subscription_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graphql_ws_url_uses_browser_location_scheme() {
+        assert_eq!(
+            graphql_ws_url_from_location(Some("https:"), Some("admin.example.test")),
+            "wss://admin.example.test/api/graphql/ws"
+        );
+        assert_eq!(
+            graphql_ws_url_from_location(Some("http:"), Some("localhost:5150")),
+            "ws://localhost:5150/api/graphql/ws"
+        );
+    }
+
+    #[test]
+    fn websocket_messages_keep_graphql_transport_shape() {
+        let init = connection_init_message("token-1", "tenant-a", Some("ru".to_string()));
+        assert_eq!(init.message_type, "connection_init");
+        assert_eq!(init.payload.as_ref().unwrap().tenant_slug, "tenant-a");
+
+        let subscribe = session_events_subscribe_message("ai-session-events", "session-3");
+        assert_eq!(subscribe.id.as_deref(), Some("ai-session-events"));
+        assert_eq!(subscribe.message_type, "subscribe");
+        let payload = subscribe.payload.as_ref().unwrap();
+        assert!(payload.query.contains("subscription AiSessionEvents"));
+        assert_eq!(payload.variables.session_id, "session-3");
+    }
 
     #[test]
     fn bootstrap_request_uses_recent_diagnostics_fields() {

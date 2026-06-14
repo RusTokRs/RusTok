@@ -30,6 +30,10 @@ use crate::core::{
     parse_csv, product_attributes_task_payload, product_task_payload, summarize_recent_runs,
 };
 use crate::i18n::t;
+#[cfg(target_arch = "wasm32")]
+use crate::transport::graphql_adapter::{
+    connection_init_message, graphql_ws_url_from_location, session_events_subscribe_message,
+};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -620,26 +624,17 @@ pub fn AiAdmin() -> impl IntoView {
                 }
             };
 
-            let init_message = serde_json::json!({
-                "type": "connection_init",
-                "payload": {
-                    "token": token_value,
-                    "tenantSlug": tenant_value,
-                    "locale": browser_admin_locale(ui_locale_value.as_deref()),
-                }
-            })
-            .to_string();
-            let subscribe_message = serde_json::json!({
-                "id": "ai-session-events",
-                "type": "subscribe",
-                "payload": {
-                    "query": AI_SESSION_EVENTS_SUBSCRIPTION,
-                    "variables": {
-                        "sessionId": session_id,
-                    }
-                }
-            })
-            .to_string();
+            let init_message = serde_json::to_string(&connection_init_message(
+                token_value,
+                tenant_value,
+                browser_admin_locale(ui_locale_value.as_deref()),
+            ))
+            .unwrap_or_default();
+            let subscribe_message = serde_json::to_string(&session_events_subscribe_message(
+                "ai-session-events",
+                session_id,
+            ))
+            .unwrap_or_default();
 
             let ws_for_open = ws.clone();
             let on_open = Closure::<dyn FnMut(Event)>::new(move |_| {
@@ -2879,21 +2874,6 @@ fn clear_task_profile(
 }
 
 #[cfg(target_arch = "wasm32")]
-const AI_SESSION_EVENTS_SUBSCRIPTION: &str = r#"
-subscription AiSessionEvents($sessionId: UUID!) {
-  aiSessionEvents(sessionId: $sessionId) {
-    sessionId
-    runId
-    eventKind
-    contentDelta
-    accumulatedContent
-    errorMessage
-    createdAt
-  }
-}
-"#;
-
-#[cfg(target_arch = "wasm32")]
 struct AiLiveSubscriptionHandle {
     generation: u64,
     ws: WebSocket,
@@ -2960,20 +2940,9 @@ fn clear_live_subscription_generation(generation: u64) {
 fn graphql_ws_url() -> String {
     let window = web_sys::window().expect("window should exist in browser");
     let location = window.location();
-    let protocol = location
-        .protocol()
-        .ok()
-        .unwrap_or_else(|| "http:".to_string());
-    let host = location
-        .host()
-        .ok()
-        .unwrap_or_else(|| "localhost:5150".to_string());
-    let ws_scheme = if protocol.eq_ignore_ascii_case("https:") {
-        "wss"
-    } else {
-        "ws"
-    };
-    format!("{ws_scheme}://{host}/api/graphql/ws")
+    let protocol = location.protocol().ok();
+    let host = location.host().ok();
+    graphql_ws_url_from_location(protocol.as_deref(), host.as_deref())
 }
 
 #[cfg(target_arch = "wasm32")]
