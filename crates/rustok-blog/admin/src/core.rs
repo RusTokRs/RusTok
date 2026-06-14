@@ -613,7 +613,6 @@ pub fn prepare_blog_post_archive_command(
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostLoadResultViewModel {
     pub apply_returned_post_to_form: bool,
