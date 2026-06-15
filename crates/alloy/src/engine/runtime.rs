@@ -31,7 +31,13 @@ impl ScriptEngine {
         // set_max_array_size / set_max_map_size were removed from rhai in the
         // current version. Execution budget is enforced via the timeout check
         // in execute_compiled_with_timeout instead.
-        let _ = (config.max_operations, config.max_call_depth, config.max_string_size, config.max_array_size, config.max_map_depth);
+        let _ = (
+            config.max_operations,
+            config.max_call_depth,
+            config.max_string_size,
+            config.max_array_size,
+            config.max_map_depth,
+        );
 
         Self {
             engine,
