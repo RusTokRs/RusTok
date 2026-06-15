@@ -7,7 +7,7 @@
 *Один репозиторий для сервера, интегрированных Leptos host-приложений и headless/экспериментальных Next.js host-приложений.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome][def]](CONTRIBUTING.md)
 
@@ -392,7 +392,22 @@ cargo machete
 
 ## Лицензия
 
-RusToK распространяется по [лицензии MIT](LICENSE).
+RusTok распространяется по Business Source License 1.1 with RusTok Additional Use Grant.
 
+RusTok — source-available проект, бесплатный для сообщества, индивидуальных разработчиков, open-source проектов и организаций с Total Finances не выше USD $3,000,000 за последние 12 месяцев.
+
+Production, commercial, SaaS, hosted, managed service, cloud service, white-label, resale или competing platform use организациями выше этого порога требует отдельной RusTok Commercial License.
+
+Обычные SaaS-продукты, построенные поверх RusTok, разрешены по RusTok Additional Use Grant, если продукт отличается от RusTok itself и организация не превышает порог Total Finances.
+
+Предложение RusTok itself as SaaS, hosted RusTok platform, managed RusTok service, white-label RusTok product или substantially similar competing platform требует отдельной RusTok Commercial License или предварительного письменного разрешения RusTokRs.
+
+One-click installs, Docker images, Helm charts, VPS images, marketplace images и похожие deployment packages разрешены, если customer controls and administers their own RusTok instance и сохраняются LICENSE, NOTICE, copyright notices и license headers.
+
+Каждая версия RusTok автоматически переходит на GNU Affero General Public License v3.0 or later через два года после first public release date этой версии.
+
+Frontend “Powered by RusTok” attribution, logo, footer link или login-screen attribution не требуются. Copyright notices, license notices и source code attribution notices должны сохраняться.
+
+См. LICENSE, NOTICE и COMMERCIAL-LICENSE.md.
 
 [def]: https://img.shields.io/badge/PRs-welcome-brightgreen.svg

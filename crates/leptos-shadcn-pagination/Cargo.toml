@@ -2,7 +2,7 @@
 name = "leptos-shadcn-pagination"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "BUSL-1.1"
 
 description = "Local patch for leptos-shadcn-pagination to keep workspace builds green."
 

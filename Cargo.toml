@@ -56,7 +56,7 @@ leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-license = "MIT"
+license = "BUSL-1.1"
 description = "High-performance, modular headless CMS and e-commerce platform built with Rust"
 repository = "https://github.com/RusTokRs/RusTok"
 

@@ -1,21 +1,65 @@
-MIT License
+Business Source License 1.1
 
-Copyright (c) 2023 Kiranism
+Licensor: RusTokRs
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Licensed Work: RusTok software, including all source code, object code, packages, modules, libraries, components, services, adapters, integrations, schemas, templates, documentation, examples authored by RusTokRs, and any copy, modification, derivative work, extracted component, or substantial portion thereof, excluding third-party dependencies, vendored code, generated files, and files governed by their own separate license.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Additional Use Grant: RusTok Additional Use Grant
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Change Date: Two years after the first public release date of each version.
+
+Change License: GNU Affero General Public License v3.0 or later
+
+For clarity, if a concrete calendar date is required for a release, the Change Date for that release must be calculated as the first public release date of that version plus two years.
+
+Business Source License 1.1
+
+Parameters
+
+Licensor:             The party set forth above.
+Licensed Work:        The software set forth above.
+Additional Use Grant: The grant set forth below.
+Change Date:          The date set forth above.
+Change License:       The license set forth above.
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative works, redistribute, and make non-production use of the Licensed Work. The Licensor may make an Additional Use Grant, above, permitting limited production use.
+
+Effective on the Change Date, or the fourth anniversary of the first publicly available distribution of a specific version of the Licensed Work under this License, whichever comes first, the Licensor hereby grants you rights under the terms of the Change License, and the rights granted in the paragraph above terminate.
+
+If your use of the Licensed Work does not comply with the requirements currently in effect as described in this License, you must purchase a commercial license from the Licensor, its affiliated entities, or authorized resellers, or you must refrain from using the Licensed Work.
+
+All copies of the original and modified Licensed Work, and derivative works of the Licensed Work, are subject to this License. This License applies separately for each version of the Licensed Work and the Change Date may vary for each version of the Licensed Work released by Licensor.
+
+You must conspicuously display this License on each original or modified copy of the Licensed Work. If you receive the Licensed Work in original or modified form from someone other than Licensor, you are also bound by this License.
+
+Any use of the Licensed Work in violation of this License will automatically terminate your rights under this License for the current and all other versions of the Licensed Work.
+
+This License does not grant you any right in any trademark or logo of Licensor or its affiliates (provided that you may use a trademark or logo of Licensor as expressly required by this License). TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS, EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND TITLE.
+
+RusTok Additional Use Grant
+
+Subject to the Business Source License 1.1 terms above, RusTok may be used for free by individuals, independent developers, community projects, open-source projects, companies, agencies, startups, and organizations if their Total Finances do not exceed USD $3,000,000 during the most recent 12-month period.
+
+"Total Finances" means the largest of: (a) aggregate gross revenue; (b) annual budget; or (c) total funding, investment, grants, or other financing received during the most recent 12-month period, including all entities under common control.
+
+Free use under this Additional Use Grant includes development, testing, internal use, production use, commercial use, customer projects, module development, extension development, and use of RusTok as an internal component, backend, admin panel, workflow engine, commerce engine, marketplace engine, CMS, automation layer, infrastructure layer, or development framework for a distinct product or service.
+
+A separate RusTok Commercial License is required for organizations with Total Finances above USD $3,000,000 and for production use, commercial use, SaaS use, hosted service use, managed service use, cloud service use, white-label use, resale, redistribution as a competing platform, use of RusTok as the basis for a competing product or service, offering RusTok itself as SaaS, offering a substantially similar hosted platform, offering managed RusTok hosting or managed RusTok service, offering white-label RusTok, selling access to RusTok as the main product, or using RusTok as the core of a competing commercial platform.
+
+Allowed SaaS use: using RusTok as an internal component, backend, admin panel, workflow engine, commerce engine, marketplace engine, CMS, automation layer, infrastructure layer, or development framework for a distinct application, product, or service is permitted under this Additional Use Grant, provided that the user's organization does not exceed USD $3,000,000 Total Finances; the product or service is not RusTok itself; the product or service is not a substantially similar or competing platform; RusTok is not offered as a hosted RusTok platform, managed RusTok service, white-label RusTok product, or resale product; and all LICENSE, NOTICE, copyright notices, license notices, source code attribution notices, and license headers are preserved where required.
+
+Restricted SaaS use: offering RusTok itself as SaaS, offering a substantially similar hosted platform, offering managed RusTok hosting or managed RusTok service, offering white-label RusTok, selling access to RusTok as the main product, or using RusTok as the core of a competing commercial platform requires a separate RusTok Commercial License or prior written permission from RusTokRs regardless of revenue.
+
+The License and this Additional Use Grant apply to the Licensed Work as a whole and to any substantial portion, extracted component, module, package, copy, modification, or derivative work of the Licensed Work. A user may not avoid the License by copying only part of RusTok, renaming RusTok, extracting a module, embedding RusTok components into another product, removing RusTok notices, or using RusTok code inside a larger proprietary system. Production use of any substantial portion, extracted component, module, package, copy, modification, or derivative work of the Licensed Work is treated the same as production use of the Licensed Work. If the user's organization exceeds USD $3,000,000 Total Finances, such production use requires a separate RusTok Commercial License.
+
+For customer projects, agency work, implementation services, outsourcing, consulting, integration, or development performed for a third party, the Total Finances threshold applies to both the service provider and the end customer or beneficial user. If either the service provider or the end customer or beneficial user exceeds USD $3,000,000 Total Finances, production, commercial, SaaS, hosted, managed service, cloud service, white-label, resale, or competing platform use requires a separate RusTok Commercial License.
+
+The following is permitted under this Additional Use Grant and is not considered SaaS, hosted service, managed service, white-label use, or competing platform use: publishing an install script, Docker image, Helm chart, Terraform module, Ansible playbook, server image, marketplace image, or one-click installation package for RusTok; allowing users to deploy RusTok into their own cloud account, server, VPS, Kubernetes cluster, or infrastructure; and offering infrastructure hosting where the customer controls the RusTok instance, data, configuration, domain, users, and application lifecycle.
+
+This infrastructure and marketplace distribution permission applies only if the distribution preserves LICENSE, NOTICE, copyright notices, license notices, source code attribution notices, and license headers where present; RusTok is not renamed or presented as the provider's own product; RusTok is not offered as a white-label product; the provider does not operate RusTok as a managed application service for third parties; the provider does not sell RusTok itself as a hosted or managed RusTok service; the customer remains responsible for operating and administering the deployed RusTok instance; and the customer's own use of RusTok remains subject to the RusTok license terms, including the Total Finances threshold and Commercial License requirements.
+
+Applications, modules, plugins, themes, integrations, and services built on top of RusTok public APIs are not considered derivative works of RusTok solely because they use those public APIs, unless they copy, modify, embed, or include substantial portions of RusTok source code.
+
+No frontend "Powered by RusTok" attribution, logo attribution, footer attribution, login-screen attribution, or mandatory links to the RusTok website are required. The attribution requirement applies only to copyright notices, license notices, source code attribution notices, LICENSE files, NOTICE files, and license headers where present in source code. All copyright notices, license notices, source code attribution notices, and license headers included in the Licensed Work must be preserved in all copies, modifications, derivative works, extracted components, modules, packages, and substantial portions of the Licensed Work. Removing, obscuring, rewriting, or materially altering RusTok copyright notices, license notices, source code attribution notices, or license headers is not permitted unless expressly allowed by a separate written RusTok Commercial License.
