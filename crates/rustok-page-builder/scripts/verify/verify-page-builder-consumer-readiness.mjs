@@ -141,6 +141,40 @@ if (arg === "forum") {
     }
   }
 
+  const forumRolloutManifestMarkers = [
+    "[fba.builder_consumer.rollout_policy]",
+    "audit_trail = \"control_plane_builder_wave_audit\"",
+    "before_snapshot_required = true",
+    "after_snapshot_required = true",
+    "decision_required = true",
+    "owner_signoff_required = true",
+    "rollback_without_redeploy_target_minutes = 10",
+    "pilot_smoke = \"list -> open -> preview -> save_draft -> publish_dry\"",
+    "runtime_error_rate_above_alert_threshold",
+    "publish_latency_p95_above_slo_for_10m",
+    "sanitize_failures_above_alert_threshold",
+    "storefront_published_read_regression",
+    "forum_owned_list_read_topic_paths_stay_available_when_builder_capabilities_are_disabled",
+  ];
+  for (const marker of forumRolloutManifestMarkers) {
+    if (!moduleToml.includes(marker)) {
+      fail(`${arg}: manifest rollout policy missing marker '${marker}'`);
+    }
+  }
+
+  const forumRolloutPlanMarkers = [
+    "FW-4",
+    "SLO по времени отклика",
+    "<= 10 минут",
+    "npm run verify:page-builder:consumer:forum",
+    "list -> open -> preview -> save_draft -> publish_dry",
+  ];
+  for (const marker of forumRolloutPlanMarkers) {
+    if (!implPlan.includes(marker)) {
+      fail(`${arg}: implementation-plan rollout policy missing marker '${marker}'`);
+    }
+  }
+
   if (!fs.existsSync(forumFallbackMatrixPath)) {
     fail(`${arg}: missing FW-2 fallback static matrix: ${forumFallbackMatrixPath}`);
   }
