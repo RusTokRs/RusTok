@@ -13,6 +13,7 @@ use rustok_core::field_schema::{is_valid_field_key, FieldDefinition, FlexError};
 use rustok_events::EventEnvelope;
 
 const FLEX_ENTRY_ENTITY_TYPE: &str = "flex_entry";
+const MAX_STANDALONE_FIELDS_PER_SCHEMA: usize = 50;
 
 /// Standalone Flex schema view used by transport adapters.
 #[derive(Debug, Clone)]
@@ -93,6 +94,7 @@ pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result
         ));
     }
 
+    validate_json_object(input.settings.as_ref(), "schema settings")?;
     validate_definition_keys(&input.fields_config)
 }
 
@@ -122,13 +124,8 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
         }
     }
 
-    if let Some(status) = &input.status {
-        if status.trim().is_empty() {
-            return Err(FlexError::InvalidFieldKey(
-                "status must not be empty".to_string(),
-            ));
-        }
-    }
+    validate_entry_payload(&input.data)?;
+    validate_status(input.status.as_ref())?;
 
     Ok(())
 }
@@ -147,18 +144,17 @@ pub fn validate_update_schema_command(input: &UpdateFlexSchemaCommand) -> Result
         validate_definition_keys(fields_config)?;
     }
 
+    validate_json_object(input.settings.as_ref(), "schema settings")?;
+
     Ok(())
 }
 
 /// Validate standalone entry patch command before handing it to adapter/service layer.
 pub fn validate_update_entry_command(input: &UpdateFlexEntryCommand) -> Result<(), FlexError> {
-    if let Some(status) = &input.status {
-        if status.trim().is_empty() {
-            return Err(FlexError::InvalidFieldKey(
-                "status must not be empty".to_string(),
-            ));
-        }
+    if let Some(data) = &input.data {
+        validate_entry_payload(data)?;
     }
+    validate_status(input.status.as_ref())?;
 
     Ok(())
 }
@@ -357,6 +353,12 @@ pub async fn delete_entry_with_event(
 }
 
 fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexError> {
+    if definitions.len() > MAX_STANDALONE_FIELDS_PER_SCHEMA {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "standalone schemas support at most {MAX_STANDALONE_FIELDS_PER_SCHEMA} fields"
+        )));
+    }
+
     let mut unique = std::collections::HashSet::new();
     for def in definitions {
         if !is_valid_field_key(&def.field_key) {
@@ -370,6 +372,44 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
             return Err(FlexError::DuplicateFieldKey(def.field_key.clone()));
         }
     }
+    Ok(())
+}
+
+fn validate_json_object(value: Option<&JsonValue>, label: &str) -> Result<(), FlexError> {
+    if value.is_some_and(|value| !value.is_object()) {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "{label} must be a JSON object"
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_entry_payload(data: &JsonValue) -> Result<(), FlexError> {
+    if !data.is_object() {
+        return Err(FlexError::InvalidFieldKey(
+            "entry data must be a JSON object".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_status(status: Option<&String>) -> Result<(), FlexError> {
+    if let Some(status) = status {
+        if status.trim().is_empty() {
+            return Err(FlexError::InvalidFieldKey(
+                "status must not be empty".to_string(),
+            ));
+        }
+
+        if status.trim() != status {
+            return Err(FlexError::InvalidFieldKey(
+                "status must already be normalized without surrounding whitespace".to_string(),
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -584,6 +624,70 @@ mod tests {
         };
 
         assert!(validate_update_entry_command(&valid).is_ok());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_non_object_settings_and_too_many_fields() {
+        let non_object_settings = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![],
+            settings: Some(json!(["invalid"])),
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&non_object_settings).is_err());
+
+        let too_many_fields = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: (0..51)
+                .map(|index| sample_definition(&format!("field_{index}")))
+                .collect(),
+            settings: None,
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&too_many_fields).is_err());
+
+        let non_object_patch = UpdateFlexSchemaCommand {
+            settings: Some(json!("invalid")),
+            ..Default::default()
+        };
+
+        assert!(validate_update_schema_command(&non_object_patch).is_err());
+    }
+
+    #[test]
+    fn validate_entry_command_rejects_non_object_data_and_untrimmed_status() {
+        let non_object_data = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: None,
+            entity_id: None,
+            data: json!(["invalid"]),
+            status: Some("draft".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&non_object_data).is_err());
+
+        let untrimmed_status = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: None,
+            entity_id: None,
+            data: json!({"title": "Hello"}),
+            status: Some(" draft".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&untrimmed_status).is_err());
+
+        let non_object_patch = UpdateFlexEntryCommand {
+            data: Some(json!("invalid")),
+            status: None,
+        };
+
+        assert!(validate_update_entry_command(&non_object_patch).is_err());
     }
 
     #[test]
