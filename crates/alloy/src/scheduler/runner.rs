@@ -190,3 +190,85 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex};
+
+    use crate::engine::ScriptEngine;
+    use crate::error::ScriptResult;
+    use crate::execution_log::ExecutionLogSink;
+    use crate::model::ScriptStatus;
+    use crate::runner::ExecutionResult;
+    use crate::storage::InMemoryStorage;
+
+    #[derive(Default)]
+    struct CapturingExecutionLog {
+        entries: Mutex<Vec<(ExecutionResult, ExecutionContext)>>,
+    }
+
+    #[async_trait]
+    impl ExecutionLogSink for CapturingExecutionLog {
+        async fn record_result(
+            &self,
+            result: &ExecutionResult,
+            ctx: &ExecutionContext,
+        ) -> ScriptResult<()> {
+            self.entries
+                .lock()
+                .expect("execution log lock should not be poisoned")
+                .push((result.clone(), ctx.clone()));
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn scheduler_tick_persists_execution_log_with_script_tenant() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let engine = Arc::new(ScriptEngine::new(Default::default()));
+        let executor = ScriptExecutor::new(engine, Arc::clone(&storage))
+            .with_execution_log(execution_log.clone());
+        let scheduler = Scheduler::new(executor, Arc::clone(&storage));
+
+        let mut script = Script::new(
+            "scheduled_audit_smoke",
+            "40 + 2",
+            ScriptTrigger::Cron {
+                expression: "0 0 0 1 1 * 2099".to_string(),
+            },
+        );
+        script.status = ScriptStatus::Active;
+        let script_id = script.id;
+        let tenant_id = script.tenant_id;
+        storage.save(script).await.unwrap();
+
+        scheduler.jobs.write().await.insert(
+            script_id,
+            ScheduledJob {
+                script_id,
+                script_name: "scheduled_audit_smoke".to_string(),
+                cron_expression: "0 0 0 1 1 * 2099".to_string(),
+                next_run: Utc::now() - chrono::Duration::seconds(1),
+                last_run: None,
+                running: false,
+            },
+        );
+
+        scheduler.tick().await;
+
+        let entries = execution_log
+            .entries
+            .lock()
+            .expect("execution log lock should not be poisoned");
+        assert_eq!(entries.len(), 1);
+        let (result, ctx) = &entries[0];
+        assert_eq!(result.script_id, script_id);
+        assert_eq!(result.phase, ExecutionPhase::Scheduled);
+        assert_eq!(ctx.phase, ExecutionPhase::Scheduled);
+        assert_eq!(ctx.tenant_id.as_deref(), Some(&tenant_id.to_string()));
+        assert!(result.is_success());
+    }
+}
