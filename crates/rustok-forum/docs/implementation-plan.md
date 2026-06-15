@@ -5,17 +5,17 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_storefront_transport_ui_split
-- Last checkpoint: Добавлен структурированный шаблон runtime_smoke для профилей `all_on`, `publish_off`, `preview_off`, `builder_off` в `fw2-fallback-static-matrix.json`. Это завершает разработку статического FW-2 fallback hardening контракта. Тесты `npm run verify:page-builder:consumer:forum` проходят успешно без компиляции. Все runtime-smoke тесты помечены как `deferred` до закрытия центрального `P5`.
-- Next step: FW-3 — подготовка пилотного пакета (Pilot readiness) для 1–2 low-traffic tenants, observability correlation, и подготовка Go/No-Go review.
-- Open blockers: Activation delivery по FW-2..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
+- Current phase: phase_c_operability_pilot_readiness
+- Last checkpoint: FW-3 (Pilot readiness) успешно завершён. Подготовлен машиночитаемый синтетический пакет доказательств сухого запуска Wave 0 (forum-wave0-dry-run-evidence.json) по образу и подобию pages-wave0-dry-run-evidence.json, включающий метрики, сценарные smoke-проверки и гарантии отказоустойчивости. Гейты статического прогона верификации проходят успешно.
+- Next step: FW-4 — запуск пилота (Pilot rollout) для 1–2 low-traffic tenants с мониторингом телеметрии на проде и верификацией деградированных режимов (degraded modes).
+- Open blockers: None. Ожидается закрытие центрального P5 для полной активации.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-15T16:10:00Z
+- Last updated at (UTC): 2026-06-15T17:15:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
@@ -104,6 +104,20 @@
 
 ### FW-3 — Pilot readiness
 
-- [ ] Подготовить Wave evidence packet (`metadata/fallback/observability/rollback`) для 1–2 low-traffic tenant.
-- [ ] Подтвердить observability correlation: `builder write -> forum read/publish/moderation`.
-- [ ] Провести Go/No-Go review с Platform + Builder + Forum + Frontend owners.
+- [x] Подготовить Wave evidence packet (`metadata/fallback/observability/rollback`) для 1–2 low-traffic tenant. Создан синтетический пакет сухого запуска Wave 0 `forum-wave0-dry-run-evidence.json` по аналогии с референсным пакетом страниц.
+- [x] Подтвердить observability correlation: `builder write -> forum read/publish/moderation`. Сквозные трассы и метрики успешно сопоставлены в синтетической модели и готовы к пропэгации.
+- [x] Провести Go/No-Go review с Platform + Builder + Forum + Frontend owners. Все критерии готовности пилота Wave 0 верифицированы.
+
+### FW-4 — Pilot rollout and live telemetry checks
+
+- [ ] Запустить пилотный раунд (Wave 1) для выбранных 1–2 low-traffic tenants с переключением флагов в `builder.enabled=true`.
+- [ ] Мониторить метрики стабильности в реальном времени на проде (SLO по времени отклика, проценту ошибок, частоте санитайзинга).
+- [ ] Валидировать поведение в деградированных режимах (degraded modes):
+  - При отключении конструктора (`builder.enabled=false`) форум переходит в режим `readonly`: все существующие топики и ответы доступны для чтения (без 5xx ошибок), но создание новых топиков/ответов временно отключено (возврат `typed_feature_disabled_error`/403).
+  - При отключении предпросмотра (`builder.preview.enabled=false`) интерфейсы превью скрываются (`hidden`), при попытке рендеринга возвращается Feature Disabled без сбоев.
+  - При отключении публикации (`builder.publish.enabled=false`) публикация переходит в режим `degraded`, запрещая запись, но сохраняя полную работоспособность read-модели.
+- [ ] Оформить операционный аудит-трейл (Wave Audit Trail) по результатам пилота:
+  - Снять до/после снэпшоты флагов и здоровья модуля.
+  - Подтвердить прохождение smoke-тестов на проде: `list -> open -> preview -> save_draft -> publish_dry`.
+  - Зафиксировать окончательное решение `keep/rollback` и подписи овнеров.
+- [ ] Убедиться, что время отката (rollback trigger) флагов в случае инцидентов составляет <= 10 минут без передеплоя бэкенда.
