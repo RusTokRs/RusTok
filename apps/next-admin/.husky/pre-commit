@@ -1,1 +1,2 @@
 npx lint-staged
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-legacy-bridge.mjs
