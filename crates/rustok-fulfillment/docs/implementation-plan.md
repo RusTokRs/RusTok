@@ -8,11 +8,11 @@ SPI и post-order delivery changes ещё остаются в активном b
 ## Execution checkpoint
 
 - Current phase: ffa_storefront_selection_boundary
-- Last checkpoint: Fulfillment storefront now owns seller-aware shipping selection DTOs, Leptos selection panel and request normalization; commerce checkout route renders that owner UI and keeps only the transitional aggregate transport callback until fulfillment-owned transport is ready. Fast source guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` covers the boundary and is wired into aggregate `npm run verify:ffa:ui:migration`.
-- Next step: Move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured.
+- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual carrier descriptor/capabilities plus rate-quote/create-label/cancel adapter contract, and the FBA registry now records `provider_spi` metadata while `FulfillmentService` keeps lifecycle persistence ownership.
+- Next step: Add provider SPI contract tests for rate quote/label/cancel error mapping, then move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-14T01:00:00Z
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 ## FFA/FBA status
 
@@ -65,6 +65,12 @@ SPI и post-order delivery changes ещё остаются в активном b
 - [x] добавить explicit post-order recovery semantics `reopen` / `reship` поверх typed fulfillment-item progress и language-agnostic audit trail;
 - [ ] покрывать mixed-cart и multi-fulfillment edge-cases targeted tests;
 - [x] удерживать compatibility с payment/order orchestration и shipping-profile registry для seller-aware storefront selection UI;
+
+### 2.5. Provider expansion
+
+- [x] сформировать provider SPI baseline до подключения внешних carrier integrations;
+- [ ] добавить provider SPI contract tests и tracking webhook ingress/replay contract;
+- [ ] не смешивать provider-specific carrier logic с базовым fulfillment lifecycle contract.
 
 ### 3. Operability
 

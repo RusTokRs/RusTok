@@ -224,11 +224,96 @@ pub trait IggyConnector: Send + Sync + 'static {
     async fn shutdown(&self) -> Result<(), ConnectorError>;
 }
 
+/// Metadata attached to a consumed connector message.
+///
+/// This type intentionally models only low-level connector facts that are
+/// needed by higher transport layers for offset tracking, retries, DLQ and
+/// replay coordination. It does not define retry limits, DLQ routing, replay
+/// policy or any other transport-level behavior.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubscriberMessageMetadata {
+    /// Stream the message was read from.
+    pub stream: String,
+    /// Topic the message was read from.
+    pub topic: String,
+    /// Partition the message was read from.
+    pub partition: u32,
+    /// Connector/backend offset when available.
+    pub offset: Option<u64>,
+    /// Connector/backend message identifier when available.
+    pub message_id: Option<String>,
+    /// Delivery attempt observed by the connector when available.
+    pub delivery_attempt: Option<u32>,
+    /// Opaque connector-owned acknowledgement token.
+    pub ack_token: Option<String>,
+}
+
+impl SubscriberMessageMetadata {
+    /// Builds metadata for subscribers that know only stream/topic/partition.
+    pub fn new(stream: impl Into<String>, topic: impl Into<String>, partition: u32) -> Self {
+        Self {
+            stream: stream.into(),
+            topic: topic.into(),
+            partition,
+            offset: None,
+            message_id: None,
+            delivery_attempt: None,
+            ack_token: None,
+        }
+    }
+
+    /// Adds an offset, preserving builder ergonomics for tests/adapters.
+    pub fn with_offset(mut self, offset: u64) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Adds an opaque acknowledgement token.
+    pub fn with_ack_token(mut self, ack_token: impl Into<String>) -> Self {
+        self.ack_token = Some(ack_token.into());
+        self
+    }
+}
+
+/// Consumed connector message with payload and low-level metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubscriberMessage {
+    /// Message payload bytes.
+    pub payload: Vec<u8>,
+    /// Low-level connector metadata.
+    pub metadata: SubscriberMessageMetadata,
+}
+
+impl SubscriberMessage {
+    /// Creates a consumed message with explicit metadata.
+    pub fn new(payload: Vec<u8>, metadata: SubscriberMessageMetadata) -> Self {
+        Self { payload, metadata }
+    }
+}
+
 /// Message subscriber for consuming messages from Iggy
 #[async_trait]
 pub trait MessageSubscriber: Send + Sync {
-    /// Receive next message
+    /// Receive next payload. Legacy payload-only consumers may keep using this
+    /// method; transport layers that need offset/ack/retry facts should prefer
+    /// `recv_with_metadata`.
     async fn recv(&mut self) -> Result<Option<Vec<u8>>, ConnectorError>;
+
+    /// Receive next message with connector-owned metadata.
+    async fn recv_with_metadata(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError> {
+        Ok(self.recv().await?.map(|payload| {
+            SubscriberMessage::new(payload, SubscriberMessageMetadata::new("", "", 0))
+        }))
+    }
+
+    /// Acknowledge a message by opaque connector token.
+    ///
+    /// The default no-op keeps simulated/test subscribers policy-free while real
+    /// SDK adapters can override this to commit offsets or acknowledge backend
+    /// messages.
+    async fn ack(&mut self, _ack_token: &str) -> Result<(), ConnectorError> {
+        Ok(())
+    }
 }
 
 /// Iggy connector errors
@@ -511,6 +596,10 @@ impl MessageSubscriber for RemoteMessageSubscriber {
     async fn recv(&mut self) -> Result<Option<Vec<u8>>, ConnectorError> {
         Ok(None)
     }
+
+    async fn recv_with_metadata(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError> {
+        Ok(None)
+    }
 }
 
 // ============================================================================
@@ -681,6 +770,10 @@ impl EmbeddedMessageSubscriber {
 #[async_trait]
 impl MessageSubscriber for EmbeddedMessageSubscriber {
     async fn recv(&mut self) -> Result<Option<Vec<u8>>, ConnectorError> {
+        Ok(None)
+    }
+
+    async fn recv_with_metadata(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError> {
         Ok(None)
     }
 }
@@ -859,6 +952,30 @@ mod tests {
             EmbeddedMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
         let result = subscriber.recv().await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_subscriber_message_metadata_builder() {
+        let metadata = SubscriberMessageMetadata::new("stream1", "topic1", 3)
+            .with_offset(99)
+            .with_ack_token("ack-99");
+
+        assert_eq!(metadata.stream, "stream1");
+        assert_eq!(metadata.topic, "topic1");
+        assert_eq!(metadata.partition, 3);
+        assert_eq!(metadata.offset, Some(99));
+        assert_eq!(metadata.ack_token.as_deref(), Some("ack-99"));
+        assert_eq!(metadata.message_id, None);
+        assert_eq!(metadata.delivery_attempt, None);
+    }
+
+    #[test]
+    fn test_subscriber_message_carries_payload_and_metadata() {
+        let metadata = SubscriberMessageMetadata::new("stream1", "topic1", 1);
+        let message = SubscriberMessage::new(vec![1, 2, 3], metadata.clone());
+
+        assert_eq!(message.payload, vec![1, 2, 3]);
+        assert_eq!(message.metadata, metadata);
     }
 
     #[test]

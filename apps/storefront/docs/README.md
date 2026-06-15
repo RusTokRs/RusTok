@@ -84,6 +84,12 @@ GraphQL path при этом остаётся рабочим и поддержи
 - Host locale normalization идёт через shared `rustok_core::normalize_locale_tag`, а не через package-local правила.
 - Legacy query-based locale fallback допускается только как backward-compatible path.
 
+## SEO parity evidence
+
+- Leptos Storefront is the Rust-host reference for SSR SEO rendering: it consumes `SeoPageContext` through `storefront/seo-page-context` and serializes the head via `rustok-seo-render`.
+- D8/D9 compile-free evidence is seeded in the Next storefront fixture so route ownership and long-tail differences stay explicit across Rust and Next hosts.
+- Final closeout still requires live SSR smoke evidence for runtime page context, robots/canonical/hreflang metadata and structured-data blocks against a running backend.
+
 ## Взаимодействия
 
 - `apps/server` предоставляет GraphQL и Leptos server-function surfaces.

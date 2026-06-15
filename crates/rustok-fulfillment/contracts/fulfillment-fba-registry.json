@@ -3,7 +3,7 @@
   "module": "fulfillment",
   "role": "provider",
   "status": "in_progress",
-  "contract_version": "fulfillment.shipping_selection.v1",
+  "contract_version": "fulfillment.shipping_selection.v1+provider_spi.v1",
   "ports": [
     {
       "name": "ShippingSelectionPort",
@@ -85,6 +85,29 @@
         "keep_previous_selection",
         "show_shipping_handoff_retry"
       ]
+    }
+  },
+  "provider_spi": {
+    "status": "manual_baseline_locked",
+    "source": "crates/rustok-fulfillment/src/providers.rs",
+    "default_provider_id": "manual",
+    "operations": [
+      "quote_rates",
+      "create_label",
+      "cancel"
+    ],
+    "capabilities": [
+      "rate_quote",
+      "create_label",
+      "ship",
+      "cancel",
+      "tracking_webhook_ingress"
+    ],
+    "side_effect_boundary": "provider adapters execute carrier effects; FulfillmentService owns persisted lifecycle transitions",
+    "webhook_ingress": {
+      "status": "planned",
+      "idempotency_required": true,
+      "replay_required": true
     }
   }
 }

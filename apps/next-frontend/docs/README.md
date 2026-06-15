@@ -42,6 +42,12 @@
 - `SeoStructuredDataBlock` в shared TypeScript contract сохраняет backend-provided `schemaKind`, `schemaType`, legacy `kind`, `source` и payload; Next host не классифицирует schema.org types локально и рендерит JSON-LD blocks как runtime-provided scripts.
 - Rust-host путь при этом вынесен в отдельный support crate `rustok-seo-render`; Next host остаётся TypeScript adapter-слоем и не пытается делить с ним source-of-truth.
 
+## D8/D9 SEO closeout contract
+
+- This host owns the compile-free SEO evidence fixture and verifier used for D8 lightweight gates.
+- The verifier intentionally does not compile the app; it checks contract shape, fallback semantics, route ownership, smoke assertions, docs sync rows, owner sign-off rows and the deferred live evidence plan.
+- Before final closeout, this host must attach live evidence for runtime `robots.ts`, `sitemap.ts`, home metadata and at least product/blog non-home metadata routes against a running backend.
+
 ## Взаимодействия
 
 - `apps/server` — backend/API provider;

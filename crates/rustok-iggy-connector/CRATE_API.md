@@ -8,6 +8,7 @@
 - `pub struct EmbeddedConnectorConfig`, `RemoteConnectorConfig`, `ConnectorConfig`
 - `pub trait IggyConnector`
 - `pub trait MessageSubscriber`
+- `pub struct SubscriberMessage`, `SubscriberMessageMetadata`
 - `pub enum ConnectorError`
 - Реализации: `RemoteConnector`, `EmbeddedConnector` и subscriber-структуры.
 

@@ -56,9 +56,20 @@
 
 - [x] Зафиксировать самостоятельный FBA reference-контур builder-а на уровне центральной документации и правил rollout (без возврата к pages-owned реализации).
 - [x] Зафиксировать capability-contracts (`preview/tree/properties/publish`) как минимально обязательный consumer surface для reference-модуля.
-- [~] Подготовить module health contract + observability baseline для reference-модуля (метрики и release-gate определены, автоматизация в CI остаётся в Phase 5).
+- [x] Подготовить module health contract + observability baseline для reference-модуля (typed runtime states/reasons/SLO evaluator зафиксированы; CI automation остаётся в Phase 5).
 - [~] Определить compatibility-периметр legacy payload-ов как временный слой и зафиксировать sunset criteria (критерии заданы, tenant-график отключения фиксируется в rollout runbook).
 - [ ] Выровнять contract parity для Next/Leptos/Flutter как consumer-ов reference-модуля на уровне production-readiness.
+
+#### Runtime-baseline module health
+
+`rustok-page-builder` теперь держит provider health contract не только в registry/evidence JSON, но и в типизированном runtime-baseline:
+
+- состояния: `ready`, `degraded`, `unavailable`;
+- причины деградации: `capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`;
+- pilot-пороги: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`;
+- evaluator: нарушения порогов дают детерминированные причины деградации, а runtime error-rate выше 2x порога переводит provider в `unavailable`.
+
+Этот baseline является источником для Wave evidence и должен оставаться синхронизированным с `contracts/page-builder-fba-registry.json`.
 
 **DoD фазы:** reference-модуль способен жить и катиться независимо, а `pages` и другие контуры подключаются к нему как consumer-ы по стабильному FBA-контракту.
 
@@ -847,7 +858,7 @@ Notes: <known deviations or waivers>
 ### 13.5 Очередь внедрения forum widgets после `pages`
 
 - [x] **FW-1 (contract freeze):** widget catalog v1 (`topic_list/topic_detail/reply_stream`), `data_contract_version`/compatibility matrix и typed error mapping зафиксированы как machine-readable contract (manifest + REST/GraphQL catalog surface), без rollout activation до `P5`.
-- [~] **FW-2 (fallback hardening):** manifest/doc static gate `npm run verify:page-builder:consumer:forum` фиксирует `builder_off/publish_off`, widget fallback modes `readonly`/`degraded`/`hidden` и no-5xx baseline forum route expectation; runtime smoke после `P5`.
+- [~] **FW-2 (fallback hardening):** manifest/doc static gate `npm run verify:page-builder:consumer:forum` фиксирует `builder_off/publish_off`, widget fallback modes `readonly`/`degraded`/`hidden` и валидирует `crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json` с no-5xx read/moderation source-marker assertions; runtime smoke после `P5`.
 - [ ] **FW-3 (pilot):** включить 1–2 low-traffic tenant с evidence packet (metadata/fallback/observability/rollback).
 - [ ] **FW-4 (promotion):** расширять rollout только после owner sign-off и SLO stability 24–72h.
 

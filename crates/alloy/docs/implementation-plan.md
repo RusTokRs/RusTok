@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Wired `SeaOrmExecutionLog` into runtime-created executors/orchestrators and scheduler jobs so every supported execution path persists canonical history with user/tenant context when available.
-- Next step: Add targeted integration coverage for execution log persistence across manual, hook, on-commit and scheduler paths.
+- Last checkpoint: Added focused unit/integration coverage for execution-log persistence across manual, before-hook, on-commit, and scheduler execution paths without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then add SeaORM-backed DB persistence assertions for canonical history rows.
 - Open blockers: None.
 - Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests.
-- Last updated at (UTC): 2026-06-14T00:00:00Z
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 ## Область работ
 
@@ -43,7 +43,7 @@ contract приведены к единому формату.
 ### 3. Operability
 
 - [x] развить runbook для scheduler/runtime failures и hook debugging;
-- [ ] покрыть execution, scheduler и bridge invariants точечными integration tests;
+- [x] покрыть execution, scheduler и bridge invariants точечными integration tests;
 - [x] документировать новые runtime guarantees одновременно с изменением capability surface.
 
 ## Проверка

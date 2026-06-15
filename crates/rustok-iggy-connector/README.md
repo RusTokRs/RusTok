@@ -9,6 +9,7 @@
 - Provide the connector trait used by transport layers.
 - Support embedded and remote Iggy connection modes.
 - Own low-level connection lifecycle and publish/subscribe mechanics.
+- Expose connector-owned subscriber metadata for offset/ack/retry coordination without defining transport retry, DLQ, or replay policy.
 - Keep connector concerns separate from higher-level event transport behavior.
 
 ## Entry points
@@ -18,6 +19,7 @@
 - `RemoteConnector`
 - `ConnectorConfig`
 - `PublishRequest`
+- `SubscriberMessage` / `SubscriberMessageMetadata`
 
 ## Interactions
 

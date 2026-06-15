@@ -297,7 +297,7 @@ pub fn json_field_contains(column, key: &str, value: serde_json::Value) -> Condi
 
 | Guardrail | Значение | Статус | Где проверяется |
 |-----------|----------|--------|-----------------|
-| Max fields per entity type per tenant | **50** | ⬜ service-layer TODO | `create_definition()` до вставки |
+| Max standalone fields per schema | **50** | ✅ реализовано для standalone | `validate_create_schema_command()` / `validate_update_schema_command()` до adapter/service layer |
 | Max nesting depth (`FieldType::Json`) | **2** | ✅ реализовано | `validate_field_value()` |
 | Validation on write | **Строгая** | ✅ реализовано | `CustomFieldsSchema::validate()` |
 | `field_key` format | `^[a-z][a-z0-9_]{0,127}$` | ✅ реализовано | `is_valid_field_key()` |

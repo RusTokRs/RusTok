@@ -6,11 +6,11 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: storefront_action_request_boundary
-- Last checkpoint: Payment storefront action UI now emits `PaymentCollectionCreateRequest` with payment-owned create/reuse command metadata via the payment-owned `storefront/src/transport.rs` facade, and the compatibility host forwards the owner DTO into native/GraphQL orchestration payload metadata instead of creating anonymous commerce-side command metadata.
-- Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration; keep commerce only as temporary checkout orchestration until that cutover.
+- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual provider descriptor/capabilities plus authorize/capture/cancel/refund adapter contract, and the FBA registry now records `provider_spi` metadata without moving lifecycle persistence out of `PaymentService`.
+- Next step: Add contract tests for provider SPI error/idempotency mapping, then move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-14T01:30:00Z
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 ## FFA/FBA status
 
@@ -51,7 +51,8 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 
 ### 2. Provider expansion
 
-- [ ] сформировать provider SPI до подключения внешних gateway integrations;
+- [x] сформировать provider SPI baseline до подключения внешних gateway integrations;
+- [ ] добавить provider SPI contract tests и webhook ingress/replay contract;
 - [x] покрывать authorize/capture/cancel/refund semantics targeted tests;
 - [ ] не смешивать provider-specific webhook logic с базовым payment domain contract.
 

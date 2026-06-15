@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-13T12:00:00Z",
+  "updatedAt": "2026-06-15T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -160,17 +160,20 @@
   ],
   "d8EvidencePacket": {
     "status": "lightweight_static_baseline",
-    "capturedAt": "2026-06-13T12:00:00Z",
+    "capturedAt": "2026-06-15T00:00:00Z",
     "compilationPolicy": "not_run_by_request",
     "coveredBatches": [
       "D8.1 fixture invariants",
       "D8.3 host parity static contract",
-      "D8.4 evidence packet seed"
+      "D8.4 evidence packet seed",
+      "D9.1 docs sync matrix seed",
+      "D9.3 owner sign-off checklist seed"
     ],
     "deferredBatches": [
       "D8.1 Rust unit execution",
       "D8.2 backend integration matrix",
-      "D8.3 live host integration matrix"
+      "D8.3 live host integration matrix",
+      "D9.2 live incident evidence examples"
     ],
     "stopCriteria": [
       "missing fallback behavior case",
@@ -178,6 +181,101 @@
       "missing non-home smoke evidence",
       "missing long-tail diff allowlist",
       "missing compile-free verification matrix"
+    ]
+  },
+  "docsSyncMatrix": [
+    {
+      "scope": "rustok-seo runtime docs",
+      "path": "crates/rustok-seo/docs/README.md",
+      "covers": [
+        "Phase D status",
+        "D8/D9 verification policy",
+        "operations runbook links"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "Next storefront SEO parity docs",
+      "path": "apps/next-frontend/docs/README.md",
+      "covers": [
+        "runtime adapter policy",
+        "fixture evidence",
+        "live evidence deferral"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "Next admin SEO operator docs",
+      "path": "apps/next-admin/docs/README.md",
+      "covers": [
+        "control-plane helper",
+        "semantic errors",
+        "repair/replay surfaces"
+      ],
+      "status": "synced_compile_free"
+    },
+    {
+      "scope": "Leptos storefront SEO host docs",
+      "path": "apps/storefront/docs/README.md",
+      "covers": [
+        "SeoPageContext SSR preflight",
+        "rustok-seo-render",
+        "host parity evidence"
+      ],
+      "status": "synced_compile_free"
+    }
+  ],
+  "ownerSignoffChecklist": [
+    {
+      "owner": "Platform foundation",
+      "scope": "SEO runtime, GraphQL/REST parity, outbox/index delivery tracking",
+      "requiredEvidence": [
+        "D8 backend integration matrix",
+        "semantic error parity",
+        "idempotency/cursor invariants"
+      ],
+      "status": "pending_live_runtime_evidence"
+    },
+    {
+      "owner": "Frontends",
+      "scope": "apps/storefront, apps/next-frontend, apps/next-admin SEO host parity",
+      "requiredEvidence": [
+        "runtime page context smoke",
+        "robots/sitemap runtime source smoke",
+        "operator repair/replay smoke"
+      ],
+      "status": "pending_live_runtime_evidence"
+    },
+    {
+      "owner": "Domain modules",
+      "scope": "pages/product/blog/forum SEO owner panels and target providers",
+      "requiredEvidence": [
+        "route ownership matrix",
+        "owner route metadata smoke",
+        "no host-local entity SEO editors"
+      ],
+      "status": "static_evidence_seeded"
+    }
+  ],
+  "liveEvidencePlan": {
+    "status": "deferred_no_backend_hosts_started_by_request",
+    "requiredSurfaces": [
+      "GraphQL seoPageContext/seoDiagnostics/seoIndexDeliveryStatus",
+      "REST /api/seo/page-context /diagnostics /index/tracking /index/repair-replay",
+      "Next robots.ts sitemap.ts generateMetadata",
+      "Leptos storefront storefront/seo-page-context"
+    ],
+    "minimumBeforeClose": [
+      "record backend/host command or CI job URL",
+      "capture before/after delivery counters",
+      "capture semantic error parity sample",
+      "capture non-home metadata smoke for product and blog"
+    ],
+    "stopCriteria": [
+      "missing live backend evidence for D8.2",
+      "missing host evidence for D8.3",
+      "unexplained GraphQL/REST error-code drift",
+      "cursor moves backward or duplicate idempotency transition observed"
     ]
   }
 }

@@ -1,4 +1,5 @@
 pub mod dto;
+pub mod health;
 pub mod rollout;
 #[cfg(feature = "server")]
 pub mod service;
@@ -60,6 +61,10 @@ mod tests {
     use crate::dto::{
         BuilderCapabilityKind, BuilderNodePropertiesInput, PublishPageBuilderInput,
         PublishPageBuilderResult,
+    };
+    use crate::health::{
+        ProviderDegradationReason, ProviderHealthSnapshot, ProviderHealthState,
+        ProviderSloObservations, ProviderSloThresholds,
     };
     use crate::rollout::{
         ensure_capability, fallback_matrix, BuilderCapabilityFlags, BuilderRolloutError,
@@ -197,6 +202,73 @@ mod tests {
         assert!(!builder_off.is_allowed(BuilderCapabilityKind::Preview));
         assert!(!builder_off.is_allowed(BuilderCapabilityKind::Properties));
         assert!(!builder_off.is_allowed(BuilderCapabilityKind::Publish));
+    }
+
+    #[test]
+    fn provider_health_contract_matches_registry_baseline() {
+        let states: Vec<_> = ProviderHealthState::ALL
+            .iter()
+            .map(|state| state.as_str())
+            .collect();
+        assert_eq!(states, vec!["ready", "degraded", "unavailable"]);
+
+        let reasons: Vec<_> = ProviderDegradationReason::ALL
+            .iter()
+            .map(|reason| reason.as_str())
+            .collect();
+        assert_eq!(
+            reasons,
+            vec![
+                "capability_disabled",
+                "provider_unhealthy",
+                "sanitize_backpressure",
+                "publish_backlog",
+            ]
+        );
+
+        assert_eq!(ProviderSloThresholds::PILOT.preview_p95_ms, 1500);
+        assert_eq!(ProviderSloThresholds::PILOT.publish_p95_ms, 3000);
+        assert_eq!(ProviderSloThresholds::PILOT.sanitize_failure_rate_max, 0.01);
+        assert_eq!(ProviderSloThresholds::PILOT.runtime_error_rate_max, 0.01);
+    }
+
+    #[test]
+    fn provider_health_snapshot_evaluates_slo_degradation() {
+        let ready = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1200,
+            publish_p95_ms: 2500,
+            sanitize_failure_rate: 0.001,
+            runtime_error_rate: 0.001,
+        });
+        assert_eq!(ready.state, ProviderHealthState::Ready);
+        assert!(ready.degradation_reasons.is_empty());
+
+        let degraded = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1200,
+            publish_p95_ms: 3500,
+            sanitize_failure_rate: 0.02,
+            runtime_error_rate: 0.001,
+        });
+        assert_eq!(degraded.state, ProviderHealthState::Degraded);
+        assert_eq!(
+            degraded.degradation_reasons,
+            vec![
+                ProviderDegradationReason::SanitizeBackpressure,
+                ProviderDegradationReason::PublishBacklog,
+            ]
+        );
+
+        let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1200,
+            publish_p95_ms: 2500,
+            sanitize_failure_rate: 0.001,
+            runtime_error_rate: 0.03,
+        });
+        assert_eq!(unavailable.state, ProviderHealthState::Unavailable);
+        assert_eq!(
+            unavailable.degradation_reasons,
+            vec![ProviderDegradationReason::ProviderUnhealthy]
+        );
     }
 
     #[test]

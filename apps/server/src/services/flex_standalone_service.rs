@@ -251,6 +251,7 @@ impl FlexStandaloneSeaOrmService {
 
         let existing = flex_entry_localized_values::Entity::find()
             .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
+            .filter(flex_entry_localized_values::Column::TenantId.eq(tenant_id))
             .filter(flex_entry_localized_values::Column::Locale.eq(locale.as_str()))
             .one(&self.db)
             .await
