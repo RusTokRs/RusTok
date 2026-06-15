@@ -140,5 +140,6 @@
     "prettier": "3.8.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tw-animate-css": "^1.2.4"
-  }
+  },
+  "license": "BUSL-1.1"
 }

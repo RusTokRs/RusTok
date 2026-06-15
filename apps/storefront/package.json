@@ -10,5 +10,6 @@
   "scripts": {
     "build:css": "npx tailwindcss -i ./assets/input.css -o ./static/app.css --minify",
     "watch:css": "npx tailwindcss -i ./assets/input.css -o ./static/app.css --watch"
-  }
+  },
+  "license": "BUSL-1.1"
 }

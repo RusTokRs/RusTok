@@ -7,7 +7,7 @@
 *Content · Commerce · Community · Workflow · Any Data · One runtime, zero compromises.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -401,4 +401,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for contributo
 
 ## License
 
-RusToK is released under the [MIT License](LICENSE).
+RusTok is licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+
+RusTok is source-available and free for community use, individual developers, open-source projects, and organizations with Total Finances not exceeding USD $3,000,000 during the most recent 12-month period.
+
+Production, commercial, SaaS, hosted, managed service, cloud service, white-label, resale, or competing platform use by organizations above this threshold requires a separate RusTok Commercial License.
+
+Normal SaaS products built on top of RusTok are permitted under the RusTok Additional Use Grant if the product is distinct from RusTok itself and the organization does not exceed the Total Finances threshold.
+
+Offering RusTok itself as SaaS, a hosted RusTok platform, managed RusTok service, white-label RusTok product, or substantially similar competing platform requires a separate RusTok Commercial License or prior written permission from RusTokRs.
+
+One-click installs, Docker images, Helm charts, VPS images, marketplace images, and similar deployment packages are permitted if the customer controls and administers their own RusTok instance and all LICENSE, NOTICE, copyright notices, and license headers are preserved.
+
+Each version of RusTok automatically converts to the GNU Affero General Public License v3.0 or later two years after its first public release date.
+
+No frontend “Powered by RusTok” attribution, logo, footer link, or login-screen attribution is required. Copyright notices, license notices, and source code attribution notices must be preserved.
+
+See LICENSE, NOTICE, and COMMERCIAL-LICENSE.md for details.
