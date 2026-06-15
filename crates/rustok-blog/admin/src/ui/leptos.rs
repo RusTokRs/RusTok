@@ -126,6 +126,13 @@ pub fn BlogAdmin() -> impl IntoView {
             editing_banner_create_new_label.clone(),
         )
     });
+    let body_format_warning_message = form_raw_warning.clone();
+    let body_format_warning_view = Memo::new(move |_| {
+        core::blog_post_admin_body_format_warning_view(
+            body_format.get().as_str(),
+            body_format_warning_message.clone(),
+        )
+    });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
@@ -752,9 +759,9 @@ pub fn BlogAdmin() -> impl IntoView {
                             />
                         </label>
 
-                        <Show when=move || raw_body_warning_view.get().visible>
+                        <Show when=move || body_format_warning_view.get().visible>
                             <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                {move || raw_body_warning_view.get().message}
+                                {move || body_format_warning_view.get().message}
                             </div>
                         </Show>
 
