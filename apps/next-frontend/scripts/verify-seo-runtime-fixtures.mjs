@@ -89,6 +89,49 @@ assert(
   "D8 evidence packet must record no-compilation policy",
 );
 
+const docsRows = fixtures.docsSyncMatrix ?? [];
+const requiredDocs = [
+  "crates/rustok-seo/docs/README.md",
+  "apps/next-frontend/docs/README.md",
+  "apps/next-admin/docs/README.md",
+  "apps/storefront/docs/README.md",
+];
+for (const requiredPath of requiredDocs) {
+  const row = docsRows.find((item) => item.path === requiredPath);
+  assert(row, `Missing D9 docs sync row: ${requiredPath}`);
+  assert(
+    row.status?.includes("compile_free"),
+    `Docs sync row must be compile-free: ${requiredPath}`,
+  );
+  assert(
+    Array.isArray(row.covers) && row.covers.length >= 2,
+    `Docs sync row misses coverage notes: ${requiredPath}`,
+  );
+}
+
+const signoffRows = fixtures.ownerSignoffChecklist ?? [];
+for (const owner of ["Platform foundation", "Frontends", "Domain modules"]) {
+  const row = signoffRows.find((item) => item.owner === owner);
+  assert(row, `Missing D9 owner sign-off row: ${owner}`);
+  assert(row.scope, `Owner sign-off row misses scope: ${owner}`);
+  assert(
+    Array.isArray(row.requiredEvidence) && row.requiredEvidence.length >= 2,
+    `Owner sign-off row misses required evidence: ${owner}`,
+  );
+}
+
+assert(
+  fixtures.liveEvidencePlan?.status === "deferred_no_backend_hosts_started_by_request",
+  "Live evidence plan must record no backend/host startup for this no-compilation iteration",
+);
+assert(
+  (fixtures.liveEvidencePlan?.minimumBeforeClose ?? []).length >= 4,
+  "Live evidence plan must define closeout minimums",
+);
+
 console.log(
-  `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, ${routeRows.length} route rows, ${smokeRows.length} smoke routes, ${matrix.length} D8 gates`,
+  `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, `
+    + `${routeRows.length} route rows, ${smokeRows.length} smoke routes, `
+    + `${matrix.length} D8 gates, ${docsRows.length} docs rows, `
+    + `${signoffRows.length} sign-off rows`,
 );

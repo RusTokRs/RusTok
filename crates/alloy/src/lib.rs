@@ -128,6 +128,35 @@ mod tests {
     use rhai::Dynamic;
     use std::sync::Arc;
 
+    #[derive(Default)]
+    struct CapturingExecutionLog {
+        entries: std::sync::Mutex<Vec<(ExecutionResult, ExecutionContext)>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ExecutionLogSink for CapturingExecutionLog {
+        async fn record_result(
+            &self,
+            result: &ExecutionResult,
+            ctx: &ExecutionContext,
+        ) -> ScriptResult<()> {
+            self.entries
+                .lock()
+                .expect("execution log lock should not be poisoned")
+                .push((result.clone(), ctx.clone()));
+            Ok(())
+        }
+    }
+
+    impl CapturingExecutionLog {
+        fn snapshot(&self) -> Vec<(ExecutionResult, ExecutionContext)> {
+            self.entries
+                .lock()
+                .expect("execution log lock should not be poisoned")
+                .clone()
+        }
+    }
+
     #[test]
     fn test_simple_script() {
         let engine = create_default_engine();
@@ -391,6 +420,154 @@ mod tests {
             }
             _ => panic!("Expected Continue outcome"),
         }
+    }
+
+    #[tokio::test]
+    async fn manual_execution_persists_execution_log_with_user_and_tenant() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let orchestrator = ScriptOrchestrator::with_execution_log(
+            Arc::new(create_default_engine()),
+            Arc::clone(&storage),
+            execution_log.clone(),
+        );
+
+        let mut script = Script::new(
+            "manual_audit_smoke",
+            r#"params["value"] + 1"#,
+            ScriptTrigger::Manual,
+        );
+        script.tenant_id = uuid::Uuid::new_v4();
+        script.activate();
+        let tenant_id = script.tenant_id;
+        storage.save(script).await.unwrap();
+
+        let result = orchestrator
+            .run_manual(
+                "manual_audit_smoke",
+                std::collections::HashMap::from([("value".to_string(), Dynamic::from(41_i64))]),
+                Some("operator-1".to_string()),
+            )
+            .await
+            .unwrap();
+
+        assert!(result.is_success());
+        let entries = execution_log.snapshot();
+        assert_eq!(entries.len(), 1);
+        let (logged_result, logged_ctx) = &entries[0];
+        assert_eq!(logged_result.script_id, result.script_id);
+        assert_eq!(logged_result.phase, ExecutionPhase::Manual);
+        assert_eq!(logged_ctx.user_id.as_deref(), Some("operator-1"));
+        assert_eq!(
+            logged_ctx.tenant_id.as_deref(),
+            Some(&tenant_id.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn before_hook_persists_execution_log_with_entity_changes() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let orchestrator = ScriptOrchestrator::with_execution_log(
+            Arc::new(create_default_engine()),
+            Arc::clone(&storage),
+            execution_log.clone(),
+        );
+
+        let mut script = Script::new(
+            "before_audit_smoke",
+            r#"entity["status"] = "approved";"#,
+            ScriptTrigger::Event {
+                entity_type: "order".into(),
+                event: EventType::BeforeUpdate,
+            },
+        );
+        script.tenant_id = uuid::Uuid::new_v4();
+        script.activate();
+        let tenant_id = script.tenant_id;
+        storage.save(script).await.unwrap();
+
+        let entity = EntityProxy::new(
+            "order-1",
+            "order",
+            std::collections::HashMap::from([("status".to_string(), Dynamic::from("pending"))]),
+        );
+        let outcome = orchestrator
+            .run_before(
+                "order",
+                EventType::BeforeUpdate,
+                entity,
+                Some("operator-2".to_string()),
+            )
+            .await;
+
+        match outcome {
+            HookOutcome::Continue { changes } => {
+                assert_eq!(
+                    changes
+                        .get("status")
+                        .and_then(|v| v.clone().try_cast::<String>()),
+                    Some("approved".to_string())
+                );
+            }
+            other => panic!("expected hook continue, got {other:?}"),
+        }
+
+        let entries = execution_log.snapshot();
+        assert_eq!(entries.len(), 1);
+        let (logged_result, logged_ctx) = &entries[0];
+        assert_eq!(logged_result.phase, ExecutionPhase::Before);
+        assert_eq!(logged_ctx.user_id.as_deref(), Some("operator-2"));
+        assert_eq!(
+            logged_ctx.tenant_id.as_deref(),
+            Some(&tenant_id.to_string())
+        );
+        assert!(matches!(
+            &logged_result.outcome,
+            ExecutionOutcome::Success { entity_changes, .. } if entity_changes.contains_key("status")
+        ));
+    }
+
+    #[tokio::test]
+    async fn on_commit_persists_one_execution_log_per_script() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let orchestrator = ScriptOrchestrator::with_execution_log(
+            Arc::new(create_default_engine()),
+            Arc::clone(&storage),
+            execution_log.clone(),
+        );
+
+        for script_name in ["on_commit_audit_one", "on_commit_audit_two"] {
+            let mut script = Script::new(
+                script_name,
+                "1",
+                ScriptTrigger::Event {
+                    entity_type: "invoice".into(),
+                    event: EventType::OnCommit,
+                },
+            );
+            script.activate();
+            storage.save(script).await.unwrap();
+        }
+
+        let results = orchestrator
+            .run_on_commit(
+                "invoice",
+                EntityProxy::empty("invoice"),
+                Some("operator-3".to_string()),
+            )
+            .await;
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(ExecutionResult::is_success));
+        let entries = execution_log.snapshot();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|(result, ctx)| {
+            result.phase == ExecutionPhase::OnCommit
+                && ctx.phase == ExecutionPhase::OnCommit
+                && ctx.user_id.as_deref() == Some("operator-3")
+        }));
     }
 
     #[test]

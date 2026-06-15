@@ -8,11 +8,11 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_guardrails
-- Last checkpoint: Standalone Flex guardrails tightened without compilation: schema slugs, standalone field keys and attached `entity_type` values must now be already-normalized (no trim-before-validate drift), tests cover untrimmed rejection paths, and standalone localized entry reads now filter parallel rows by tenant.
-- Next step: When compilations are allowed, run `cargo test -p rustok-product --lib` first, then `cargo test -p rustok-server --lib` plus Flex-targeted integration scenarios and record evidence here.
+- Last checkpoint: Standalone Flex guardrails tightened without compilation: schema settings and entry data must be JSON objects, statuses must be already-normalized, standalone schema field count is capped at 50 in transport-agnostic validators, and localized entry upsert lookup is tenant-scoped.
+- Next step: When compilations are allowed, run `cargo test -p flex --lib` first, then `cargo test -p rustok-server --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: Only non-compilation checks were run (`cargo fmt --all` and `node scripts/verify/verify-flex-multilingual-contract.mjs`). Verify the new standalone validation and tenant-scoped localization changes with targeted Rust tests once compilation/test execution is allowed.
-- Last updated at (UTC): 2026-06-14T07:03:17Z
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify the standalone guardrail validators and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed.
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 ## Область работ
 
@@ -299,6 +299,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - Flex GraphQL tests в `apps/server` теперь используют isolated SQLite bootstrap вместо полного workspace migrator, чтобы не тянуть посторонние migration slices в flex verification path.
   - Repo-side multilingual drift gate проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
   - 2026-06-14 no-compile iteration: standalone contract guardrail tests added for untrimmed schema slugs, field keys and `entity_type`; localized entry row loading now includes tenant filtering to keep the parallel storage lookup tenant-scoped.
+  - 2026-06-15 no-compile iteration: standalone contract validators now reject non-object schema settings, non-object entry data, untrimmed statuses and schemas with more than 50 fields; localized entry upsert lookup also filters by tenant.
   - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone guardrail fix и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны

@@ -518,6 +518,48 @@ pub fn blog_post_admin_edit_banner_view(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminRawBodyWarningViewModel {
+    pub visible: bool,
+    pub message: String,
+}
+
+pub fn blog_post_admin_raw_body_warning_view(
+    body_format: &str,
+    warning_message: String,
+) -> BlogPostAdminRawBodyWarningViewModel {
+    BlogPostAdminRawBodyWarningViewModel {
+        visible: should_show_raw_body_warning(body_format),
+        message: warning_message,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlogPostAdminPostsLoadViewModel {
+    Loaded {
+        items: Vec<BlogPostListItem>,
+        total: u64,
+    },
+    EmptyContractUnavailable,
+    Error {
+        message: String,
+    },
+}
+
+pub fn blog_post_admin_posts_load_view(
+    result: Result<(Vec<BlogPostListItem>, u64), String>,
+    contract_unavailable: bool,
+    error_context: &str,
+) -> BlogPostAdminPostsLoadViewModel {
+    match result {
+        Ok((items, total)) => BlogPostAdminPostsLoadViewModel::Loaded { items, total },
+        Err(_) if contract_unavailable => BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable,
+        Err(error) => BlogPostAdminPostsLoadViewModel::Error {
+            message: error_with_context(error_context, error.as_str()),
+        },
+    }
+}
+
 pub fn is_markdown_format(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case("markdown")
 }
@@ -777,6 +819,64 @@ pub fn submit_action_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_list_item(id: &str) -> BlogPostListItem {
+        BlogPostListItem {
+            id: id.to_string(),
+            title: "Title".to_string(),
+            effective_locale: "en".to_string(),
+            slug: Some("title".to_string()),
+            excerpt: Some("Excerpt".to_string()),
+            status: "draft".to_string(),
+            created_at: "2026-06-14T00:00:00Z".to_string(),
+            published_at: None,
+        }
+    }
+
+    #[test]
+    fn admin_warning_and_posts_load_views_keep_adapter_policy_in_core() {
+        let markdown = blog_post_admin_raw_body_warning_view("markdown", "warn".to_string());
+        assert!(!markdown.visible);
+        assert_eq!(markdown.message, "warn");
+
+        let raw = blog_post_admin_raw_body_warning_view("rt_json_v1", "warn".to_string());
+        assert!(raw.visible);
+
+        let loaded = blog_post_admin_posts_load_view(
+            Ok((vec![sample_list_item("post-1")], 1)),
+            false,
+            "Failed to load posts",
+        );
+        assert_eq!(
+            loaded,
+            BlogPostAdminPostsLoadViewModel::Loaded {
+                items: vec![sample_list_item("post-1")],
+                total: 1,
+            }
+        );
+
+        let unavailable = blog_post_admin_posts_load_view(
+            Err("contract unavailable".to_string()),
+            true,
+            "Failed to load posts",
+        );
+        assert_eq!(
+            unavailable,
+            BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable
+        );
+
+        let error = blog_post_admin_posts_load_view(
+            Err("network".to_string()),
+            false,
+            "Failed to load posts",
+        );
+        assert_eq!(
+            error,
+            BlogPostAdminPostsLoadViewModel::Error {
+                message: "Failed to load posts: network".to_string(),
+            }
+        );
+    }
 
     #[test]
     fn optional_text_returns_none_for_blank() {

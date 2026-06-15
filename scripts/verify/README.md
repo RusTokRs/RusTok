@@ -27,6 +27,7 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-regi
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages
 node scripts/verify/verify-ecommerce-fba-registries.mjs
 ```
@@ -56,6 +57,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Проверка required fallback/toggle профилей page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
 | Проверка консистентности значений в toggle профилях page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
 | Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Проверка drift-а error catalog между provider/consumer manifest, backend и UI adapters | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages` |
 | Проверка readiness consumer-модуля (`pages/forum`) | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
 | Проверка ecommerce FBA provider registries и locked contract-test metadata | `node scripts/verify/verify-ecommerce-fba-registries.mjs` |
 
@@ -66,6 +68,7 @@ npm run verify:page-builder:contract-parity
 npm run verify:page-builder:fallback-profiles
 npm run verify:page-builder:toggle-profiles
 npm run verify:page-builder:fba:baseline
+npm run verify:page-builder:error-catalog
 npm run verify:page-builder:consumer:pages
 npm run verify:page-builder:consumer:forum
 npm run verify:ecommerce:fba-registries

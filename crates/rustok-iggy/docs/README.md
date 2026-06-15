@@ -14,7 +14,7 @@
 
 - `IggyTransport` и transport-facing configuration;
 - JSON/Postcard-сериализация и десериализация для путей публикации и чтения;
-- управление topology, consumer groups, первый wrapper `consume_next_as_group`, DLQ, replay и health abstractions;
+- управление topology, consumer groups, wrapper `consume_next_as_group` с connector metadata (`offset`/opaque `ack_token`), DLQ, replay и health abstractions;
 - observability hooks для transport layer;
 - отсутствие ownership над embedded/remote connection lifecycle.
 

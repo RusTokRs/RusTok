@@ -23,6 +23,7 @@
 
 - `src/lib.rs` — runtime metadata и permission surface;
 - `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, feature-flag guard и server-side handler seam с RBAC permission checks;
+- `src/health.rs` — типизированные provider health states, degradation reasons и evaluator pilot SLO thresholds для release-gate evidence;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 
@@ -34,7 +35,9 @@
 
 ## Provider health and SLO baseline
 
-Machine-readable provider metadata now includes the health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) and pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. The registry and Wave evidence packet gates must keep these thresholds synchronized before Wave 1 promotion.
+Machine-readable provider metadata включает health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) и pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. Runtime-код exposes тот же baseline через `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT` и `ProviderHealthSnapshot::evaluate`, чтобы Wave evidence можно было формировать без transport-specific adapters. Registry и Wave evidence packet gates должны держать эти thresholds синхронизированными до Wave 1 promotion.
+
+Правила health evaluation намеренно консервативны: breach preview p95 или runtime error-rate помечает provider как `provider_unhealthy`, breach sanitize threshold помечает `sanitize_backpressure`, breach publish p95 помечает `publish_backlog`, а runtime error-rate выше двойного pilot threshold переводит state в `unavailable`; иначе непустой набор degradation reasons даёт `degraded`.
 
 ## Capability permission map
 

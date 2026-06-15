@@ -13,10 +13,11 @@ low-level message I/O, не забирая у `rustok-iggy` transport-level sema
 ## Зона ответственности
 
 - `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`;
-- `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `ConnectorError`;
+- `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorError`;
 - connection lifecycle, mode abstraction и low-level publish/subscribe contracts;
 - optional Iggy SDK integration через feature flag;
-- отсутствие ownership над transport-level serialization, DLQ, replay и topology policy.
+- отсутствие ownership над transport-level serialization, DLQ, replay и topology policy;
+- connector metadata включает только low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) и не задаёт retry/DLQ/replay правила.
 
 ## Интеграция
 

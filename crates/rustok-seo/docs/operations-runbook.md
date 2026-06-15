@@ -51,3 +51,19 @@
 - Есть sample `last_error` для оставшихся failed/dead-letter rows.
 - Зафиксировано, что GraphQL и REST возвращают совместимые semantic error codes.
 - Для Next host подтверждён fallback reason (`module_disabled`, `not_found`, `permission_denied`, `transport_failure`) вместо blanket failure.
+
+## Live incident evidence template (D9)
+
+Use this block when D8 live backend/host evidence is available. Do not mark D9 live evidence complete from static review alone.
+
+- Incident / drill id:
+- Tenant and enabled SEO flags:
+- Surface used: GraphQL / REST / Next Admin / runbook CLI
+- Command, CI job, or operator action:
+- Before counters: `pending`, `sent`, `retry`, `failed`, `dead_letter`
+- After counters: `pending`, `sent`, `retry`, `failed`, `dead_letter`
+- Sample `last_error` for remaining failed/dead-letter rows:
+- Cursor transition observed:
+- Semantic error parity sample (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport):
+- Storefront smoke evidence: runtime page context, robots/sitemap source, product/blog metadata route
+- Stop criteria triggered: yes/no; if yes, remediation owner and rollback/containment action

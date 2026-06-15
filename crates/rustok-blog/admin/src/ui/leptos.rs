@@ -88,6 +88,13 @@ pub fn BlogAdmin() -> impl IntoView {
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
+    let raw_body_warning_message = form_raw_warning.clone();
+    let raw_body_warning_view = Memo::new(move |_| {
+        core::blog_post_admin_raw_body_warning_view(
+            body_format.get().as_str(),
+            raw_body_warning_message.clone(),
+        )
+    });
     let reset_form_action = Callback::new({
         let default_locale = default_locale.clone();
         move |_| {
@@ -592,11 +599,24 @@ pub fn BlogAdmin() -> impl IntoView {
                     >
                         {move || {
                             posts_resource.get().map(|result| {
-                                match result {
-                                    Ok(post_list) => view! {
+                                let contract_unavailable = result
+                                    .as_ref()
+                                    .err()
+                                    .map(transport::is_posts_contract_unavailable)
+                                    .unwrap_or(false);
+                                let posts_view = core::blog_post_admin_posts_load_view(
+                                    result
+                                        .map(|post_list| (post_list.items, post_list.total))
+                                        .map_err(|err| err.to_string()),
+                                    contract_unavailable,
+                                    load_posts_error_label.as_str(),
+                                );
+
+                                match posts_view {
+                                    core::BlogPostAdminPostsLoadViewModel::Loaded { items, total } => view! {
                                         <BlogPostsTable
-                                            items=post_list.items
-                                            total=post_list.total
+                                            items=items
+                                            total=total
                                             editing_post_id=editing_post_id.get()
                                             busy_key=busy_key.get()
                                             on_edit=open_post
@@ -605,7 +625,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                             on_delete=delete_post
                                         />
                                     }.into_any(),
-                                    Err(err) if transport::is_posts_contract_unavailable(&err) => view! {
+                                    core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable => view! {
                                         <BlogPostsTable
                                             items=Vec::new()
                                             total=0
@@ -617,9 +637,9 @@ pub fn BlogAdmin() -> impl IntoView {
                                             on_delete=delete_post
                                         />
                                     }.into_any(),
-                                    Err(err) => view! {
+                                    core::BlogPostAdminPostsLoadViewModel::Error { message } => view! {
                                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                            {core::error_with_context(load_posts_error_label.as_str(), &err.to_string())}
+                                            {message}
                                         </div>
                                     }.into_any(),
                                 }
