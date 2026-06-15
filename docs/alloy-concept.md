@@ -3,7 +3,7 @@
 > **Придумал → собрал → обкатал → выкатил в прод.**
 > Без боли, без ручного кода, без остановки системы.
 
-**Лицензия:** MIT / Apache 2.0
+**Лицензия:** Business Source License 1.1 with RusTok Additional Use Grant
 **Репозиторий:** github.com/RustokCMS/RusTok
 **Версия концепта:** 1.0 / Февраль 2026
 
@@ -392,7 +392,7 @@ Alloy генерирует → модуль идёт в маркетплейс
 
 | Решение | Выбор | Обоснование |
 |---------|-------|-------------|
-| Лицензия | MIT / Apache 2.0 | Максимальное доверие и adoption |
+| Лицензия | Business Source License 1.1 with RusTok Additional Use Grant | Source-available и бесплатна для community/small-business use; commercial license требуется для larger organizations и RusTok-as-a-Service / hosted / white-label / competing platform uses |
 | AI-транспорт | Плагин-система (trait AiProvider) | Нет vendor lock-in на AI-провайдера |
 | Интерфейс задачи | Текст / YAML / API по контексту | AI генерирует YAML из текста |
 | Самоотладка | Авто для мелких, подтверждение для логики | Баланс автономии и контроля |

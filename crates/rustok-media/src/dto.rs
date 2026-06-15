@@ -173,6 +173,49 @@ mod tests {
     }
 
     #[test]
+    fn media_image_descriptor_trims_explicit_mime_and_rejects_invalid_dimensions() {
+        let descriptor = MediaImageDescriptor::from_parts(
+            " https://cdn.example.com/assets/photo.JPG#hero ",
+            Some("   ".to_string()),
+            Some(0),
+            Some(-10),
+            Some(" image/jpeg ".to_string()),
+        )
+        .expect("descriptor should keep trimmed URL with explicit mime");
+
+        assert_eq!(
+            descriptor.url,
+            "https://cdn.example.com/assets/photo.JPG#hero"
+        );
+        assert_eq!(descriptor.alt, None);
+        assert_eq!(descriptor.width, None);
+        assert_eq!(descriptor.height, None);
+        assert_eq!(descriptor.mime_type.as_deref(), Some("image/jpeg"));
+        assert!(!descriptor.has_alt());
+        assert!(!descriptor.has_size());
+        assert_eq!(descriptor.pixel_count(), None);
+        assert_eq!(descriptor.aspect_ratio(), None);
+        assert_eq!(descriptor.file_extension().as_deref(), Some("jpg"));
+    }
+
+    #[test]
+    fn media_image_descriptor_infers_mime_after_query_and_fragment_cleanup() {
+        let descriptor = MediaImageDescriptor::from_parts(
+            "https://cdn.example.com/assets/banner.png?signature=abc#fragment",
+            None,
+            Some(320),
+            Some(160),
+            None,
+        )
+        .expect("descriptor should infer mime from cleaned path");
+
+        assert_eq!(descriptor.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(descriptor.file_extension().as_deref(), Some("png"));
+        assert_eq!(descriptor.pixel_count(), Some(51200));
+        assert_eq!(descriptor.aspect_ratio(), Some(2.0));
+    }
+
+    #[test]
     fn media_image_descriptor_rejects_empty_url() {
         assert!(
             MediaImageDescriptor::from_parts("   ", None, None, None, None).is_none(),

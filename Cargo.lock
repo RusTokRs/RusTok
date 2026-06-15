@@ -9629,6 +9629,7 @@ dependencies = [
  "once_cell",
  "reqwest 0.13.2",
  "rhai",
+ "rustok-ai-content",
  "rustok-ai-order",
  "rustok-ai-product",
  "rustok-api",
@@ -9675,7 +9676,7 @@ dependencies = [
 name = "rustok-ai-content"
 version = "0.1.0"
 dependencies = [
- "rustok-ai",
+ "serde",
 ]
 
 [[package]]

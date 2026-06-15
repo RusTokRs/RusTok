@@ -13,3 +13,4 @@
 ## Execution checkpoint
 
 - Создан начальный scaffold crate и документация.
+- Перенесены task/tool identity, generated decision contract и базовая валидация `content_moderation` в `rustok-ai-content`; `rustok-ai` consume-ит validator в direct generation path.

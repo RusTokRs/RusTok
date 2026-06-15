@@ -7,8 +7,9 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    media_dimensions_label, media_usage_stat_cards, page_count_label,
-    selected_translation_form_state, MediaTranslationFormState, MediaUsageLabels,
+    is_busy_key, media_detail_lines, media_dimensions_label, media_upload_success_state,
+    media_usage_stat_cards, page_count_label, selected_translation_form_state, MediaAdminBusyKey,
+    MediaDetailLabels, MediaTranslationFormState, MediaUsageLabels,
 };
 use crate::i18n::t;
 use crate::model::{MediaListItem, MediaUsageSnapshot};
@@ -204,7 +205,7 @@ pub fn MediaAdmin() -> impl IntoView {
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        set_busy_key.set(Some("upload".to_string()));
+        set_busy_key.set(Some(MediaAdminBusyKey::Upload.as_storage_key()));
         spawn_local(async move {
             match read_selected_file(input).await {
                 Ok(Some(file)) => {
@@ -218,11 +219,15 @@ pub fn MediaAdmin() -> impl IntoView {
                     .await
                     {
                         Ok(item) => {
-                            let media_id = item.id;
-                            set_selected_media_id.set(Some(media_id.clone()));
-                            set_refresh_nonce.update(|value| *value += 1);
-                            upload_query_writer
-                                .replace_value(AdminQueryKey::MediaId.as_str(), media_id);
+                            let upload_state = media_upload_success_state(item.id);
+                            set_selected_media_id.set(Some(upload_state.selected_media_id.clone()));
+                            if upload_state.should_refresh {
+                                set_refresh_nonce.update(|value| *value += 1);
+                            }
+                            upload_query_writer.replace_value(
+                                AdminQueryKey::MediaId.as_str(),
+                                upload_state.selected_media_id,
+                            );
                         }
                         Err(err) => set_upload_error.set(Some(format!(
                             "{}: {err}",
@@ -273,7 +278,7 @@ pub fn MediaAdmin() -> impl IntoView {
             caption: caption.get_untracked(),
         }
         .to_upsert_payload(selected_locale.get_untracked());
-        set_busy_key.set(Some("translation".to_string()));
+        set_busy_key.set(Some(MediaAdminBusyKey::Translation.as_storage_key()));
         spawn_local(async move {
             match transport::upsert_translation(media_id, payload, token_value, tenant_value).await
             {
@@ -301,7 +306,9 @@ pub fn MediaAdmin() -> impl IntoView {
         };
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        set_busy_key.set(Some(format!("delete:{media_id}")));
+        set_busy_key.set(Some(
+            MediaAdminBusyKey::Delete(media_id.clone()).as_storage_key(),
+        ));
         spawn_local(async move {
             match transport::delete_media(media_id, token_value, tenant_value).await {
                 Ok(true) => {
@@ -362,7 +369,7 @@ pub fn MediaAdmin() -> impl IntoView {
                         <button
                             type="button"
                             class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                            disabled=move || busy_key.get().as_deref() == Some("upload")
+                            disabled=move || is_busy_key(busy_key.get().as_deref(), MediaAdminBusyKey::Upload)
                             on:click=upload_selected
                         >
                             {upload_action.clone()}
@@ -521,7 +528,7 @@ pub fn MediaAdmin() -> impl IntoView {
                             <button
                                 type="submit"
                                 class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                                disabled=move || busy_key.get().as_deref() == Some("translation")
+                                disabled=move || is_busy_key(busy_key.get().as_deref(), MediaAdminBusyKey::Translation)
                             >
                                 {translation_save.clone()}
                             </button>
@@ -562,15 +569,29 @@ fn MediaListCard(item: MediaListItem) -> impl IntoView {
 #[component]
 fn MediaDetailCard(item: MediaListItem) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let lines = media_detail_lines(
+        &item,
+        MediaDetailLabels {
+            original_name: t(
+                locale.as_deref(),
+                "media.detail.originalName",
+                "Original Name",
+            ),
+            id: t(locale.as_deref(), "media.detail.id", "ID"),
+            mime: t(locale.as_deref(), "media.detail.mime", "MIME"),
+            storage: t(locale.as_deref(), "media.detail.storage", "Storage"),
+            public_url: t(locale.as_deref(), "media.detail.publicUrl", "Public URL"),
+            size: t(locale.as_deref(), "media.detail.size", "Size"),
+            created: t(locale.as_deref(), "media.detail.created", "Created"),
+        },
+        &t(locale.as_deref(), "media.asset.bytes", "{count} bytes"),
+    );
+
     view! {
         <div class="space-y-3 text-sm">
-            <DetailLine label=t(locale.as_deref(), "media.detail.originalName", "Original Name") value=item.original_name />
-            <DetailLine label=t(locale.as_deref(), "media.detail.id", "ID") value=item.id />
-            <DetailLine label=t(locale.as_deref(), "media.detail.mime", "MIME") value=item.mime_type />
-            <DetailLine label=t(locale.as_deref(), "media.detail.storage", "Storage") value=item.storage_driver />
-            <DetailLine label=t(locale.as_deref(), "media.detail.publicUrl", "Public URL") value=item.public_url />
-            <DetailLine label=t(locale.as_deref(), "media.detail.size", "Size") value=t(locale.as_deref(), "media.asset.bytes", "{count} bytes").replace("{count}", &item.size.to_string()) />
-            <DetailLine label=t(locale.as_deref(), "media.detail.created", "Created") value=item.created_at />
+            {lines.into_iter().map(|line| view! {
+                <DetailLine label=line.label value=line.value />
+            }).collect_view()}
         </div>
     }
 }

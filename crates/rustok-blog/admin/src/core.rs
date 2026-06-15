@@ -499,12 +499,89 @@ pub fn blog_post_admin_form_view(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminEditBannerViewModel {
+    pub visible: bool,
+    pub banner_text: String,
+    pub create_new_label: String,
+}
+
+pub fn blog_post_admin_edit_banner_view(
+    editing_post_id: Option<&str>,
+    editing_template: &str,
+    create_new_label: String,
+) -> BlogPostAdminEditBannerViewModel {
+    BlogPostAdminEditBannerViewModel {
+        visible: is_editing_mode(editing_post_id),
+        banner_text: label_with_optional_id(editing_template, editing_post_id),
+        create_new_label,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminRawBodyWarningViewModel {
+    pub visible: bool,
+    pub message: String,
+}
+
+pub fn blog_post_admin_raw_body_warning_view(
+    body_format: &str,
+    warning_message: String,
+) -> BlogPostAdminRawBodyWarningViewModel {
+    BlogPostAdminRawBodyWarningViewModel {
+        visible: should_show_raw_body_warning(body_format),
+        message: warning_message,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlogPostAdminPostsLoadViewModel {
+    Loaded {
+        items: Vec<BlogPostListItem>,
+        total: u64,
+    },
+    EmptyContractUnavailable,
+    Error {
+        message: String,
+    },
+}
+
+pub fn blog_post_admin_posts_load_view(
+    result: Result<(Vec<BlogPostListItem>, u64), String>,
+    contract_unavailable: bool,
+    error_context: &str,
+) -> BlogPostAdminPostsLoadViewModel {
+    match result {
+        Ok((items, total)) => BlogPostAdminPostsLoadViewModel::Loaded { items, total },
+        Err(_) if contract_unavailable => BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable,
+        Err(error) => BlogPostAdminPostsLoadViewModel::Error {
+            message: error_with_context(error_context, error.as_str()),
+        },
+    }
+}
+
 pub fn is_markdown_format(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case("markdown")
 }
 
 pub fn should_show_raw_body_warning(body_format: &str) -> bool {
     !is_markdown_format(body_format)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminBodyFormatWarningViewModel {
+    pub visible: bool,
+    pub message: String,
+}
+
+pub fn blog_post_admin_body_format_warning_view(
+    body_format: &str,
+    message: String,
+) -> BlogPostAdminBodyFormatWarningViewModel {
+    BlogPostAdminBodyFormatWarningViewModel {
+        visible: should_show_raw_body_warning(body_format),
+        message,
+    }
 }
 
 pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {
@@ -612,7 +689,6 @@ pub fn prepare_blog_post_archive_command(
         locale: locale_arg(post_locale),
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostLoadResultViewModel {
@@ -743,6 +819,64 @@ pub fn submit_action_label(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_list_item(id: &str) -> BlogPostListItem {
+        BlogPostListItem {
+            id: id.to_string(),
+            title: "Title".to_string(),
+            effective_locale: "en".to_string(),
+            slug: Some("title".to_string()),
+            excerpt: Some("Excerpt".to_string()),
+            status: "draft".to_string(),
+            created_at: "2026-06-14T00:00:00Z".to_string(),
+            published_at: None,
+        }
+    }
+
+    #[test]
+    fn admin_warning_and_posts_load_views_keep_adapter_policy_in_core() {
+        let markdown = blog_post_admin_raw_body_warning_view("markdown", "warn".to_string());
+        assert!(!markdown.visible);
+        assert_eq!(markdown.message, "warn");
+
+        let raw = blog_post_admin_raw_body_warning_view("rt_json_v1", "warn".to_string());
+        assert!(raw.visible);
+
+        let loaded = blog_post_admin_posts_load_view(
+            Ok((vec![sample_list_item("post-1")], 1)),
+            false,
+            "Failed to load posts",
+        );
+        assert_eq!(
+            loaded,
+            BlogPostAdminPostsLoadViewModel::Loaded {
+                items: vec![sample_list_item("post-1")],
+                total: 1,
+            }
+        );
+
+        let unavailable = blog_post_admin_posts_load_view(
+            Err("contract unavailable".to_string()),
+            true,
+            "Failed to load posts",
+        );
+        assert_eq!(
+            unavailable,
+            BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable
+        );
+
+        let error = blog_post_admin_posts_load_view(
+            Err("network".to_string()),
+            false,
+            "Failed to load posts",
+        );
+        assert_eq!(
+            error,
+            BlogPostAdminPostsLoadViewModel::Error {
+                message: "Failed to load posts: network".to_string(),
+            }
+        );
+    }
 
     #[test]
     fn optional_text_returns_none_for_blank() {
@@ -1071,6 +1205,18 @@ mod tests {
     }
 
     #[test]
+    fn body_format_warning_view_model_keeps_visibility_policy_in_core() {
+        let markdown =
+            blog_post_admin_body_format_warning_view("markdown", "Raw warning".to_string());
+        assert!(!markdown.visible);
+        assert_eq!(markdown.message, "Raw warning");
+
+        let raw = blog_post_admin_body_format_warning_view("rt_json_v1", "Raw warning".to_string());
+        assert!(raw.visible);
+        assert_eq!(raw.message, "Raw warning");
+    }
+
+    #[test]
     fn slugify_normalizes_text() {
         assert_eq!(slugify("Hello, Rustok UI!"), "hello-rustok-ui");
     }
@@ -1315,6 +1461,23 @@ mod tests {
         assert_eq!(form.title, "Edit post");
         assert_eq!(form.submit_label, "Saving...");
         assert!(form.submit_disabled);
+
+        let edit_banner = blog_post_admin_edit_banner_view(
+            Some("post-1"),
+            "Editing post {id}",
+            "Create new instead".to_string(),
+        );
+        assert!(edit_banner.visible);
+        assert_eq!(edit_banner.banner_text, "Editing post post-1");
+        assert_eq!(edit_banner.create_new_label, "Create new instead");
+
+        let hidden_edit_banner = blog_post_admin_edit_banner_view(
+            None,
+            "Editing post {id}",
+            "Create new instead".to_string(),
+        );
+        assert!(!hidden_edit_banner.visible);
+        assert_eq!(hidden_edit_banner.banner_text, "");
 
         let create_form = blog_post_admin_form_view(
             None,

@@ -193,3 +193,150 @@ async fn customer_cannot_mutate_blocks_or_menus() {
         .expect_err("customer should not create menus");
     assert!(matches!(denied_menu, PagesError::Forbidden(_)));
 }
+
+async fn create_published_page_with_channels(
+    service: &PageService,
+    tenant_id: Uuid,
+    security: SecurityContext,
+    slug: &str,
+    channel_slugs: Vec<String>,
+) -> rustok_pages::dto::PageResponse {
+    service
+        .create(
+            tenant_id,
+            security,
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
+                    locale: "en".to_string(),
+                    title: slug.to_string(),
+                    slug: Some(slug.to_string()),
+                    meta_title: None,
+                    meta_description: None,
+                }],
+                template: Some("default".to_string()),
+                body: None,
+                blocks: None,
+                channel_slugs: Some(channel_slugs),
+                publish: true,
+            },
+        )
+        .await
+        .expect("channel-scoped page should be created")
+}
+
+#[tokio::test]
+async fn admin_bypasses_draft_status_filter_while_customer_is_restricted_to_published() {
+    let (page_service, _, _, tenant_id) = setup().await;
+    let admin = admin_context();
+    let customer = customer_context();
+
+    let draft = create_page(
+        &page_service,
+        tenant_id,
+        admin.clone(),
+        "admin-draft",
+        false,
+    )
+    .await;
+    let published = create_page(
+        &page_service,
+        tenant_id,
+        admin.clone(),
+        "admin-published",
+        true,
+    )
+    .await;
+
+    let (admin_items, admin_total) = page_service
+        .list(
+            tenant_id,
+            admin,
+            ListPagesFilter {
+                status: None,
+                template: None,
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await
+        .expect("admin list should include non-public pages");
+    assert_eq!(admin_total, 2);
+    assert!(admin_items.iter().any(|item| item.id == draft.id));
+    assert!(admin_items.iter().any(|item| item.id == published.id));
+
+    let (customer_items, customer_total) = page_service
+        .list(
+            tenant_id,
+            customer,
+            ListPagesFilter {
+                status: Some(rustok_content::entities::node::ContentStatus::Draft),
+                template: None,
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await
+        .expect("customer draft-filtered list should not error");
+    assert_eq!(customer_total, 0);
+    assert!(customer_items.is_empty());
+}
+
+#[tokio::test]
+async fn public_channel_visibility_filters_pages_but_admin_list_bypasses_allowlist() {
+    let (page_service, _, _, tenant_id) = setup().await;
+    let admin = admin_context();
+
+    let web_page = create_published_page_with_channels(
+        &page_service,
+        tenant_id,
+        admin.clone(),
+        "web-only",
+        vec!["web".to_string()],
+    )
+    .await;
+    let app_page = create_published_page_with_channels(
+        &page_service,
+        tenant_id,
+        admin.clone(),
+        "app-only",
+        vec!["app".to_string()],
+    )
+    .await;
+
+    let (web_items, web_total) = page_service
+        .list_public_visible(
+            tenant_id,
+            ListPagesFilter {
+                status: None,
+                template: None,
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+            Some("web"),
+        )
+        .await
+        .expect("public web channel list should succeed");
+    assert_eq!(web_total, 1);
+    assert_eq!(web_items[0].id, web_page.id);
+
+    let (admin_items, admin_total) = page_service
+        .list(
+            tenant_id,
+            admin,
+            ListPagesFilter {
+                status: None,
+                template: None,
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 20,
+            },
+        )
+        .await
+        .expect("admin list should bypass page channel allowlist");
+    assert_eq!(admin_total, 2);
+    assert!(admin_items.iter().any(|item| item.id == web_page.id));
+    assert!(admin_items.iter().any(|item| item.id == app_page.id));
+}

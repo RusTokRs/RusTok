@@ -464,6 +464,37 @@ fn escape_html(input: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PublishStateView<'a> {
+    pub status: &'a str,
+    pub next_action_publish: bool,
+}
+
+pub fn publish_state_view(is_published: bool) -> PublishStateView<'static> {
+    if is_published {
+        PublishStateView {
+            status: "published",
+            next_action_publish: false,
+        }
+    } else {
+        PublishStateView {
+            status: "draft",
+            next_action_publish: true,
+        }
+    }
+}
+
+pub fn channel_count_label(channel_slugs_text: &str) -> String {
+    parse_channel_slugs(channel_slugs_text).len().to_string()
+}
+
+pub fn legacy_block_snapshot_label(block: &PageBlock) -> String {
+    format!(
+        "#{} · {} · position {}",
+        block.id, block.block_type, block.position
+    )
+}
+
 pub fn status_badge_css(status: &str) -> String {
     format!(
         "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {}",
@@ -686,6 +717,29 @@ mod tests {
     #[test]
     fn count_label_replaces_placeholder() {
         assert_eq!(count_label("{count} page(s)", 7), "7 page(s)");
+    }
+
+    #[test]
+    fn builder_surface_view_helpers_are_core_owned() {
+        assert_eq!(channel_count_label(" web, mobile, web "), "2");
+
+        let draft_state = publish_state_view(false);
+        assert_eq!(draft_state.status, "draft");
+        assert!(draft_state.next_action_publish);
+
+        let published_state = publish_state_view(true);
+        assert_eq!(published_state.status, "published");
+        assert!(!published_state.next_action_publish);
+
+        let block = PageBlock {
+            id: "block_1".to_string(),
+            block_type: "hero".to_string(),
+            position: 3,
+        };
+        assert_eq!(
+            legacy_block_snapshot_label(&block),
+            "#block_1 · hero · position 3"
+        );
     }
 
     #[test]

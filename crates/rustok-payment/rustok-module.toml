@@ -18,7 +18,7 @@ page_title = "Payment"
 [fba.provider]
 status = "in_progress"
 role = "provider"
-contract_version = "payment.checkout.v1"
+contract_version = "payment.checkout.v1+provider_spi.v1"
 registry = "contracts/payment-fba-registry.json"
 context = "rustok_api::ports::PortContext"
 error = "rustok_api::ports::PortError"

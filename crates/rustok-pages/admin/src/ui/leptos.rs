@@ -777,15 +777,9 @@ pub fn PagesAdmin() -> impl IntoView {
                                                     .get()
                                                     .into_iter()
                                                     .map(|block| {
+                                                        let label = core::legacy_block_snapshot_label(&block);
                                                         view! {
-                                                            <li>
-                                                                {format!(
-                                                                    "#{} · {} · position {}",
-                                                                    block.id,
-                                                                    block.block_type,
-                                                                    block.position,
-                                                                )}
-                                                            </li>
+                                                            <li>{label}</li>
                                                         }
                                                     })
                                                     .collect_view()
@@ -805,7 +799,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     <dt class="font-medium text-card-foreground">{template_label.clone()}</dt>
                                     <dd>{"default"}</dd>
                                     <dt class="font-medium text-card-foreground">{channels_count_label.clone()}</dt>
-                                    <dd>{move || core::parse_channel_slugs(&channel_slugs_text.get()).len().to_string()}</dd>
+                                    <dd>{move || core::channel_count_label(&channel_slugs_text.get())}</dd>
                                     <dt class="font-medium text-card-foreground">{locale_property_label.clone()}</dt>
                                     <dd>{move || locale.get()}</dd>
                                 </dl>
@@ -818,8 +812,8 @@ pub fn PagesAdmin() -> impl IntoView {
                                 <div class="space-y-3 text-xs text-muted-foreground">
                                     <div class="flex items-center justify-between gap-3">
                                         <span class="font-medium text-card-foreground">{publish_state_label.clone()}</span>
-                                        <span class=move || core::status_badge_css(if publish_now.get() { "published" } else { "draft" })>
-                                            {move || if publish_now.get() { "published" } else { "draft" }}
+                                        <span class=move || core::status_badge_css(core::publish_state_view(publish_now.get()).status)>
+                                            {move || core::publish_state_view(publish_now.get()).status}
                                         </span>
                                     </div>
                                     <div class="flex items-center justify-between gap-3">
@@ -848,7 +842,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                     }
                                     on:click=move |_| {
                                         if let Some(page_id) = editing_page_id.get() {
-                                            publish_page.run((page_id, !publish_now.get()));
+                                            publish_page.run((page_id, core::publish_state_view(publish_now.get()).next_action_publish));
                                         }
                                     }
                                 >

@@ -12,6 +12,12 @@
       "properties",
       "publish"
     ],
+    "permission_map": {
+      "preview": "pages:read",
+      "tree": "pages:read",
+      "properties": "pages:update",
+      "publish": "pages:publish"
+    },
     "error_catalog": {
       "validation": "validation",
       "sanitize": "sanitize",

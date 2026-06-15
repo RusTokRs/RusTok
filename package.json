@@ -7,6 +7,7 @@
     "verify:page-builder:fallback-profiles": "node scripts/verify/verify-page-builder-fallback-profiles.mjs",
     "verify:page-builder:toggle-profiles": "node scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs",
     "verify:page-builder:fba:baseline": "node scripts/verify/verify-page-builder-fba-baseline.mjs",
+    "verify:page-builder:error-catalog": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages",
     "verify:page-builder:consumer:pages": "node scripts/verify/verify-page-builder-consumer-readiness.mjs pages",
     "verify:page-builder:consumer:forum": "node scripts/verify/verify-page-builder-consumer-readiness.mjs forum",
     "verify:flex:contract": "node scripts/verify/verify-flex-multilingual-contract.mjs",
@@ -39,7 +40,8 @@
     "verify:fulfillment:storefront-boundary": "node scripts/verify/verify-fulfillment-storefront-boundary.mjs",
     "verify:order:storefront-boundary": "node scripts/verify/verify-order-storefront-boundary.mjs",
     "verify:page-builder:pages:legacy-bridge": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-legacy-bridge.mjs",
-    "verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.mjs"
+    "verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "test:verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.test.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

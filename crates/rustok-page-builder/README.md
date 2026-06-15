@@ -11,6 +11,7 @@ It defines capability-first contracts and lifecycle seams for visual page compos
 
 ## Entry points
 - `src/lib.rs` — module runtime metadata (`PageBuilderModule`) and permission surface.
+- `src/service.rs` — transport-neutral capability service, rollout guard, and authorized handler seam.
 - `rustok-module.toml` — module manifest contract.
 - `docs/README.md` — module runtime contract in Russian.
 

@@ -88,6 +88,13 @@ pub fn BlogAdmin() -> impl IntoView {
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
+    let raw_body_warning_message = form_raw_warning.clone();
+    let raw_body_warning_view = Memo::new(move |_| {
+        core::blog_post_admin_raw_body_warning_view(
+            body_format.get().as_str(),
+            raw_body_warning_message.clone(),
+        )
+    });
     let reset_form_action = Callback::new({
         let default_locale = default_locale.clone();
         move |_| {
@@ -106,13 +113,25 @@ pub fn BlogAdmin() -> impl IntoView {
         }
     });
     let editing_banner_locale = ui_locale.clone();
-    let editing_banner_text = Memo::new(move |_| {
-        let template = t(
-            editing_banner_locale.as_deref(),
-            "blog.form.editingBanner",
-            "Editing post {id}",
-        );
-        core::label_with_optional_id(template.as_str(), editing_post_id.get().as_deref())
+    let editing_banner_create_new_label = form_create_new_instead.clone();
+    let editing_banner_view = Memo::new(move |_| {
+        core::blog_post_admin_edit_banner_view(
+            editing_post_id.get().as_deref(),
+            t(
+                editing_banner_locale.as_deref(),
+                "blog.form.editingBanner",
+                "Editing post {id}",
+            )
+            .as_str(),
+            editing_banner_create_new_label.clone(),
+        )
+    });
+    let body_format_warning_message = form_raw_warning.clone();
+    let body_format_warning_view = Memo::new(move |_| {
+        core::blog_post_admin_body_format_warning_view(
+            body_format.get().as_str(),
+            body_format_warning_message.clone(),
+        )
     });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
@@ -580,11 +599,24 @@ pub fn BlogAdmin() -> impl IntoView {
                     >
                         {move || {
                             posts_resource.get().map(|result| {
-                                match result {
-                                    Ok(post_list) => view! {
+                                let contract_unavailable = result
+                                    .as_ref()
+                                    .err()
+                                    .map(transport::is_posts_contract_unavailable)
+                                    .unwrap_or(false);
+                                let posts_view = core::blog_post_admin_posts_load_view(
+                                    result
+                                        .map(|post_list| (post_list.items, post_list.total))
+                                        .map_err(|err| err.to_string()),
+                                    contract_unavailable,
+                                    load_posts_error_label.as_str(),
+                                );
+
+                                match posts_view {
+                                    core::BlogPostAdminPostsLoadViewModel::Loaded { items, total } => view! {
                                         <BlogPostsTable
-                                            items=post_list.items
-                                            total=post_list.total
+                                            items=items
+                                            total=total
                                             editing_post_id=editing_post_id.get()
                                             busy_key=busy_key.get()
                                             on_edit=open_post
@@ -593,7 +625,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                             on_delete=delete_post
                                         />
                                     }.into_any(),
-                                    Err(err) if transport::is_posts_contract_unavailable(&err) => view! {
+                                    core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable => view! {
                                         <BlogPostsTable
                                             items=Vec::new()
                                             total=0
@@ -605,9 +637,9 @@ pub fn BlogAdmin() -> impl IntoView {
                                             on_delete=delete_post
                                         />
                                     }.into_any(),
-                                    Err(err) => view! {
+                                    core::BlogPostAdminPostsLoadViewModel::Error { message } => view! {
                                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                            {core::error_with_context(load_posts_error_label.as_str(), &err.to_string())}
+                                            {message}
                                         </div>
                                     }.into_any(),
                                 }
@@ -632,13 +664,16 @@ pub fn BlogAdmin() -> impl IntoView {
                         <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
                     </div>
 
-                    <Show when=move || core::is_editing_mode(editing_post_id.get().as_deref())>
+                    <Show when=move || editing_banner_view.get().visible>
                         <BlogEditBanner
                             banner_text=Signal::derive({
-                                let editing_banner_text = editing_banner_text;
-                                move || editing_banner_text.get()
+                                let editing_banner_view = editing_banner_view;
+                                move || editing_banner_view.get().banner_text
                             })
-                            create_new_label=form_create_new_instead.clone()
+                            create_new_label=Signal::derive({
+                                let editing_banner_view = editing_banner_view;
+                                move || editing_banner_view.get().create_new_label
+                            })
                             on_reset=reset_current_post
                         />
                     </Show>
@@ -724,9 +759,9 @@ pub fn BlogAdmin() -> impl IntoView {
                             />
                         </label>
 
-                        <Show when=move || core::should_show_raw_body_warning(body_format.get().as_str())>
+                        <Show when=move || body_format_warning_view.get().visible>
                             <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                {form_raw_warning.clone()}
+                                {move || body_format_warning_view.get().message}
                             </div>
                         </Show>
 
@@ -848,7 +883,7 @@ fn blog_form_view_model(
 #[component]
 fn BlogEditBanner(
     banner_text: Signal<String>,
-    create_new_label: String,
+    create_new_label: Signal<String>,
     on_reset: Callback<()>,
 ) -> impl IntoView {
     view! {
@@ -861,7 +896,7 @@ fn BlogEditBanner(
                 class="text-xs font-medium text-primary hover:underline"
                 on:click=move |_| on_reset.run(())
             >
-                {create_new_label}
+                {move || create_new_label.get()}
             </button>
         </div>
     }

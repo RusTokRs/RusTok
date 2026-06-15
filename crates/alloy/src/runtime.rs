@@ -29,9 +29,10 @@ pub struct SharedAlloyRuntime(pub Arc<AlloyRuntime>);
 impl AlloyRuntime {
     pub fn scoped(&self, tenant_id: Uuid) -> ScopedAlloyRuntime {
         let storage = Arc::new(self.storage.for_tenant(tenant_id));
-        let orchestrator = Arc::new(ScriptOrchestrator::new(
+        let orchestrator = Arc::new(ScriptOrchestrator::with_execution_log(
             self.engine.clone(),
             storage.clone(),
+            self.execution_log.clone(),
         ));
 
         ScopedAlloyRuntime {
@@ -52,7 +53,8 @@ pub fn init(ctx: &AppContext) -> Arc<AlloyRuntime> {
     let storage = Arc::new(SeaOrmStorage::new(ctx.db.clone()));
     let execution_log = Arc::new(SeaOrmExecutionLog::new(ctx.db.clone()));
 
-    let executor = ScriptExecutor::new(engine.clone(), storage.clone());
+    let executor = ScriptExecutor::new(engine.clone(), storage.clone())
+        .with_execution_log(execution_log.clone());
     let scheduler = Arc::new(Scheduler::new(executor, storage.clone()));
     tokio::spawn(async move {
         if let Err(error) = scheduler.load_jobs().await {

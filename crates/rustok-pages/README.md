@@ -2,13 +2,13 @@
 
 ## Purpose
 
-`rustok-pages` owns static pages, blocks, and menus for RusToK.
+`rustok-pages` owns static pages, page bodies, legacy blocks, and menus for RusToK.
 
 ## Responsibilities
 
 - Provide `PagesModule` metadata for the runtime registry.
-- Own page and page-block storage plus the corresponding services.
-- Own menu storage and menu tree services inside the module.
+- Own page storage across `pages`, `page_translations`, `page_bodies`, `page_blocks`, and `page_channel_visibility`.
+- Own menu storage across `menus`, `menu_translations`, `menu_items`, and `menu_item_translations`.
 - Own the Pages GraphQL and REST adapters exported from the module crate.
 - Publish the module-owned Leptos admin and storefront root packages.
 - Keep one real module-owned Leptos vertical slice for pages list/create/edit/update/publish/delete
@@ -40,15 +40,13 @@
 - Pages may legitimately exist with legacy blocks and no `body`; adding or updating a body does
   not auto-convert, overwrite, or delete existing blocks. This read/bridge invariant is checked
   without compilation by `verify-page-builder-pages-legacy-bridge.mjs`.
-- Page CRUD and block CRUD now run on module-owned tables: `pages`, `page_translations`,
-  `page_bodies`, and `page_blocks`.
-- Menu CRUD now runs on module-owned tables: `menus`, `menu_translations`,
-  `menu_items`, and `menu_item_translations`.
+- Page CRUD, localized page metadata, visual-builder bodies, legacy blocks, and page-channel visibility run on module-owned tables: `pages`, `page_translations`, `page_bodies`, `page_blocks`, and `page_channel_visibility`.
+- Menu CRUD and localized menu trees run on module-owned tables: `menus`, `menu_translations`, `menu_items`, and `menu_item_translations`.
 - Declares permissions via `rustok-core::Permission`.
 - Module adapters enforce `pages:*` permissions from `AuthContext.permissions` and pass a
   permission-aware `SecurityContext` into page services.
 - Page, block, and menu services now re-validate `pages:*` locally; `publish` can no longer be
-  bypassed through create/update flows, and customer read paths only see published pages.
+  bypassed through create/update flows, customer read paths only see published pages, and admin/authenticated service paths intentionally bypass public channel visibility allowlists.
 
 ## Entry points
 

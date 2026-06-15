@@ -7,11 +7,11 @@ production-grade уровня.
 ## Execution checkpoint
 
 - Current phase: real_integration_hardening
-- Last checkpoint: no-compile инкремент: добавлен transport-level consume_next_as_group поверх connector subscribe, JSON/Postcard deserialize contract и targeted fake-connector tests; попутно исправлен connector is_connected state read.
-- Next step: довести offset/ack semantics и DLQ/replay movement поверх расширенного connector subscriber contract.
+- Last checkpoint: no-compile инкремент: transport consume path переключён на connector `recv_with_metadata()`, `ConsumedEvent` переносит offset/opaque ack metadata; fake-connector tests обновлены под metadata assertions.
+- Next step: связать offset/ack metadata с DLQ/replay movement и real SDK ack override.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Следующий инкремент должен формализовать ack/offset metadata в rustok-iggy-connector, затем связать retry_from_dlq/replay с consume path.
-- Last updated at (UTC): 2026-06-14T00:00:00Z
+- Hand-off notes for next agent: Следующий инкремент должен связать metadata-bearing consume path с retry_from_dlq/replay и real SDK ack semantics.
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 ## Область работ
 
@@ -40,6 +40,7 @@ production-grade уровня.
 - [ ] закрыть реальные consumption, offset management, DLQ movement и replay flows;
   - [x] добавить первый transport-owned consume path поверх connector `subscribe` и serializer deserialize;
   - [ ] добавить offset/ack metadata и wire-up для DLQ/replay movement;
+    - [x] consume path переносит connector offset/opaque ack metadata в `ConsumedEvent`;
 - [ ] покрывать performance/recovery/security edge-cases targeted tests и drills.
 
 ### 3. Operability
@@ -67,6 +68,6 @@ production-grade уровня.
 ## Quality backlog
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены roundtrip deserialize и consume_next fake-connector tests.
-- [ ] Добавить offset/ack/DLQ replay tests после расширения connector subscriber contract.
+- [ ] Добавить DLQ/replay tests поверх offset/ack metadata после real SDK ack override.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

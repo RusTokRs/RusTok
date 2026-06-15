@@ -7,11 +7,11 @@
 ## Execution checkpoint
 
 - Current phase: lifecycle_hardening
-- Last checkpoint: no-compile cross-module инкремент из rustok-iggy: `is_connected()` для remote/embedded connector теперь читает фактический connection state вместо постоянного `false`, чтобы transport health/debug surface отражал lifecycle.
-- Next step: формализовать subscriber metadata contract для offset/ack/retry semantics, нужный rustok-iggy DLQ/replay movement.
+- Last checkpoint: no-compile инкремент: добавлен `SubscriberMessage`/`SubscriberMessageMetadata`, `recv_with_metadata()` и opaque `ack()` в `MessageSubscriber`; `rustok-iggy` consume path теперь переносит offset/ack metadata в `ConsumedEvent` без втягивания retry/DLQ policy в connector.
+- Next step: связать metadata с реальным SDK subscriber path и transport DLQ/replay movement, затем заменить no-compile evidence фактическими targeted tests.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Начать с расширения `MessageSubscriber` результата или companion metadata DTO без втягивания transport-level semantics в connector crate.
-- Last updated at (UTC): 2026-06-14T00:00:00Z
+- Hand-off notes for next agent: Проверить object-safety/async_trait compile gate для default trait methods; затем реализовать real SDK metadata extraction and ack override.
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 ## Область работ
 
@@ -38,7 +38,7 @@
 
 - [ ] довести full SDK integration path, reconnection и pooling semantics;
   - [x] исправить lifecycle read surface `is_connected()` для remote/embedded connectors;
-  - [ ] добавить subscriber metadata для offset/ack/retry без transport policy;
+  - [x] добавить subscriber metadata для offset/ack/retry без transport policy;
 - [ ] покрывать batching, TLS и real connection failure cases targeted tests;
 - [ ] удерживать simulation mode как явный documented compatibility path.
 
@@ -64,6 +64,6 @@
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены unit assertions для subscriber metadata/message builders (запуск отложен без компиляций).
+- [x] Проверить полноту и актуальность `README.md` и локальных docs: README/docs/CRATE_API описывают metadata surface.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

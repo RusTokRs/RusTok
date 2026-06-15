@@ -11,7 +11,7 @@ fn build_module_test_plan_includes_main_and_ui_crates() {
         module_description: "A blog module description long enough.".to_string(),
         ownership: "first_party".to_string(),
         trust_level: "verified".to_string(),
-        license: "MIT".to_string(),
+        license: "BUSL-1.1".to_string(),
         manifest_path: "modules.toml".to_string(),
         package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
         module_entry_type: Some("BlogModule".to_string()),
@@ -56,7 +56,7 @@ fn build_publish_registry_request_serializes_v2_contract() {
         module_description: "A blog module description long enough.".to_string(),
         ownership: "first_party".to_string(),
         trust_level: "verified".to_string(),
-        license: "MIT".to_string(),
+        license: "BUSL-1.1".to_string(),
         manifest_path: "modules.toml".to_string(),
         package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
         module_entry_type: Some("BlogModule".to_string()),
@@ -94,7 +94,7 @@ fn build_publish_registry_request_serializes_v2_contract() {
     );
     assert_eq!(request_body["module"]["ownership"], "first_party");
     assert_eq!(request_body["module"]["trust_level"], "verified");
-    assert_eq!(request_body["module"]["license"], "MIT");
+    assert_eq!(request_body["module"]["license"], "BUSL-1.1");
     assert_eq!(request_body["module"]["entry_type"], "BlogModule");
     assert_eq!(request_body["module"]["marketplace"]["category"], "content");
     assert_eq!(
@@ -122,7 +122,7 @@ fn build_live_publish_registry_request_turns_off_dry_run() {
         module_description: "A blog module description long enough.".to_string(),
         ownership: "first_party".to_string(),
         trust_level: "verified".to_string(),
-        license: "MIT".to_string(),
+        license: "BUSL-1.1".to_string(),
         manifest_path: "modules.toml".to_string(),
         package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
         module_entry_type: Some("BlogModule".to_string()),

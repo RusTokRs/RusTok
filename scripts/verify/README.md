@@ -27,7 +27,9 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-regi
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs pages
+node scripts/verify/verify-ecommerce-fba-registries.mjs
 ```
 
 ## Когда запускать
@@ -55,7 +57,9 @@ node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-read
 | Проверка required fallback/toggle профилей page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs` |
 | Проверка консистентности значений в toggle профилях page-builder | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` |
 | Полный baseline gate page-builder FBA перед Wave 0/Wave 1 | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs` |
+| Проверка drift-а error catalog между provider/consumer manifest, backend и UI adapters | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-error-catalog-binding.mjs pages` |
 | Проверка readiness consumer-модуля (`pages/forum`) | `node crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs <slug>` |
+| Проверка ecommerce FBA provider registries и locked contract-test metadata | `node scripts/verify/verify-ecommerce-fba-registries.mjs` |
 
 Альтернативно те же проверки доступны через `npm run`:
 
@@ -64,11 +68,27 @@ npm run verify:page-builder:contract-parity
 npm run verify:page-builder:fallback-profiles
 npm run verify:page-builder:toggle-profiles
 npm run verify:page-builder:fba:baseline
+npm run verify:page-builder:error-catalog
 npm run verify:page-builder:consumer:pages
 npm run verify:page-builder:consumer:forum
+npm run verify:ecommerce:fba-registries
+npm run test:verify:ecommerce:fba-registries
 ```
 
 ## Описание скриптов
+
+### `verify-ecommerce-fba-registries.mjs`
+**Ecommerce FBA provider/consumer registry gate** — проверяет provider metadata для `payment`, `fulfillment`, `order`, `pricing`, `inventory` и consumer metadata для `commerce`.
+
+Что делает:
+- сверяет module-owned `contracts/*-fba-registry.json` с `rustok-module.toml`, `Cargo.toml`, `src/lib.rs`, `src/ports.rs`, local implementation plan, центральным readiness board и evidence path-ами внутри registry;
+- требует нейтральные `PortContext`/`PortError`, per-operation port declarations и in-process provider implementation marker, если он заявлен в registry;
+- фиксирует `contract_tests.status = planned_cases_locked`, наличие `in_process` + `remote_adapter_placeholder` profiles, case на каждую port operation и baseline assertions `typed_port_error_mapping`/`context_deadline_preserved`;
+- проверяет, что planned fallback-smoke profile set покрывает все consumer fallback profiles, чтобы future runtime evidence не расходился с provider/consumer metadata;
+- сверяет `crates/rustok-commerce/contracts/commerce-fba-registry.json` с provider registries, чтобы checkout orchestration не ссылался на устаревшие contract versions, profiles, degraded modes или fallback profiles.
+
+Unit guardrail для самого verifier-а: `node scripts/verify/verify-ecommerce-fba-registries.test.mjs` или `npm run test:verify:ecommerce:fba-registries`.
+
 
 ### `verify-migration-smoke.sh`
 **Wave 4 migration-safety smoke** — PostgreSQL apply-from-zero для server migrator.

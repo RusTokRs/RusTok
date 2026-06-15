@@ -103,6 +103,7 @@ impl PaymentCollectionPort for crate::PaymentService {
         context: PortContext,
         request: PaymentCollectionStatusRequest,
     ) -> Result<PaymentCollectionStatusSnapshot, PortError> {
+        context.require_deadline_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let response = self
             .get_collection(tenant_id, request.collection_id)

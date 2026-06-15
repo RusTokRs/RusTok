@@ -13,6 +13,10 @@ use crate::model::{AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput};
 use crate::model::{DirectExecutionTarget, ToolTrace};
 use crate::service::AiOperatorContext;
 use crate::{AiError, AiResult};
+use rustok_ai_order::{
+    ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME, ORDER_OPS_ASSISTANT_TASK_SLUG,
+    ORDER_OPS_ASSISTANT_TOOL_NAME,
+};
 
 pub struct OrderAnalyticsHandler;
 pub struct OrderOpsAssistantHandler;
@@ -20,7 +24,7 @@ pub struct OrderOpsAssistantHandler;
 #[async_trait]
 impl DirectTaskHandler for OrderAnalyticsHandler {
     fn task_slug(&self) -> &'static str {
-        "order_analytics"
+        ORDER_ANALYTICS_TASK_SLUG
     }
     async fn execute(
         &self,
@@ -42,7 +46,7 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
         let operation_payload = serde_json::to_value(&generated).map_err(AiError::Json)?;
         let summary = "Prepared order analytics summary with findings and risk flags.".to_string();
         let trace = ToolTrace {
-            tool_name: "direct.orders.analytics".to_string(),
+            tool_name: ORDER_ANALYTICS_TOOL_NAME.to_string(),
             input_payload: request.task_input_json.clone(),
             output_payload: Some(operation_payload.clone()),
             status: "completed".to_string(),
@@ -74,7 +78,7 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
 #[async_trait]
 impl DirectTaskHandler for OrderOpsAssistantHandler {
     fn task_slug(&self) -> &'static str {
-        "order_ops_assistant"
+        ORDER_OPS_ASSISTANT_TASK_SLUG
     }
     async fn execute(
         &self,
@@ -99,7 +103,7 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
             generated.recommended_action
         );
         let trace = ToolTrace {
-            tool_name: "direct.orders.ops_assistant".to_string(),
+            tool_name: ORDER_OPS_ASSISTANT_TOOL_NAME.to_string(),
             input_payload: request.task_input_json.clone(),
             output_payload: Some(operation_payload.clone()),
             status: "completed".to_string(),

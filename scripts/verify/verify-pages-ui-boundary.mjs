@@ -98,6 +98,9 @@ for (const marker of [
   "missing_required_page_field",
   "write_path_issue_with_context",
   "builder_host_fallback_surface",
+  "publish_state_view",
+  "channel_count_label",
+  "legacy_block_snapshot_label",
 ]) {
   assertContains(adminCore, marker, `${files.adminCore}: expected admin core-owned helper ${marker}`);
 }
@@ -107,6 +110,8 @@ for (const marker of [
   "summarize_page_content",
   "storefront_builder_fallback_read_contract",
   "count_label",
+  "page_link_href",
+  "page_status_label",
 ]) {
   assertContains(storefrontCore, marker, `${files.storefrontCore}: expected storefront core-owned helper ${marker}`);
 }
@@ -114,10 +119,14 @@ for (const marker of [
 assertContains(adminUi, "use crate::core;", `${files.adminUi}: admin UI must consume core layer`);
 assertContains(adminUi, "use crate::transport;", `${files.adminUi}: admin UI must consume transport layer`);
 assertContains(adminUi, "core::build_create_page_draft", `${files.adminUi}: admin UI must use core-owned draft preparation`);
+assertContains(adminUi, "core::publish_state_view", `${files.adminUi}: admin UI must use core-owned publish state mapping`);
+assertContains(adminUi, "core::legacy_block_snapshot_label", `${files.adminUi}: admin UI must use core-owned legacy block labels`);
 assertContains(adminUi, "transport::fetch_pages", `${files.adminUi}: admin UI must call transport facade`);
 assertContains(storefrontUi, "use crate::core;", `${files.storefrontUi}: storefront UI must consume core layer`);
 assertContains(storefrontUi, "use crate::transport;", `${files.storefrontUi}: storefront UI must consume transport layer`);
 assertContains(storefrontUi, "core::selected_page_title", `${files.storefrontUi}: storefront UI must use core-owned selected page view helpers`);
+assertContains(storefrontUi, "core::page_link_href", `${files.storefrontUi}: storefront UI must use core-owned page links`);
+assertContains(storefrontUi, "core::page_status_label", `${files.storefrontUi}: storefront UI must use core-owned status labels`);
 assertContains(storefrontUi, "transport::fetch_pages", `${files.storefrontUi}: storefront UI must call transport facade`);
 for (const [source, label] of [
   [adminUi, files.adminUi],

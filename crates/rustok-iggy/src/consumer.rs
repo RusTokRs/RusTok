@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use rustok_core::Result;
 use rustok_events::EventEnvelope;
-use rustok_iggy_connector::IggyConnector;
+use rustok_iggy_connector::{IggyConnector, SubscriberMessageMetadata};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -28,6 +28,7 @@ pub struct ConsumedEvent {
     pub topic: String,
     pub partition: u32,
     pub envelope: EventEnvelope,
+    pub connector_metadata: SubscriberMessageMetadata,
 }
 
 impl ConsumerGroup {
@@ -100,14 +101,15 @@ impl ConsumerGroupManager {
             .await
             .map_err(|error| rustok_core::Error::External(error.to_string()))?;
 
-        match subscriber.recv().await {
-            Ok(Some(payload)) => {
-                let envelope = serializer.deserialize(&payload)?;
+        match subscriber.recv_with_metadata().await {
+            Ok(Some(message)) => {
+                let envelope = serializer.deserialize(&message.payload)?;
                 Ok(Some(ConsumedEvent {
                     stream: group.stream,
                     topic: group.topic,
                     partition,
                     envelope,
+                    connector_metadata: message.metadata,
                 }))
             }
             Ok(None) => Ok(None),
@@ -122,7 +124,7 @@ mod tests {
     use async_trait::async_trait;
     use rustok_core::events::DomainEvent;
     use rustok_iggy_connector::{
-        ConnectorConfig, ConnectorError, MessageSubscriber, PublishRequest,
+        ConnectorConfig, ConnectorError, MessageSubscriber, PublishRequest, SubscriberMessage,
     };
     use uuid::Uuid;
 
@@ -220,6 +222,11 @@ mod tests {
         assert_eq!(consumed.topic, "domain");
         assert_eq!(consumed.partition, 1);
         assert_eq!(consumed.envelope.id, envelope.id);
+        assert_eq!(consumed.connector_metadata.offset, Some(42));
+        assert_eq!(
+            consumed.connector_metadata.ack_token.as_deref(),
+            Some("fake-ack-42")
+        );
     }
 
     #[tokio::test]
@@ -303,6 +310,19 @@ mod tests {
     impl MessageSubscriber for FakeSubscriber {
         async fn recv(&mut self) -> std::result::Result<Option<Vec<u8>>, ConnectorError> {
             Ok(self.payload.take())
+        }
+
+        async fn recv_with_metadata(
+            &mut self,
+        ) -> std::result::Result<Option<SubscriberMessage>, ConnectorError> {
+            Ok(self.payload.take().map(|payload| {
+                SubscriberMessage::new(
+                    payload,
+                    SubscriberMessageMetadata::new("rustok", "domain", 1)
+                        .with_offset(42)
+                        .with_ack_token("fake-ack-42"),
+                )
+            }))
         }
     }
 }

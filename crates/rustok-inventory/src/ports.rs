@@ -78,6 +78,7 @@ impl InventoryReservationPort for crate::InventoryService {
         context: PortContext,
         request: InventoryAvailabilityRequest,
     ) -> Result<InventoryAvailabilitySnapshot, PortError> {
+        context.require_deadline_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let result = self
             .check_variant_availability(tenant_id, request.variant_id, request.requested_quantity)

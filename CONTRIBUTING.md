@@ -312,8 +312,16 @@ Look for issues labeled:
 1. **Version Bump**: Update version in Cargo.toml
 2. **CHANGELOG**: Finalize changelog
 3. **Testing**: Run full test suite
-4. **Tag**: Create Git tag
-5. **Release**: GitHub release with notes
+4. **License checklist**:
+   - Verify LICENSE exists
+   - Verify NOTICE exists
+   - Verify COMMERCIAL-LICENSE.md exists
+   - Verify package manifests do not say MIT
+   - Verify Change Date is updated for the new release
+   - Verify key source files preserve copyright/license headers
+   - Verify no frontend attribution was added
+5. **Tag**: Create Git tag
+6. **Release**: GitHub release with notes
 
 ## Security
 
@@ -331,7 +339,11 @@ Please report security vulnerabilities to: security@rustok-cms.com
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+## Licensing of Contributions
+
+By contributing to RusTok, you agree that your contributions may be licensed by the project maintainers under the Business Source License 1.1 with RusTok Additional Use Grant and under separate RusTok Commercial License terms.
+
+This is required so the project can remain free for the community and small businesses while offering commercial licenses to larger organizations and SaaS providers.
 
 ---
 

@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: storefront owner transport handoff and post-order parity hardening
-- Last checkpoint: Moved payment-collection create/reuse and checkout-completion command metadata into `rustok-payment/storefront` and `rustok-order/storefront` transport request DTOs; `rustok-commerce/storefront` now passes those owner-owned requests through native and GraphQL orchestration adapters and maps their metadata into command payloads instead of constructing anonymous commerce-side metadata.
-- Next step: Continue by shrinking the remaining commerce compatibility transport paths toward owner payment/order async transports once those module-owned server-function/GraphQL adapters are available.
+- Current phase: provider SPI baseline and storefront owner transport handoff
+- Last checkpoint: Started Phase 11 provider architecture baseline: `rustok-payment` and `rustok-fulfillment` now publish manual provider SPI descriptors/capabilities plus adapter traits, and their FBA registries record `provider_spi` metadata while lifecycle persistence remains in owner services.
+- Next step: Add provider SPI contract tests/webhook replay contracts and continue shrinking remaining commerce compatibility transport paths toward owner payment/fulfillment/order async transports once module-owned adapters are ready; keep Next commerce pages behind the shared module guard.
 - Open blockers: None.
 - Hand-off notes for next agent: After each post-order operator UI/page addition, update this checkpoint block and central registry evidence; keep the Next host route as a thin auth/options adapter only.
-- Last updated at (UTC): 2026-06-14T00:00:00Z
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 
 ## FFA/FBA status
@@ -19,11 +19,14 @@
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - admin return decision tree теперь имеет transport parity (`/admin/orders/{id}/returns/decision` ↔ `createOrderReturnDecision`) над единым `PostOrderOrchestrationService`, включая completion semantics для `return_only/refund/exchange/claim`, без дублирования rules в host/UI adapters; live REST и GraphQL parity tests фиксируют claim → completed return + `order_change(change_type=claim)`;
   - module-owned admin UI получил native-first post-order change operator: операторы фильтруют order changes по `order_id/status` и вызывают `OrderService::apply_order_change` / `cancel_order_change` через module-owned `#[server]` functions с targeted SSR coverage, при этом GraphQL `orderChanges` / `applyOrderChange` / `cancelOrderChange` сохранены как fallback transport, когда native server-function transport недоступен;
+  - Next Admin commerce package уже публикует module-owned страницы для shipping profiles, cart promotions, return decisions и order changes; host route group `/dashboard/commerce/*` теперь закрыт shared `ModuleGuard(slug=commerce)`, поэтому shell не открывает operator surfaces для disabled-модуля и остаётся thin auth/options adapter;
   - exchange/claim return-decision helper metadata теперь помечает создаваемые order changes `return_decision_action` и `return_decision_source`, а admin operator workspace показывает resolution summary cards из preview/metadata через framework-agnostic `admin/src/core/` helper без переноса domain rules в host или Leptos render adapter;
   - FFA admin transport module split: `admin/src/lib.rs` больше не содержит Leptos render/business code и только wires modules + re-export `CommerceAdmin`; `admin/src/core/mod.rs` реэкспортирует subdomain files для form/command/view-model policy, а `admin/src/transport/mod.rs` реэкспортирует shipping-profile, cart-promotion и order-change transport operations over the existing native/GraphQL-capable `api` layer;
   - FFA storefront transport/core split: aggregate checkout route теперь строит `FetchCommerceRequest`, `CartCommandRequest`, `SelectShippingOptionRequest` и commerce-owned context fallback view-model (`tenant/channel/resolution`) в Leptos-free `storefront/src/core/` submodules (`requests`, `presentation`); cart totals/line-items/adjustments stay in `rustok-cart`, payment details stay in `rustok-payment`, order totals stay in `rustok-order`, fulfillment/shipping option details stay in `rustok-fulfillment`, and cart handoff status rendering is owned by `rustok-cart-storefront`, payment-collection card/create action rendering plus create/reuse command metadata is owned by `rustok-payment-storefront`, fulfillment/shipping handoff and seller-aware selection rendering plus selection-plan construction are owned by `rustok-fulfillment-storefront`, checkout result/order status and complete-checkout action presentation plus completion command metadata is owned by `rustok-order-storefront`, and commerce consumes those owner-module components/requests while retaining checkout orchestration transport; `storefront/src/transport/mod.rs` owns единственную native-first + GraphQL fallback policy, duplicate combined fallback helpers удалены из `storefront/src/api.rs`, а `native_server_adapter.rs` / `graphql_adapter.rs` являются единственными местами storefront UI package, где вызываются raw native/GraphQL `api::*` functions;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FBA-readiness gate включён для уже готовых ecommerce slices до расширения roadmap новыми marketplace/provider модулями: проверяются service-contract ownership, typed request context/errors, explicit cross-module ports/events и отсутствие business logic в transport/UI adapters.
+  - consumer-side FBA metadata теперь закреплена в `crates/rustok-commerce/contracts/commerce-fba-registry.json`: commerce явно перечисляет provider contracts для pricing/inventory/order/payment/fulfillment, checkout profiles, degraded modes и fallback profiles, `src/fba.rs` публикует typed embedded registry entrypoint для runtime/composition кода, а aggregate verifier сверяет эти записи с owner provider registries;
+  - Phase 11 provider SPI baseline начат без vendor-specific adapters: payment-owned `src/providers.rs` фиксирует manual provider capabilities и adapter trait для authorize/capture/cancel/refund, fulfillment-owned `src/providers.rs` фиксирует manual carrier capabilities и adapter trait для quote/label/cancel, а lifecycle persistence остаётся в `PaymentService` / `FulfillmentService`;
 - Last verified at (UTC): 2026-06-12T00:00:00Z
 - Owner: `rustok-commerce` module team
 
@@ -656,7 +659,7 @@ Execution slices (Phase 10):
 
 ### Phase 11. Provider architecture
 
-Статус: `planned`
+Статус: `in progress`
 
 Фокус:
 
@@ -666,10 +669,13 @@ Execution slices (Phase 10):
 
 Deliverables:
 
-- payment provider registry и webhook ingress contracts;
-- fulfillment provider registry и carrier abstraction;
-- provider capability model для authorize/capture/refund, rate-quote/ship/cancel;
-- явные fallback semantics для manual/default providers.
+- [x] payment provider SPI baseline: manual provider descriptor/capabilities and adapter boundary for authorize/capture/cancel/refund;
+- [x] fulfillment provider SPI baseline: manual carrier descriptor/capabilities and adapter boundary for rate quote/create label/cancel;
+- [ ] payment provider registry и webhook ingress contracts;
+- [ ] fulfillment provider registry и carrier abstraction;
+- [x] provider capability model baseline для authorize/capture/refund/cancel и rate-quote/label/cancel;
+- [x] явные fallback semantics для manual/default providers;
+- [ ] external gateway/carrier adapter registration and remote failure/degraded-mode evidence.
 
 Обязательные проверки:
 

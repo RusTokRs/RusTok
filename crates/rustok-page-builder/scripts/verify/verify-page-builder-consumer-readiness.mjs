@@ -29,6 +29,7 @@ if (!crateName) {
 
 const moduleTomlPath = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
 const implPlanPath = path.join(repoRoot, "crates", crateName, "docs", "implementation-plan.md");
+const forumFallbackMatrixPath = path.join(repoRoot, "crates", "rustok-forum", "contracts", "evidence", "fw2-fallback-static-matrix.json");
 
 function fail(message) {
   console.error("[verify-page-builder-consumer-readiness] FAIL");
@@ -99,6 +100,94 @@ if (arg === "pages") {
   for (const marker of rolloutPlanMarkers) {
     if (!implPlan.includes(marker)) {
       fail(`${arg}: implementation-plan rollout policy missing marker '${marker}'`);
+    }
+  }
+}
+
+if (arg === "forum") {
+  const forumManifestMarkers = [
+    "[fba.builder_consumer.degraded_modes]",
+    `builder_disabled = "forum_widgets_readonly_keep_forum_routes"`,
+    `preview_disabled = "forum_widget_preview_hidden_keep_forum_routes"`,
+    `publish_disabled = "forum_widget_publish_feature_disabled_keep_forum_routes"`,
+    `fallback_mode = "readonly"`,
+    `fallback_mode = "degraded"`,
+    `fallback_mode = "hidden"`,
+    "builder_off = [",
+    "publish_off = [",
+    "builder.enabled=false",
+    "builder.publish.enabled=false",
+  ];
+  for (const marker of forumManifestMarkers) {
+    if (!moduleToml.includes(marker)) {
+      fail(`${arg}: manifest fallback hardening missing marker '${marker}'`);
+    }
+  }
+
+  const forumPlanMarkers = [
+    "FW-2",
+    "builder_off",
+    "publish_off",
+    "readonly",
+    "hidden",
+    "degraded",
+    "npm run verify:page-builder:consumer:forum",
+    "без 5xx",
+    "fw2-fallback-static-matrix.json",
+  ];
+  for (const marker of forumPlanMarkers) {
+    if (!implPlan.includes(marker)) {
+      fail(`${arg}: implementation-plan fallback hardening missing marker '${marker}'`);
+    }
+  }
+
+  if (!fs.existsSync(forumFallbackMatrixPath)) {
+    fail(`${arg}: missing FW-2 fallback static matrix: ${forumFallbackMatrixPath}`);
+  }
+
+  let forumFallbackMatrix;
+  try {
+    forumFallbackMatrix = JSON.parse(fs.readFileSync(forumFallbackMatrixPath, "utf8"));
+  } catch (error) {
+    fail(`${arg}: FW-2 fallback static matrix is not valid JSON: ${error.message}`);
+  }
+
+  const routesSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "rustok-forum", "src", "controllers", "mod.rs"),
+    "utf8",
+  );
+  const moderationSource = fs.readFileSync(
+    path.join(repoRoot, "crates", "rustok-forum", "src", "services", "moderation.rs"),
+    "utf8",
+  );
+  const combinedForumSource = `${routesSource}\n${moderationSource}`;
+
+  const requiredMatrixMarkers = [
+    "rustok.forum.fw2_fallback_static_matrix.v1",
+    "design_static_ready",
+    "builder_off",
+    "publish_off",
+    "forum-read-routes-survive-builder-off",
+    "forum-moderation-routes-survive-publish-off",
+    "forum-service-moderation-policy-stays-domain-owned",
+    "non_5xx",
+    "deferred",
+  ];
+  const serializedMatrix = JSON.stringify(forumFallbackMatrix);
+  for (const marker of requiredMatrixMarkers) {
+    if (!serializedMatrix.includes(marker)) {
+      fail(`${arg}: FW-2 fallback static matrix missing marker '${marker}'`);
+    }
+  }
+
+  for (const assertion of forumFallbackMatrix.assertions ?? []) {
+    if (assertion.expected_http_class !== "non_5xx") {
+      fail(`${arg}: FW-2 assertion '${assertion.id}' must target non_5xx status class`);
+    }
+    for (const marker of assertion.source_markers ?? []) {
+      if (!combinedForumSource.includes(marker)) {
+        fail(`${arg}: FW-2 assertion '${assertion.id}' source marker not found: ${marker}`);
+      }
     }
   }
 }
