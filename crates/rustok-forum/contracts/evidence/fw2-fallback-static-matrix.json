@@ -56,6 +56,95 @@
   "runtime_smoke": {
     "status": "deferred",
     "reason": "Activation delivery for FW-2..FW-4 is blocked until P5; this packet is static design evidence only.",
-    "future_gate": "Run HTTP/GraphQL smoke against all_on/publish_off/preview_off/builder_off and attach observed status classes."
+    "future_gate": "Run HTTP/GraphQL smoke against all_on/publish_off/preview_off/builder_off and attach observed status classes.",
+    "smoke_template_version": "v1.0",
+    "profiles": {
+      "all_on": {
+        "description": "Full capabilities active (normal mode). All standard storefront & admin routes must be available.",
+        "assertions": [
+          {
+            "id": "all-on-storefront-categories-200",
+            "endpoint": "GET /api/v1/forum/categories",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": null
+          },
+          {
+            "id": "all-on-storefront-create-topic-201",
+            "endpoint": "POST /api/v1/forum/topics",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": "create_topic_payload_v1"
+          },
+          {
+            "id": "all-on-admin-approve-reply-200",
+            "endpoint": "POST /api/v1/forum/admin/replies/approve",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": "approve_reply_payload_v1"
+          }
+        ]
+      },
+      "publish_off": {
+        "description": "Publish capability disabled. Standard read operations remain active, but any publish mutations must degrade gracefully without throwing 5xx errors.",
+        "assertions": [
+          {
+            "id": "publish-off-storefront-categories-200",
+            "endpoint": "GET /api/v1/forum/categories",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": null
+          },
+          {
+            "id": "publish-off-storefront-create-topic-403",
+            "endpoint": "POST /api/v1/forum/topics",
+            "expected_http_class": "4xx",
+            "payload_snapshot_ref": "create_topic_payload_v1"
+          },
+          {
+            "id": "publish-off-admin-approve-reply-200",
+            "endpoint": "POST /api/v1/forum/admin/replies/approve",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": "approve_reply_payload_v1"
+          }
+        ]
+      },
+      "preview_off": {
+        "description": "Preview capability disabled. Page draft preview/render paths must return fallback status class instead of 5xx.",
+        "assertions": [
+          {
+            "id": "preview-off-storefront-categories-200",
+            "endpoint": "GET /api/v1/forum/categories",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": null
+          },
+          {
+            "id": "preview-off-render-draft-403",
+            "endpoint": "POST /api/v1/forum/preview/render",
+            "expected_http_class": "4xx",
+            "payload_snapshot_ref": "render_draft_payload_v1"
+          }
+        ]
+      },
+      "builder_off": {
+        "description": "Page Builder fully disabled. All write-path and moderation routes must gracefully return fallback or readonly status, preventing state changes while keeping forum routes safe from 5xx.",
+        "assertions": [
+          {
+            "id": "builder-off-storefront-categories-200",
+            "endpoint": "GET /api/v1/forum/categories",
+            "expected_http_class": "2xx",
+            "payload_snapshot_ref": null
+          },
+          {
+            "id": "builder-off-storefront-create-topic-403",
+            "endpoint": "POST /api/v1/forum/topics",
+            "expected_http_class": "4xx",
+            "payload_snapshot_ref": "create_topic_payload_v1"
+          },
+          {
+            "id": "builder-off-admin-approve-reply-403",
+            "endpoint": "POST /api/v1/forum/admin/replies/approve",
+            "expected_http_class": "4xx",
+            "payload_snapshot_ref": "approve_reply_payload_v1"
+          }
+        ]
+      }
+    }
   }
 }

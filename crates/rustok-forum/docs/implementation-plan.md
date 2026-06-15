@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ffa_admin_storefront_transport_ui_split
-- Last checkpoint: Forum FW-2 static fallback matrix slice добавил `contracts/evidence/fw2-fallback-static-matrix.json` и расширил `npm run verify:page-builder:consumer:forum`: gate теперь проверяет machine-readable `builder_off`/`publish_off` non-5xx assertions для read/moderation route markers и forum-owned moderation service markers без компиляции. REST transport и storefront native/GraphQL fallback contracts не менялись.
-- Next step: Продолжать FW-2 без компиляционного rollout: добавить будущий runtime-smoke шаблон для all_on/publish_off/preview_off/builder_off после закрытия `P5`, не открывая tenant activation.
+- Last checkpoint: Добавлен структурированный шаблон runtime_smoke для профилей `all_on`, `publish_off`, `preview_off`, `builder_off` в `fw2-fallback-static-matrix.json`. Это завершает разработку статического FW-2 fallback hardening контракта. Тесты `npm run verify:page-builder:consumer:forum` проходят успешно без компиляции. Все runtime-smoke тесты помечены как `deferred` до закрытия центрального `P5`.
+- Next step: FW-3 — подготовка пилотного пакета (Pilot readiness) для 1–2 low-traffic tenants, observability correlation, и подготовка Go/No-Go review.
 - Open blockers: Activation delivery по FW-2..FW-4 заблокирован до закрытия `P5`; для старта нужны parity evidence Next/Leptos/Flutter + owner sign-off + Wave 1 Go/No-Go.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-15T02:00:00Z
+- Last updated at (UTC): 2026-06-15T16:10:00Z
 
 ## FFA/FBA status
 
