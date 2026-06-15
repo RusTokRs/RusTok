@@ -1,0 +1,61 @@
+{
+  "schema": "rustok.forum.fw2_fallback_static_matrix.v1",
+  "module": "forum",
+  "phase": "FW-2",
+  "status": "design_static_ready",
+  "last_updated_utc": "2026-06-15T02:00:00Z",
+  "compile_free": true,
+  "blocked_until": "page-builder P5 Wave 1 Go/No-Go",
+  "toggle_profiles": ["all_on", "publish_off", "preview_off", "builder_off"],
+  "assertions": [
+    {
+      "id": "forum-read-routes-survive-builder-off",
+      "toggle_profile": "builder_off",
+      "expected_http_class": "non_5xx",
+      "fallback_semantics": "forum_widgets_readonly_keep_forum_routes",
+      "source_markers": [
+        "get(categories::list_categories)",
+        "get(categories::get_category)",
+        "get(topics::list_topics)",
+        "get(topics::get_topic)",
+        "get(replies::list_replies)",
+        "get(replies::get_reply)",
+        "get(users::get_user_stats)"
+      ]
+    },
+    {
+      "id": "forum-moderation-routes-survive-publish-off",
+      "toggle_profile": "publish_off",
+      "expected_http_class": "non_5xx",
+      "fallback_semantics": "forum_widget_publish_feature_disabled_keep_forum_routes",
+      "source_markers": [
+        "put(topics::update_topic)",
+        "delete(topics::delete_topic)",
+        "put(replies::update_reply)",
+        "delete(replies::delete_reply)",
+        "axum::routing::post(topics::mark_topic_solution)",
+        "axum::routing::delete(topics::clear_topic_solution)"
+      ]
+    },
+    {
+      "id": "forum-service-moderation-policy-stays-domain-owned",
+      "toggle_profile": "publish_off",
+      "expected_http_class": "non_5xx",
+      "fallback_semantics": "moderation remains forum-owned, not widget-owned",
+      "source_markers": [
+        "pub async fn approve_reply",
+        "pub async fn reject_reply",
+        "pub async fn hide_reply",
+        "pub async fn pin_topic",
+        "pub async fn unpin_topic",
+        "pub async fn close_topic",
+        "pub async fn archive_topic"
+      ]
+    }
+  ],
+  "runtime_smoke": {
+    "status": "deferred",
+    "reason": "Activation delivery for FW-2..FW-4 is blocked until P5; this packet is static design evidence only.",
+    "future_gate": "Run HTTP/GraphQL smoke against all_on/publish_off/preview_off/builder_off and attach observed status classes."
+  }
+}
