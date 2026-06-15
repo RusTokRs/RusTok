@@ -1043,6 +1043,10 @@ pub async fn complete_order_return(
         metadata: input.metadata,
     };
 
+    let has_refund_helper = input.refund.is_some();
+    let has_exchange_helper = input.exchange.is_some();
+    let has_claim_helper = input.claim.is_some();
+
     if let Some(refund_input) = input.refund {
         if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
             return Err(Error::BadRequest(
@@ -1108,7 +1112,7 @@ pub async fn complete_order_return(
     }
 
     if let Some(exchange_input) = input.exchange {
-        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || input.refund.is_some() || input.claim.is_some() {
+        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || has_refund_helper || has_claim_helper {
             return Err(Error::BadRequest(
                 "exchange helper cannot be combined with explicit refund_id, order_change_id, refund helper, or claim helper"
                     .to_string(),
@@ -1153,7 +1157,7 @@ pub async fn complete_order_return(
     }
 
     if let Some(claim_input) = input.claim {
-        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || input.refund.is_some() || input.exchange.is_some() {
+        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || has_refund_helper || has_exchange_helper {
             return Err(Error::BadRequest(
                 "claim helper cannot be combined with explicit refund_id, order_change_id, refund helper, or exchange helper"
                     .to_string(),

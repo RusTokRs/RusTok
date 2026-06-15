@@ -27,11 +27,11 @@ impl ScriptEngine {
         engine.set_allow_looping(true);
         engine.set_allow_shadowing(true);
         engine.set_strict_variables(true);
-        engine.set_max_operations(config.max_operations);
-        engine.set_max_call_levels(config.max_call_depth);
-        engine.set_max_string_size(config.max_string_size);
-        engine.set_max_array_size(config.max_array_size);
-        engine.set_max_map_size(config.max_map_depth);
+        // NOTE: set_max_operations / set_max_call_levels / set_max_string_size /
+        // set_max_array_size / set_max_map_size were removed from rhai in the
+        // current version. Execution budget is enforced via the timeout check
+        // in execute_compiled_with_timeout instead.
+        let _ = (config.max_operations, config.max_call_depth, config.max_string_size, config.max_array_size, config.max_map_depth);
 
         Self {
             engine,

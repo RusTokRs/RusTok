@@ -458,10 +458,8 @@ mod tests {
         assert_eq!(logged_result.script_id, result.script_id);
         assert_eq!(logged_result.phase, ExecutionPhase::Manual);
         assert_eq!(logged_ctx.user_id.as_deref(), Some("operator-1"));
-        assert_eq!(
-            logged_ctx.tenant_id.as_deref(),
-            Some(&tenant_id.to_string())
-        );
+        let tenant_id_str = tenant_id.to_string();
+        assert_eq!(logged_ctx.tenant_id.as_deref(), Some(tenant_id_str.as_str()));
     }
 
     #[tokio::test]
@@ -518,10 +516,8 @@ mod tests {
         let (logged_result, logged_ctx) = &entries[0];
         assert_eq!(logged_result.phase, ExecutionPhase::Before);
         assert_eq!(logged_ctx.user_id.as_deref(), Some("operator-2"));
-        assert_eq!(
-            logged_ctx.tenant_id.as_deref(),
-            Some(&tenant_id.to_string())
-        );
+        let tenant_id_str2 = tenant_id.to_string();
+        assert_eq!(logged_ctx.tenant_id.as_deref(), Some(tenant_id_str2.as_str()));
         assert!(matches!(
             &logged_result.outcome,
             ExecutionOutcome::Success { entity_changes, .. } if entity_changes.contains_key("status")

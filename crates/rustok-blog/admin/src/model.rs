@@ -7,7 +7,7 @@ pub struct BlogPostList {
     pub total: u64,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BlogPostListItem {
     pub id: String,
     pub title: String,

@@ -652,14 +652,14 @@ pub fn BlogAdmin() -> impl IntoView {
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="space-y-1">
                         <h2 class="text-lg font-semibold text-card-foreground">
-                            {move || {
+                            {{let ui_locale_heading = ui_locale.clone(); move || {
                                 blog_form_view_model(
-                                    ui_locale.as_deref(),
+                                    ui_locale_heading.as_deref(),
                                     editing_post_id.get().as_deref(),
                                     busy_key.get().as_deref(),
                                 )
                                 .title
-                            }}
+                            }}}
                         </h2>
                         <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
                     </div>
@@ -815,23 +815,23 @@ pub fn BlogAdmin() -> impl IntoView {
                         <button
                             type="submit"
                             class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                            disabled=move || {
+                            disabled={{let ui_locale_d = ui_locale.clone(); move || {
                                 blog_form_view_model(
-                                    ui_locale.as_deref(),
+                                    ui_locale_d.as_deref(),
                                     editing_post_id.get().as_deref(),
                                     busy_key.get().as_deref(),
                                 )
                                 .submit_disabled
-                            }
+                            }}}
                         >
-                            {move || {
+                            {{let ui_locale_s = ui_locale.clone(); move || {
                                 blog_form_view_model(
-                                    ui_locale.as_deref(),
+                                    ui_locale_s.as_deref(),
                                     editing_post_id.get().as_deref(),
                                     busy_key.get().as_deref(),
                                 )
                                 .submit_label
-                            }}
+                            }}}
                         </button>
                     </form>
                 </section>

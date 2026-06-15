@@ -268,7 +268,8 @@ mod tests {
         assert_eq!(result.script_id, script_id);
         assert_eq!(result.phase, ExecutionPhase::Scheduled);
         assert_eq!(ctx.phase, ExecutionPhase::Scheduled);
-        assert_eq!(ctx.tenant_id.as_deref(), Some(&tenant_id.to_string()));
+        let tenant_id_str = tenant_id.to_string();
+        assert_eq!(ctx.tenant_id.as_deref(), Some(tenant_id_str.as_str()));
         assert!(result.is_success());
     }
 }
