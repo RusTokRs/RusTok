@@ -54,6 +54,12 @@
 - semantic SEO error taxonomy (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport failures) считается canonical для Next hosts и переиспользуется не только в `next-admin`, но и в Next storefront SEO runtime adapters;
 - package naming contract для module-owned admin UI остаётся `@rustok/*-admin`.
 
+## SEO operator readiness evidence
+
+- Next Admin participates in SEO D8/D9 as the operator host for diagnostics, sitemap/bulk read surfaces and index repair/replay controls.
+- Compile-free documentation evidence is tracked from the Next storefront SEO fixture docs sync matrix; live sign-off still requires a running backend sample for semantic error mapping and repair/replay telemetry.
+- The required owner sign-off evidence is: REST/GraphQL error-code parity, bounded replay input validation, before/after index delivery counters and no duplicate idempotency transition.
+
 ## Взаимодействия
 
 - `apps/server` предоставляет API/runtime contract;
