@@ -60,6 +60,7 @@ impl PricingReadPort for crate::PricingService {
         context: PortContext,
         request: ResolveProductPriceRequest,
     ) -> Result<ResolvedProductPriceSnapshot, PortError> {
+        context.require_deadline_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let variant_id = request.variant_id.ok_or_else(|| {
             PortError::validation(
@@ -106,6 +107,7 @@ impl PricingReadPort for crate::PricingService {
         context: PortContext,
         request: PriceListProjectionRequest,
     ) -> Result<PriceListProjectionSnapshot, PortError> {
+        context.require_deadline_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         let lists = self

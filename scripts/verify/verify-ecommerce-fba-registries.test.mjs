@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 
 import {
@@ -107,7 +107,7 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
   write('crates/rustok-pricing/rustok-module.toml', '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
   write('crates/rustok-pricing/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
   write('crates/rustok-pricing/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
-  write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService {}\n');
+  write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) } }\n');
   write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
   write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
   write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
@@ -154,6 +154,40 @@ test('verifyEcommerceFbaRegistries rejects evidence drift', () => {
     {
       name: EcommerceFbaRegistryVerificationError.name,
       message: 'pricing registry local_plan evidence drift',
+    },
+  );
+});
+
+
+test('verifyEcommerceFbaRegistries rejects write-idempotency assertions on read-only operations', () => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.contract_tests.cases[0].assertions.push('write_idempotency_required');
+    },
+  });
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing.resolve_product_price read-only contract test case must not require write idempotency',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects missing read deadline enforcement', () => {
+  const root = createFixtureRoot();
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
+    'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { Ok(()) } }\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing in-process provider impl must enforce read deadline semantics',
     },
   );
 });

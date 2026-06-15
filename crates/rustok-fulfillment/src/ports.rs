@@ -64,6 +64,7 @@ impl ShippingSelectionPort for crate::FulfillmentService {
         context: PortContext,
         request: ListSellerShippingOptionsRequest,
     ) -> Result<SellerShippingOptionsSnapshot, PortError> {
+        context.require_deadline_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let options = self
             .list_shipping_options(tenant_id, Some(&context.locale), Some(&context.locale))

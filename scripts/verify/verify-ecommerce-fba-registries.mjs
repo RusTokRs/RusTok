@@ -18,6 +18,10 @@ const fail = (message) => {
   throw new EcommerceFbaRegistryVerificationError(message);
 };
 
+const readOnlyOperationPrefixes = ['read_', 'list_', 'check_', 'resolve_', 'get_'];
+const isReadOnlyOperation = (operation) =>
+  readOnlyOperationPrefixes.some((prefix) => operation.startsWith(prefix));
+
 export function verifyEcommerceFbaRegistries({
   root = defaultRoot,
   modules = ecommerceFbaModules,
@@ -71,6 +75,12 @@ export function verifyEcommerceFbaRegistries({
         if (!testCase.assertions.includes('typed_port_error_mapping') || !testCase.assertions.includes('context_deadline_preserved')) {
           fail(`${module}.${operation} contract test case lacks baseline assertions`);
         }
+        if (isReadOnlyOperation(operation) && testCase.assertions.includes('write_idempotency_required')) {
+          fail(`${module}.${operation} read-only contract test case must not require write idempotency`);
+        }
+        if (!isReadOnlyOperation(operation) && port.idempotency_required === true && !testCase.assertions.includes('write_idempotency_required')) {
+          fail(`${module}.${operation} write contract test case lacks write idempotency assertion`);
+        }
       }
     }
 
@@ -95,6 +105,9 @@ export function verifyEcommerceFbaRegistries({
       if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
       if (registry.ports.some((port) => port.idempotency_required === true) && !portSource.includes('require_write_semantics()?')) {
         fail(`${module} in-process provider impl must enforce write semantics`);
+      }
+      if (registry.ports.some((port) => port.deadline_required === true) && !portSource.includes('require_deadline_semantics()?')) {
+        fail(`${module} in-process provider impl must enforce read deadline semantics`);
       }
     }
 
