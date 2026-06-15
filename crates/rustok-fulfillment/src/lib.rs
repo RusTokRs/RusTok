@@ -8,11 +8,13 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod ports;
+pub mod providers;
 pub mod services;
 
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
+pub use providers::*;
 
 pub use error::{FulfillmentError, FulfillmentResult};
 pub use services::FulfillmentService;
