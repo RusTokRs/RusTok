@@ -847,7 +847,7 @@ Notes: <known deviations or waivers>
 ### 13.5 Очередь внедрения forum widgets после `pages`
 
 - [x] **FW-1 (contract freeze):** widget catalog v1 (`topic_list/topic_detail/reply_stream`), `data_contract_version`/compatibility matrix и typed error mapping зафиксированы как machine-readable contract (manifest + REST/GraphQL catalog surface), без rollout activation до `P5`.
-- [~] **FW-2 (fallback hardening):** manifest/doc static gate `npm run verify:page-builder:consumer:forum` фиксирует `builder_off/publish_off`, widget fallback modes `readonly`/`degraded`/`hidden` и no-5xx baseline forum route expectation; runtime smoke после `P5`.
+- [~] **FW-2 (fallback hardening):** manifest/doc static gate `npm run verify:page-builder:consumer:forum` фиксирует `builder_off/publish_off`, widget fallback modes `readonly`/`degraded`/`hidden` и валидирует `crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json` с no-5xx read/moderation source-marker assertions; runtime smoke после `P5`.
 - [ ] **FW-3 (pilot):** включить 1–2 low-traffic tenant с evidence packet (metadata/fallback/observability/rollback).
 - [ ] **FW-4 (promotion):** расширять rollout только после owner sign-off и SLO stability 24–72h.
 
