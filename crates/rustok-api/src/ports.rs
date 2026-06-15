@@ -50,6 +50,16 @@ impl PortContext {
         self
     }
 
+    pub fn require_deadline_semantics(&self) -> Result<(), PortError> {
+        if self.deadline_ms.unwrap_or_default() == 0 {
+            return Err(PortError::timeout(
+                "port.deadline_required",
+                "port calls require deadline semantics",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn require_write_semantics(&self) -> Result<(), PortError> {
         if self
             .idempotency_key
@@ -62,13 +72,7 @@ impl PortContext {
                 "write port calls require a non-empty idempotency key",
             ));
         }
-        if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(PortError::timeout(
-                "port.deadline_required",
-                "write port calls require deadline semantics",
-            ));
-        }
-        Ok(())
+        self.require_deadline_semantics()
     }
 }
 
@@ -153,6 +157,19 @@ pub enum PortErrorKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deadline_semantics_require_non_empty_deadline() {
+        let context = PortContext::new("tenant-a", PortActor::user("user-a"), "ru", "corr-a");
+
+        assert_eq!(
+            context.require_deadline_semantics().unwrap_err().kind,
+            PortErrorKind::Timeout
+        );
+
+        let context = context.with_deadline(Duration::from_secs(3));
+        assert!(context.require_deadline_semantics().is_ok());
+    }
 
     #[test]
     fn write_semantics_require_idempotency_key_and_deadline() {

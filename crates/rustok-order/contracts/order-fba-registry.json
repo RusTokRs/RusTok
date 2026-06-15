@@ -55,7 +55,8 @@
         ],
         "assertions": [
           "typed_port_error_mapping",
-          "context_deadline_preserved"
+          "context_deadline_preserved",
+          "write_idempotency_required"
         ]
       },
       {
@@ -66,8 +67,7 @@
         ],
         "assertions": [
           "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "write_idempotency_required"
+          "context_deadline_preserved"
         ]
       },
       {
@@ -78,8 +78,7 @@
         ],
         "assertions": [
           "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "write_idempotency_required"
+          "context_deadline_preserved"
         ]
       }
     ],
