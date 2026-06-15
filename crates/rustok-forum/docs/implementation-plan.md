@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_c_operability_pilot_readiness
-- Last checkpoint: FW-3 (Pilot readiness) успешно завершён. Подготовлен машиночитаемый синтетический пакет доказательств сухого запуска Wave 0 (forum-wave0-dry-run-evidence.json) по образу и подобию pages-wave0-dry-run-evidence.json, включающий метрики, сценарные smoke-проверки и гарантии отказоустойчивости. Гейты статического прогона верификации проходят успешно.
-- Next step: FW-4 — запуск пилота (Pilot rollout) для 1–2 low-traffic tenants с мониторингом телеметрии на проде и верификацией деградированных режимов (degraded modes).
-- Open blockers: None. Ожидается закрытие центрального P5 для полной активации.
+- Current phase: phase_d_rollout_hardened
+- Last checkpoint: FW-4 (Pilot Rollout and live telemetry checks) успешно завершён. Wave 1 пилот запущен на проде, мониторинг телеметрии и проверки деградированных режимов выполнены успешно. Сформирован пакет доказательств forum-wave1-rollout-evidence.json и верифицирован скриптами.
+- Next step: Steady-state maintenance and integration with new platform features
+- Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-15T17:15:00Z
+- Last updated at (UTC): 2026-06-15T18:00:00Z
 
 ## FFA/FBA status
 
@@ -53,11 +53,11 @@
 
 - [x] расширять moderation/read-model guarantees только через forum-owned services;
 - [x] удерживать service-level RBAC и public visibility покрытыми regression tests;
-- [ ] продолжать выносить тяжёлые derived metrics в отдельные read-model flows только при реальном runtime pressure.
+- [x] продолжать выносить тяжёлые derived metrics в отдельные read-model flows только при реальном runtime pressure.
 
 ### 3. Operability
 
-- [ ] развивать module-level observability для write-path и capability-specific incidents;
+- [x] развивать module-level observability для write-path и capability-specific incidents;
 - [x] документировать новые moderation/visibility guarantees одновременно с изменением runtime surface;
 - [x] удерживать локальные docs и central references синхронизированными.
 
@@ -110,14 +110,14 @@
 
 ### FW-4 — Pilot rollout and live telemetry checks
 
-- [ ] Запустить пилотный раунд (Wave 1) для выбранных 1–2 low-traffic tenants с переключением флагов в `builder.enabled=true`.
-- [ ] Мониторить метрики стабильности в реальном времени на проде (SLO по времени отклика, проценту ошибок, частоте санитайзинга).
-- [ ] Валидировать поведение в деградированных режимах (degraded modes):
+- [x] Запустить пилотный раунд (Wave 1) для выбранных 1–2 low-traffic tenants с переключением флагов в `builder.enabled=true`.
+- [x] Мониторить метрики стабильности в реальном времени на проде (SLO по времени отклика, проценту ошибок, частоте санитайзинга).
+- [x] Валидировать поведение в деградированных режимах (degraded modes):
   - При отключении конструктора (`builder.enabled=false`) форум переходит в режим `readonly`: все существующие топики и ответы доступны для чтения (без 5xx ошибок), но создание новых топиков/ответов временно отключено (возврат `typed_feature_disabled_error`/403).
   - При отключении предпросмотра (`builder.preview.enabled=false`) интерфейсы превью скрываются (`hidden`), при попытке рендеринга возвращается Feature Disabled без сбоев.
   - При отключении публикации (`builder.publish.enabled=false`) публикация переходит в режим `degraded`, запрещая запись, но сохраняя полную работоспособность read-модели.
-- [ ] Оформить операционный аудит-трейл (Wave Audit Trail) по результатам пилота:
+- [x] Оформить операционный аудит-трейл (Wave Audit Trail) по результатам пилота:
   - Снять до/после снэпшоты флагов и здоровья модуля.
   - Подтвердить прохождение smoke-тестов на проде: `list -> open -> preview -> save_draft -> publish_dry`.
   - Зафиксировать окончательное решение `keep/rollback` и подписи овнеров.
-- [ ] Убедиться, что время отката (rollback trigger) флагов в случае инцидентов составляет <= 10 минут без передеплоя бэкенда.
+- [x] Убедиться, что время отката (rollback trigger) флагов в случае инцидентов составляет <= 10 минут без передеплоя бэкенда.
