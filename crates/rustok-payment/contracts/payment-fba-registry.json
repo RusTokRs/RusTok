@@ -3,7 +3,7 @@
   "module": "payment",
   "role": "provider",
   "status": "in_progress",
-  "contract_version": "payment.checkout.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1",
   "ports": [
     {
       "name": "PaymentCollectionPort",
@@ -85,6 +85,30 @@
         "reuse_existing_collection",
         "show_payment_handoff_retry"
       ]
+    }
+  },
+  "provider_spi": {
+    "status": "manual_baseline_locked",
+    "source": "crates/rustok-payment/src/providers.rs",
+    "default_provider_id": "manual",
+    "operations": [
+      "authorize",
+      "capture",
+      "cancel",
+      "refund"
+    ],
+    "capabilities": [
+      "authorize",
+      "capture",
+      "refund",
+      "cancel",
+      "webhook_ingress"
+    ],
+    "side_effect_boundary": "provider adapters execute external effects; PaymentService owns persisted lifecycle transitions",
+    "webhook_ingress": {
+      "status": "planned",
+      "idempotency_required": true,
+      "replay_required": true
     }
   }
 }

@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: storefront owner transport handoff and post-order parity hardening
-- Last checkpoint: Added a Next Admin commerce route guard layout so module-owned shipping-profile, cart-promotion, return-decision, and order-change pages are mounted only when the `commerce` module is enabled, while page files remain thin auth/options adapters.
-- Next step: Continue by shrinking the remaining commerce compatibility transport paths toward owner payment/order async transports once those module-owned server-function/GraphQL adapters are available; keep Next commerce pages behind the shared module guard.
+- Current phase: provider SPI baseline and storefront owner transport handoff
+- Last checkpoint: Started Phase 11 provider architecture baseline: `rustok-payment` and `rustok-fulfillment` now publish manual provider SPI descriptors/capabilities plus adapter traits, and their FBA registries record `provider_spi` metadata while lifecycle persistence remains in owner services.
+- Next step: Add provider SPI contract tests/webhook replay contracts and continue shrinking remaining commerce compatibility transport paths toward owner payment/fulfillment/order async transports once module-owned adapters are ready; keep Next commerce pages behind the shared module guard.
 - Open blockers: None.
 - Hand-off notes for next agent: After each post-order operator UI/page addition, update this checkpoint block and central registry evidence; keep the Next host route as a thin auth/options adapter only.
-- Last updated at (UTC): 2026-06-14T12:45:00Z
+- Last updated at (UTC): 2026-06-15T00:00:00Z
 
 
 ## FFA/FBA status
@@ -26,6 +26,7 @@
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FBA-readiness gate включён для уже готовых ecommerce slices до расширения roadmap новыми marketplace/provider модулями: проверяются service-contract ownership, typed request context/errors, explicit cross-module ports/events и отсутствие business logic в transport/UI adapters.
   - consumer-side FBA metadata теперь закреплена в `crates/rustok-commerce/contracts/commerce-fba-registry.json`: commerce явно перечисляет provider contracts для pricing/inventory/order/payment/fulfillment, checkout profiles, degraded modes и fallback profiles, `src/fba.rs` публикует typed embedded registry entrypoint для runtime/composition кода, а aggregate verifier сверяет эти записи с owner provider registries;
+  - Phase 11 provider SPI baseline начат без vendor-specific adapters: payment-owned `src/providers.rs` фиксирует manual provider capabilities и adapter trait для authorize/capture/cancel/refund, fulfillment-owned `src/providers.rs` фиксирует manual carrier capabilities и adapter trait для quote/label/cancel, а lifecycle persistence остаётся в `PaymentService` / `FulfillmentService`;
 - Last verified at (UTC): 2026-06-12T00:00:00Z
 - Owner: `rustok-commerce` module team
 
@@ -658,7 +659,7 @@ Execution slices (Phase 10):
 
 ### Phase 11. Provider architecture
 
-Статус: `planned`
+Статус: `in progress`
 
 Фокус:
 
@@ -668,10 +669,13 @@ Execution slices (Phase 10):
 
 Deliverables:
 
-- payment provider registry и webhook ingress contracts;
-- fulfillment provider registry и carrier abstraction;
-- provider capability model для authorize/capture/refund, rate-quote/ship/cancel;
-- явные fallback semantics для manual/default providers.
+- [x] payment provider SPI baseline: manual provider descriptor/capabilities and adapter boundary for authorize/capture/cancel/refund;
+- [x] fulfillment provider SPI baseline: manual carrier descriptor/capabilities and adapter boundary for rate quote/create label/cancel;
+- [ ] payment provider registry и webhook ingress contracts;
+- [ ] fulfillment provider registry и carrier abstraction;
+- [x] provider capability model baseline для authorize/capture/refund/cancel и rate-quote/label/cancel;
+- [x] явные fallback semantics для manual/default providers;
+- [ ] external gateway/carrier adapter registration and remote failure/degraded-mode evidence.
 
 Обязательные проверки:
 
