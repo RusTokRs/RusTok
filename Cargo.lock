@@ -9630,6 +9630,7 @@ dependencies = [
  "reqwest 0.13.2",
  "rhai",
  "rustok-ai-order",
+ "rustok-ai-product",
  "rustok-api",
  "rustok-blog",
  "rustok-commerce",
@@ -9697,7 +9698,7 @@ version = "0.1.0"
 name = "rustok-ai-product"
 version = "0.1.0"
 dependencies = [
- "rustok-ai",
+ "serde",
 ]
 
 [[package]]
@@ -10538,6 +10539,7 @@ name = "rustok-order-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.19",
+ "serde",
 ]
 
 [[package]]
@@ -10684,6 +10686,7 @@ name = "rustok-payment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.19",
+ "serde",
 ]
 
 [[package]]
