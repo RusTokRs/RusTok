@@ -22,8 +22,9 @@
 ## Точки входа
 
 - `src/lib.rs` — runtime metadata и permission surface;
+- `src/dto.rs` — transport-neutral DTO и `PageBuilderContractMetadata::BASELINE` для contract package без привязки к transport adapters;
 - `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, feature-flag guard и server-side handler seam с RBAC permission checks;
-- `src/health.rs` — типизированные provider health states, degradation reasons и evaluator pilot SLO thresholds для release-gate evidence;
+- `src/health.rs` — типизированные provider health states, degradation reasons, `ProviderHealthEvidence` и evaluator pilot SLO thresholds для release-gate evidence;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 
@@ -33,9 +34,14 @@
 - `rustok-pages` и другие layout/content модули используют builder как consumer по contract-first path;
 - host-реализации (Next/Leptos/Flutter) синхронизируются через capability contract, а не через UI 1:1.
 
+
+## Transport-neutral contract package
+
+Baseline DTO package теперь содержит `PageBuilderContractMetadata::BASELINE` с canonical provider slug `page_builder`, contract `grapesjs_v1`, `builder_contract_version = 1.0`, `consumer_min_version = 1.0` и capability set `preview/tree/properties/publish`. Это минимальный publish-ready marker для adapters: GraphQL, Leptos server functions и future mobile codegen должны брать имена capability из contract metadata/registry, а не вводить transport-local aliases.
+
 ## Provider health and SLO baseline
 
-Machine-readable provider metadata включает health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) и pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. Runtime-код exposes тот же baseline через `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT` и `ProviderHealthSnapshot::evaluate`, чтобы Wave evidence можно было формировать без transport-specific adapters. Registry и Wave evidence packet gates должны держать эти thresholds синхронизированными до Wave 1 promotion.
+Machine-readable provider metadata включает health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) и pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. Runtime-код exposes тот же baseline через `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT`, `ProviderHealthSnapshot::evaluate` и `ProviderHealthEvidence::from_observations`, чтобы Wave evidence можно было формировать без transport-specific adapters. Registry и Wave evidence packet gates должны держать эти thresholds синхронизированными до Wave 1 promotion.
 
 Правила health evaluation намеренно консервативны: breach preview p95 или runtime error-rate помечает provider как `provider_unhealthy`, breach sanitize threshold помечает `sanitize_backpressure`, breach publish p95 помечает `publish_backlog`, а runtime error-rate выше двойного pilot threshold переводит state в `unavailable`; иначе непустой набор degradation reasons даёт `degraded`.
 

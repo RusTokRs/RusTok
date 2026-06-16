@@ -56,7 +56,7 @@
 
 - [x] Зафиксировать самостоятельный FBA reference-контур builder-а на уровне центральной документации и правил rollout (без возврата к pages-owned реализации).
 - [x] Зафиксировать capability-contracts (`preview/tree/properties/publish`) как минимально обязательный consumer surface для reference-модуля.
-- [x] Подготовить module health contract + observability baseline для reference-модуля (typed runtime states/reasons/SLO evaluator зафиксированы; CI automation остаётся в Phase 5).
+- [x] Подготовить module health contract + observability baseline для reference-модуля (typed runtime states/reasons/SLO evaluator и Wave evidence DTO зафиксированы; CI automation остаётся в Phase 5).
 - [~] Определить compatibility-периметр legacy payload-ов как временный слой и зафиксировать sunset criteria (критерии заданы, tenant-график отключения фиксируется в rollout runbook).
 - [ ] Выровнять contract parity для Next/Leptos/Flutter как consumer-ов reference-модуля на уровне production-readiness.
 
@@ -67,7 +67,8 @@
 - состояния: `ready`, `degraded`, `unavailable`;
 - причины деградации: `capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`;
 - pilot-пороги: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`;
-- evaluator: нарушения порогов дают детерминированные причины деградации, а runtime error-rate выше 2x порога переводит provider в `unavailable`.
+- evaluator: нарушения порогов дают детерминированные причины деградации, а runtime error-rate выше 2x порога переводит provider в `unavailable`;
+- `ProviderHealthEvidence::from_observations` формирует transport-neutral evidence snapshot со статусами `pass/fail` для `preview_p95_ms`, `publish_p95_ms`, `sanitize_failure_rate`, `runtime_error_rate` и `overall`.
 
 Этот baseline является источником для Wave evidence и должен оставаться синхронизированным с `contracts/page-builder-fba-registry.json`.
 
