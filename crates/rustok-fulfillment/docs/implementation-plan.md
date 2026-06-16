@@ -8,8 +8,8 @@ SPI и post-order delivery changes ещё остаются в активном b
 ## Execution checkpoint
 
 - Current phase: ffa_storefront_selection_boundary
-- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual carrier descriptor/capabilities plus rate-quote/create-label/cancel adapter contract, and the FBA registry now records `provider_spi` metadata while `FulfillmentService` keeps lifecycle persistence ownership.
-- Next step: Add provider SPI contract tests for rate quote/label/cancel error mapping, then move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured.
+- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual carrier descriptor/capabilities plus rate-quote/create-label/cancel adapter contract, and the FBA registry now records and verifies `provider_spi` metadata/source markers while `FulfillmentService` keeps lifecycle persistence ownership.
+- Next step: Add provider SPI contract tests for rate quote/label/cancel error mapping (metadata/source markers are now locked by the fast verifier), then move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
 - Last updated at (UTC): 2026-06-15T00:00:00Z
