@@ -96,8 +96,6 @@ for (const marker of [
   "BlogPostSaveResultViewModel",
   "blog_post_save_result_view",
   "BlogPostEditorFormState",
-  "BlogPostAdminShellViewModel",
-  "blog_post_admin_shell_view",
   "BlogPostAdminTableRowViewModel",
   "blog_post_admin_table_row_view",
   "BlogPostAdminTableViewModel",
@@ -133,7 +131,6 @@ for (const marker of [
 
 assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter must consume core and transport layers`);
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
-assertContains(ui, "core::blog_post_admin_shell_view", `${uiPath}: UI must use core-owned shell header view policy`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
 assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI must use core-owned raw-body warning view policy`);
@@ -171,6 +168,7 @@ assertContains(transport, "graphql_adapter::", `${transportPath}: transport faca
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the blog admin transport facade`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: blog admin GraphQL adapter must keep the GraphQL transport contract`);
 assertContains(graphqlAdapter, "BLOG_POSTS_QUERY", `${graphqlAdapterPath}: GraphQL adapter must own blog posts query text`);
+assertNotContains(graphqlAdapter, "Err(error) if is_posts_contract_unavailable", `${graphqlAdapterPath}: GraphQL adapter must not swallow posts contract-unavailable errors before the UI parity branch can classify them`);
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);
 assertContains(registry, "verify-blog-admin-boundary.mjs", `${registryPath}: central readiness board must mention the blog fast boundary guardrail`);
