@@ -5,7 +5,7 @@
 ## Execution checkpoint
 
 - Current phase: FFA admin route/query hardening
-- Last checkpoint: Comments admin продолжил FFA slice: selected-thread и locale query keys/update policy перенесены в Leptos-free `admin/src/core.rs`; `admin/src/ui/leptos.rs` только применяет готовый route-query write через host writer.
+- Last checkpoint: Comments admin route/query FFA slice закреплён fast boundary guardrail: `scripts/verify/verify-comments-admin-boundary.mjs` проверяет Leptos-free core, core-owned route/query write intents на shared `UiRouteQueryUpdate`, raw-route/transport-free Leptos adapter, native-only transport facade и documented no-GraphQL exception.
 - Next step: Закрепить contract-freeze evidence для native-only comments admin exception и продолжить FFA hardening только при появлении реальной coupling-проблемы без изобретения package-local GraphQL/REST fallback.
 - Open blockers: отсутствуют; native-only comments admin exception зафиксирован, потому что у модуля не было legacy GraphQL/REST admin surface.
 - Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.
@@ -21,6 +21,7 @@
   - covered admin UI больше не вызывает raw `api::*` напрямую из Leptos render layer, а идёт через module-owned transport facade;
   - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping и transport request/command DTO construction вынесены в Leptos-free core и покрыты unit tests;
   - selected-thread и locale route/query key ownership, normalization и host write intent теперь живут в Leptos-free core на shared `UiRouteQueryUpdate`, а Leptos adapter только применяет готовый `CommentsAdminRouteQueryWrite` через host writer;
+  - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` включён в aggregate `verify:ffa:ui:migration` и закрепляет native-only comments admin exception без package-local GraphQL fallback;
   - текущий admin transport остаётся native-only single-adapter server-function path, path зафиксирован typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, а отдельный GraphQL/REST fallback не добавляется как module-documented exception без legacy admin transport surface.
 - Owner: `rustok-comments` module team
 
