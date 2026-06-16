@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-15T00:00:00Z",
+  "updatedAt": "2026-06-16T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -156,18 +156,34 @@
       "command": "rg -n \"render_head_html|robots_directives|structured_data_blocks\" crates/rustok-seo/render/src/lib.rs",
       "compileFree": true,
       "expected": "shared Rust renderer still owns head serialization for canonical SeoPageContext"
+    },
+    {
+      "gate": "backend_transport_static_review",
+      "scope": "crates/rustok-seo/src/graphql/mod.rs;apps/next-admin/src/shared/api/seo.ts",
+      "command": "rg -n \"seoPageContext|seoDiagnostics|seoIndexDeliveryStatus|/api/seo/index/tracking|/api/seo/index/repair-replay\" crates/rustok-seo/src/graphql/mod.rs apps/next-admin/src/shared/api/seo.ts",
+      "compileFree": true,
+      "expected": "GraphQL page context/diagnostics/index status and REST tracking/replay adapter strings remain present"
+    },
+    {
+      "gate": "leptos_storefront_static_review",
+      "scope": "apps/storefront/src/shared/context/seo_page_context.rs",
+      "command": "rg -n \"storefront/seo-page-context|fetch_seo_page_context_server|fetch_seo_page_context_graphql|to_seo_page_context\" apps/storefront/src/shared/context/seo_page_context.rs",
+      "compileFree": true,
+      "expected": "Leptos storefront keeps server-function first with GraphQL fallback and shared renderer conversion"
     }
   ],
   "d8EvidencePacket": {
     "status": "lightweight_static_baseline",
-    "capturedAt": "2026-06-15T00:00:00Z",
+    "capturedAt": "2026-06-16T00:00:00Z",
     "compilationPolicy": "not_run_by_request",
     "coveredBatches": [
       "D8.1 fixture invariants",
       "D8.3 host parity static contract",
       "D8.4 evidence packet seed",
       "D9.1 docs sync matrix seed",
-      "D9.3 owner sign-off checklist seed"
+      "D9.3 owner sign-off checklist seed",
+      "D8.2 backend transport static contract",
+      "D8.3 Leptos storefront static contract"
     ],
     "deferredBatches": [
       "D8.1 Rust unit execution",
@@ -180,7 +196,9 @@
       "missing route ownership target kind",
       "missing non-home smoke evidence",
       "missing long-tail diff allowlist",
-      "missing compile-free verification matrix"
+      "missing compile-free verification matrix",
+      "missing backend transport static evidence",
+      "missing Leptos storefront server-function/GraphQL parity evidence"
     ]
   },
   "docsSyncMatrix": [
@@ -269,13 +287,72 @@
       "record backend/host command or CI job URL",
       "capture before/after delivery counters",
       "capture semantic error parity sample",
-      "capture non-home metadata smoke for product and blog"
+      "capture non-home metadata smoke for product and blog",
+      "capture Leptos storefront server-function and GraphQL fallback smoke for the same route",
+      "capture Next admin replay repair semantic-error sample"
     ],
     "stopCriteria": [
       "missing live backend evidence for D8.2",
       "missing host evidence for D8.3",
       "unexplained GraphQL/REST error-code drift",
       "cursor moves backward or duplicate idempotency transition observed"
-    ]
-  }
+    ],
+    "staticSubstituteCapturedAt": "2026-06-16T00:00:00Z",
+    "staticSubstituteReason": "User requested no compilations; this packet only proves contract files and adapter symbols remain wired before live backend/host evidence."
+  },
+  "staticEvidenceAssertions": [
+    {
+      "name": "next_frontend_adapter_symbols",
+      "path": "apps/next-frontend/src/shared/seo/runtime.ts",
+      "mustContain": [
+        "SeoTransportError",
+        "resolveSeoPageContextForRoute"
+      ]
+    },
+    {
+      "name": "next_frontend_metadata_builder",
+      "path": "apps/next-frontend/src/shared/seo/metadata.ts",
+      "mustContain": [
+        "buildSeoMetadata",
+        "structuredDataBlocks"
+      ]
+    },
+    {
+      "name": "next_frontend_rest_graphql_transport",
+      "path": "apps/next-frontend/src/shared/seo/transport.ts",
+      "mustContain": [
+        "/api/seo/page-context",
+        "seoPageContext",
+        "SeoTransportError"
+      ]
+    },
+    {
+      "name": "rust_renderer_head_contract",
+      "path": "crates/rustok-seo/render/src/lib.rs",
+      "mustContain": [
+        "render_head_html",
+        "robots_directives",
+        "structured_data_blocks"
+      ]
+    },
+    {
+      "name": "next_admin_index_transport",
+      "path": "apps/next-admin/src/shared/api/seo.ts",
+      "mustContain": [
+        "seoIndexDeliveryStatus",
+        "/api/seo/index/tracking",
+        "/api/seo/index/repair-replay"
+      ]
+    },
+    {
+      "name": "leptos_storefront_runtime_contract",
+      "path": "apps/storefront/src/shared/context/seo_page_context.rs",
+      "mustContain": [
+        "storefront/seo-page-context",
+        "fetch_seo_page_context_server",
+        "fetch_seo_page_context_graphql",
+        "to_seo_page_context"
+      ]
+    }
+  ]
 }

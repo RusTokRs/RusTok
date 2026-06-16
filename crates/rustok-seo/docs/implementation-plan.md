@@ -4,9 +4,9 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d9_compile_free_readiness_closeout`
-- Last checkpoint: D8/D9 compile-free closeout seed расширен: fixture verifier теперь проверяет docs sync matrix, owner sign-off checklist и live evidence plan; host/module docs описывают no-compilation evidence и оставшиеся live runtime gates.
-- Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, приложить before/after counters и перевести owner sign-off rows из pending в signed.
+- Current phase: `phase_d8_static_contract_expansion`
+- Last checkpoint: D8 compile-free verifier expanded from fixture-only checks to static source assertions for Next runtime/metadata/transport, Rust renderer, Next Admin index transport and Leptos storefront SEO runtime contract.
+- Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 закрытыми по static evidence.
 - Open blockers:
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
   - Для D9 остаётся дополнить runbooks live incident evidence и получить owner sign-off по seeded checklist.
@@ -16,7 +16,7 @@
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для replay mode сохранять forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) без backward transitions.
   - Для Next runtime adapter сохранять semantic error mapping (`BAD_USER_INPUT` / `PERMISSION_DENIED` / `NOT_FOUND` / transport failures) и не возвращаться к blanket `catch {}`.
-- Last updated at (UTC): 2026-06-15T00:00:00Z
+- Last updated at (UTC): 2026-06-16T00:00:00Z
 
 ## FFA/FBA status block
 
@@ -282,9 +282,12 @@
 ### Milestone D — Verification matrix execution
 
 - [x] D.1 Lightweight fixture/static matrix seed без компиляции.
+  - [x] D.1a Static source assertions для Next runtime/metadata/transport, Rust renderer, Next Admin transport и Leptos storefront SEO runtime contract.
   - [ ] D.1b Unit/integration/host matrix прогон в CI/runtime окружении.
 - [ ] D.2 RBAC/module gating parity checks.
+  - [x] D.2a Compile-free backend/admin transport symbol guard для GraphQL/REST parity surfaces.
 - [ ] D.3 Replay/index pipeline regression checks.
+  - [x] D.3a Compile-free Next Admin index tracking/replay endpoint guard.
 - [x] D.4 Lightweight evidence packet seed + stop criteria.
   - [ ] D.4b Live evidence packet + high-severity defect closure.
 
@@ -319,6 +322,6 @@
 
 ## Quality backlog
 
-- [ ] Закрыть Milestone D verification matrix с реальным CI evidence packet.
+- [ ] Закрыть Milestone D verification matrix с реальным CI evidence packet; static source assertions уже seeded в fixture verifier, но не заменяют live backend/host прогоны.
 - [ ] Зафиксировать Milestone E runbooks и operational remediation playbooks.
 - [ ] Обновлять execution checkpoint после каждого milestone-инкремента Phase D.
