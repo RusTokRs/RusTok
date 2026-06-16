@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "module": "fulfillment",
+  "packet": "contract-test-placeholder-matrix",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
+  "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
+  "contract_version": "fulfillment.shipping_selection.v1+provider_spi.v1",
+  "profiles": [
+    "in_process",
+    "remote_adapter_placeholder"
+  ],
+  "cases": [
+    {
+      "operation": "list_seller_shipping_options",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "select_shipping_option",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    }
+  ],
+  "fallback_smoke": {
+    "status": "static_locked_runtime_pending",
+    "profiles": [
+      "embedded_native",
+      "graphql_checkout_compat"
+    ],
+    "degraded_modes": [
+      "keep_previous_selection",
+      "show_shipping_handoff_retry"
+    ]
+  },
+  "promotion_gate": "does_not_raise_boundary_ready_without_runtime_execution"
+}
