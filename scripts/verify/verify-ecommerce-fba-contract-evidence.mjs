@@ -49,6 +49,16 @@ export function verifyEcommerceFbaContractEvidence({
       fail(`${module} evidence must keep boundary_ready gated on runtime execution`);
     }
 
+    if (!Array.isArray(evidence.cases) || evidence.cases.length !== registry.contract_tests.cases.length) {
+      fail(`${module} evidence case count drift`);
+    }
+
+    for (const evidenceCase of evidence.cases) {
+      if (!registry.contract_tests.cases.some((entry) => entry.operation === evidenceCase.operation)) {
+        fail(`${module} evidence has unknown case ${evidenceCase.operation}`);
+      }
+    }
+
     for (const registryCase of registry.contract_tests.cases) {
       const evidenceCase = evidence.cases.find((entry) => entry.operation === registryCase.operation);
       if (!evidenceCase) fail(`${module} evidence lacks case ${registryCase.operation}`);
@@ -63,6 +73,9 @@ export function verifyEcommerceFbaContractEvidence({
       }
     }
 
+    if (!evidence.fallback_smoke) {
+      fail(`${module} evidence lacks fallback_smoke`);
+    }
     const fallback = registry.contract_tests.fallback_smoke;
     if (evidence.fallback_smoke?.status !== 'static_locked_runtime_pending') {
       fail(`${module} fallback evidence status drift`);

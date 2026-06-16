@@ -85,3 +85,41 @@ test('verifyEcommerceFbaContractEvidence rejects assertion drift', () => {
     },
   );
 });
+
+
+test('verifyEcommerceFbaContractEvidence rejects unknown evidence cases', () => {
+  const root = createFixtureRoot({
+    mutateEvidence(evidence) {
+      evidence.cases.push({
+        operation: 'legacy_checkout_shadow_case',
+        profiles: ['in_process'],
+        assertions: ['typed_port_error_mapping'],
+        execution_status: 'static_locked_runtime_pending',
+      });
+    },
+  });
+
+  assert.throws(
+    () => verifyEcommerceFbaContractEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaContractEvidenceError.name,
+      message: 'pricing evidence case count drift',
+    },
+  );
+});
+
+test('verifyEcommerceFbaContractEvidence rejects missing fallback smoke evidence', () => {
+  const root = createFixtureRoot({
+    mutateEvidence(evidence) {
+      delete evidence.fallback_smoke;
+    },
+  });
+
+  assert.throws(
+    () => verifyEcommerceFbaContractEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaContractEvidenceError.name,
+      message: 'pricing evidence lacks fallback_smoke',
+    },
+  );
+});

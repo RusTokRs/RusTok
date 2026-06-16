@@ -43,7 +43,9 @@
     "verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.mjs",
     "test:verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.test.mjs",
     "verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
-    "test:verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.test.mjs"
+    "test:verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.test.mjs",
+    "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence",
+    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence"
   },
   "dependencies": {
     "sharp": "^0.34.5"

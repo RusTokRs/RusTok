@@ -124,7 +124,7 @@
    и этот unified plan, если меняется сам стандарт.
 
 
-На 2026-06-16 ecommerce provider track дополнительно получил единый static evidence layer для будущих contract tests: `pricing`, `inventory`, `order`, `payment` и `fulfillment` имеют `contracts/evidence/*-contract-test-static-matrix.json`, а `npm run verify:ecommerce:fba-contract-evidence` проверяет соответствие evidence-пакетов provider registry cases/fallback profiles. Это всё ещё не повышает статус до `boundary_ready`: runtime execution и fallback smoke остаются отдельным gate.
+На 2026-06-16 ecommerce provider track дополнительно получил единый static evidence layer для будущих contract tests: `pricing`, `inventory`, `order`, `payment` и `fulfillment` имеют `contracts/evidence/*-contract-test-static-matrix.json`, команда `npm run verify:ecommerce:fba` запускает registry + evidence gates, включая проверку соответствия evidence-пакетов provider registry cases/fallback profiles через `npm run verify:ecommerce:fba-contract-evidence`. Это всё ещё не повышает статус до `boundary_ready`: runtime execution и fallback smoke остаются отдельным gate.
 
 Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
 имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
