@@ -107,6 +107,7 @@ for (const marker of [
   "blog_post_admin_raw_body_warning_view",
   "BlogPostAdminPostsLoadViewModel",
   "blog_post_admin_posts_load_view",
+  "blog_post_admin_posts_load_view_from_list",
   "show_archive_action",
   "archive_label",
   "delete_label",
@@ -133,7 +134,7 @@ assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must u
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
 assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI must use core-owned raw-body warning view policy`);
-assertContains(ui, "core::blog_post_admin_posts_load_view", `${uiPath}: UI must use core-owned posts load result view policy`);
+assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_load_result_view", `${uiPath}: UI must use core-owned load result policy`);
 assertContains(ui, "core::blog_post_transport_failure_issue", `${uiPath}: UI must use core-owned transport failure issue mapping`);
 assertContains(ui, "core::blog_post_save_result_view", `${uiPath}: UI must use core-owned save result policy`);
