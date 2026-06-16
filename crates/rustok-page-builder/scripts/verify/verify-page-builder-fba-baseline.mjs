@@ -19,6 +19,7 @@ const checks = [
   "verify-page-builder-runtime-fallback-gate.mjs",
   "verify-page-builder-pages-fallback-gate.mjs",
   "verify-page-builder-pages-legacy-bridge.mjs",
+  "verify-page-builder-pages-rbac-readiness.mjs",
   "verify-page-builder-next-admin-parity.mjs",
   "verify-page-builder-leptos-admin-parity.mjs",
   "verify-page-builder-flutter-parity.mjs",

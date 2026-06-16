@@ -42,6 +42,7 @@
 - Latest legacy bridge update: `verify-page-builder-pages-legacy-bridge.mjs` добавлен в FBA baseline и фиксирует read/bridge semantics для legacy `blocks`: import/create разрешён, visual-builder body writes не удаляют blocks, update surface не получает новый block write contract, admin/storefront показывают compatibility evidence.
 - Latest FFA maintenance update: admin capability-card presentation helpers (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`) и storefront list helpers (`page_link_href`, `page_status_label`) вынесены в `core`, а `verify-pages-ui-boundary.mjs` теперь фиксирует эти no-compile boundary markers.
 - Latest quality backlog update: README/docs schema audit refreshed module-owned storage tables and pages-vs-builder ownership split; RBAC regression tests now lock admin/authenticated bypass for draft and page-channel allowlist semantics; explicit `npm run verify:page-builder:error-catalog` entry documents backend/UI error catalog drift gate without Cargo compilation.
+- Latest RBAC Wave 1 readiness update: no-compile guardrail `verify-page-builder-pages-rbac-readiness.mjs` now pins RBAC regression coverage and local/central docs sync inside the FBA baseline without running Cargo.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -236,7 +237,7 @@ Rollback target: переключение tenant flags назад должно �
 ### C3. Exit criteria для Wave 1
 
 - [x] service-level fallback regression checks и admin/storefront host-helper static checks зелёные на актуальном коммите; Next/Flutter typed error parity ещё требуется для Wave 1.
-- [ ] нет RBAC regression для editor/moderator/admin в builder-related сценариях.
+- [x] нет RBAC regression для editor/moderator/admin в builder-related сценариях: `crates/rustok-pages/tests/rbac.rs` фиксирует запрет manager publish, customer draft restrictions, admin draft bypass и page-channel allowlist bypass; быстрый no-compile gate `verify-page-builder-pages-rbac-readiness.mjs` включён в FBA baseline.
 - [~] подтверждён rollback execution <= 10 минут без redeploy `pages` runtime: manifest target зафиксирован, фактическое tenant evidence ожидается в реальном Wave 0 dry-run.
 
 ## Проверка
