@@ -79,7 +79,12 @@
       "degraded_modes": [
         "reuse_existing_collection",
         "show_payment_handoff_retry"
-      ]
+      ],
+      "provider_spi": {
+        "required": true,
+        "default_provider_id": "manual",
+        "lifecycle_owner_service": "PaymentService"
+      }
     },
     {
       "module": "fulfillment",
@@ -98,7 +103,12 @@
       "degraded_modes": [
         "keep_previous_selection",
         "show_shipping_handoff_retry"
-      ]
+      ],
+      "provider_spi": {
+        "required": true,
+        "default_provider_id": "manual",
+        "lifecycle_owner_service": "FulfillmentService"
+      }
     }
   ],
   "evidence": {
