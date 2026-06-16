@@ -43,6 +43,12 @@ pub struct BlogPostAdminTableViewModel;
 pub fn blog_post_admin_table_view() {}
 pub struct BlogPostAdminFormViewModel;
 pub fn blog_post_admin_form_view() {}
+pub struct BlogPostAdminEditBannerViewModel;
+pub fn blog_post_admin_edit_banner_view() {}
+pub struct BlogPostAdminRawBodyWarningViewModel;
+pub fn blog_post_admin_raw_body_warning_view() {}
+pub enum BlogPostAdminPostsLoadViewModel {}
+pub fn blog_post_admin_posts_load_view() {}
 pub fn selected_post_request() {}
 pub fn issue_banner_class_or_hidden() {}
 pub fn show_archive_action() {}
@@ -78,6 +84,9 @@ pub fn BlogAdmin() {
     let _load = core::blog_post_load_result_view;
     let _failure = core::blog_post_transport_failure_issue;
     let _saved = core::blog_post_save_result_view;
+    let _edit_banner = core::blog_post_admin_edit_banner_view;
+    let _raw_warning = core::blog_post_admin_raw_body_warning_view;
+    let _posts_load = core::blog_post_admin_posts_load_view;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;
     let _clear = core::blog_post_admin_clear_post_query_intent;
@@ -108,12 +117,14 @@ ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async
 `;
 }
 
-function graphqlAdapterSource() {
+function graphqlAdapterSource({ swallowPostsContractUnavailable = false } = {}) {
   return `
 use leptos_graphql::GraphqlRequest;
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin { posts { total } }";
 pub fn is_posts_contract_unavailable() {}
-pub async fn fetch_posts() {}
+pub async fn fetch_posts() {
+${swallowPostsContractUnavailable ? "    Err(error) if is_posts_contract_unavailable(&error) => return Ok(());" : ""}
+}
 pub async fn fetch_post() {}
 pub async fn create_post() {}
 pub async fn update_post() {}
@@ -130,7 +141,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-blog/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource());
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }
@@ -242,6 +253,17 @@ test("blog admin boundary verifier rejects server functions in transport facade"
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected transport server-function fixture to fail");
     assert.match(result.stderr, /server\/native endpoints must not live in the blog admin transport facade/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("blog admin boundary verifier rejects swallowed posts contract-unavailable errors", () => {
+  const root = withFixture({ swallowPostsContractUnavailable: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected swallowed contract-unavailable fixture to fail");
+    assert.match(result.stderr, /must not swallow posts contract-unavailable errors/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

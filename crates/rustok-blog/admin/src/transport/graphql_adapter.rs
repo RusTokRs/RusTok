@@ -177,7 +177,7 @@ pub async fn fetch_posts(
     tenant_slug: Option<String>,
     locale: Option<String>,
 ) -> Result<BlogPostList, ApiError> {
-    let response: BlogPostsResponse = match request(
+    let response: BlogPostsResponse = request(
         BLOG_POSTS_QUERY,
         BlogPostsVariables {
             filter: PostsFilter {
@@ -189,17 +189,7 @@ pub async fn fetch_posts(
         token,
         tenant_slug,
     )
-    .await
-    {
-        Ok(response) => response,
-        Err(error) if is_posts_contract_unavailable(&error) => {
-            return Ok(BlogPostList {
-                items: Vec::new(),
-                total: 0,
-            });
-        }
-        Err(error) => return Err(error),
-    };
+    .await?;
 
     Ok(response.posts)
 }
