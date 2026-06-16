@@ -71,9 +71,10 @@ fn DeliveryGroupCard(
     let selected_id = group.selected_shipping_option_id.clone();
     let group_for_clear = group.clone();
     let clear_label = labels.no_selection_label.clone();
-    let select_clear = Callback::new(move |_| {
+    let select_clear = move |_| {
         on_select_shipping_option.run(build_select_shipping_option_request(&group_for_clear, None));
-    });
+    };
+    let stored_group = StoredValue::new(group.clone());
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-5">
@@ -97,14 +98,16 @@ fn DeliveryGroupCard(
                     <span class="text-xs text-muted-foreground">{if selected_id.is_none() { labels.selected_label.clone() } else { labels.select_label.clone() }}</span>
                 </button>
                 <For
-                    each=move || group.available_shipping_options.clone()
+                    each=move || stored_group.with_value(|g| g.available_shipping_options.clone())
                     key=|option| option.id.clone()
                     children=move |option| {
+                        let group_val = stored_group.get_value();
+                        let selected_id_opt = group_val.selected_shipping_option_id.clone();
                         view! {
                             <ShippingOptionButton
-                                group=group.clone()
+                                group=group_val
                                 option
-                                selected_shipping_option_id=group.selected_shipping_option_id.clone()
+                                selected_shipping_option_id=selected_id_opt
                                 labels=labels.clone()
                                 busy
                                 on_select_shipping_option
@@ -129,12 +132,12 @@ fn ShippingOptionButton(
     let is_selected = selected_shipping_option_id.as_deref() == Some(option.id.as_str());
     let option_for_click = option.clone();
     let group_for_click = group.clone();
-    let on_click = Callback::new(move |_| {
+    let on_click = move |_| {
         on_select_shipping_option.run(build_select_shipping_option_request(
             &group_for_click,
             Some(option_for_click.id.clone()),
         ));
-    });
+    };
 
     view! {
         <button

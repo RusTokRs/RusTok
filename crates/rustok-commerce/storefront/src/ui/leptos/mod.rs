@@ -303,11 +303,14 @@ fn CheckoutWorkspace(
                                 {t(locale.as_deref(), "commerce.checkout.subtitle", "This workspace keeps only the aggregate steps that still span cart, payment, order, and fulfillment boundaries.")}
                             </p>
                         </div>
-                        {move || {
-                            completion.get().map(|result| {
-                                view! { <OrderCheckoutResultCard result=order_checkout_result_data(result) labels=order_checkout_result_labels(locale.as_deref()) /> }
-                            })
-                        }}
+                        {
+                            let completion_locale = locale.clone();
+                            move || {
+                                completion.get().map(|result| {
+                                    view! { <OrderCheckoutResultCard result=order_checkout_result_data(result) labels=order_checkout_result_labels(completion_locale.as_deref()) /> }
+                                })
+                            }
+                        }
                         <CartCheckoutHandoffCard
                             cart_id=cart_id
                             status=cart_status

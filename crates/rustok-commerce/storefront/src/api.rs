@@ -928,23 +928,23 @@ pub async fn fetch_storefront_commerce_graphql(
 
 #[allow(dead_code)]
 pub async fn select_storefront_shipping_option_server(
-    request: FulfillmentSelectShippingOptionRequest,
+    req: FulfillmentSelectShippingOptionRequest,
 ) -> Result<(), ApiError> {
-    storefront_select_shipping_option(request)
+    storefront_select_shipping_option(req)
         .await
         .map_err(ApiError::from)
 }
 
 #[allow(dead_code)]
 pub async fn select_storefront_shipping_option_graphql(
-    request: FulfillmentSelectShippingOptionRequest,
+    req: FulfillmentSelectShippingOptionRequest,
 ) -> Result<(), ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(request.cart_id.clone()))? else {
+    let Some((_, parsed_cart_id)) = parse_cart_id(Some(req.cart_id.clone()))? else {
         return Err(ApiError::Validation(
             "cart_id must not be empty".to_string(),
         ));
     };
-    let shipping_selections = build_graphql_shipping_selections(&request)?;
+    let shipping_selections = build_graphql_shipping_selections(&req)?;
 
     let response: SelectStorefrontShippingOptionResponse = request(
         SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION,
@@ -961,17 +961,17 @@ pub async fn select_storefront_shipping_option_graphql(
 }
 
 pub async fn create_storefront_payment_collection_server(
-    request: PaymentCollectionCreateRequest,
+    req: PaymentCollectionCreateRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    storefront_create_payment_collection(request.cart_id, request.metadata)
+    storefront_create_payment_collection(req.cart_id, req.metadata)
         .await
         .map_err(ApiError::from)
 }
 
 pub async fn create_storefront_payment_collection_graphql(
-    request: PaymentCollectionCreateRequest,
+    req: PaymentCollectionCreateRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(request.cart_id.clone()))? else {
+    let Some((_, parsed_cart_id)) = parse_cart_id(Some(req.cart_id.clone()))? else {
         return Err(ApiError::Validation(
             "cart_id must not be empty".to_string(),
         ));
@@ -982,7 +982,7 @@ pub async fn create_storefront_payment_collection_graphql(
         CreateStorefrontPaymentCollectionVariables {
             input: CreateStorefrontPaymentCollectionInput {
                 cart_id: parsed_cart_id,
-                metadata: Some(payment_collection_command_metadata(request.metadata)),
+                metadata: Some(payment_collection_command_metadata(req.metadata).to_string()),
             },
         },
     )
@@ -992,17 +992,17 @@ pub async fn create_storefront_payment_collection_graphql(
 }
 
 pub async fn complete_storefront_checkout_server(
-    request: CompleteCheckoutRequest,
+    req: CompleteCheckoutRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    storefront_complete_checkout(request.cart_id, request.metadata)
+    storefront_complete_checkout(req.cart_id, req.metadata)
         .await
         .map_err(ApiError::from)
 }
 
 pub async fn complete_storefront_checkout_graphql(
-    request: CompleteCheckoutRequest,
+    req: CompleteCheckoutRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(request.cart_id.clone()))? else {
+    let Some((_, parsed_cart_id)) = parse_cart_id(Some(req.cart_id.clone()))? else {
         return Err(ApiError::Validation(
             "cart_id must not be empty".to_string(),
         ));
@@ -1013,8 +1013,8 @@ pub async fn complete_storefront_checkout_graphql(
         CompleteStorefrontCheckoutVariables {
             input: CompleteStorefrontCheckoutInput {
                 cart_id: parsed_cart_id,
-                create_fulfillment: request.metadata.create_fulfillment,
-                metadata: Some(checkout_completion_command_metadata(request.metadata)),
+                create_fulfillment: req.metadata.create_fulfillment,
+                metadata: Some(checkout_completion_command_metadata(req.metadata).to_string()),
             },
         },
     )

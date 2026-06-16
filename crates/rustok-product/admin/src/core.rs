@@ -1328,6 +1328,63 @@ mod tests {
         }
     }
 
+    fn shipping_profile(slug: &str, active: bool) -> ShippingProfile {
+        ShippingProfile {
+            id: format!("profile-{slug}"),
+            tenant_id: "tenant-1".to_string(),
+            slug: slug.to_string(),
+            name: "Standard".to_string(),
+            description: None,
+            active,
+            metadata: "{}".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn product_detail() -> ProductDetail {
+        ProductDetail {
+            id: "product-1".to_string(),
+            status: "ACTIVE".to_string(),
+            seller_id: Some("seller-1".to_string()),
+            vendor: Some("Acme".to_string()),
+            product_type: Some("coat".to_string()),
+            shipping_profile_slug: Some("standard".to_string()),
+            tags: Vec::new(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            published_at: Some("2026-01-01T00:00:00Z".to_string()),
+            translations: vec![ProductTranslation {
+                locale: "en".to_string(),
+                title: "Winter coat".to_string(),
+                handle: "winter-coat".to_string(),
+                description: Some("Warm coat".to_string()),
+                meta_title: None,
+                meta_description: None,
+            }],
+            options: Vec::new(),
+            variants: vec![crate::model::ProductVariant {
+                id: "variant-1".to_string(),
+                sku: Some("COAT-1".to_string()),
+                barcode: Some("123".to_string()),
+                shipping_profile_slug: None,
+                title: "Default".to_string(),
+                option1: None,
+                option2: None,
+                option3: None,
+                prices: vec![crate::model::ProductPrice {
+                    currency_code: "EUR".to_string(),
+                    amount: "12.00".to_string(),
+                    compare_at_amount: Some("15.00".to_string()),
+                    on_sale: true,
+                }],
+                inventory_quantity: 9,
+                inventory_policy: "DENY".to_string(),
+                in_stock: true,
+            }],
+        }
+    }
+
     #[test]
     fn product_admin_route_query_intents_keep_product_selection_policy_in_core() {
         assert_eq!(

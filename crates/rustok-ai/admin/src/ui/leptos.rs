@@ -9,12 +9,14 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 #[cfg(not(target_arch = "wasm32"))]
-use model::AiLiveStreamStatePayload;
+use crate::model::AiLiveStreamStatePayload;
 #[cfg(target_arch = "wasm32")]
-use model::{AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope};
-use model::{
+use crate::model::{AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope};
+use crate::model::{
     AiMetricBucketPayload, AiProviderProfilePayload, AiTaskProfilePayload, AiToolProfilePayload,
 };
+use crate::model;
+use crate::transport;
 use rustok_api::{AdminQueryKey, UiRouteContext};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;

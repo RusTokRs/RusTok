@@ -1284,7 +1284,7 @@ mod tests {
     fn resolves_selected_category_filter_label() {
         assert_eq!(
             selected_category_filter_label(
-                some_category_items(),
+                Some(some_category_items()),
                 "category-2",
                 "All categories",
                 "Filtered category",
@@ -1293,7 +1293,7 @@ mod tests {
         );
         assert_eq!(
             selected_category_filter_label(
-                some_category_items(),
+                Some(some_category_items()),
                 "missing",
                 "All categories",
                 "Filtered category",
@@ -1302,7 +1302,7 @@ mod tests {
         );
         assert_eq!(
             selected_category_filter_label(
-                some_category_items(),
+                Some(some_category_items()),
                 "  ",
                 "All categories",
                 "Filtered category",

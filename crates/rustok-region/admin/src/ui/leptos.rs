@@ -8,11 +8,11 @@ use crate::core::{
     RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminDetailPanelLabels,
     RegionAdminDetailPanelViewModel, RegionAdminEditorFieldLabels, RegionAdminEditorFormState,
     RegionAdminEditorLabels, RegionAdminListHeaderLabels, RegionAdminListLabels,
-    RegionAdminListStateLabels, RegionAdminListStateViewModel, RegionAdminPolicyLabels,
-    RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent, RegionAdminRouteQueryUpdate,
-    RegionAdminSaveMode, RegionAdminShellLabels, RegionAdminSubmitErrorLabels,
-    RegionAdminSubmitInput, RegionAdminTransportErrorLabels, RegionRequiredFieldLabels,
-    REGION_ADMIN_SELECTED_QUERY_KEY,
+    RegionAdminListStateLabels, RegionAdminListStateViewModel, RegionAdminOpenDetailViewModel,
+    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent,
+    RegionAdminRouteQueryUpdate, RegionAdminSaveMode, RegionAdminSaveSuccessViewModel,
+    RegionAdminShellLabels, RegionAdminSubmitErrorLabels, RegionAdminSubmitInput,
+    RegionAdminTransportErrorLabels, RegionRequiredFieldLabels, REGION_ADMIN_SELECTED_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::model::RegionDetail;

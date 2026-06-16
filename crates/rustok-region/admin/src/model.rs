@@ -30,12 +30,12 @@ pub struct RegionListItem {
     pub updated_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RegionDetail {
     pub region: RegionRecord,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RegionRecord {
     pub id: String,
     pub tenant_id: String,
@@ -51,7 +51,7 @@ pub struct RegionRecord {
     pub updated_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RegionDraft {
     pub name: String,
     pub locale: String,
