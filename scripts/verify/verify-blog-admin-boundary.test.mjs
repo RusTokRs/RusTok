@@ -49,6 +49,7 @@ pub struct BlogPostAdminRawBodyWarningViewModel;
 pub fn blog_post_admin_raw_body_warning_view() {}
 pub enum BlogPostAdminPostsLoadViewModel {}
 pub fn blog_post_admin_posts_load_view() {}
+pub fn blog_post_admin_posts_load_view_from_list() {}
 pub fn selected_post_request() {}
 pub fn issue_banner_class_or_hidden() {}
 pub fn show_archive_action() {}
@@ -86,7 +87,7 @@ pub fn BlogAdmin() {
     let _saved = core::blog_post_save_result_view;
     let _edit_banner = core::blog_post_admin_edit_banner_view;
     let _raw_warning = core::blog_post_admin_raw_body_warning_view;
-    let _posts_load = core::blog_post_admin_posts_load_view;
+    let _posts_load = core::blog_post_admin_posts_load_view_from_list;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;
     let _clear = core::blog_post_admin_clear_post_query_intent;
