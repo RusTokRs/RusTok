@@ -20,7 +20,7 @@
   - `rustok-comments-admin` теперь имеет явные `admin/src/core.rs`, `admin/src/transport/mod.rs`, `admin/src/transport/native_server_adapter.rs` и `admin/src/ui/leptos.rs`; `admin/src/lib.rs` больше не содержит render/business logic, не wires pre-FFA `api.rs` и публикует только `CommentsAdmin`;
   - covered admin UI больше не вызывает raw `api::*` напрямую из Leptos render layer, а идёт через module-owned transport facade;
   - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping и transport request/command DTO construction вынесены в Leptos-free core и покрыты unit tests;
-  - selected-thread и locale route/query key ownership, normalization и push/replace/clear write policy теперь живут в Leptos-free core, а Leptos adapter применяет готовый `CommentsAdminRouteQueryWrite` через host writer;
+  - selected-thread и locale route/query key ownership, normalization и host write intent теперь живут в Leptos-free core на shared `UiRouteQueryUpdate`, а Leptos adapter только применяет готовый `CommentsAdminRouteQueryWrite` через host writer;
   - текущий admin transport остаётся native-only single-adapter server-function path, path зафиксирован typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, а отдельный GraphQL/REST fallback не добавляется как module-documented exception без legacy admin transport surface.
 - Owner: `rustok-comments` module team
 

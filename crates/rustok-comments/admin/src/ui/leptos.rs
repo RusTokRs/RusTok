@@ -6,11 +6,10 @@ use rustok_api::UiRouteContext;
 use rustok_comments::{CommentStatus, CommentThreadStatus};
 
 use crate::core::{
-    comments_admin_locale_query_update, comments_admin_route_query_write,
-    comments_admin_select_thread_query_update, CommentRowViewModel, CommentThreadDetailRequest,
-    CommentThreadDetailViewModel, CommentThreadListItemViewModel, CommentThreadsRequest,
-    SetCommentStatusCommand, SetThreadStatusCommand, COMMENTS_ADMIN_LOCALE_QUERY_KEY,
-    COMMENTS_ADMIN_THREAD_QUERY_KEY,
+    comments_admin_locale_query_write, comments_admin_select_thread_query_write,
+    CommentRowViewModel, CommentThreadDetailRequest, CommentThreadDetailViewModel,
+    CommentThreadListItemViewModel, CommentThreadsRequest, SetCommentStatusCommand,
+    SetThreadStatusCommand, COMMENTS_ADMIN_LOCALE_QUERY_KEY, COMMENTS_ADMIN_THREAD_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::transport;
@@ -268,7 +267,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                     set_locale.set(next_value.clone());
                                     apply_comments_route_query_update(
                                         &locale_query_writer,
-                                        comments_admin_locale_query_update(&next_value),
+                                        comments_admin_locale_query_write(&next_value),
                                     );
                                 }
                             />
@@ -327,7 +326,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
                                                         on:click=move |_| {
-                                                            if let Some(update) = comments_admin_select_thread_query_update(&thread_id) {
+                                                            if let Some(update) = comments_admin_select_thread_query_write(&thread_id) {
                                                                 apply_comments_route_query_update(&thread_query_writer, update);
                                                             }
                                                         }
@@ -499,15 +498,8 @@ fn StatusButton(label: String, on_click: Callback<()>) -> impl IntoView {
 
 fn apply_comments_route_query_update(
     query_writer: &leptos_ui_routing::RouteQueryWriter,
-    update: crate::core::CommentsAdminRouteQueryUpdate,
+    update: crate::core::CommentsAdminRouteQueryWrite,
 ) {
-    let write = comments_admin_route_query_write(update);
-    query_writer.update(
-        write
-            .updates
-            .into_iter()
-            .map(|(key, value)| (key.to_string(), value))
-            .collect(),
-        write.replace,
-    );
+    let (key, value, replace) = update.into_writer_update();
+    query_writer.update(vec![(key, value)], replace);
 }

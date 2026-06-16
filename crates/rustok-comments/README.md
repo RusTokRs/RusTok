@@ -28,7 +28,8 @@
   there is no GraphQL/REST fallback because the comments domain did not have a legacy transport surface
   of its own.
 - `rustok-comments-admin` keeps selected-thread and locale route-query normalization/write policy in
-  its framework-agnostic core, while the Leptos adapter only applies the prepared host updates.
+  its framework-agnostic core using shared `UiRouteQueryUpdate`, while the Leptos adapter only
+  applies the prepared host updates.
 
 ## Entry points
 
