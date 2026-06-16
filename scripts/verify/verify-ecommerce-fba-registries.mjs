@@ -248,6 +248,15 @@ export function verifyEcommerceFbaRegistries({
         fail(`commerce provider ${module} port drift`);
       }
     }
+    if (provider.provider_spi) {
+      if (!consumer.provider_spi?.required) fail(`commerce provider ${module} provider SPI requirement drift`);
+      if (consumer.provider_spi.default_provider_id !== provider.provider_spi.default_provider_id) {
+        fail(`commerce provider ${module} provider SPI default provider drift`);
+      }
+      if (consumer.provider_spi.lifecycle_owner_service !== provider.provider_spi.lifecycle_owner_service) {
+        fail(`commerce provider ${module} provider SPI lifecycle owner drift`);
+      }
+    }
     const commerceConsumer = provider.consumers.find((entry) => entry.module === 'commerce');
     if (!commerceConsumer) fail(`${module} provider registry lacks commerce consumer`);
     if (!consumer.profiles.includes(commerceConsumer.profile)) {

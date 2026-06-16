@@ -12,7 +12,7 @@ import {
 
 const moduleSlug = 'pricing';
 
-const createFixtureRoot = ({ mutateRegistry } = {}) => {
+const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
   const rootPath = mkdtempSync(join(tmpdir(), 'rustok-ecommerce-fba-'));
   const write = (relativePath, content) => {
     const fullPath = join(rootPath, ...relativePath.split('/'));
@@ -92,6 +92,15 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
         profiles: ['checkout_pricing_projection'],
         fallback_profiles: ['embedded_native', 'graphql_checkout_compat'],
         degraded_modes: ['use_cart_price_snapshot'],
+        ...(registry.provider_spi
+          ? {
+              provider_spi: {
+                required: true,
+                default_provider_id: registry.provider_spi.default_provider_id,
+                lifecycle_owner_service: registry.provider_spi.lifecycle_owner_service,
+              },
+            }
+          : {}),
       },
     ],
     evidence: {
@@ -100,6 +109,8 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
       verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
     },
   };
+
+  mutateCommerceRegistry?.(commerceRegistry);
 
   write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pricing/docs/implementation-plan.md` (`crates/rustok-pricing/contracts/pricing-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
   write('crates/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
@@ -210,12 +221,13 @@ const providerSpiMetadata = (overrides = {}) => ({
   ...overrides,
 });
 
-const createProviderSpiFixtureRoot = ({ providerSpi = providerSpiMetadata(), providerSource } = {}) =>
+const createProviderSpiFixtureRoot = ({ providerSpi = providerSpiMetadata(), mutateCommerceRegistry } = {}) =>
   createFixtureRoot({
     mutateRegistry(registry) {
       registry.contract_version = providerSpiContractVersion;
       registry.provider_spi = providerSpi;
     },
+    mutateCommerceRegistry,
   });
 
 const compliantProviderSource = 'pub const MANUAL_PROVIDER_ID: &str = "manual";\npub struct PricingProviderCapabilities { pub authorize: bool }\npub struct PricingProviderOperationRequest { pub idempotency_key: Option<String> }\npub trait PricingProvider: Send + Sync { fn descriptor(&self); async fn authorize(&self, request: PricingProviderOperationRequest); }\n';
@@ -287,6 +299,24 @@ test('verifyEcommerceFbaRegistries rejects provider SPI lifecycle ownership drif
     }),
     message: 'pricing provider SPI lifecycle_owner_service must be PricingService',
   });
+});
+
+test('verifyEcommerceFbaRegistries rejects commerce provider SPI consumer metadata drift', () => {
+  const root = createProviderSpiFixtureRoot({
+    providerSpi: providerSpiMetadata(),
+    mutateCommerceRegistry(commerceRegistry) {
+      commerceRegistry.providers[0].provider_spi.lifecycle_owner_service = 'CommerceService';
+    },
+  });
+  writeProviderSpiFixtureFiles(root);
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'commerce provider pricing provider SPI lifecycle owner drift',
+    },
+  );
 });
 
 test('verifyEcommerceFbaRegistries rejects provider SPI default provider id drift', () => {
