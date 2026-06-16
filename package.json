@@ -44,6 +44,7 @@
     "verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.mjs",
     "test:verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.test.mjs",
     "verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.mjs",
+    "verify:page-builder:pages:rbac-readiness": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-rbac-readiness.mjs",
     "verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
     "test:verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.test.mjs",
     "test:verify:ecommerce:provider-spi-evidence": "node scripts/verify/verify-ecommerce-provider-spi-evidence.test.mjs",
