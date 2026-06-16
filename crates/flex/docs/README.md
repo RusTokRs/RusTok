@@ -298,6 +298,10 @@ pub fn json_field_contains(column, key: &str, value: serde_json::Value) -> Condi
 | Guardrail | Значение | Статус | Где проверяется |
 |-----------|----------|--------|-----------------|
 | Max standalone fields per schema | **50** | ✅ реализовано для standalone | `validate_create_schema_command()` / `validate_update_schema_command()` до adapter/service layer |
+| Длина standalone schema slug | **64** символа | ✅ реализовано для standalone | `validate_create_schema_command()` до записи в `flex_schemas.slug VARCHAR(64)` |
+| Длина standalone schema name | **255** символов | ✅ реализовано для standalone | create/update validators до записи в `flex_schema_translations.name VARCHAR(255)` |
+| Длина standalone entry relation type | **64** символа | ✅ реализовано для standalone | `validate_create_entry_command()` до записи в `flex_entries.entity_type VARCHAR(64)` |
+| Формат и длина standalone entry status | `^[a-z][a-z0-9_]*$`, **32** символа | ✅ реализовано для standalone | create/update entry validators до записи в `flex_entries.status VARCHAR(32)` |
 | Max nesting depth (`FieldType::Json`) | **2** | ✅ реализовано | `validate_field_value()` |
 | Validation on write | **Строгая** | ✅ реализовано | `CustomFieldsSchema::validate()` |
 | `field_key` format | `^[a-z][a-z0-9_]{0,127}$` | ✅ реализовано | `is_valid_field_key()` |
@@ -522,7 +526,7 @@ pub enum FlexError {
 - `CreateFlexSchemaCommand`, `UpdateFlexSchemaCommand`
 - `CreateFlexEntryCommand`, `UpdateFlexEntryCommand`
 - `FlexStandaloneService`
-- Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command`
+- Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command` теперь проверяют форму JSON-object для payload, нормализованные identifiers/statuses, лимит 50 fields per schema и DB-column length caps для schema slugs/names, а также entry `entity_type`/`status`.
 - Orchestration helpers: `list/find/create/update/delete` для schemas и entries
 - SeaORM adapter `FlexStandaloneSeaOrmService`
 - GraphQL queries/mutations в `apps/server` для schemas и entries с отдельными `flex_schemas:*` и `flex_entries:*` permission gates
@@ -587,6 +591,8 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 ### Guardrails standalone mode
 
 - Max relation depth = 1 (нет рекурсивного populate)
+- Schema slugs укладываются в `VARCHAR(64)`, schema names — в `VARCHAR(255)`, entry relation types — в `VARCHAR(64)`, entry statuses — в `VARCHAR(32)`.
+- Entry statuses должны быть заранее нормализованными machine identifiers (`^[a-z][a-z0-9_]*$`) без surrounding whitespace.
 - FlexEntry A может ссылаться на User/Product ✅
 - FlexEntry A → FlexEntry B → FlexEntry C ❌
 
