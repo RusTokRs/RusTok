@@ -123,7 +123,7 @@ Readiness score считается производным от issue set. Summar
 ## D8/D9 readiness evidence
 
 - Compile-free D8/D9 seed lives in `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` and is checked by `npm --prefix apps/next-frontend run verify:seo-runtime-fixtures`.
-- The fixture now covers fallback behavior, route ownership, non-home metadata smoke assertions, long-tail diff allowlist, docs sync matrix, owner sign-off checklist and live evidence closeout criteria.
+- The fixture now covers fallback behavior, route ownership, non-home metadata smoke assertions, long-tail diff allowlist, docs sync matrix, owner sign-off checklist, live evidence closeout criteria, and static source assertions for Next runtime/metadata/transport, Rust renderer, Next Admin index transport, and Leptos storefront SEO runtime wiring.
 - Live runtime evidence remains required before final D8/D9 closeout: backend GraphQL/REST parity, SEO index delivery counters, Next robots/sitemap/metadata runtime smoke and Leptos `storefront/seo-page-context` smoke.
 
 ## Проверка
