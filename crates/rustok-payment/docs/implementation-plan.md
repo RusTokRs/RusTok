@@ -6,7 +6,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: storefront_action_request_boundary
-- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual provider descriptor/capabilities plus authorize/capture/cancel/refund adapter contract, and the FBA registry now records `provider_spi` metadata without moving lifecycle persistence out of `PaymentService`.
+- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual provider descriptor/capabilities plus authorize/capture/cancel/refund adapter contract, and the FBA registry now records and verifies `provider_spi` metadata/source markers, module-owned SPI source path and explicit `lifecycle_owner_service = PaymentService` ownership, default provider id literal and boolean capability fields without moving persistence into transport.
 - Next step: Add contract tests for provider SPI error/idempotency mapping, then move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.

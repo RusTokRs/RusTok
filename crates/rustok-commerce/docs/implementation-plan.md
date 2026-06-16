@@ -3,7 +3,7 @@
 ## Execution checkpoint
 
 - Current phase: provider SPI baseline and storefront owner transport handoff
-- Last checkpoint: Started Phase 11 provider architecture baseline: `rustok-payment` and `rustok-fulfillment` now publish manual provider SPI descriptors/capabilities plus adapter traits, and their FBA registries record `provider_spi` metadata while lifecycle persistence remains in owner services.
+- Last checkpoint: Started Phase 11 provider architecture baseline: `rustok-payment` and `rustok-fulfillment` now publish manual provider SPI descriptors/capabilities plus adapter traits, and the commerce consumer registry mirrors their `provider_spi` default-provider/lifecycle metadata while provider FBA registries record and verify `provider_spi` metadata/source markers, module-owned SPI source paths and explicit `lifecycle_owner_service` names, default provider id literals and boolean capability fields while lifecycle persistence remains in owner services.
 - Next step: Add provider SPI contract tests/webhook replay contracts and continue shrinking remaining commerce compatibility transport paths toward owner payment/fulfillment/order async transports once module-owned adapters are ready; keep Next commerce pages behind the shared module guard.
 - Open blockers: None.
 - Hand-off notes for next agent: After each post-order operator UI/page addition, update this checkpoint block and central registry evidence; keep the Next host route as a thin auth/options adapter only.

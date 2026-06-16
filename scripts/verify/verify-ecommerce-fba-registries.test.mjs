@@ -12,7 +12,7 @@ import {
 
 const moduleSlug = 'pricing';
 
-const createFixtureRoot = ({ mutateRegistry } = {}) => {
+const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
   const rootPath = mkdtempSync(join(tmpdir(), 'rustok-ecommerce-fba-'));
   const write = (relativePath, content) => {
     const fullPath = join(rootPath, ...relativePath.split('/'));
@@ -92,6 +92,15 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
         profiles: ['checkout_pricing_projection'],
         fallback_profiles: ['embedded_native', 'graphql_checkout_compat'],
         degraded_modes: ['use_cart_price_snapshot'],
+        ...(registry.provider_spi
+          ? {
+              provider_spi: {
+                required: true,
+                default_provider_id: registry.provider_spi.default_provider_id,
+                lifecycle_owner_service: registry.provider_spi.lifecycle_owner_service,
+              },
+            }
+          : {}),
       },
     ],
     evidence: {
@@ -100,6 +109,8 @@ const createFixtureRoot = ({ mutateRegistry } = {}) => {
       verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
     },
   };
+
+  mutateCommerceRegistry?.(commerceRegistry);
 
   write('docs/modules/registry.md', '| `pricing` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-pricing/docs/implementation-plan.md` (`crates/rustok-pricing/contracts/pricing-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
   write('crates/rustok-pricing/contracts/pricing-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
@@ -158,7 +169,6 @@ test('verifyEcommerceFbaRegistries rejects evidence drift', () => {
   );
 });
 
-
 test('verifyEcommerceFbaRegistries rejects write-idempotency assertions on read-only operations', () => {
   const root = createFixtureRoot({
     mutateRegistry(registry) {
@@ -190,4 +200,135 @@ test('verifyEcommerceFbaRegistries rejects missing read deadline enforcement', (
       message: 'pricing in-process provider impl must enforce read deadline semantics',
     },
   );
+});
+
+
+const providerSpiContractVersion = 'pricing.read_projection.v1+provider_spi.v1';
+
+const providerSpiMetadata = (overrides = {}) => ({
+  status: 'manual_baseline_locked',
+  source: 'crates/rustok-pricing/src/providers.rs',
+  default_provider_id: 'manual',
+  lifecycle_owner_service: 'PricingService',
+  operations: ['authorize'],
+  capabilities: ['authorize'],
+  side_effect_boundary: 'provider adapters execute external effects; PricingService owns persisted lifecycle transitions',
+  webhook_ingress: {
+    status: 'planned',
+    idempotency_required: true,
+    replay_required: true,
+  },
+  ...overrides,
+});
+
+const createProviderSpiFixtureRoot = ({ providerSpi = providerSpiMetadata(), mutateCommerceRegistry } = {}) =>
+  createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.contract_version = providerSpiContractVersion;
+      registry.provider_spi = providerSpi;
+    },
+    mutateCommerceRegistry,
+  });
+
+const compliantProviderSource = 'pub const MANUAL_PROVIDER_ID: &str = "manual";\npub struct PricingProviderCapabilities { pub authorize: bool }\npub struct PricingProviderOperationRequest { pub idempotency_key: Option<String> }\npub trait PricingProvider: Send + Sync { fn descriptor(&self); async fn authorize(&self, request: PricingProviderOperationRequest); }\n';
+
+const writeProviderSpiFixtureFiles = (root, providerSource = compliantProviderSource) => {
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/src/lib.rs'),
+    'pub mod ports;\npub use ports::*;\npub mod providers;\npub use providers::*;\n',
+  );
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/rustok-module.toml'),
+    '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1+provider_spi.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n',
+  );
+  writeFileSync(join(rootPath, 'crates/rustok-pricing/src/providers.rs'), providerSource);
+};
+
+const expectProviderSpiFailure = ({ providerSpi = providerSpiMetadata(), providerSource = compliantProviderSource, message }) => {
+  const root = createProviderSpiFixtureRoot({ providerSpi });
+  writeProviderSpiFixtureFiles(root, providerSource);
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message,
+    },
+  );
+};
+
+test('verifyEcommerceFbaRegistries verifies provider SPI source markers when registry declares provider_spi', () => {
+  const root = createProviderSpiFixtureRoot();
+  writeProviderSpiFixtureFiles(root);
+
+  assert.doesNotThrow(() => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }));
+});
+
+test('verifyEcommerceFbaRegistries rejects provider SPI operations missing from source', () => {
+  expectProviderSpiFailure({
+    providerSource: 'pub const MANUAL_PROVIDER_ID: &str = "manual";\npub struct PricingProviderCapabilities { pub authorize: bool }\npub struct PricingProviderOperationRequest { pub idempotency_key: Option<String> }\npub trait PricingProvider: Send + Sync { fn descriptor(&self); }\n',
+    message: 'pricing provider SPI source lacks operation authorize',
+  });
+});
+
+test('verifyEcommerceFbaRegistries rejects provider SPI sources outside owner module before reading them', () => {
+  const root = createProviderSpiFixtureRoot({
+    providerSpi: providerSpiMetadata({ source: 'apps/server/src/payment_providers.rs' }),
+  });
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/rustok-module.toml'),
+    '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1+provider_spi.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing provider SPI source must stay module-owned',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects provider SPI lifecycle ownership drift', () => {
+  expectProviderSpiFailure({
+    providerSpi: providerSpiMetadata({
+      lifecycle_owner_service: 'CommerceService',
+      side_effect_boundary: 'provider adapters execute external effects; CommerceService owns persisted lifecycle transitions',
+    }),
+    message: 'pricing provider SPI lifecycle_owner_service must be PricingService',
+  });
+});
+
+test('verifyEcommerceFbaRegistries rejects commerce provider SPI consumer metadata drift', () => {
+  const root = createProviderSpiFixtureRoot({
+    providerSpi: providerSpiMetadata(),
+    mutateCommerceRegistry(commerceRegistry) {
+      commerceRegistry.providers[0].provider_spi.lifecycle_owner_service = 'CommerceService';
+    },
+  });
+  writeProviderSpiFixtureFiles(root);
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'commerce provider pricing provider SPI lifecycle owner drift',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects provider SPI default provider id drift', () => {
+  expectProviderSpiFailure({
+    providerSource: 'pub const STRIPE_PROVIDER_ID: &str = "stripe";\npub struct PricingProviderCapabilities { pub authorize: bool }\npub struct PricingProviderOperationRequest { pub idempotency_key: Option<String> }\npub trait PricingProvider: Send + Sync { fn descriptor(&self); async fn authorize(&self, request: PricingProviderOperationRequest); }\n',
+    message: 'pricing provider SPI source lacks default provider id manual',
+  });
+});
+
+test('verifyEcommerceFbaRegistries rejects provider SPI capability fields missing from source', () => {
+  expectProviderSpiFailure({
+    providerSource: 'pub const MANUAL_PROVIDER_ID: &str = "manual";\npub struct PricingProviderCapabilities { pub capture: bool }\npub struct PricingProviderOperationRequest { pub idempotency_key: Option<String> }\npub trait PricingProvider: Send + Sync { fn descriptor(&self); async fn authorize(&self, request: PricingProviderOperationRequest); }\n',
+    message: 'pricing provider SPI source lacks bool capability field authorize',
+  });
 });
