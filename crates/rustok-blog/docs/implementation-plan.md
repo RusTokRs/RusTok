@@ -9,6 +9,8 @@ packages и module metadata синхронизированы.
 
 - Current phase: ffa_admin_boundary_guardrail_fixture_parity
 - Last checkpoint: FFA slice #93 brought `verify-blog-admin-boundary.test.mjs` back in sync with the live boundary guardrail, including fixture coverage for posts contract-unavailable swallowing and the non-module `api;` text regression.
+- Current phase: ffa_admin_posts_contract_unavailable_parity_boundary
+- Last checkpoint: FFA slice #92 removed the over-extracted admin shell-copy helper and fixed posts contract-unavailable classification so the GraphQL adapter no longer swallows fallback errors before the Leptos parity branch can render the prepared empty state.
 - Next step: Continue with small admin render/command fragments that reduce real coupling without changing the dual-path contract, or add adapter-level parity evidence around transport failure classification.
 - Open blockers: None.
 - Hand-off notes for next agent:
