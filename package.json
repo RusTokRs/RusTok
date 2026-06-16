@@ -16,7 +16,7 @@
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
     "verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.mjs",
     "test:verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.test.mjs",
-    "verify:ffa:ui:migration": "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary && npm run verify:region:admin-boundary && npm run verify:blog:admin-boundary && npm run verify:pages:ui-boundary && npm run verify:fulfillment:admin-boundary && npm run verify:fulfillment:storefront-boundary && npm run verify:product:admin-boundary && npm run verify:forum:admin-boundary && npm run verify:order:admin-boundary && npm run verify:order:storefront-boundary && npm run verify:payment:storefront-boundary",
+    "verify:ffa:ui:migration": "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary && npm run verify:comments:admin-boundary && npm run verify:region:admin-boundary && npm run verify:blog:admin-boundary && npm run verify:pages:ui-boundary && npm run verify:fulfillment:admin-boundary && npm run verify:fulfillment:storefront-boundary && npm run verify:product:admin-boundary && npm run verify:forum:admin-boundary && npm run verify:order:admin-boundary && npm run verify:order:storefront-boundary && npm run verify:payment:storefront-boundary",
     "verify:ffa:ui:migration:contract": "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
     "verify:ffa:ui:migration:docs": "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
     "test:verify:ffa:ui:migration": "node scripts/verify/verify-ffa-ui-migration-contract.test.mjs && npm run test:verify:region:admin-boundary",
@@ -42,6 +42,7 @@
     "verify:page-builder:pages:legacy-bridge": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-legacy-bridge.mjs",
     "verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.mjs",
     "test:verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.test.mjs",
+    "verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.mjs"
     "verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
     "test:verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.test.mjs",
     "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence",
