@@ -116,3 +116,86 @@ pub struct ProviderSloObservations {
     pub sanitize_failure_rate: f64,
     pub runtime_error_rate: f64,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProviderHealthEvidence {
+    pub module_slug: &'static str,
+    pub contract: &'static str,
+    pub builder_contract_version: &'static str,
+    pub snapshot: ProviderHealthSnapshot,
+    pub slo_evaluation: ProviderSloEvaluation,
+}
+
+impl ProviderHealthEvidence {
+    pub fn from_observations(observed: ProviderSloObservations) -> Self {
+        let snapshot = ProviderHealthSnapshot::evaluate(observed);
+        let thresholds = snapshot.thresholds;
+        let observed = snapshot.observed;
+
+        Self {
+            module_slug: "page_builder",
+            contract: "grapesjs_v1",
+            builder_contract_version: "1.0",
+            slo_evaluation: ProviderSloEvaluation::evaluate(observed, thresholds),
+            snapshot,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderSloStatus {
+    Pass,
+    Fail,
+}
+
+impl ProviderSloStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderSloEvaluation {
+    pub preview_p95_ms: ProviderSloStatus,
+    pub publish_p95_ms: ProviderSloStatus,
+    pub sanitize_failure_rate: ProviderSloStatus,
+    pub runtime_error_rate: ProviderSloStatus,
+    pub overall: ProviderSloStatus,
+}
+
+impl ProviderSloEvaluation {
+    pub fn evaluate(observed: ProviderSloObservations, thresholds: ProviderSloThresholds) -> Self {
+        let preview_p95_ms = status(observed.preview_p95_ms <= thresholds.preview_p95_ms);
+        let publish_p95_ms = status(observed.publish_p95_ms <= thresholds.publish_p95_ms);
+        let sanitize_failure_rate =
+            status(observed.sanitize_failure_rate <= thresholds.sanitize_failure_rate_max);
+        let runtime_error_rate =
+            status(observed.runtime_error_rate <= thresholds.runtime_error_rate_max);
+        let overall = status(
+            preview_p95_ms == ProviderSloStatus::Pass
+                && publish_p95_ms == ProviderSloStatus::Pass
+                && sanitize_failure_rate == ProviderSloStatus::Pass
+                && runtime_error_rate == ProviderSloStatus::Pass,
+        );
+
+        Self {
+            preview_p95_ms,
+            publish_p95_ms,
+            sanitize_failure_rate,
+            runtime_error_rate,
+            overall,
+        }
+    }
+}
+
+const fn status(value: bool) -> ProviderSloStatus {
+    if value {
+        ProviderSloStatus::Pass
+    } else {
+        ProviderSloStatus::Fail
+    }
+}

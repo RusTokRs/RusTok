@@ -12,7 +12,7 @@ use loco_rs::app::AppContext;
 use rustok_ai_content::{validate_moderation_decision, GeneratedModerationDecision};
 use rustok_ai_product::{
     validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
-    GeneratedProductCopy,
+    GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG, PRODUCT_COPY_TOOL_NAME,
 };
 use rustok_api::context::infer_user_role_from_permissions;
 use rustok_api::loco::transactional_event_bus_from_context;
@@ -493,7 +493,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
 #[async_trait]
 impl DirectTaskHandler for ProductCopyHandler {
     fn task_slug(&self) -> &'static str {
-        "product_copy"
+        PRODUCT_COPY_TASK_SLUG
     }
 
     async fn execute(
@@ -642,7 +642,7 @@ impl DirectTaskHandler for ProductCopyHandler {
             updated.id, target_locale
         );
         let trace = ToolTrace {
-            tool_name: "direct.commerce.product_copy".to_string(),
+            tool_name: PRODUCT_COPY_TOOL_NAME.to_string(),
             input_payload: request.task_input_json.clone(),
             output_payload: Some(operation_payload.clone()),
             status: "completed".to_string(),

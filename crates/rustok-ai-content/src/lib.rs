@@ -30,6 +30,16 @@ pub fn register_content_ai_verticals() -> &'static [ContentAiVerticalDescriptor]
     content_ai_verticals()
 }
 
+/// Domain-owned adapter API for runtime composition layers that need to bind
+/// concrete handlers to the vertical descriptors without owning task identity.
+pub fn register_content_ai_vertical_handlers(
+    mut register: impl FnMut(&'static ContentAiVerticalDescriptor),
+) {
+    for vertical in content_ai_verticals() {
+        register(vertical);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedModerationDecision {
     pub decision: String,
