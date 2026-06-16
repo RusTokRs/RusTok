@@ -1,9 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturePath = join(here, "..", "contracts", "seo", "runtime-parity-fixtures.json");
+const repoRoot = resolve(here, "..", "..", "..");
 const fixtures = JSON.parse(readFileSync(fixturePath, "utf8"));
 
 function assert(condition, message) {
@@ -79,10 +80,11 @@ for (const field of ["metadataBase", "scriptNonce", "jsonLdWhitespace"]) {
 }
 
 const matrix = fixtures.verificationMatrix ?? [];
-assert(matrix.length >= 3, "Expected D8 compile-free verification matrix entries");
+assert(matrix.length >= 5, "Expected D8 compile-free verification matrix entries");
 for (const row of matrix) {
   assert(row.compileFree === true, `D8 lightweight gate must be compile-free: ${row.gate}`);
   assert(row.command, `D8 verification gate misses command: ${row.gate}`);
+  assert(row.scope, `D8 verification gate misses scope: ${row.gate}`);
 }
 assert(
   fixtures.d8EvidencePacket?.compilationPolicy === "not_run_by_request",
@@ -107,6 +109,7 @@ for (const requiredPath of requiredDocs) {
     Array.isArray(row.covers) && row.covers.length >= 2,
     `Docs sync row misses coverage notes: ${requiredPath}`,
   );
+  assert(existsSync(join(repoRoot, requiredPath)), `Docs sync path does not exist: ${requiredPath}`);
 }
 
 const signoffRows = fixtures.ownerSignoffChecklist ?? [];
@@ -129,9 +132,26 @@ assert(
   "Live evidence plan must define closeout minimums",
 );
 
+const staticAssertions = fixtures.staticEvidenceAssertions ?? [];
+assert(
+  staticAssertions.length >= 6,
+  "Expected static evidence assertions for Next, Rust renderer, admin, and Leptos storefront",
+);
+for (const row of staticAssertions) {
+  assert(row.name, "Static evidence assertion misses name");
+  assert(row.path, `Static evidence assertion misses path: ${row.name}`);
+  const absolutePath = join(repoRoot, row.path);
+  assert(existsSync(absolutePath), `Static evidence assertion path does not exist: ${row.path}`);
+  const source = readFileSync(absolutePath, "utf8");
+  for (const token of row.mustContain ?? []) {
+    assert(source.includes(token), `Static evidence ${row.name} misses token ${token}`);
+  }
+}
+
 console.log(
   `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, `
     + `${routeRows.length} route rows, ${smokeRows.length} smoke routes, `
     + `${matrix.length} D8 gates, ${docsRows.length} docs rows, `
-    + `${signoffRows.length} sign-off rows`,
+    + `${signoffRows.length} sign-off rows, `
+    + `${staticAssertions.length} static assertions`,
 );
