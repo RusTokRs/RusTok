@@ -24,8 +24,11 @@ const isReadOnlyOperation = (operation) =>
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const containsIdentifier = (source, identifier) =>
-  new RegExp(`\\b${escapeRegExp(identifier)}\\b`).test(source);
+const containsBoolField = (source, fieldName) =>
+  new RegExp(`(?:pub\\s+)?${escapeRegExp(fieldName)}\\s*:\\s*bool\\b`).test(source);
+
+const containsStringLiteral = (source, value) =>
+  source.includes(`"${value}"`) || source.includes(`'${value}'`);
 
 const containsAsyncFunction = (source, functionName) =>
   new RegExp(`async\\s+fn\\s+${escapeRegExp(functionName)}\\s*\\(`).test(source);
@@ -59,9 +62,12 @@ const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSourc
       fail(`${module} provider SPI source lacks operation ${operation}`);
     }
   }
+  if (!containsStringLiteral(providerSource, providerSpi.default_provider_id)) {
+    fail(`${module} provider SPI source lacks default provider id ${providerSpi.default_provider_id}`);
+  }
   for (const capability of providerSpi.capabilities) {
-    if (!containsIdentifier(providerSource, capability)) {
-      fail(`${module} provider SPI source lacks capability ${capability}`);
+    if (!containsBoolField(providerSource, capability)) {
+      fail(`${module} provider SPI source lacks bool capability field ${capability}`);
     }
   }
   if (!providerSource.includes('trait ') || !providerSource.includes('Provider: Send + Sync')) {
