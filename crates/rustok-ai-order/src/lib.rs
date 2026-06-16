@@ -40,6 +40,16 @@ pub fn register_order_ai_verticals() -> &'static [OrderAiVerticalDescriptor] {
     order_ai_verticals()
 }
 
+/// Domain-owned adapter API for runtime composition layers that need to bind
+/// concrete handlers to the vertical descriptors without owning task identity.
+pub fn register_order_ai_vertical_handlers(
+    mut register: impl FnMut(&'static OrderAiVerticalDescriptor),
+) {
+    for vertical in order_ai_verticals() {
+        register(vertical);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedOrderAnalytics {
     pub summary: String,
