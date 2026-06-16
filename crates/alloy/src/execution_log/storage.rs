@@ -64,36 +64,7 @@ impl SeaOrmExecutionLog {
     }
 
     pub async fn record(&self, result: &ExecutionResult) -> ScriptResult<()> {
-        let outcome_str = match &result.outcome {
-            ExecutionOutcome::Success { .. } => "success",
-            ExecutionOutcome::Aborted { .. } => "aborted",
-            ExecutionOutcome::Failed { .. } => "failed",
-        };
-        let error_str = match &result.outcome {
-            ExecutionOutcome::Aborted { reason } => Some(reason.clone()),
-            ExecutionOutcome::Failed { error } => Some(error.to_string()),
-            ExecutionOutcome::Success { .. } => None,
-        };
-
-        let model = ActiveModel {
-            id: ActiveValue::Set(result.execution_id),
-            script_id: ActiveValue::Set(result.script_id),
-            script_name: ActiveValue::Set(result.script_name.clone()),
-            phase: ActiveValue::Set(phase_to_str(result.phase)),
-            outcome: ActiveValue::Set(outcome_str.to_string()),
-            duration_ms: ActiveValue::Set(result.duration_ms()),
-            error: ActiveValue::Set(error_str),
-            user_id: ActiveValue::Set(None),
-            tenant_id: ActiveValue::Set(None),
-            created_at: ActiveValue::Set(result.started_at),
-        };
-
-        model
-            .insert(&self.db)
-            .await
-            .map_err(|err| ScriptError::Storage(err.to_string()))?;
-
-        Ok(())
+        self.record_with_context(result, None, None).await
     }
 
     pub async fn record_with_context(
@@ -102,25 +73,16 @@ impl SeaOrmExecutionLog {
         user_id: Option<String>,
         tenant_id: Option<Uuid>,
     ) -> ScriptResult<()> {
-        let outcome_str = match &result.outcome {
-            ExecutionOutcome::Success { .. } => "success",
-            ExecutionOutcome::Aborted { .. } => "aborted",
-            ExecutionOutcome::Failed { .. } => "failed",
-        };
-        let error_str = match &result.outcome {
-            ExecutionOutcome::Aborted { reason } => Some(reason.clone()),
-            ExecutionOutcome::Failed { error } => Some(error.to_string()),
-            ExecutionOutcome::Success { .. } => None,
-        };
+        let (outcome, error) = outcome_fields(&result.outcome);
 
         let model = ActiveModel {
             id: ActiveValue::Set(result.execution_id),
             script_id: ActiveValue::Set(result.script_id),
             script_name: ActiveValue::Set(result.script_name.clone()),
             phase: ActiveValue::Set(phase_to_str(result.phase)),
-            outcome: ActiveValue::Set(outcome_str.to_string()),
+            outcome: ActiveValue::Set(outcome.to_string()),
             duration_ms: ActiveValue::Set(result.duration_ms()),
-            error: ActiveValue::Set(error_str),
+            error: ActiveValue::Set(error),
             user_id: ActiveValue::Set(user_id),
             tenant_id: ActiveValue::Set(tenant_id),
             created_at: ActiveValue::Set(result.started_at),
@@ -178,6 +140,14 @@ impl ExecutionLogSink for SeaOrmExecutionLog {
     }
 }
 
+fn outcome_fields(outcome: &ExecutionOutcome) -> (&'static str, Option<String>) {
+    match outcome {
+        ExecutionOutcome::Success { .. } => ("success", None),
+        ExecutionOutcome::Aborted { reason } => ("aborted", Some(reason.clone())),
+        ExecutionOutcome::Failed { error } => ("failed", Some(error.to_string())),
+    }
+}
+
 fn phase_to_str(phase: ExecutionPhase) -> String {
     match phase {
         ExecutionPhase::Before => "before".to_string(),
@@ -210,5 +180,166 @@ fn model_to_entry(model: Model) -> ExecutionLogEntry {
         user_id: model.user_id,
         tenant_id: model.tenant_id,
         created_at: model.created_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::execution_log::migration::ScriptExecutionsMigration;
+    use sea_orm::Database;
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+    use std::collections::HashMap;
+
+    async fn execution_log() -> SeaOrmExecutionLog {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite memory database should connect");
+        let manager = SchemaManager::new(&db);
+        ScriptExecutionsMigration
+            .up(&manager)
+            .await
+            .expect("script executions migration should apply");
+        SeaOrmExecutionLog::new(db)
+    }
+
+    fn result_for(
+        script_id: Uuid,
+        script_name: &str,
+        phase: ExecutionPhase,
+        outcome: ExecutionOutcome,
+        offset_ms: i64,
+    ) -> ExecutionResult {
+        let started_at = Utc::now() + chrono::Duration::milliseconds(offset_ms);
+        ExecutionResult {
+            script_id,
+            script_name: script_name.to_string(),
+            execution_id: Uuid::new_v4(),
+            phase,
+            started_at,
+            finished_at: started_at + chrono::Duration::milliseconds(42),
+            outcome,
+        }
+    }
+
+    #[tokio::test]
+    async fn record_result_persists_canonical_context_row() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let result = result_for(
+            script_id,
+            "contextual_manual",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            0,
+        );
+        let ctx = ExecutionContext::new(ExecutionPhase::Manual)
+            .with_user("operator-42")
+            .with_tenant(tenant_id.to_string());
+
+        log.record_result(&result, &ctx)
+            .await
+            .expect("contextual execution log row should persist");
+
+        let entries = log
+            .list_for_script(script_id, 10)
+            .await
+            .expect("persisted row should be queryable by script");
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.id, result.execution_id);
+        assert_eq!(entry.script_id, script_id);
+        assert_eq!(entry.script_name, "contextual_manual");
+        assert_eq!(entry.phase, ExecutionPhase::Manual);
+        assert_eq!(entry.outcome, "success");
+        assert_eq!(entry.duration_ms, 42);
+        assert_eq!(entry.error, None);
+        assert_eq!(entry.user_id.as_deref(), Some("operator-42"));
+        assert_eq!(entry.tenant_id, Some(tenant_id));
+        assert_eq!(entry.created_at, result.started_at);
+    }
+
+    #[tokio::test]
+    async fn record_result_ignores_invalid_tenant_id_but_keeps_user_context() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+        let result = result_for(
+            script_id,
+            "invalid_tenant_manual",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            0,
+        );
+        let ctx = ExecutionContext::new(ExecutionPhase::Manual)
+            .with_user("operator-43")
+            .with_tenant("not-a-uuid");
+
+        log.record_result(&result, &ctx)
+            .await
+            .expect("invalid tenant id should not block execution history");
+
+        let entry = log
+            .list_for_script(script_id, 1)
+            .await
+            .expect("persisted row should be queryable")
+            .pop()
+            .expect("one execution row should exist");
+        assert_eq!(entry.user_id.as_deref(), Some("operator-43"));
+        assert_eq!(entry.tenant_id, None);
+    }
+
+    #[tokio::test]
+    async fn list_recent_orders_rows_by_created_at_desc_and_preserves_failures() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+        let older = result_for(
+            script_id,
+            "ordered_history",
+            ExecutionPhase::Scheduled,
+            ExecutionOutcome::Aborted {
+                reason: "guard rejected".to_string(),
+            },
+            -1_000,
+        );
+        let newer = result_for(
+            Uuid::new_v4(),
+            "ordered_history_newer",
+            ExecutionPhase::OnCommit,
+            ExecutionOutcome::Failed {
+                error: ScriptError::Runtime("boom".to_string()),
+            },
+            1_000,
+        );
+
+        log.record(&older)
+            .await
+            .expect("aborted execution row should persist");
+        log.record(&newer)
+            .await
+            .expect("failed execution row should persist");
+
+        let entries = log
+            .list_recent(10)
+            .await
+            .expect("recent rows should be queryable");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, newer.execution_id);
+        assert_eq!(entries[0].phase, ExecutionPhase::OnCommit);
+        assert_eq!(entries[0].outcome, "failed");
+        assert!(entries[0]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("Runtime error: boom")));
+        assert_eq!(entries[1].id, older.execution_id);
+        assert_eq!(entries[1].phase, ExecutionPhase::Scheduled);
+        assert_eq!(entries[1].outcome, "aborted");
+        assert_eq!(entries[1].error.as_deref(), Some("guard rejected"));
     }
 }
