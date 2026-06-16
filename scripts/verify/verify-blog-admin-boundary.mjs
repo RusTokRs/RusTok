@@ -168,6 +168,7 @@ assertContains(transport, "graphql_adapter::", `${transportPath}: transport faca
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the blog admin transport facade`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: blog admin GraphQL adapter must keep the GraphQL transport contract`);
 assertContains(graphqlAdapter, "BLOG_POSTS_QUERY", `${graphqlAdapterPath}: GraphQL adapter must own blog posts query text`);
+assertNotContains(graphqlAdapter, "Err(error) if is_posts_contract_unavailable", `${graphqlAdapterPath}: GraphQL adapter must not swallow posts contract-unavailable errors before the UI parity branch can classify them`);
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);
 assertContains(registry, "verify-blog-admin-boundary.mjs", `${registryPath}: central readiness board must mention the blog fast boundary guardrail`);
