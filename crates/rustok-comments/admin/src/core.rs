@@ -3,9 +3,88 @@
 //! This layer owns request/view policy that can be reused by future host adapters
 //! without depending on framework runtime types.
 
+use rustok_api::AdminQueryKey;
 use rustok_comments::{
     CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus, CommentThreadSummary,
 };
+
+pub(crate) const COMMENTS_ADMIN_THREAD_QUERY_KEY: &str = AdminQueryKey::ThreadId.as_str();
+pub(crate) const COMMENTS_ADMIN_LOCALE_QUERY_KEY: &str = AdminQueryKey::Locale.as_str();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CommentsAdminRouteQueryUpdate {
+    PushThread {
+        key: &'static str,
+        thread_id: String,
+    },
+    ReplaceLocale {
+        key: &'static str,
+        locale: String,
+    },
+    ClearLocale {
+        key: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommentsAdminRouteQueryWrite {
+    pub updates: Vec<(&'static str, Option<String>)>,
+    pub replace: bool,
+}
+
+pub(crate) fn comments_admin_select_thread_query_update(
+    thread_id: &str,
+) -> Option<CommentsAdminRouteQueryUpdate> {
+    let thread_id = normalize_optional_text(thread_id)?;
+    Some(CommentsAdminRouteQueryUpdate::PushThread {
+        key: COMMENTS_ADMIN_THREAD_QUERY_KEY,
+        thread_id,
+    })
+}
+
+pub(crate) fn comments_admin_locale_query_update(locale: &str) -> CommentsAdminRouteQueryUpdate {
+    match normalize_optional_text(locale) {
+        Some(locale) => CommentsAdminRouteQueryUpdate::ReplaceLocale {
+            key: COMMENTS_ADMIN_LOCALE_QUERY_KEY,
+            locale,
+        },
+        None => CommentsAdminRouteQueryUpdate::ClearLocale {
+            key: COMMENTS_ADMIN_LOCALE_QUERY_KEY,
+        },
+    }
+}
+
+pub(crate) fn comments_admin_route_query_write(
+    update: CommentsAdminRouteQueryUpdate,
+) -> CommentsAdminRouteQueryWrite {
+    match update {
+        CommentsAdminRouteQueryUpdate::PushThread { key, thread_id } => {
+            CommentsAdminRouteQueryWrite {
+                updates: vec![(key, Some(thread_id))],
+                replace: false,
+            }
+        }
+        CommentsAdminRouteQueryUpdate::ReplaceLocale { key, locale } => {
+            CommentsAdminRouteQueryWrite {
+                updates: vec![(key, Some(locale))],
+                replace: true,
+            }
+        }
+        CommentsAdminRouteQueryUpdate::ClearLocale { key } => CommentsAdminRouteQueryWrite {
+            updates: vec![(key, None)],
+            replace: true,
+        },
+    }
+}
+
+fn normalize_optional_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CommentThreadsRequest {
@@ -177,6 +256,45 @@ fn format_target_label(target_type: &str, target_id: &str) -> String {
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn builds_thread_route_query_push_update() {
+        let update = comments_admin_select_thread_query_update(" thread-1 ").unwrap();
+        let write = comments_admin_route_query_write(update);
+
+        assert_eq!(
+            write,
+            CommentsAdminRouteQueryWrite {
+                updates: vec![(
+                    COMMENTS_ADMIN_THREAD_QUERY_KEY,
+                    Some("thread-1".to_string())
+                )],
+                replace: false,
+            }
+        );
+        assert_eq!(comments_admin_select_thread_query_update("   "), None);
+    }
+
+    #[test]
+    fn builds_locale_route_query_replace_or_clear_update() {
+        let write = comments_admin_route_query_write(comments_admin_locale_query_update(" ru "));
+        assert_eq!(
+            write,
+            CommentsAdminRouteQueryWrite {
+                updates: vec![(COMMENTS_ADMIN_LOCALE_QUERY_KEY, Some("ru".to_string()))],
+                replace: true,
+            }
+        );
+
+        let write = comments_admin_route_query_write(comments_admin_locale_query_update("   "));
+        assert_eq!(
+            write,
+            CommentsAdminRouteQueryWrite {
+                updates: vec![(COMMENTS_ADMIN_LOCALE_QUERY_KEY, None)],
+                replace: true,
+            }
+        );
+    }
 
     #[test]
     fn parses_thread_status_filters() {

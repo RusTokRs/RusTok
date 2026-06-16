@@ -2,13 +2,15 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_api::UiRouteContext;
 use rustok_comments::{CommentStatus, CommentThreadStatus};
 
 use crate::core::{
-    CommentRowViewModel, CommentThreadDetailRequest, CommentThreadDetailViewModel,
-    CommentThreadListItemViewModel, CommentThreadsRequest, SetCommentStatusCommand,
-    SetThreadStatusCommand,
+    comments_admin_locale_query_update, comments_admin_route_query_write,
+    comments_admin_select_thread_query_update, CommentRowViewModel, CommentThreadDetailRequest,
+    CommentThreadDetailViewModel, CommentThreadListItemViewModel, CommentThreadsRequest,
+    SetCommentStatusCommand, SetThreadStatusCommand, COMMENTS_ADMIN_LOCALE_QUERY_KEY,
+    COMMENTS_ADMIN_THREAD_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::transport;
@@ -29,8 +31,8 @@ where
 pub fn CommentsAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let selected_thread_query = use_route_query_value(AdminQueryKey::ThreadId.as_str());
-    let requested_locale_query = use_route_query_value(AdminQueryKey::Locale.as_str());
+    let selected_thread_query = use_route_query_value(COMMENTS_ADMIN_THREAD_QUERY_KEY);
+    let requested_locale_query = use_route_query_value(COMMENTS_ADMIN_LOCALE_QUERY_KEY);
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
@@ -264,11 +266,10 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 on:input=move |ev| {
                                     let next_value = event_target_value(&ev);
                                     set_locale.set(next_value.clone());
-                                    if next_value.trim().is_empty() {
-                                        locale_query_writer.clear_key(AdminQueryKey::Locale.as_str());
-                                    } else {
-                                        locale_query_writer.replace_value(AdminQueryKey::Locale.as_str(), next_value);
-                                    }
+                                    apply_comments_route_query_update(
+                                        &locale_query_writer,
+                                        comments_admin_locale_query_update(&next_value),
+                                    );
                                 }
                             />
                 </div>
@@ -325,7 +326,11 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                     <button
                                                         type="button"
                                                         class="w-full rounded-xl border border-border px-4 py-3 text-left transition hover:border-primary/50 hover:bg-accent/40"
-                                                        on:click=move |_| thread_query_writer.push_value(AdminQueryKey::ThreadId.as_str(), thread_id.clone())
+                                                        on:click=move |_| {
+                                                            if let Some(update) = comments_admin_select_thread_query_update(&thread_id) {
+                                                                apply_comments_route_query_update(&thread_query_writer, update);
+                                                            }
+                                                        }
                                                     >
                                                         <div class="space-y-1">
                                                             <div class="flex items-center justify-between gap-3">
@@ -490,4 +495,19 @@ fn StatusButton(label: String, on_click: Callback<()>) -> impl IntoView {
             {label}
         </button>
     }
+}
+
+fn apply_comments_route_query_update(
+    query_writer: &leptos_ui_routing::RouteQueryWriter,
+    update: crate::core::CommentsAdminRouteQueryUpdate,
+) {
+    let write = comments_admin_route_query_write(update);
+    query_writer.update(
+        write
+            .updates
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value))
+            .collect(),
+        write.replace,
+    );
 }
