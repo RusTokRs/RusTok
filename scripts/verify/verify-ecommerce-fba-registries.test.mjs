@@ -268,3 +268,80 @@ test('verifyEcommerceFbaRegistries rejects provider SPI operations missing from 
     },
   );
 });
+
+test('verifyEcommerceFbaRegistries rejects provider SPI sources outside owner module before reading them', () => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.contract_version = 'pricing.read_projection.v1+provider_spi.v1';
+      registry.provider_spi = {
+        status: 'manual_baseline_locked',
+        source: 'apps/server/src/payment_providers.rs',
+        default_provider_id: 'manual',
+        operations: ['authorize'],
+        capabilities: ['authorize'],
+        side_effect_boundary: 'provider adapters execute external effects; PricingService owns persisted lifecycle transitions',
+        webhook_ingress: {
+          status: 'planned',
+          idempotency_required: true,
+          replay_required: true,
+        },
+      };
+    },
+  });
+
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/rustok-module.toml'),
+    '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1+provider_spi.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing provider SPI source must stay module-owned',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects provider SPI lifecycle ownership drift', () => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.contract_version = 'pricing.read_projection.v1+provider_spi.v1';
+      registry.provider_spi = {
+        status: 'manual_baseline_locked',
+        source: 'crates/rustok-pricing/src/providers.rs',
+        default_provider_id: 'manual',
+        operations: ['authorize'],
+        capabilities: ['authorize'],
+        side_effect_boundary: 'provider adapters execute external effects; CommerceService owns persisted lifecycle transitions',
+        webhook_ingress: {
+          status: 'planned',
+          idempotency_required: true,
+          replay_required: true,
+        },
+      };
+    },
+  });
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/src/lib.rs'),
+    'pub mod ports;\npub use ports::*;\npub mod providers;\npub use providers::*;\n',
+  );
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/rustok-module.toml'),
+    '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1+provider_spi.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n',
+  );
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/src/providers.rs'),
+    'pub struct PricingProviderCapabilities { pub authorize: bool }\npub struct PricingProviderOperationRequest { pub idempotency_key: Option<String> }\npub trait PricingProvider: Send + Sync { fn descriptor(&self); async fn authorize(&self, request: PricingProviderOperationRequest); }\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing provider SPI must keep persisted lifecycle transitions in PricingService',
+    },
+  );
+});

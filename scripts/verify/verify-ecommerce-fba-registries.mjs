@@ -22,6 +22,57 @@ const readOnlyOperationPrefixes = ['read_', 'list_', 'check_', 'resolve_', 'get_
 const isReadOnlyOperation = (operation) =>
   readOnlyOperationPrefixes.some((prefix) => operation.startsWith(prefix));
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const containsIdentifier = (source, identifier) =>
+  new RegExp(`\\b${escapeRegExp(identifier)}\\b`).test(source);
+
+const containsAsyncFunction = (source, functionName) =>
+  new RegExp(`async\\s+fn\\s+${escapeRegExp(functionName)}\\s*\\(`).test(source);
+
+const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSource, ownerService }) => {
+  if (providerSpi.status !== 'manual_baseline_locked') fail(`${module} provider SPI status drift`);
+  if (!providerSpi.source || !providerSpi.source.startsWith(`crates/rustok-${module}/src/`)) {
+    fail(`${module} provider SPI source must stay module-owned`);
+  }
+  if (!providerSpi.default_provider_id) fail(`${module} provider SPI lacks default_provider_id`);
+  if (!Array.isArray(providerSpi.operations) || providerSpi.operations.length === 0) {
+    fail(`${module} provider SPI lacks operations`);
+  }
+  if (!Array.isArray(providerSpi.capabilities) || providerSpi.capabilities.length === 0) {
+    fail(`${module} provider SPI lacks capabilities`);
+  }
+  if (!providerSpi.side_effect_boundary || !providerSpi.side_effect_boundary.includes(`${ownerService} owns persisted lifecycle transitions`)) {
+    fail(`${module} provider SPI must keep persisted lifecycle transitions in ${ownerService}`);
+  }
+  if (!providerSpi.webhook_ingress || providerSpi.webhook_ingress.status !== 'planned') {
+    fail(`${module} provider SPI webhook ingress must remain planned until evidence lands`);
+  }
+  if (providerSpi.webhook_ingress.idempotency_required !== true || providerSpi.webhook_ingress.replay_required !== true) {
+    fail(`${module} provider SPI webhook ingress must declare idempotency and replay requirements`);
+  }
+  for (const operation of providerSpi.operations) {
+    if (!containsAsyncFunction(providerSource, operation)) {
+      fail(`${module} provider SPI source lacks operation ${operation}`);
+    }
+  }
+  for (const capability of providerSpi.capabilities) {
+    if (!containsIdentifier(providerSource, capability)) {
+      fail(`${module} provider SPI source lacks capability ${capability}`);
+    }
+  }
+  if (!providerSource.includes('trait ') || !providerSource.includes('Provider: Send + Sync')) {
+    fail(`${module} provider SPI source must expose a Send + Sync provider trait`);
+  }
+  if (!providerSource.includes('descriptor(&self)')) fail(`${module} provider SPI source lacks descriptor contract`);
+  if (!providerSource.includes('idempotency_key: Option<String>')) {
+    fail(`${module} provider SPI operation request must carry idempotency_key`);
+  }
+  if (!libSource.includes('pub mod providers;') || !libSource.includes('pub use providers::*;')) {
+    fail(`${module} lib.rs must export provider SPI`);
+  }
+};
+
 export function verifyEcommerceFbaRegistries({
   root = defaultRoot,
   modules = ecommerceFbaModules,
@@ -100,50 +151,21 @@ export function verifyEcommerceFbaRegistries({
     if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail(`${module} lib.rs must export ports`);
     if (!portSource.includes('rustok_api::{PortContext, PortError}')) fail(`${module} src/ports.rs must import neutral port primitives`);
 
-
     if (registry.provider_spi) {
-      const providerSpi = registry.provider_spi;
-      const providerSource = read(providerSpi.source);
-      if (providerSpi.status !== 'manual_baseline_locked') fail(`${module} provider SPI status drift`);
-      if (!providerSpi.source || !providerSpi.source.startsWith(`crates/rustok-${module}/src/`)) {
+      if (!registry.in_process_provider_impl?.service) {
+        fail(`${module} provider SPI must declare in_process_provider_impl.service as lifecycle owner`);
+      }
+      if (!registry.provider_spi.source || !registry.provider_spi.source.startsWith(`crates/rustok-${module}/src/`)) {
         fail(`${module} provider SPI source must stay module-owned`);
       }
-      if (!providerSpi.default_provider_id) fail(`${module} provider SPI lacks default_provider_id`);
-      if (!Array.isArray(providerSpi.operations) || providerSpi.operations.length === 0) {
-        fail(`${module} provider SPI lacks operations`);
-      }
-      if (!Array.isArray(providerSpi.capabilities) || providerSpi.capabilities.length === 0) {
-        fail(`${module} provider SPI lacks capabilities`);
-      }
-      if (!providerSpi.side_effect_boundary || !providerSpi.side_effect_boundary.includes('Service owns persisted lifecycle transitions')) {
-        fail(`${module} provider SPI must keep persisted lifecycle transitions in owner service`);
-      }
-      if (!providerSpi.webhook_ingress || providerSpi.webhook_ingress.status !== 'planned') {
-        fail(`${module} provider SPI webhook ingress must remain planned until evidence lands`);
-      }
-      if (providerSpi.webhook_ingress.idempotency_required !== true || providerSpi.webhook_ingress.replay_required !== true) {
-        fail(`${module} provider SPI webhook ingress must declare idempotency and replay requirements`);
-      }
-      for (const operation of providerSpi.operations) {
-        if (!providerSource.includes(`async fn ${operation}(`)) {
-          fail(`${module} provider SPI source lacks operation ${operation}`);
-        }
-      }
-      for (const capability of providerSpi.capabilities) {
-        if (!providerSource.includes(`${capability}:`)) {
-          fail(`${module} provider SPI source lacks capability ${capability}`);
-        }
-      }
-      if (!providerSource.includes('trait ') || !providerSource.includes('Provider: Send + Sync')) {
-        fail(`${module} provider SPI source must expose a Send + Sync provider trait`);
-      }
-      if (!providerSource.includes('descriptor(&self)')) fail(`${module} provider SPI source lacks descriptor contract`);
-      if (!providerSource.includes('idempotency_key: Option<String>')) {
-        fail(`${module} provider SPI operation request must carry idempotency_key`);
-      }
-      if (!libSource.includes('pub mod providers;') || !libSource.includes('pub use providers::*;')) {
-        fail(`${module} lib.rs must export provider SPI`);
-      }
+      const providerSource = read(registry.provider_spi.source);
+      assertProviderSpiSource({
+        module,
+        providerSpi: registry.provider_spi,
+        providerSource,
+        libSource,
+        ownerService: registry.in_process_provider_impl.service,
+      });
     }
 
     if (registry.in_process_provider_impl) {
