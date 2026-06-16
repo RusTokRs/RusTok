@@ -45,8 +45,10 @@ const transportPath = "crates/rustok-forum/admin/src/transport.rs";
 const apiPath = "crates/rustok-forum/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+const packagePath = "package.json";
+const verifierTestPath = "scripts/verify/verify-forum-admin-boundary.test.mjs";
 
-for (const filePath of [libPath, corePath, uiPath, transportPath, apiPath, implementationPlanPath, registryPath]) {
+for (const filePath of [libPath, corePath, uiPath, transportPath, apiPath, implementationPlanPath, registryPath, packagePath, verifierTestPath]) {
   assertExists(filePath, `${filePath}: expected forum admin FFA boundary file`);
 }
 
@@ -57,6 +59,8 @@ const transport = readRepo(transportPath);
 const api = readRepo(apiPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
+const packageJson = JSON.parse(readRepo(packagePath));
+const verifierTest = readRepo(verifierTestPath);
 
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
@@ -166,6 +170,26 @@ assertContains(api, "reqwest", `${apiPath}: forum admin api adapter must keep th
 
 assertContains(implementationPlan, "verify-forum-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the forum fast boundary guardrail`);
 assertContains(registry, "verify-forum-admin-boundary.mjs", `${registryPath}: central readiness board must mention the forum fast boundary guardrail`);
+assertContains(registry, "forum-wave1-rollout-evidence.json", `${registryPath}: central readiness board must mention Wave 1 rollout evidence`);
+
+const scripts = packageJson.scripts ?? {};
+if (scripts["test:verify:forum:admin-boundary"] !== "node scripts/verify/verify-forum-admin-boundary.test.mjs") {
+  fail(`${packagePath}: package scripts must expose forum boundary fixture tests`);
+}
+assertContains(
+  scripts["test:verify:ffa:ui:migration"] ?? "",
+  "npm run test:verify:forum:admin-boundary",
+  `${packagePath}: aggregate FFA fixture tests must include forum boundary fixtures`,
+);
+for (const marker of [
+  "passes canonical fixture",
+  "rejects Leptos-specific core",
+  "rejects raw api calls from UI",
+  "rejects raw busy-key strings from UI",
+  "rejects missing package fixture script",
+]) {
+  assertContains(verifierTest, marker, `${verifierTestPath}: expected fixture coverage marker ${marker}`);
+}
 
 if (failures.length > 0) {
   console.error("forum admin boundary verification failed:");

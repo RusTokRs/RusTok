@@ -2,10 +2,20 @@
 
 use std::sync::Arc;
 
+use rustok_ai_content::{register_content_ai_vertical_handlers, CONTENT_MODERATION_TASK_SLUG};
+
 use super::direct_content_moderation::ContentModerationHandler;
 use super::{DirectExecutionRegistry, DirectTaskHandler};
 
-/// Registers content-owned AI direct handlers as a separate domain slice.
+/// Registers content-owned AI direct handlers through content crate adapter APIs.
+///
+/// `rustok-ai` keeps the executable handler, but consumes the domain-owned
+/// vertical descriptors instead of hard-coding content task registration.
 pub fn register_content_direct_handlers(registry: &mut DirectExecutionRegistry) {
-    registry.register(Arc::new(ContentModerationHandler) as Arc<dyn DirectTaskHandler>);
+    register_content_ai_vertical_handlers(|vertical| match vertical.task_slug {
+        CONTENT_MODERATION_TASK_SLUG => {
+            registry.register(Arc::new(ContentModerationHandler) as Arc<dyn DirectTaskHandler>)
+        }
+        _ => {}
+    });
 }

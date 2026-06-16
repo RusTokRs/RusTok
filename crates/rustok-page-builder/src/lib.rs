@@ -59,12 +59,12 @@ impl MigrationSource for PageBuilderModule {
 mod tests {
     use super::*;
     use crate::dto::{
-        BuilderCapabilityKind, BuilderNodePropertiesInput, PublishPageBuilderInput,
-        PublishPageBuilderResult,
+        BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderContractMetadata,
+        PublishPageBuilderInput, PublishPageBuilderResult,
     };
     use crate::health::{
-        ProviderDegradationReason, ProviderHealthSnapshot, ProviderHealthState,
-        ProviderSloObservations, ProviderSloThresholds,
+        ProviderDegradationReason, ProviderHealthEvidence, ProviderHealthSnapshot,
+        ProviderHealthState, ProviderSloObservations, ProviderSloStatus, ProviderSloThresholds,
     };
     use crate::rollout::{
         ensure_capability, fallback_matrix, BuilderCapabilityFlags, BuilderRolloutError,
@@ -116,6 +116,16 @@ mod tests {
             BuilderCapabilityKind::Publish.as_str(),
             "publish",
             "capability enum string contract must stay stable"
+        );
+
+        let metadata = PageBuilderContractMetadata::BASELINE;
+        assert_eq!(metadata.module_slug, "page_builder");
+        assert_eq!(metadata.contract, "grapesjs_v1");
+        assert_eq!(metadata.builder_contract_version, "1.0");
+        assert_eq!(metadata.consumer_min_version, "1.0");
+        assert_eq!(
+            metadata.capabilities,
+            &["preview", "tree", "properties", "publish"]
         );
     }
 
@@ -269,6 +279,30 @@ mod tests {
             unavailable.degradation_reasons,
             vec![ProviderDegradationReason::ProviderUnhealthy]
         );
+    }
+
+    #[test]
+    fn provider_health_evidence_exposes_wave_slo_evaluation() {
+        let evidence = ProviderHealthEvidence::from_observations(ProviderSloObservations {
+            preview_p95_ms: 1200,
+            publish_p95_ms: 3500,
+            sanitize_failure_rate: 0.001,
+            runtime_error_rate: 0.001,
+        });
+
+        assert_eq!(evidence.module_slug, "page_builder");
+        assert_eq!(evidence.contract, "grapesjs_v1");
+        assert_eq!(evidence.builder_contract_version, "1.0");
+        assert_eq!(evidence.snapshot.state, ProviderHealthState::Degraded);
+        assert_eq!(
+            evidence.slo_evaluation.preview_p95_ms,
+            ProviderSloStatus::Pass
+        );
+        assert_eq!(
+            evidence.slo_evaluation.publish_p95_ms,
+            ProviderSloStatus::Fail
+        );
+        assert_eq!(evidence.slo_evaluation.overall, ProviderSloStatus::Fail);
     }
 
     #[test]

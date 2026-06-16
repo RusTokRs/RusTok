@@ -13,6 +13,10 @@ use rustok_core::field_schema::{is_valid_field_key, FieldDefinition, FlexError};
 use rustok_events::EventEnvelope;
 
 const FLEX_ENTRY_ENTITY_TYPE: &str = "flex_entry";
+const MAX_SCHEMA_SLUG_LEN: usize = 64;
+const MAX_SCHEMA_NAME_LEN: usize = 255;
+const MAX_ENTITY_TYPE_LEN: usize = 64;
+const MAX_ENTRY_STATUS_LEN: usize = 32;
 const MAX_STANDALONE_FIELDS_PER_SCHEMA: usize = 50;
 
 /// Standalone Flex schema view used by transport adapters.
@@ -82,17 +86,8 @@ pub struct UpdateFlexEntryCommand {
 
 /// Validate standalone schema command before handing it to adapter/service layer.
 pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result<(), FlexError> {
-    if !is_valid_field_key(&input.slug) {
-        return Err(FlexError::InvalidFieldKey(
-            "schema slug must match ^[a-z][a-z0-9_]{0,127}$".to_string(),
-        ));
-    }
-
-    if input.name.trim().is_empty() {
-        return Err(FlexError::InvalidFieldKey(
-            "schema name must not be empty".to_string(),
-        ));
-    }
+    validate_identifier(&input.slug, "schema slug", MAX_SCHEMA_SLUG_LEN)?;
+    validate_schema_name(&input.name)?;
 
     validate_json_object(input.settings.as_ref(), "schema settings")?;
     validate_definition_keys(&input.fields_config)
@@ -110,11 +105,7 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
     }
 
     if let Some(entity_type) = &input.entity_type {
-        if !is_valid_field_key(entity_type) {
-            return Err(FlexError::InvalidFieldKey(
-                "entity_type must match ^[a-z][a-z0-9_]{0,127}$".to_string(),
-            ));
-        }
+        validate_identifier(entity_type, "entity_type", MAX_ENTITY_TYPE_LEN)?;
 
         if entity_type == FLEX_ENTRY_ENTITY_TYPE {
             return Err(FlexError::InvalidFieldKey(
@@ -133,11 +124,7 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
 /// Validate standalone schema patch command before handing it to adapter/service layer.
 pub fn validate_update_schema_command(input: &UpdateFlexSchemaCommand) -> Result<(), FlexError> {
     if let Some(name) = &input.name {
-        if name.trim().is_empty() {
-            return Err(FlexError::InvalidFieldKey(
-                "schema name must not be empty".to_string(),
-            ));
-        }
+        validate_schema_name(name)?;
     }
 
     if let Some(fields_config) = &input.fields_config {
@@ -361,12 +348,7 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
 
     let mut unique = std::collections::HashSet::new();
     for def in definitions {
-        if !is_valid_field_key(&def.field_key) {
-            return Err(FlexError::InvalidFieldKey(format!(
-                "invalid field key in fields_config: {}",
-                def.field_key
-            )));
-        }
+        validate_identifier(&def.field_key, "field key in fields_config", 128)?;
 
         if !unique.insert(def.field_key.as_str()) {
             return Err(FlexError::DuplicateFieldKey(def.field_key.clone()));
@@ -408,6 +390,50 @@ fn validate_status(status: Option<&String>) -> Result<(), FlexError> {
                 "status must already be normalized without surrounding whitespace".to_string(),
             ));
         }
+
+        if !is_valid_field_key(status) {
+            return Err(FlexError::InvalidFieldKey(
+                "status must match ^[a-z][a-z0-9_]{0,127}$".to_string(),
+            ));
+        }
+
+        if status.len() > MAX_ENTRY_STATUS_LEN {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "status must be at most {MAX_ENTRY_STATUS_LEN} characters"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_schema_name(name: &str) -> Result<(), FlexError> {
+    if name.trim().is_empty() {
+        return Err(FlexError::InvalidFieldKey(
+            "schema name must not be empty".to_string(),
+        ));
+    }
+
+    if name.len() > MAX_SCHEMA_NAME_LEN {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "schema name must be at most {MAX_SCHEMA_NAME_LEN} characters"
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_identifier(value: &str, label: &str, max_len: usize) -> Result<(), FlexError> {
+    if !is_valid_field_key(value) {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "{label} must match ^[a-z][a-z0-9_]{{0,127}}$"
+        )));
+    }
+
+    if value.len() > max_len {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "{label} must be at most {max_len} characters"
+        )));
     }
 
     Ok(())
@@ -627,6 +653,38 @@ mod tests {
     }
 
     #[test]
+    fn validate_schema_command_rejects_storage_bound_overflows() {
+        let oversized_slug = CreateFlexSchemaCommand {
+            slug: format!("a{}", "a".repeat(64)),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![],
+            settings: None,
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&oversized_slug).is_err());
+
+        let oversized_name = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "A".repeat(256),
+            description: None,
+            fields_config: vec![],
+            settings: None,
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&oversized_name).is_err());
+
+        let oversized_patch_name = UpdateFlexSchemaCommand {
+            name: Some("A".repeat(256)),
+            ..Default::default()
+        };
+
+        assert!(validate_update_schema_command(&oversized_patch_name).is_err());
+    }
+
+    #[test]
     fn validate_schema_command_rejects_non_object_settings_and_too_many_fields() {
         let non_object_settings = CreateFlexSchemaCommand {
             slug: "landing_page".to_string(),
@@ -711,6 +769,36 @@ mod tests {
         };
 
         assert!(validate_create_entry_command(&valid).is_ok());
+    }
+
+    #[test]
+    fn validate_entry_command_rejects_storage_bound_overflows_and_invalid_status() {
+        let oversized_entity_type = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: Some(format!("a{}", "a".repeat(64))),
+            entity_id: Some(Uuid::new_v4()),
+            data: json!({"title": "Hello"}),
+            status: Some("draft".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&oversized_entity_type).is_err());
+
+        let invalid_status = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: None,
+            entity_id: None,
+            data: json!({"title": "Hello"}),
+            status: Some("ready now".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&invalid_status).is_err());
+
+        let oversized_status_patch = UpdateFlexEntryCommand {
+            data: None,
+            status: Some(format!("a{}", "a".repeat(32))),
+        };
+
+        assert!(validate_update_entry_command(&oversized_status_patch).is_err());
     }
 
     #[test]

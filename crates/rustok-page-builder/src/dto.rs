@@ -1,5 +1,24 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PageBuilderContractMetadata {
+    pub module_slug: &'static str,
+    pub contract: &'static str,
+    pub builder_contract_version: &'static str,
+    pub consumer_min_version: &'static str,
+    pub capabilities: &'static [&'static str],
+}
+
+impl PageBuilderContractMetadata {
+    pub const BASELINE: Self = Self {
+        module_slug: "page_builder",
+        contract: "grapesjs_v1",
+        builder_contract_version: "1.0",
+        consumer_min_version: "1.0",
+        capabilities: &["preview", "tree", "properties", "publish"],
+    };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BuilderCapabilityKind {
