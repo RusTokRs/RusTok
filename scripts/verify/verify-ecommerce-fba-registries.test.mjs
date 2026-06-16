@@ -199,6 +199,7 @@ test('verifyEcommerceFbaRegistries verifies provider SPI source markers when reg
         status: 'manual_baseline_locked',
         source: 'crates/rustok-pricing/src/providers.rs',
         default_provider_id: 'manual',
+        lifecycle_owner_service: 'PricingService',
         operations: ['authorize'],
         capabilities: ['authorize'],
         side_effect_boundary: 'provider adapters execute external effects; PricingService owns persisted lifecycle transitions',
@@ -235,6 +236,7 @@ test('verifyEcommerceFbaRegistries rejects provider SPI operations missing from 
         status: 'manual_baseline_locked',
         source: 'crates/rustok-pricing/src/providers.rs',
         default_provider_id: 'manual',
+        lifecycle_owner_service: 'PricingService',
         operations: ['authorize'],
         capabilities: ['authorize'],
         side_effect_boundary: 'provider adapters execute external effects; PricingService owns persisted lifecycle transitions',
@@ -277,6 +279,7 @@ test('verifyEcommerceFbaRegistries rejects provider SPI sources outside owner mo
         status: 'manual_baseline_locked',
         source: 'apps/server/src/payment_providers.rs',
         default_provider_id: 'manual',
+        lifecycle_owner_service: 'PricingService',
         operations: ['authorize'],
         capabilities: ['authorize'],
         side_effect_boundary: 'provider adapters execute external effects; PricingService owns persisted lifecycle transitions',
@@ -312,6 +315,7 @@ test('verifyEcommerceFbaRegistries rejects provider SPI lifecycle ownership drif
         status: 'manual_baseline_locked',
         source: 'crates/rustok-pricing/src/providers.rs',
         default_provider_id: 'manual',
+        lifecycle_owner_service: 'CommerceService',
         operations: ['authorize'],
         capabilities: ['authorize'],
         side_effect_boundary: 'provider adapters execute external effects; CommerceService owns persisted lifecycle transitions',
@@ -341,7 +345,7 @@ test('verifyEcommerceFbaRegistries rejects provider SPI lifecycle ownership drif
     () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
     {
       name: EcommerceFbaRegistryVerificationError.name,
-      message: 'pricing provider SPI must keep persisted lifecycle transitions in PricingService',
+      message: 'pricing provider SPI lifecycle_owner_service must be PricingService',
     },
   );
 });

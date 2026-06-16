@@ -42,8 +42,11 @@ const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSourc
   if (!Array.isArray(providerSpi.capabilities) || providerSpi.capabilities.length === 0) {
     fail(`${module} provider SPI lacks capabilities`);
   }
+  if (providerSpi.lifecycle_owner_service !== ownerService) {
+    fail(`${module} provider SPI lifecycle_owner_service must be ${ownerService}`);
+  }
   if (!providerSpi.side_effect_boundary || !providerSpi.side_effect_boundary.includes(`${ownerService} owns persisted lifecycle transitions`)) {
-    fail(`${module} provider SPI must keep persisted lifecycle transitions in ${ownerService}`);
+    fail(`${module} provider SPI side_effect_boundary must reference ${ownerService}`);
   }
   if (!providerSpi.webhook_ingress || providerSpi.webhook_ingress.status !== 'planned') {
     fail(`${module} provider SPI webhook ingress must remain planned until evidence lands`);
