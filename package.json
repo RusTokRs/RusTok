@@ -46,8 +46,10 @@
     "verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.mjs",
     "verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
     "test:verify:ecommerce:fba-contract-evidence": "node scripts/verify/verify-ecommerce-fba-contract-evidence.test.mjs",
-    "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence",
-    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence"
+    "test:verify:ecommerce:provider-spi-evidence": "node scripts/verify/verify-ecommerce-provider-spi-evidence.test.mjs",
+    "verify:ecommerce:provider-spi-evidence": "node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
+    "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:provider-spi-evidence",
+    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:provider-spi-evidence"
   },
   "dependencies": {
     "sharp": "^0.34.5"
