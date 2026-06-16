@@ -54,6 +54,15 @@ pub fn BlogAdmin() -> impl IntoView {
         "blog.error.loadPosts",
         "Failed to load posts",
     );
+    let shell_view = core::blog_post_admin_shell_view(
+        t(ui_locale.as_deref(), "blog.badge", "blog"),
+        t(ui_locale.as_deref(), "blog.title", "Blog Publishing"),
+        t(
+            ui_locale.as_deref(),
+            "blog.subtitle",
+            "Canonical module-owned CRUD flow for blog posts through the blog GraphQL contract.",
+        ),
+    );
     let form_subtitle = t(
         ui_locale.as_deref(),
         "blog.form.subtitle",
@@ -545,17 +554,13 @@ pub fn BlogAdmin() -> impl IntoView {
             <header class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
                 <div class="space-y-2">
                     <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {t(ui_locale.as_deref(), "blog.badge", "blog")}
+                        {shell_view.badge.clone()}
                     </span>
                     <h1 class="text-2xl font-semibold text-card-foreground">
-                        {t(ui_locale.as_deref(), "blog.title", "Blog Publishing")}
+                        {shell_view.title.clone()}
                     </h1>
                     <p class="max-w-2xl text-sm text-muted-foreground">
-                        {t(
-                            ui_locale.as_deref(),
-                            "blog.subtitle",
-                            "Canonical module-owned CRUD flow for blog posts through the blog GraphQL contract.",
-                        )}
+                        {shell_view.subtitle.clone()}
                     </p>
                 </div>
             </header>

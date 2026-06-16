@@ -383,6 +383,25 @@ pub struct BlogPostAdminTableRowLabels<'a> {
     pub delete: &'a str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminShellViewModel {
+    pub badge: String,
+    pub title: String,
+    pub subtitle: String,
+}
+
+pub fn blog_post_admin_shell_view(
+    badge: String,
+    title: String,
+    subtitle: String,
+) -> BlogPostAdminShellViewModel {
+    BlogPostAdminShellViewModel {
+        badge,
+        title,
+        subtitle,
+    }
+}
+
 pub fn blog_post_admin_table_row_view(
     post: BlogPostListItem,
     editing_post_id: Option<&str>,
@@ -831,6 +850,19 @@ mod tests {
             created_at: "2026-06-14T00:00:00Z".to_string(),
             published_at: None,
         }
+    }
+
+    #[test]
+    fn admin_shell_view_collects_header_copy_without_ui_runtime() {
+        let shell = blog_post_admin_shell_view(
+            "blog".to_string(),
+            "Blog Publishing".to_string(),
+            "Module-owned CRUD".to_string(),
+        );
+
+        assert_eq!(shell.badge, "blog");
+        assert_eq!(shell.title, "Blog Publishing");
+        assert_eq!(shell.subtitle, "Module-owned CRUD");
     }
 
     #[test]

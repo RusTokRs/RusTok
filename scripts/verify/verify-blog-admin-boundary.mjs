@@ -96,6 +96,8 @@ for (const marker of [
   "BlogPostSaveResultViewModel",
   "blog_post_save_result_view",
   "BlogPostEditorFormState",
+  "BlogPostAdminShellViewModel",
+  "blog_post_admin_shell_view",
   "BlogPostAdminTableRowViewModel",
   "blog_post_admin_table_row_view",
   "BlogPostAdminTableViewModel",
@@ -131,6 +133,7 @@ for (const marker of [
 
 assertContains(ui, "use crate::{core, transport};", `${uiPath}: Leptos adapter must consume core and transport layers`);
 assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must use core-owned save command preparation`);
+assertContains(ui, "core::blog_post_admin_shell_view", `${uiPath}: UI must use core-owned shell header view policy`);
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
 assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI must use core-owned raw-body warning view policy`);
