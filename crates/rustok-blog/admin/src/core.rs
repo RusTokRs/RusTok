@@ -197,14 +197,17 @@ pub fn editing_post_id_if_editing_mode(editing_post_id: Option<String>) -> Optio
     }
 }
 
+#[allow(dead_code)]
 pub fn has_issue(issue: Option<WritePathIssueKind>) -> bool {
     issue.is_some()
 }
 
+#[allow(dead_code)]
 pub fn issue_kind(issue: Option<&WritePathIssue>) -> Option<WritePathIssueKind> {
     issue.map(|value| value.kind)
 }
 
+#[allow(dead_code)]
 pub fn has_items<T>(items: &[T]) -> bool {
     !items.is_empty()
 }

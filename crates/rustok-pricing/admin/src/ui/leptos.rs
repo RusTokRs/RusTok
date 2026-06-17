@@ -4,7 +4,7 @@ use crate::core::{
     build_product_detail_header_view_model, build_product_list_item_view_model,
     build_resolution_context, build_variant_card_view_model, clear_price_list_rule_draft,
     empty_price_draft, format_adjustment_preview, format_channel_option_label,
-    format_channel_scope_text, format_effective_context, format_effective_price,
+    format_channel_scope_text, format_effective_context,
     format_price_list_option_label, format_price_scope, normalize_channel_value,
     normalized_currency_code, normalized_price_list_id, normalized_quantity, normalized_region_id,
     price_draft_from_price, pricing_product_list_item_class, selected_channel_key,

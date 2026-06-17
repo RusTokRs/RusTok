@@ -88,13 +88,6 @@ pub fn BlogAdmin() -> impl IntoView {
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
-    let raw_body_warning_message = form_raw_warning.clone();
-    let raw_body_warning_view = Memo::new(move |_| {
-        core::blog_post_admin_raw_body_warning_view(
-            body_format.get().as_str(),
-            raw_body_warning_message.clone(),
-        )
-    });
     let reset_form_action = Callback::new({
         let default_locale = default_locale.clone();
         move |_| {

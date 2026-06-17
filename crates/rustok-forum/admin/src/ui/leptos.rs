@@ -24,9 +24,9 @@ use crate::core::{
     topic_card_view_model, topic_category_filter, CategoryFormSnapshot, ForumAdminActionButtonKind,
     ForumAdminBusyAction, ForumAdminBusySurface, ForumAdminCategoryRenderLabels,
     ForumAdminCollectionState, ForumAdminFormError, ForumAdminFormErrorLabels,
-    ForumAdminHeaderLabels, ForumAdminMetricSurface, ForumAdminModeratorNotesLabels,
+    ForumAdminHeaderLabels, ForumAdminMetricSurface,
     ForumAdminQuerySurface, ForumAdminRouteQueryIntent, ForumAdminRouteQueryOperation,
-    ForumAdminSeoSurface, ForumAdminSidebarLabels, ForumAdminTitleEnvelopeLabels,
+    ForumAdminSeoSurface, ForumAdminTitleEnvelopeLabels,
     ForumAdminTopicRenderLabels, TopicFormSnapshot,
 };
 use crate::i18n::t;
