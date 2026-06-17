@@ -17,9 +17,9 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryService, ForumError, ForumResult, ForumWidgetCatalogResponse,
-    ForumWidgetContractService, ReplyResponse, ReplyService, TopicListItem, TopicResponse,
-    TopicService, UserStatsService,
+    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult,
+    ForumWidgetCatalogResponse, ForumWidgetContractService, ReplyResponse, ReplyService,
+    TopicListItem, TopicResponse, TopicService, UserStatsService,
 };
 
 use super::types::*;
@@ -35,7 +35,7 @@ impl ForumQuery {
     async fn forum_categories(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         locale: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumCategoryConnection> {
@@ -48,6 +48,7 @@ impl ForumQuery {
         )?;
 
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = CategoryService::new(db.clone());
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let requested_limit = pagination.requested_limit();
@@ -98,7 +99,7 @@ impl ForumQuery {
     async fn forum_topics(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         category_id: Option<Uuid>,
         locale: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
@@ -113,6 +114,7 @@ impl ForumQuery {
         )?;
 
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = TopicService::new(db.clone(), event_bus.clone());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
@@ -177,10 +179,97 @@ impl ForumQuery {
         ))
     }
 
+    async fn forum_category(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+        locale: Option<String>,
+    ) -> Result<Option<GqlForumCategory>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_READ],
+            "Permission denied: forum_categories:read required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let service = CategoryService::new(db.clone());
+        let category = match service
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                id,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
+            Ok(category) => category,
+            Err(ForumError::CategoryNotFound(_)) => return Ok(None),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+        };
+
+        Ok(Some(map_category_response(category)))
+    }
+
+    async fn forum_topic(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+        locale: Option<String>,
+    ) -> Result<Option<GqlForumTopic>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let service = TopicService::new(db.clone(), event_bus.clone());
+        let topic = match service
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                id,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
+            Ok(topic) => topic,
+            Err(ForumError::TopicNotFound(_)) => return Ok(None),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+        };
+        let author_profiles = load_author_profiles_map(
+            ctx,
+            db,
+            tenant_id,
+            [topic.author_id],
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+        let author_profile = topic
+            .author_id
+            .and_then(|author_id| author_profiles.get(&author_id).cloned());
+
+        Ok(Some(map_topic_response(topic, author_profile)))
+    }
+
     async fn forum_replies(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         topic_id: Uuid,
         locale: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
@@ -195,6 +284,7 @@ impl ForumQuery {
         )?;
 
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = ReplyService::new(db.clone(), event_bus.clone());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
@@ -622,6 +712,18 @@ fn forum_security_or_system(ctx: &Context<'_>) -> SecurityContext {
         .unwrap_or_else(|_| SecurityContext::system())
 }
 
+fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
+    match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
+            Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: tenant scope mismatch",
+            ))
+        }
+        Some(requested_tenant_id) => Ok(requested_tenant_id),
+        None => Ok(tenant.id),
+    }
+}
+
 fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
     GqlForumCategory {
         id: category.id,
@@ -634,8 +736,32 @@ fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
         description: category.description,
         icon: category.icon,
         color: category.color,
+        parent_id: None,
+        position: 0,
         topic_count: category.topic_count,
         reply_count: category.reply_count,
+        moderated: false,
+        is_subscribed: category.is_subscribed,
+    }
+}
+
+fn map_category_response(category: CategoryResponse) -> GqlForumCategory {
+    GqlForumCategory {
+        id: category.id,
+        requested_locale: category.requested_locale,
+        locale: category.locale,
+        effective_locale: category.effective_locale,
+        available_locales: category.available_locales,
+        name: category.name,
+        slug: category.slug,
+        description: category.description,
+        icon: category.icon,
+        color: category.color,
+        parent_id: category.parent_id,
+        position: category.position,
+        topic_count: category.topic_count,
+        reply_count: category.reply_count,
+        moderated: category.moderated,
         is_subscribed: category.is_subscribed,
     }
 }
@@ -657,6 +783,7 @@ fn map_topic_list_item(
         slug: topic.slug,
         body: String::new(),
         body_format: "markdown".to_string(),
+        content_json: None,
         metadata: topic.metadata,
         status: topic.status,
         tags: Vec::new(),
@@ -690,6 +817,7 @@ fn map_topic_response(
         slug: topic.slug,
         body: topic.body,
         body_format: topic.body_format,
+        content_json: topic.content_json,
         metadata: topic.metadata,
         status: topic.status,
         tags: topic.tags,

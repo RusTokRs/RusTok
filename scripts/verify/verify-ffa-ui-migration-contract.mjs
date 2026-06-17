@@ -229,8 +229,15 @@ const requiredNpmScriptCommands = {
     "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
   ],
   "verify:ffa:ui:migration:docs": [
+    "node scripts/verify/verify-ffa-ui-doc-patterns.mjs",
     "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
     "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
+  ],
+  "verify:ffa:ui:migration:boundary-sweep": [
+    "node scripts/verify/verify-ffa-ui-boundary-sweep.mjs",
+  ],
+  "verify:ffa:ui:migration:transport-profile": [
+    "node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs",
   ],
   "verify:channel:admin-boundary": [
     "node scripts/verify/verify-channel-admin-boundary.mjs",
@@ -246,6 +253,8 @@ const requiredNpmScriptCommands = {
 const requiredMigrationPipelineCommands = [
   "npm run verify:ffa:ui:migration:contract",
   "npm run verify:ffa:ui:migration:docs",
+  "npm run verify:ffa:ui:migration:boundary-sweep",
+  "npm run verify:ffa:ui:migration:transport-profile",
   "npm run verify:channel:admin-boundary",
   "npm run verify:ai:admin-boundary",
   "npm run verify:tenant:admin-boundary",

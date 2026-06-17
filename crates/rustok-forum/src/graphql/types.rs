@@ -17,8 +17,11 @@ pub struct GqlForumCategory {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub color: Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub position: i32,
     pub topic_count: i32,
     pub reply_count: i32,
+    pub moderated: bool,
     pub is_subscribed: bool,
 }
 
@@ -36,6 +39,7 @@ pub struct GqlForumTopic {
     pub slug: String,
     pub body: String,
     pub body_format: String,
+    pub content_json: Option<Value>,
     pub metadata: Value,
     pub status: String,
     pub tags: Vec<String>,
@@ -166,6 +170,18 @@ pub struct CreateForumCategoryInput {
     pub parent_id: Option<Uuid>,
     pub position: Option<i32>,
     pub moderated: bool,
+}
+
+#[derive(InputObject)]
+pub struct UpdateForumCategoryInput {
+    pub locale: String,
+    pub name: Option<String>,
+    pub slug: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub position: Option<i32>,
+    pub moderated: Option<bool>,
 }
 
 pub type ForumCategoryConnection = ListConnection<GqlForumCategory>;

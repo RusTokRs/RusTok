@@ -309,7 +309,11 @@ function withFixture({
           "verify:ffa:ui:migration:contract":
             contractCommand ?? "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
           "verify:ffa:ui:migration:docs":
-            docsCommand ?? "bash scripts/verify/verify-ffa-ui-doc-patterns.sh",
+            docsCommand ?? "node scripts/verify/verify-ffa-ui-doc-patterns.mjs",
+          "verify:ffa:ui:migration:boundary-sweep":
+            "node scripts/verify/verify-ffa-ui-boundary-sweep.mjs",
+          "verify:ffa:ui:migration:transport-profile":
+            "node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs",
           "verify:channel:admin-boundary":
             "node scripts/verify/verify-channel-admin-boundary.mjs",
           "verify:ai:admin-boundary":
@@ -346,7 +350,7 @@ function runVerifier(root, options = {}) {
 
 test("passes when migration pipeline includes contract and docs commands", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -359,7 +363,7 @@ test("passes when migration pipeline includes contract and docs commands", () =>
 
 test("fails when anti-over-extraction standard is missing from the plan", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -401,7 +405,7 @@ test("fails when migration pipeline misses docs command", () => {
 
 test("fails when migration pipeline misses channel boundary command", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile",
   });
 
   try {
@@ -413,10 +417,38 @@ test("fails when migration pipeline misses channel boundary command", () => {
   }
 });
 
+test("fails when migration pipeline misses boundary sweep command", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary",
+  });
+
+  try {
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected missing boundary sweep fixture to fail");
+    assert.match(result.stderr, /verify:ffa:ui:migration:boundary-sweep/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("fails when migration pipeline misses transport profile command", () => {
+  const fixture = withFixture({
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:channel:admin-boundary",
+  });
+
+  try {
+    const result = runVerifier(fixture.root);
+    assert.notEqual(result.status, 0, "Expected missing transport profile fixture to fail");
+    assert.match(result.stderr, /verify:ffa:ui:migration:transport-profile/);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 
 test("passes when pipeline uses extra whitespace", () => {
   const fixture = withFixture({
-    pipeline: "npm   run verify:ffa:ui:migration:contract   &&   npm run verify:ffa:ui:migration:docs   &&   npm   run verify:channel:admin-boundary   && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm   run verify:ffa:ui:migration:contract   &&   npm run verify:ffa:ui:migration:docs   && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile &&   npm   run verify:channel:admin-boundary   && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -431,7 +463,7 @@ ${result.stderr}`);
 
 test("fails when contract script command is drifted", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     contractCommand: "node scripts/verify/some-other-command.mjs",
   });
 
@@ -447,7 +479,7 @@ test("fails when contract script command is drifted", () => {
 
 test("fails when registry structural shape drifts from local module plan", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_only",
   });
@@ -463,7 +495,7 @@ test("fails when registry structural shape drifts from local module plan", () =>
 
 test("fails when structural shape has no matching code layout", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_transport_ui",
   });
@@ -480,7 +512,7 @@ test("fails when structural shape has no matching code layout", () => {
 
 test("passes when a temporary single-adapter native transport is documented as native.rs", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     registryShape: "core_transport_ui",
     localShape: "core_transport_ui",
   });
@@ -505,7 +537,7 @@ ${result.stderr}`);
 
 test("passes when docs script uses sh variant", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
     docsCommand: "sh scripts/verify/verify-ffa-ui-doc-patterns.sh",
   });
 
@@ -522,7 +554,7 @@ ${result.stderr}`);
 
 test("passes when root is provided via --root argument", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -538,7 +570,7 @@ ${result.stderr}`);
 
 test("passes when root is provided via --root <path> arguments", () => {
   const fixture = withFixture({
-    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
+    pipeline: "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary",
   });
 
   try {
@@ -569,3 +601,4 @@ test("fails on unknown cli arguments", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Неизвестные аргументы/);
 });
+

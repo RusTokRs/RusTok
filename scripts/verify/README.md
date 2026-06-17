@@ -48,6 +48,9 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 | Проверка runtime-context/cache-key invariants | `node scripts/verify/verify-runtime-context-invariants.mjs` |
+| Большой FFA UI migration gate | `npm run verify:ffa:ui:migration` |
+| Sweep по всем `core_transport_ui` строкам readiness board | `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` |
+| Sweep transport profiles для FFA surfaces | `node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs` |
 | Проверка inventory admin native/write boundary | `node scripts/verify/verify-inventory-admin-boundary.mjs` |
 | Проверка AI admin FFA boundary | `node scripts/verify/verify-ai-admin-boundary.mjs` |
 | Проверка tenant admin FFA boundary | `node scripts/verify/verify-tenant-admin-boundary.mjs` |
@@ -71,11 +74,43 @@ npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:error-catalog
 npm run verify:page-builder:consumer:pages
 npm run verify:page-builder:consumer:forum
+npm run verify:ffa:ui:migration
+npm run verify:ffa:ui:migration:boundary-sweep
+npm run test:verify:ffa:ui:migration:boundary-sweep
+npm run verify:ffa:ui:migration:transport-profile
+npm run test:verify:ffa:ui:migration:transport-profile
 npm run verify:ecommerce:fba-registries
 npm run test:verify:ecommerce:fba-registries
 ```
 
 ## Описание скриптов
+
+### `verify:ffa:ui:migration` / `verify-ffa-ui-boundary-sweep.mjs`
+**FFA UI migration gate** — большой source-level gate для module-owned UI перехода на `core/transport/ui`.
+
+Что делает aggregate `npm run verify:ffa:ui:migration`:
+- проверяет FFA migration contract docs и anti-over-extraction/doc patterns;
+- запускает repository-wide sweep по всем строкам readiness board со `Structural shape: core_transport_ui`;
+- проверяет transport profile каждого FFA surface: multi-adapter по коду или документированный single-adapter/owner-fragment state;
+- запускает module-specific boundary guardrails для модулей, где есть более глубокие локальные правила.
+
+Что дополнительно фиксирует sweep:
+- central readiness board в `docs/modules/registry.md` совпадает с локальными `docs/implementation-plan.md` по FFA/FBA status и structural shape;
+- каждый `core_transport_ui` surface имеет `core`, `transport` и `ui/leptos` слой;
+- `core` остаётся свободным от Leptos/server-function imports;
+- `ui/leptos` не вызывает raw `api::*` напрямую.
+
+Пример:
+
+```bash
+npm run verify:ffa:ui:migration
+npm run verify:ffa:ui:migration:boundary-sweep
+npm run test:verify:ffa:ui:migration:boundary-sweep
+npm run verify:ffa:ui:migration:transport-profile
+npm run test:verify:ffa:ui:migration:transport-profile
+node scripts/verify/verify-ffa-ui-boundary-sweep.mjs
+node scripts/verify/verify-ffa-ui-transport-profile-sweep.mjs
+```
 
 ### `verify-ecommerce-fba-registries.mjs`
 **Ecommerce FBA provider/consumer registry gate** — проверяет provider metadata для `payment`, `fulfillment`, `order`, `pricing`, `inventory` и consumer metadata для `commerce`.

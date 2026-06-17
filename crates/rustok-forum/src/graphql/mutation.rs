@@ -1,7 +1,7 @@
 use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext,
+    has_any_effective_permission, AuthContext, TenantContext,
 };
 use rustok_core::{Permission, CONTENT_FORMAT_MARKDOWN};
 use rustok_outbox::TransactionalEventBus;
@@ -12,7 +12,9 @@ use rustok_profiles::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CategoryService, ReplyService, SubscriptionService, TopicService, VoteService};
+use crate::{
+    CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
+};
 
 use super::types::*;
 
@@ -26,7 +28,7 @@ impl ForumMutation {
     async fn create_forum_topic(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         input: CreateForumTopicInput,
     ) -> Result<GqlForumTopic> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -38,6 +40,8 @@ impl ForumMutation {
             "Permission denied: forum_topics:create required",
         )?;
 
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = TopicService::new(db.clone(), event_bus.clone());
         let topic = service
             .create(
@@ -74,7 +78,7 @@ impl ForumMutation {
     async fn update_forum_topic(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         id: Uuid,
         input: UpdateForumTopicInput,
     ) -> Result<GqlForumTopic> {
@@ -87,6 +91,8 @@ impl ForumMutation {
             "Permission denied: forum_topics:update required",
         )?;
 
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = TopicService::new(db.clone(), event_bus.clone());
         let topic = service
             .update(
@@ -120,7 +126,7 @@ impl ForumMutation {
     async fn delete_forum_topic(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         id: Uuid,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -132,6 +138,8 @@ impl ForumMutation {
             "Permission denied: forum_topics:delete required",
         )?;
 
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = TopicService::new(db.clone(), event_bus.clone());
         service
             .delete(tenant_id, id, auth.security_context())
@@ -169,21 +177,7 @@ impl ForumMutation {
             )
             .await?;
 
-        Ok(GqlForumCategory {
-            id: category.id,
-            requested_locale: category.requested_locale,
-            locale: category.locale,
-            effective_locale: category.effective_locale,
-            available_locales: category.available_locales,
-            name: category.name,
-            slug: category.slug,
-            description: category.description,
-            icon: category.icon,
-            color: category.color,
-            topic_count: category.topic_count,
-            reply_count: category.reply_count,
-            is_subscribed: category.is_subscribed,
-        })
+        Ok(map_category(category))
     }
 
     async fn clear_forum_category_subscription(
@@ -215,21 +209,7 @@ impl ForumMutation {
             )
             .await?;
 
-        Ok(GqlForumCategory {
-            id: category.id,
-            requested_locale: category.requested_locale,
-            locale: category.locale,
-            effective_locale: category.effective_locale,
-            available_locales: category.available_locales,
-            name: category.name,
-            slug: category.slug,
-            description: category.description,
-            icon: category.icon,
-            color: category.color,
-            topic_count: category.topic_count,
-            reply_count: category.reply_count,
-            is_subscribed: category.is_subscribed,
-        })
+        Ok(map_category(category))
     }
 
     async fn set_forum_topic_subscription(
@@ -686,7 +666,7 @@ impl ForumMutation {
     async fn create_forum_category(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         input: CreateForumCategoryInput,
     ) -> Result<GqlForumCategory> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -697,6 +677,8 @@ impl ForumMutation {
             "Permission denied: forum_categories:create required",
         )?;
 
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = CategoryService::new(db.clone());
         let category = service
             .create(
@@ -716,21 +698,68 @@ impl ForumMutation {
             )
             .await?;
 
-        Ok(GqlForumCategory {
-            id: category.id,
-            requested_locale: category.requested_locale,
-            locale: category.locale,
-            effective_locale: category.effective_locale,
-            available_locales: category.available_locales,
-            name: category.name,
-            slug: category.slug,
-            description: category.description,
-            icon: category.icon,
-            color: category.color,
-            topic_count: category.topic_count,
-            reply_count: category.reply_count,
-            is_subscribed: category.is_subscribed,
-        })
+        Ok(map_category(category))
+    }
+
+    async fn update_forum_category(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+        input: UpdateForumCategoryInput,
+    ) -> Result<GqlForumCategory> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_UPDATE],
+            "Permission denied: forum_categories:update required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let category = CategoryService::new(db.clone())
+            .update(
+                tenant_id,
+                id,
+                auth.security_context(),
+                crate::UpdateCategoryInput {
+                    locale: input.locale,
+                    name: input.name,
+                    slug: input.slug,
+                    description: input.description,
+                    icon: input.icon,
+                    color: input.color,
+                    position: input.position,
+                    moderated: input.moderated,
+                },
+            )
+            .await?;
+
+        Ok(map_category(category))
+    }
+
+    async fn delete_forum_category(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        id: Uuid,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_DELETE],
+            "Permission denied: forum_categories:delete required",
+        )?;
+
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        CategoryService::new(db.clone())
+            .delete(tenant_id, id, auth.security_context())
+            .await?;
+
+        Ok(true)
     }
 }
 
@@ -749,6 +778,18 @@ fn require_forum_permission(
     }
 
     Ok(auth)
+}
+
+fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
+    match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
+            Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: tenant scope mismatch",
+            ))
+        }
+        Some(requested_tenant_id) => Ok(requested_tenant_id),
+        None => Ok(tenant.id),
+    }
 }
 
 async fn load_author_profile(
@@ -782,6 +823,27 @@ async fn load_author_profile(
     Ok(profile.map(Into::into))
 }
 
+fn map_category(category: CategoryResponse) -> GqlForumCategory {
+    GqlForumCategory {
+        id: category.id,
+        requested_locale: category.requested_locale,
+        locale: category.locale,
+        effective_locale: category.effective_locale,
+        available_locales: category.available_locales,
+        name: category.name,
+        slug: category.slug,
+        description: category.description,
+        icon: category.icon,
+        color: category.color,
+        parent_id: category.parent_id,
+        position: category.position,
+        topic_count: category.topic_count,
+        reply_count: category.reply_count,
+        moderated: category.moderated,
+        is_subscribed: category.is_subscribed,
+    }
+}
+
 fn map_topic(
     topic: crate::TopicResponse,
     author_profile: Option<GqlProfileSummary>,
@@ -799,6 +861,7 @@ fn map_topic(
         slug: topic.slug,
         body: topic.body,
         body_format: topic.body_format,
+        content_json: topic.content_json,
         metadata: topic.metadata,
         status: topic.status,
         tags: topic.tags,

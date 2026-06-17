@@ -37,6 +37,9 @@ ${omitDraftHelper ? "" : "pub fn build_create_page_draft() {}"}
 pub fn missing_required_page_field() {}
 pub fn write_path_issue_with_context() {}
 pub fn builder_host_fallback_surface() {}
+pub fn publish_state_view() {}
+pub fn channel_count_label() {}
+pub fn legacy_block_snapshot_label() {}
 `;
 }
 
@@ -48,6 +51,8 @@ pub fn selected_page_slug() {}
 pub fn summarize_page_content() {}
 pub fn storefront_builder_fallback_read_contract() {}
 pub fn count_label() {}
+pub fn page_link_href() {}
+pub fn page_status_label() {}
 `;
 }
 
@@ -59,6 +64,8 @@ use crate::transport;
 pub fn PagesAdmin() {
     let _pages = transport::fetch_pages;
     ${omitDraftHelper ? "" : "let _draft = core::build_create_page_draft;"}
+    let _publish_state = core::publish_state_view;
+    let _legacy_block_label = core::legacy_block_snapshot_label;
     ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
     ${rawServiceCall ? "let _service = PageService::new;" : ""}
 }
@@ -73,6 +80,8 @@ use crate::transport;
 pub fn PagesView() {
     let _pages = transport::fetch_pages;
     let _title = core::selected_page_title;
+    let _href = core::page_link_href;
+    let _status = core::page_status_label;
     ${rawApiCall ? "let _raw = api::fetch_storefront_pages;" : ""}
 }
 `;
