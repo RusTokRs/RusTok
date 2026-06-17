@@ -896,6 +896,19 @@ pub(crate) fn build_product_admin_shell_view_model(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminSummaryPanelCopy {
+    pub title: String,
+}
+
+pub(crate) fn build_product_admin_summary_panel_copy(
+    locale: Option<&str>,
+) -> ProductAdminSummaryPanelCopy {
+    ProductAdminSummaryPanelCopy {
+        title: t(locale, "product.summary.title", "Selected product"),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ProductAdminSeoPanelCopy {
     pub title: String,
     pub subtitle: String,
@@ -1113,6 +1126,22 @@ pub(crate) fn product_admin_clear_product_query_intent() -> ProductAdminRouteQue
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProductAdminSelectedProductQueryState {
+    Open { product_id: String },
+    Clear,
+}
+
+pub(crate) fn product_admin_selected_product_query_state(
+    product_id: Option<String>,
+) -> ProductAdminSelectedProductQueryState {
+    product_id
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(|product_id| ProductAdminSelectedProductQueryState::Open { product_id })
+        .unwrap_or(ProductAdminSelectedProductQueryState::Clear)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ProductAdminListStateKind {
     Loading,
     Empty,
@@ -1235,7 +1264,8 @@ pub(crate) struct ProductAdminListItemViewModel {
     pub type_label: String,
     pub title: String,
     pub meta_label: String,
-    pub shipping_profile_label: Option<String>,
+    pub shipping_profile_label: String,
+    pub show_shipping_profile: bool,
     pub timestamp_label: String,
 }
 
@@ -1243,6 +1273,13 @@ pub(crate) fn build_product_admin_list_item_view_model(
     locale: Option<&str>,
     product: &ProductListItem,
 ) -> ProductAdminListItemViewModel {
+    let shipping_profile_label = product
+        .shipping_profile_slug
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(|slug| format_product_shipping_profile(locale, slug));
+    let show_shipping_profile = shipping_profile_label.is_some();
+
     ProductAdminListItemViewModel {
         id: product.id.clone(),
         status: product.status.clone(),
@@ -1255,11 +1292,8 @@ pub(crate) fn build_product_admin_list_item_view_model(
             .unwrap_or_else(|| t(locale, "product.common.general", "general")),
         title: product.title.clone(),
         meta_label: format_product_meta(locale, product.handle.as_str(), product.vendor.as_deref()),
-        shipping_profile_label: product
-            .shipping_profile_slug
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-            .map(|slug| format_product_shipping_profile(locale, slug)),
+        shipping_profile_label: shipping_profile_label.unwrap_or_default(),
+        show_shipping_profile,
         timestamp_label: product
             .published_at
             .clone()
@@ -1408,6 +1442,21 @@ mod tests {
             ProductAdminRouteQueryIntent::Clear {
                 key: AdminQueryKey::ProductId.as_str(),
             }
+        );
+
+        assert_eq!(
+            product_admin_selected_product_query_state(Some(" product-3 ".to_string())),
+            ProductAdminSelectedProductQueryState::Open {
+                product_id: "product-3".to_string(),
+            }
+        );
+        assert_eq!(
+            product_admin_selected_product_query_state(Some("   ".to_string())),
+            ProductAdminSelectedProductQueryState::Clear
+        );
+        assert_eq!(
+            product_admin_selected_product_query_state(None),
+            ProductAdminSelectedProductQueryState::Clear
         );
     }
 
@@ -1782,13 +1831,18 @@ mod tests {
         assert_eq!(view_model.status_label, "Active");
         assert_eq!(view_model.type_label, "general");
         assert_eq!(view_model.meta_label, "handle: winter-coat | vendor: Acme");
-        assert_eq!(
-            view_model.shipping_profile_label,
-            Some("profile standard".to_string())
-        );
+        assert!(view_model.show_shipping_profile);
+        assert_eq!(view_model.shipping_profile_label, "profile standard");
         assert_eq!(view_model.timestamp_label, "2026-01-02T00:00:00Z");
         assert!(view_model.status_badge_class.starts_with("inline-flex"));
         assert!(view_model.status_badge_class.contains("emerald"));
+
+        let mut product_without_profile = product;
+        product_without_profile.shipping_profile_slug = Some("   ".to_string());
+        let without_profile =
+            build_product_admin_list_item_view_model(Some("en"), &product_without_profile);
+        assert!(!without_profile.show_shipping_profile);
+        assert_eq!(without_profile.shipping_profile_label, "");
     }
 
     #[test]
@@ -1801,6 +1855,13 @@ mod tests {
             view_model.subtitle,
             "Product ownership now lives in the product module package. Commerce keeps delivery orchestration while catalog CRUD moves to the product route."
         );
+    }
+
+    #[test]
+    fn product_admin_summary_panel_copy_is_core_owned() {
+        let copy = build_product_admin_summary_panel_copy(Some("en"));
+
+        assert_eq!(copy.title, "Selected product");
     }
 
     #[test]

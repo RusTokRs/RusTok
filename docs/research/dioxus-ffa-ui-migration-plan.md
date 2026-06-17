@@ -215,6 +215,11 @@ Verification scripts (`scripts/verify/*`) считаются частью жив
 4. Перед закрытием phase-gate владелец задачи прикладывает вывод запуска актуальных
    verify-скриптов как часть evidence.
 
+`test:verify:ffa:ui:migration` является пакетным быстрым прогоном source-level FFA guardrails.
+Он должен включать fixture-наборы для boundary sweep, transport profile и модульных границ
+(`channel`, `region`, `blog`, `pages`, `fulfillment`, `product`, `forum`), если соответствующий
+verify-скрипт уже существует.
+
 Минимальный ритм плановой ревизии: не реже 1 раза в 2–4 недели и обязательно по
 завершению каждой волны rollout.
 
@@ -314,4 +319,3 @@ npm run verify:ffa:ui:migration
 - **Informed (I):** смежные module owners и observability/QA владельцы.
 
 Phase-gate не считается пройденным без явного подтверждения `A` и отметки о двойной documentation verification.
-

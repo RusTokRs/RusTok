@@ -36,16 +36,27 @@ pub(crate) struct ProductAdminEditorFormState;
 pub(crate) struct ProductAdminStatusMutationResultViewModel;
 pub(crate) struct ProductAdminDeleteResultViewModel;
 pub(crate) struct ProductAdminSeoPanelCopy;
+pub(crate) struct ProductAdminSummaryPanelCopy;
 pub(crate) struct ProductAdminRouteQueryIntent;
+pub(crate) enum ProductAdminSelectedProductQueryState { Open, Clear }
+pub(crate) struct ProductAdminListItemViewModel { pub show_shipping_profile: bool }
 pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 { 0 }
 ${omitOpenProduct ? "" : "pub(crate) enum ProductAdminOpenProductViewModel { Ready, Empty }"}
 pub(crate) fn product_admin_pricing_preview_state_from_result() {}
+pub(crate) fn product_admin_selected_product_query_state() -> ProductAdminSelectedProductQueryState { ProductAdminSelectedProductQueryState::Clear }
+pub(crate) fn build_product_admin_summary_panel_copy() -> ProductAdminSummaryPanelCopy { ProductAdminSummaryPanelCopy }
 `;
 }
 
-function uiSource({ rawApiCall = false, rawServiceCall = false } = {}) {
+function uiSource({
+  rawApiCall = false,
+  rawServiceCall = false,
+  directSummaryCopy = false,
+  uiShippingProfilePolicy = false,
+  uiSelectedQueryPolicy = false,
+} = {}) {
   return `
-use crate::core::{build_product_admin_save_command, ProductAdminOpenProductViewModel, product_admin_pricing_preview_state_from_result};
+use crate::core::{build_product_admin_save_command, build_product_admin_summary_panel_copy, ProductAdminOpenProductViewModel, product_admin_pricing_preview_state_from_result, product_admin_selected_product_query_state};
 use crate::transport;
 
 pub fn ProductAdmin() {
@@ -53,8 +64,13 @@ pub fn ProductAdmin() {
     let _save = build_product_admin_save_command;
     let _open = ProductAdminOpenProductViewModel::Empty;
     let _pricing = product_admin_pricing_preview_state_from_result;
+    let _summary = build_product_admin_summary_panel_copy;
+    let _query_state = product_admin_selected_product_query_state;
     ${rawApiCall ? "let _raw = api::fetch_products;" : ""}
     ${rawServiceCall ? "let _service = ProductService::new;" : ""}
+    ${directSummaryCopy ? 'let _copy = "Selected product";' : ""}
+    ${uiShippingProfilePolicy ? "let item_shipping_profile_label = Some(String::new()); let _show = item_shipping_profile_label.is_some();" : ""}
+    ${uiSelectedQueryPolicy ? "let product_id = String::new(); let _open = !product_id.trim().is_empty();" : ""}
 }
 `;
 }
@@ -100,6 +116,13 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-product/admin/src/api.rs", apiSource());
   writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-product-admin-boundary.mjs");
+  writeFixtureFile(root, "package.json", JSON.stringify({
+    scripts: {
+      "verify:product:admin-boundary": "node scripts/verify/verify-product-admin-boundary.mjs",
+      "test:verify:product:admin-boundary": "node scripts/verify/verify-product-admin-boundary.test.mjs",
+      "test:verify:ffa:ui:migration": "npm run test:verify:product:admin-boundary",
+    },
+  }));
   return root;
 }
 
@@ -150,6 +173,39 @@ test("product admin boundary verifier rejects missing core open-result policy", 
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected missing open-result helper fixture to fail");
     assert.match(result.stderr, /ProductAdminOpenProductViewModel/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects selected-summary copy in UI", () => {
+  const root = withFixture({ directSummaryCopy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected direct summary copy fixture to fail");
+    assert.match(result.stderr, /selected-summary panel copy must stay in core/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects shipping profile chip policy in UI", () => {
+  const root = withFixture({ uiShippingProfilePolicy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected UI shipping-profile policy fixture to fail");
+    assert.match(result.stderr, /shipping-profile chip display policy must stay in core/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects selected product query policy in UI", () => {
+  const root = withFixture({ uiSelectedQueryPolicy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected selected query policy fixture to fail");
+    assert.match(result.stderr, /selected product query normalization must stay in core/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -45,6 +45,7 @@ const transportPath = "crates/rustok-product/admin/src/transport.rs";
 const apiPath = "crates/rustok-product/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
+const packagePath = "package.json";
 
 for (const filePath of [
   libPath,
@@ -54,6 +55,7 @@ for (const filePath of [
   apiPath,
   implementationPlanPath,
   registryPath,
+  packagePath,
 ]) {
   assertExists(filePath, `${filePath}: expected product admin FFA boundary file`);
 }
@@ -65,6 +67,7 @@ const transport = readRepo(transportPath);
 const api = readRepo(apiPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
+const packageJson = readRepo(packagePath);
 
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
@@ -80,10 +83,14 @@ for (const marker of [
   "ProductAdminStatusMutationResultViewModel",
   "ProductAdminDeleteResultViewModel",
   "ProductAdminSeoPanelCopy",
+  "ProductAdminSummaryPanelCopy",
   "parse_product_admin_inventory_quantity_input",
   "ProductAdminOpenProductViewModel",
   "product_admin_pricing_preview_state_from_result",
   "ProductAdminRouteQueryIntent",
+  "ProductAdminSelectedProductQueryState",
+  "product_admin_selected_product_query_state",
+  "show_shipping_profile",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
 }
@@ -93,8 +100,19 @@ assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call
 assertContains(ui, "build_product_admin_save_command", `${uiPath}: UI must use core-owned save command preparation`);
 assertContains(ui, "ProductAdminOpenProductViewModel", `${uiPath}: UI must consume core-owned open-product outcomes`);
 assertContains(ui, "product_admin_pricing_preview_state_from_result", `${uiPath}: UI must use core-owned pricing preview state mapping`);
+assertContains(ui, "build_product_admin_summary_panel_copy", `${uiPath}: UI must consume core-owned selected-summary panel copy`);
+assertContains(ui, "product_admin_selected_product_query_state", `${uiPath}: UI must use core-owned selected product query state`);
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "ProductService", "PricingService"] ) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);
+}
+for (const marker of ["product.summary.title", "Selected product"]) {
+  assertNotContains(ui, marker, `${uiPath}: selected-summary panel copy must stay in core (${marker})`);
+}
+for (const marker of ["item_shipping_profile_label.is_some", "item_shipping_profile_label.clone().unwrap_or_default"]) {
+  assertNotContains(ui, marker, `${uiPath}: shipping-profile chip display policy must stay in core (${marker})`);
+}
+for (const marker of ["product_id.trim().is_empty()", "selected_product_query.get() {"]) {
+  assertNotContains(ui, marker, `${uiPath}: selected product query normalization must stay in core (${marker})`);
 }
 
 for (const marker of [
@@ -116,6 +134,9 @@ assertContains(api, "GraphqlRequest", `${apiPath}: product admin api adapter mus
 
 assertContains(implementationPlan, "verify-product-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the product fast boundary guardrail`);
 assertContains(registry, "verify-product-admin-boundary.mjs", `${registryPath}: central readiness board must mention the product fast boundary guardrail`);
+assertContains(packageJson, "verify:product:admin-boundary", `${packagePath}: package scripts must expose product admin boundary verification`);
+assertContains(packageJson, "test:verify:product:admin-boundary", `${packagePath}: package scripts must expose product admin boundary fixture tests`);
+assertContains(packageJson, "npm run test:verify:product:admin-boundary", `${packagePath}: aggregate FFA fixture coverage must include product admin boundary tests`);
 
 if (failures.length > 0) {
   console.error("product admin boundary verification failed:");

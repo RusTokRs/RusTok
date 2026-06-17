@@ -1,10 +1,10 @@
 use crate::core::{
-    build_product_catalog_rail_view_model, build_product_storefront_shell_view_model,
-    build_product_transport_error_dom_evidence, build_selected_product_empty_view_model,
-    build_selected_product_view_model, build_storefront_fetch_request,
-    build_storefront_route_input, ProductCatalogRailLabels,
+    build_product_catalog_rail_labels, build_product_catalog_rail_view_model,
+    build_product_storefront_shell_view_model, build_product_transport_error_dom_evidence,
+    build_selected_product_empty_view_model, build_selected_product_view_model,
+    build_storefront_fetch_request, build_storefront_route_input,
+    resolve_product_storefront_route_segment,
 };
-use crate::i18n::t;
 use crate::model::{
     ProductDetail, ProductListItem, ProductPricingContext, ProductPricingDetail,
     StorefrontProductsData,
@@ -139,11 +139,9 @@ fn SelectedProductCard(
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                <span>{view_model.product_type}</span>
-                <span>"|"</span>
-                <span>{view_model.vendor}</span>
-                <span>"|"</span>
-                <span>{view_model.published_at}</span>
+                {view_model.metadata_items.into_iter().map(|item| view! {
+                    <span>{item}</span>
+                }).collect_view()}
             </div>
             <p class="mt-3 text-xs font-medium text-muted-foreground">{view_model.seller_boundary}</p>
             <h3 class="mt-4 text-3xl font-semibold text-foreground">{view_model.title}</h3>
@@ -180,40 +178,18 @@ fn SelectedProductCard(
 fn CatalogRail(items: Vec<ProductListItem>, total: u64) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
-    let route_segment = route_context
-        .route_segment
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| "products".to_string());
+    let route_segment =
+        resolve_product_storefront_route_segment(route_context.route_segment.as_deref());
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let view_model = build_product_catalog_rail_view_model(
         module_route_base.as_str(),
         &items,
         total,
         locale.as_deref(),
-        ProductCatalogRailLabels {
-            title: t(
-                locale.as_deref(),
-                "product.list.title",
-                "Published products",
-            ),
-            total_template: t(locale.as_deref(), "product.list.total", "{count} total"),
-            empty_message: t(
-                locale.as_deref(),
-                "product.list.empty",
-                "No published products are available yet.",
-            ),
-            open_label: t(locale.as_deref(), "product.list.open", "Open"),
-            catalog_fallback_label: t(locale.as_deref(), "product.selected.catalog", "catalog"),
-            vendor_fallback_label: t(
-                locale.as_deref(),
-                "product.list.vendorFallback",
-                "Independent label",
-            ),
-        },
+        build_product_catalog_rail_labels(locale.as_deref()),
     );
 
-    if view_model.items.is_empty() {
+    if view_model.show_empty_state {
         return view! { <article class="rounded-3xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{view_model.empty_message}</article> }.into_any();
     }
 

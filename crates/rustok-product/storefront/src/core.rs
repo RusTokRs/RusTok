@@ -37,6 +37,8 @@ pub struct ProductStorefrontShellViewModel {
     pub load_error: String,
 }
 
+pub const PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT: &str = "products";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductTransportErrorDomEvidence {
     pub failed_path: String,
@@ -99,6 +101,14 @@ pub fn build_storefront_fetch_request(
         channel_slug: input.channel_slug.clone(),
         quantity: input.quantity,
     }
+}
+
+pub fn resolve_product_storefront_route_segment(route_segment: Option<&str>) -> String {
+    route_segment
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT)
+        .to_string()
 }
 
 fn sanitize_currency_code(currency_code: Option<String>) -> Option<String> {
@@ -226,6 +236,7 @@ pub struct SelectedProductViewModel {
     pub product_type: String,
     pub vendor: String,
     pub published_at: String,
+    pub metadata_items: Vec<String>,
     pub seller_boundary: String,
     pub title: String,
     pub description: String,
@@ -252,6 +263,21 @@ pub struct ProductCatalogRailLabels {
     pub vendor_fallback_label: String,
 }
 
+pub fn build_product_catalog_rail_labels(locale: Option<&str>) -> ProductCatalogRailLabels {
+    ProductCatalogRailLabels {
+        title: t(locale, "product.list.title", "Published products"),
+        total_template: t(locale, "product.list.total", "{count} total"),
+        empty_message: t(
+            locale,
+            "product.list.empty",
+            "No published products are available yet.",
+        ),
+        open_label: t(locale, "product.list.open", "Open"),
+        catalog_fallback_label: t(locale, "product.selected.catalog", "catalog"),
+        vendor_fallback_label: t(locale, "product.list.vendorFallback", "Independent label"),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductCatalogRailItemViewModel {
     pub product_type: String,
@@ -268,6 +294,7 @@ pub struct ProductCatalogRailViewModel {
     pub total_label: String,
     pub empty_message: String,
     pub open_label: String,
+    pub show_empty_state: bool,
     pub items: Vec<ProductCatalogRailItemViewModel>,
 }
 
@@ -331,22 +358,28 @@ pub fn build_selected_product_view_model(
         variant,
     );
 
+    let product_type = product
+        .product_type
+        .clone()
+        .unwrap_or_else(|| t(locale, "product.selected.catalog", "catalog"));
+    let vendor = product.vendor.clone().unwrap_or_else(|| {
+        t(
+            locale,
+            "product.selected.vendorFallback",
+            "independent label",
+        )
+    });
+    let published_at = product
+        .published_at
+        .clone()
+        .unwrap_or_else(|| t(locale, "product.selected.unscheduled", "scheduled later"));
+    let metadata_items = vec![product_type.clone(), vendor.clone(), published_at.clone()];
+
     SelectedProductViewModel {
-        product_type: product
-            .product_type
-            .clone()
-            .unwrap_or_else(|| t(locale, "product.selected.catalog", "catalog")),
-        vendor: product.vendor.clone().unwrap_or_else(|| {
-            t(
-                locale,
-                "product.selected.vendorFallback",
-                "independent label",
-            )
-        }),
-        published_at: product
-            .published_at
-            .clone()
-            .unwrap_or_else(|| t(locale, "product.selected.unscheduled", "scheduled later")),
+        product_type,
+        vendor,
+        published_at,
+        metadata_items,
         seller_boundary: format_seller_boundary(locale, product.seller_id.as_deref()),
         title,
         description,
@@ -596,6 +629,7 @@ pub fn build_product_catalog_rail_view_model(
         total_label: count_label(labels.total_template.as_str(), total),
         empty_message: labels.empty_message,
         open_label: labels.open_label,
+        show_empty_state: items.is_empty(),
         items,
     }
 }
@@ -696,6 +730,26 @@ mod tests {
     }
 
     #[test]
+    fn storefront_route_segment_fallback_is_core_owned() {
+        assert_eq!(
+            resolve_product_storefront_route_segment(Some("catalog")),
+            "catalog"
+        );
+        assert_eq!(
+            resolve_product_storefront_route_segment(Some(" products ")),
+            "products"
+        );
+        assert_eq!(
+            resolve_product_storefront_route_segment(Some("   ")),
+            PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT
+        );
+        assert_eq!(
+            resolve_product_storefront_route_segment(None),
+            PRODUCT_STOREFRONT_DEFAULT_ROUTE_SEGMENT
+        );
+    }
+
+    #[test]
     fn storefront_shell_view_model_is_built_without_ui_runtime() {
         let view_model = build_product_storefront_shell_view_model(Some("en"));
 
@@ -771,6 +825,21 @@ mod tests {
     }
 
     #[test]
+    fn catalog_rail_labels_are_built_without_ui_runtime() {
+        let labels = build_product_catalog_rail_labels(Some("en"));
+
+        assert_eq!(labels.title, "Published products");
+        assert_eq!(labels.total_template, "{count} total");
+        assert_eq!(
+            labels.empty_message,
+            "No published products are available yet."
+        );
+        assert_eq!(labels.open_label, "Open");
+        assert_eq!(labels.catalog_fallback_label, "catalog");
+        assert_eq!(labels.vendor_fallback_label, "Independent label");
+    }
+
+    #[test]
     fn catalog_rail_view_model_is_built_without_ui_runtime() {
         let item = crate::model::ProductListItem {
             id: "product-1".to_string(),
@@ -803,6 +872,7 @@ mod tests {
         assert_eq!(view_model.title, "Published products");
         assert_eq!(view_model.total_label, "3 total");
         assert_eq!(view_model.open_label, "Open");
+        assert!(!view_model.show_empty_state);
         assert_eq!(view_model.items.len(), 1);
         let item = &view_model.items[0];
         assert_eq!(item.product_type, "catalog");
@@ -811,6 +881,28 @@ mod tests {
         assert_eq!(item.seller_boundary, "seller id: seller-1");
         assert_eq!(item.published_at, "2026-05-29T00:00:00Z");
         assert_eq!(item.href, "/products?handle=trail-boot");
+    }
+
+    #[test]
+    fn catalog_rail_empty_state_policy_is_built_without_ui_runtime() {
+        let view_model = build_product_catalog_rail_view_model(
+            "/products",
+            &[],
+            0,
+            Some("en"),
+            ProductCatalogRailLabels {
+                title: "Published products".to_string(),
+                total_template: "{count} total".to_string(),
+                empty_message: "No products".to_string(),
+                open_label: "Open".to_string(),
+                catalog_fallback_label: "catalog".to_string(),
+                vendor_fallback_label: "Independent label".to_string(),
+            },
+        );
+
+        assert!(view_model.show_empty_state);
+        assert_eq!(view_model.empty_message, "No products");
+        assert!(view_model.items.is_empty());
     }
 
     #[test]
@@ -863,6 +955,15 @@ mod tests {
 
         assert_eq!(view_model.product_type, "Boots");
         assert_eq!(view_model.vendor, "Acme");
+        assert_eq!(view_model.published_at, "2026-05-29T00:00:00Z");
+        assert_eq!(
+            view_model.metadata_items,
+            vec![
+                "Boots".to_string(),
+                "Acme".to_string(),
+                "2026-05-29T00:00:00Z".to_string(),
+            ],
+        );
         assert_eq!(view_model.title, "Trail boot");
         assert_eq!(view_model.description, "Ready for mud");
         assert_eq!(view_model.seller_boundary, "seller id: seller-1");

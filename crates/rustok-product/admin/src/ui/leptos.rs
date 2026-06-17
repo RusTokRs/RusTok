@@ -20,18 +20,18 @@ use crate::core::{
     build_product_admin_profile_panel_ready_view_model, build_product_admin_save_command,
     build_product_admin_seo_panel_copy, build_product_admin_shell_view_model,
     build_product_admin_shipping_profile_options, build_product_admin_status_mutation_command,
-    build_product_admin_status_mutation_result_view_model,
+    build_product_admin_status_mutation_result_view_model, build_product_admin_summary_panel_copy,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
     parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
     product_admin_pricing_preview_request_from_product,
     product_admin_pricing_preview_state_from_result, product_admin_saved_product_query_intent,
-    shipping_profile_choice_label, text_or_none, ProductAdminDeleteOutcome, ProductAdminDraftForm,
-    ProductAdminEditorFormState, ProductAdminErrorCopy, ProductAdminOpenProductViewModel,
-    ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminStatusMutationOutcome,
+    product_admin_selected_product_query_state, shipping_profile_choice_label, text_or_none,
+    ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
+    ProductAdminErrorCopy, ProductAdminOpenProductViewModel, ProductAdminRouteQueryIntent,
+    ProductAdminSaveMode, ProductAdminSelectedProductQueryState, ProductAdminStatusMutationOutcome,
     ProductAdminStatusTarget, SelectedProductSummaryViewModel,
 };
-use crate::i18n::t;
 use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
 use crate::transport;
 
@@ -176,20 +176,40 @@ pub fn ProductAdmin() -> impl IntoView {
 
     let error_copy = build_product_admin_error_copy(ui_locale.as_deref());
     let initial_error_copy = error_copy.clone();
-    Effect::new(move |_| match selected_product_query.get() {
-        Some(product_id) if !product_id.trim().is_empty() => {
-            let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
-                return;
-            };
-            open_product_for_edit(
-                bootstrap,
-                token.get(),
-                tenant.get(),
-                effective_locale_for_initial_open.clone(),
-                product_id,
-                initial_error_copy.clone(),
-                set_busy,
-                set_error,
+    Effect::new(move |_| {
+        match product_admin_selected_product_query_state(selected_product_query.get()) {
+            ProductAdminSelectedProductQueryState::Open { product_id } => {
+                let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
+                    return;
+                };
+                open_product_for_edit(
+                    bootstrap,
+                    token.get(),
+                    tenant.get(),
+                    effective_locale_for_initial_open.clone(),
+                    product_id,
+                    initial_error_copy.clone(),
+                    set_busy,
+                    set_error,
+                    set_editing_id,
+                    set_selected,
+                    set_title,
+                    set_handle,
+                    set_description,
+                    set_seller_id,
+                    set_vendor,
+                    set_product_type,
+                    set_shipping_profile_slug,
+                    set_sku,
+                    set_barcode,
+                    set_currency_code,
+                    set_amount,
+                    set_compare_at_amount,
+                    set_inventory_quantity,
+                    set_publish_now,
+                );
+            }
+            ProductAdminSelectedProductQueryState::Clear => clear_product_form(
                 set_editing_id,
                 set_selected,
                 set_title,
@@ -206,26 +226,8 @@ pub fn ProductAdmin() -> impl IntoView {
                 set_compare_at_amount,
                 set_inventory_quantity,
                 set_publish_now,
-            );
+            ),
         }
-        _ => clear_product_form(
-            set_editing_id,
-            set_selected,
-            set_title,
-            set_handle,
-            set_description,
-            set_seller_id,
-            set_vendor,
-            set_product_type,
-            set_shipping_profile_slug,
-            set_sku,
-            set_barcode,
-            set_currency_code,
-            set_amount,
-            set_compare_at_amount,
-            set_inventory_quantity,
-            set_publish_now,
-        ),
     });
 
     let reset_form = move || {
@@ -362,7 +364,6 @@ pub fn ProductAdmin() -> impl IntoView {
     let ui_locale_for_editor = ui_locale.clone();
     let ui_locale_for_submit = ui_locale.clone();
     let ui_locale_for_profile_panel = ui_locale.clone();
-    let ui_locale_for_summary_title = ui_locale.clone();
     let pricing_module_route_base = route_context.module_route_base("pricing");
     let list_query_writer = query_writer.clone();
     let reset_query_writer = query_writer.clone();
@@ -493,8 +494,10 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let item_type_label = item_view_model.type_label.clone();
                                         let item_title = item_view_model.title.clone();
                                         let item_meta_label = item_view_model.meta_label.clone();
-                                        let item_shipping_profile_label = item_view_model.shipping_profile_label.clone();
-                                        let show_shipping_profile = item_shipping_profile_label.is_some();
+                                        let item_shipping_profile_label =
+                                            item_view_model.shipping_profile_label.clone();
+                                        let show_shipping_profile =
+                                            item_view_model.show_shipping_profile;
                                         let item_timestamp_label = item_view_model.timestamp_label.clone();
                                         let action_labels = build_product_admin_list_action_labels(
                                             item_locale_for_buttons.as_deref(),
@@ -524,7 +527,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                         <p class="text-sm text-muted-foreground">{item_meta_label.clone()}</p>
                                                         <Show when=move || show_shipping_profile>
                                                             <span class="inline-flex rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-                                                                {item_shipping_profile_label.clone().unwrap_or_default()}
+                                                                {item_shipping_profile_label.clone()}
                                                             </span>
                                                         </Show>
                                                         <p class="text-xs text-muted-foreground">
@@ -726,9 +729,14 @@ pub fn ProductAdmin() -> impl IntoView {
                     </section>
 
                     <section class="rounded-3xl border border-border bg-card p-6 shadow-sm">
+                        {
+                            let summary_copy = build_product_admin_summary_panel_copy(ui_locale.as_deref());
+                            view! {
                         <h3 class="text-lg font-semibold text-card-foreground">
-                            {t(ui_locale_for_summary_title.as_deref(), "product.summary.title", "Selected product")}
+                            {summary_copy.title}
                         </h3>
+                            }
+                        }
                         <div class="mt-4 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
                             <SelectedProductSummary
                                 locale=ui_locale_for_summary.clone()
