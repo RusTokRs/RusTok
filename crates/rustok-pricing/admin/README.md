@@ -43,3 +43,11 @@ Leptos admin UI package for the `rustok-pricing` module.
 ## Documentation
 
 - See [platform docs](../../../docs/index.md).
+## FFA boundary
+
+- `src/lib.rs` is only the crate-level composition/re-export boundary and exports `PricingAdmin`.
+- `src/core/` owns Leptos-free presentation, routing, and request/draft policy.
+- `src/transport.rs` is the only UI-facing transport facade; the raw mixed native/GraphQL adapter in `src/api.rs` stays private to the crate.
+- `src/ui/leptos.rs` is the Leptos render/bind adapter and must not call raw `api::*`, GraphQL, native server functions, or runtime services directly.
+- Fast source-level evidence lives in `scripts/verify/verify-pricing-admin-boundary.mjs` and is wired through `npm run verify:pricing:admin-boundary`.
+
