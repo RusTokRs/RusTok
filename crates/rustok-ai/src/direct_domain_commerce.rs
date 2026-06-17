@@ -2,14 +2,25 @@
 
 use std::sync::Arc;
 
+use rustok_ai_product::{
+    register_product_ai_vertical_handlers, PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_COPY_TASK_SLUG,
+};
+
 use super::direct_product_attributes::ProductAttributesHandler;
 use super::{DirectExecutionRegistry, DirectTaskHandler, ProductCopyHandler};
 
-/// Registers commerce-owned AI direct handlers as a separate domain slice.
+/// Registers commerce-owned AI direct handlers through product crate adapter APIs.
 ///
-/// This keeps `rustok-ai` runtime/core handlers isolated from ecommerce verticals,
-/// while preserving current behavior for default composition.
+/// `rustok-ai` still owns runtime composition, while `rustok-ai-product` owns
+/// the vertical descriptor list and task identity used by this binding seam.
 pub fn register_commerce_direct_handlers(registry: &mut DirectExecutionRegistry) {
-    registry.register(Arc::new(ProductCopyHandler) as Arc<dyn DirectTaskHandler>);
-    registry.register(Arc::new(ProductAttributesHandler) as Arc<dyn DirectTaskHandler>);
+    register_product_ai_vertical_handlers(|vertical| match vertical.task_slug {
+        PRODUCT_COPY_TASK_SLUG => {
+            registry.register(Arc::new(ProductCopyHandler) as Arc<dyn DirectTaskHandler>)
+        }
+        PRODUCT_ATTRIBUTES_TASK_SLUG => {
+            registry.register(Arc::new(ProductAttributesHandler) as Arc<dyn DirectTaskHandler>)
+        }
+        _ => {}
+    });
 }

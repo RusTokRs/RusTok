@@ -8,11 +8,11 @@ SPI и post-order delivery changes ещё остаются в активном b
 ## Execution checkpoint
 
 - Current phase: ffa_storefront_selection_boundary
-- Last checkpoint: Provider SPI baseline added `src/providers.rs` with manual carrier descriptor/capabilities plus rate-quote/create-label/cancel adapter contract, and the FBA registry now records `provider_spi` metadata while `FulfillmentService` keeps lifecycle persistence ownership.
-- Next step: Add provider SPI contract tests for rate quote/label/cancel error mapping, then move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured.
+- Last checkpoint: Provider SPI static contract evidence added for rate quote/create label/cancel error/idempotency boundaries plus fulfillment tracking webhook replay requirements; `npm run verify:ecommerce:fba` now verifies the provider SPI evidence packet alongside FBA registries and port contract evidence while lifecycle persistence remains in `FulfillmentService`.
+- Next step: Move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured, then replace static provider SPI evidence with runtime contract execution.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-15T00:00:00Z
+- Last updated at (UTC): 2026-06-16T00:00:00Z
 
 ## FFA/FBA status
 
@@ -23,7 +23,8 @@ SPI и post-order delivery changes ещё остаются в активном b
   - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует `PortContext::require_write_semantics` и мапит `FulfillmentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `ShippingSelectionPort` и DTO для seller-aware shipping options/selection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
-  - registry теперь фиксирует `contract_tests.status = planned_cases_locked`: для каждой port operation задана in-process/remote-adapter-placeholder case matrix, baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) с явным deadline enforcement для read path и `write_idempotency_required` только на write operations; fallback smoke profile set; это закрывает metadata anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
+  - registry теперь фиксирует `contract_tests.status = planned_cases_locked`: для каждой port operation задана in-process/remote-adapter-placeholder case matrix, baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) с явным deadline enforcement для read path и `write_idempotency_required` только на write operations; fallback smoke profile set; static evidence packet `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates) and `npm run verify:ecommerce:fba-contract-evidence`; это закрывает metadata/evidence anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
+  - provider SPI evidence теперь закреплён в `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`: manual/remote-placeholder cases для `quote_rates`/`create_label`/`cancel` проверяют typed provider error mapping, idempotency-key preservation и запрет persistence в adapter layer, а tracking webhook replay contract фиксирует idempotent duplicate delivery и делегирование lifecycle transition в `FulfillmentService`; packet проверяется `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` через `npm run verify:ecommerce:fba` и не повышает FBA статус без runtime execution;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
   - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core split and aggregate package wiring while commerce temporarily retains transport callback.
@@ -69,14 +70,14 @@ SPI и post-order delivery changes ещё остаются в активном b
 ### 2.5. Provider expansion
 
 - [x] сформировать provider SPI baseline до подключения внешних carrier integrations;
-- [ ] добавить provider SPI contract tests и tracking webhook ingress/replay contract;
+- [x] добавить static provider SPI contract matrix и tracking webhook ingress/replay contract;
 - [ ] не смешивать provider-specific carrier logic с базовым fulfillment lifecycle contract.
 
 ### 3. Operability
 
 - [x] документировать новые fulfillment guarantees одновременно с изменением runtime surface;
 - [x] удерживать local docs и `README.md` синхронизированными для storefront selection boundary;
-- [ ] обновлять umbrella commerce docs при изменении deliverability/provider scope.
+- [x] обновлять umbrella commerce docs при изменении deliverability/provider scope.
 
 ## Проверка
 

@@ -3,9 +3,52 @@
 //! This layer owns request/view policy that can be reused by future host adapters
 //! without depending on framework runtime types.
 
+use rustok_api::{normalize_ui_text, AdminQueryKey, UiRouteQueryUpdate};
 use rustok_comments::{
     CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus, CommentThreadSummary,
 };
+
+pub(crate) const COMMENTS_ADMIN_THREAD_QUERY_KEY: &str = AdminQueryKey::ThreadId.as_str();
+pub(crate) const COMMENTS_ADMIN_LOCALE_QUERY_KEY: &str = AdminQueryKey::Locale.as_str();
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CommentsAdminRouteQueryWrite {
+    pub key: &'static str,
+    pub update: UiRouteQueryUpdate,
+    pub replace: bool,
+}
+
+impl CommentsAdminRouteQueryWrite {
+    pub(crate) fn into_writer_update(self) -> (String, Option<String>, bool) {
+        (
+            self.key.to_string(),
+            self.update.into_query_value(),
+            self.replace,
+        )
+    }
+}
+
+pub(crate) fn comments_admin_select_thread_query_write(
+    thread_id: &str,
+) -> Option<CommentsAdminRouteQueryWrite> {
+    let thread_id = normalize_ui_text(thread_id)?;
+    Some(CommentsAdminRouteQueryWrite {
+        key: COMMENTS_ADMIN_THREAD_QUERY_KEY,
+        update: UiRouteQueryUpdate::Replace(thread_id),
+        replace: false,
+    })
+}
+
+pub(crate) fn comments_admin_locale_query_write(locale: &str) -> CommentsAdminRouteQueryWrite {
+    CommentsAdminRouteQueryWrite {
+        key: COMMENTS_ADMIN_LOCALE_QUERY_KEY,
+        update: match normalize_ui_text(locale) {
+            Some(locale) => UiRouteQueryUpdate::Replace(locale),
+            None => UiRouteQueryUpdate::Clear,
+        },
+        replace: true,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CommentThreadsRequest {
@@ -177,6 +220,64 @@ fn format_target_label(target_type: &str, target_id: &str) -> String {
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn builds_thread_route_query_push_update() {
+        let write = comments_admin_select_thread_query_write(" thread-1 ").unwrap();
+
+        assert_eq!(
+            write,
+            CommentsAdminRouteQueryWrite {
+                key: COMMENTS_ADMIN_THREAD_QUERY_KEY,
+                update: UiRouteQueryUpdate::Replace("thread-1".to_string()),
+                replace: false,
+            }
+        );
+        assert_eq!(
+            write.into_writer_update(),
+            (
+                COMMENTS_ADMIN_THREAD_QUERY_KEY.to_string(),
+                Some("thread-1".to_string()),
+                false,
+            )
+        );
+        assert_eq!(comments_admin_select_thread_query_write("   "), None);
+    }
+
+    #[test]
+    fn builds_locale_route_query_replace_or_clear_update() {
+        let write = comments_admin_locale_query_write(" ru ");
+        assert_eq!(
+            write,
+            CommentsAdminRouteQueryWrite {
+                key: COMMENTS_ADMIN_LOCALE_QUERY_KEY,
+                update: UiRouteQueryUpdate::Replace("ru".to_string()),
+                replace: true,
+            }
+        );
+        assert_eq!(
+            write.into_writer_update(),
+            (
+                COMMENTS_ADMIN_LOCALE_QUERY_KEY.to_string(),
+                Some("ru".to_string()),
+                true,
+            )
+        );
+
+        let write = comments_admin_locale_query_write("   ");
+        assert_eq!(
+            write,
+            CommentsAdminRouteQueryWrite {
+                key: COMMENTS_ADMIN_LOCALE_QUERY_KEY,
+                update: UiRouteQueryUpdate::Clear,
+                replace: true,
+            }
+        );
+        assert_eq!(
+            write.into_writer_update(),
+            (COMMENTS_ADMIN_LOCALE_QUERY_KEY.to_string(), None, true)
+        );
+    }
 
     #[test]
     fn parses_thread_status_filters() {

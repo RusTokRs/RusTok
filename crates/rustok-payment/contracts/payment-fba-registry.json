@@ -109,6 +109,7 @@
       "status": "planned",
       "idempotency_required": true,
       "replay_required": true
-    }
+    },
+    "lifecycle_owner_service": "PaymentService"
   }
 }

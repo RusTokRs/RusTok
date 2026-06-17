@@ -2,7 +2,7 @@ use rustok_api::{
     normalize_ui_text, parse_ui_csv, AdminQueryKey, WritePathIssue, WritePathIssueKind,
 };
 
-use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
+use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList, BlogPostListItem};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BlogPostAdminRouteQueryIntent {
@@ -561,6 +561,18 @@ pub fn blog_post_admin_posts_load_view(
             message: error_with_context(error_context, error.as_str()),
         },
     }
+}
+
+pub fn blog_post_admin_posts_load_view_from_list(
+    result: Result<BlogPostList, String>,
+    contract_unavailable: bool,
+    error_context: &str,
+) -> BlogPostAdminPostsLoadViewModel {
+    blog_post_admin_posts_load_view(
+        result.map(|post_list| (post_list.items, post_list.total)),
+        contract_unavailable,
+        error_context,
+    )
 }
 
 pub fn is_markdown_format(value: &str) -> bool {

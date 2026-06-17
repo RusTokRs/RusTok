@@ -39,6 +39,16 @@ pub fn register_product_ai_verticals() -> &'static [ProductAiVerticalDescriptor]
     product_ai_verticals()
 }
 
+/// Domain-owned adapter API for runtime composition layers that need to bind
+/// concrete handlers to the vertical descriptors without owning task identity.
+pub fn register_product_ai_vertical_handlers(
+    mut register: impl FnMut(&'static ProductAiVerticalDescriptor),
+) {
+    for vertical in product_ai_verticals() {
+        register(vertical);
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GeneratedProductCopy {
     pub title: Option<String>,
