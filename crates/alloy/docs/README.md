@@ -14,7 +14,7 @@
 
 - `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` и execution lifecycle;
 - storage/migrations для scripts и execution log;
-- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`);
+- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`), включая tenant-scoped execution history;
 - интеграционные контракты `ScriptableEntity` и `HookExecutor` для host-модулей;
 - отсутствие превращения script runtime в отдельный tenant-бизнес-домен.
 
@@ -70,7 +70,11 @@ availability из побочных эффектов регистрации.
    `ScriptExecutor` пишет execution-history запись для каждого runtime path,
    подключённого через `AlloyRuntime`: GraphQL/HTTP manual runs, hooks,
    on-commit scripts и scheduler jobs. Replay должен сохранять тот же phase и
-   tenant context, чтобы bridge/helper availability оставалась phase-aware.
+   tenant context, чтобы bridge/helper availability оставалась phase-aware. Для
+   операторского просмотра используйте GraphQL `scriptExecutions(scriptId, limit)`
+   или REST `GET /api/alloy/executions?script_id=<uuid>&limit=<1..100>`; обе
+   поверхности возвращают только строки текущего tenant и используют canonical
+   `script_executions` history.
 5. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.
