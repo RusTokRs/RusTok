@@ -4,8 +4,8 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d8_static_contract_expansion`
-- Last checkpoint: D8 compile-free verifier expanded from fixture-only checks to static source assertions for Next runtime/metadata/transport, Rust renderer, Next Admin index transport and Leptos storefront SEO runtime contract.
+- Current phase: `phase_d8_static_evidence_hardening`
+- Last checkpoint: D8 compile-free verifier now enforces RBAC/module gating, replay/index idempotency and host runtime entrypoint matrices in addition to fixture/static source assertions.
 - Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 закрытыми по static evidence.
 - Open blockers:
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
@@ -16,7 +16,7 @@
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для replay mode сохранять forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) без backward transitions.
   - Для Next runtime adapter сохранять semantic error mapping (`BAD_USER_INPUT` / `PERMISSION_DENIED` / `NOT_FOUND` / transport failures) и не возвращаться к blanket `catch {}`.
-- Last updated at (UTC): 2026-06-16T00:00:00Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 ## FFA/FBA status block
 
@@ -286,9 +286,12 @@
   - [ ] D.1b Unit/integration/host matrix прогон в CI/runtime окружении.
 - [ ] D.2 RBAC/module gating parity checks.
   - [x] D.2a Compile-free backend/admin transport symbol guard для GraphQL/REST parity surfaces.
+  - [x] D.2b Compile-free RBAC/module gating matrix для GraphQL, REST и Next fallback classification.
 - [ ] D.3 Replay/index pipeline regression checks.
   - [x] D.3a Compile-free Next Admin index tracking/replay endpoint guard.
+  - [x] D.3b Compile-free replay/index idempotency invariant matrix для delivery trackers, unique transitions и forward-only replay modes.
 - [x] D.4 Lightweight evidence packet seed + stop criteria.
+  - [x] D.4a Compile-free host runtime entrypoint matrix для Next robots/sitemap/metadata и Leptos SSR head preflight.
   - [ ] D.4b Live evidence packet + high-severity defect closure.
 
 ### Milestone E — Docs / runbooks / readiness closeout
