@@ -1,0 +1,980 @@
+#![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
+
+use anyhow::{anyhow, Context};
+use chrono::{Duration, Utc};
+use rustok_core::{
+    build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
+};
+use rustok_storage::StorageService;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set,
+};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+
+use crate::models::registry_governance_event::{
+    self, ActiveModel as RegistryGovernanceEventActiveModel,
+    Entity as RegistryGovernanceEventEntity,
+};
+use crate::models::registry_module_owner::{
+    self, ActiveModel as RegistryModuleOwnerActiveModel, Entity as RegistryModuleOwnerEntity,
+};
+use crate::models::registry_module_release::{
+    self, ActiveModel as RegistryModuleReleaseActiveModel, Entity as RegistryModuleReleaseEntity,
+    RegistryModuleReleaseStatus,
+};
+use crate::models::registry_module_release_translation::{
+    self as registry_module_release_translation,
+    ActiveModel as RegistryModuleReleaseTranslationActiveModel,
+    Entity as RegistryModuleReleaseTranslationEntity,
+};
+use crate::models::registry_publish_request::{
+    self, ActiveModel as RegistryPublishRequestActiveModel, Entity as RegistryPublishRequestEntity,
+    RegistryPublishRequestStatus,
+};
+use crate::models::registry_publish_request_translation::{
+    self as registry_publish_request_translation,
+    ActiveModel as RegistryPublishRequestTranslationActiveModel,
+    Entity as RegistryPublishRequestTranslationEntity,
+};
+use crate::models::registry_validation_job::{
+    self, ActiveModel as RegistryValidationJobActiveModel, Entity as RegistryValidationJobEntity,
+    RegistryValidationJobStatus,
+};
+use crate::models::registry_validation_stage::{
+    self, ActiveModel as RegistryValidationStageActiveModel,
+    Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
+};
+use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
+use crate::services::marketplace_catalog::{
+    RegistryPublishMarketplaceRequest, RegistryPublishRequest, RegistryPublishUiPackagesRequest,
+    REGISTRY_MUTATION_SCHEMA_VERSION,
+};
+use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
+use thiserror::Error;
+
+const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
+const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
+    &["compile_smoke", "targeted_tests", "security_policy_review"];
+const REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
+pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
+    "security",
+    "legal",
+    "malware",
+    "critical_regression",
+    "rollback",
+    "other",
+];
+pub const REGISTRY_REJECT_REASON_CODES: &[&str] = &[
+    "policy_mismatch",
+    "quality_gate_failed",
+    "ownership_mismatch",
+    "security_risk",
+    "legal",
+    "other",
+];
+pub const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
+    "maintenance_handoff",
+    "team_restructure",
+    "publisher_rotation",
+    "security_emergency",
+    "governance_override",
+    "other",
+];
+pub const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
+    "manual_review_complete",
+    "trusted_first_party",
+    "expedited_release",
+    "governance_override",
+    "other",
+];
+pub const REGISTRY_REQUEST_CHANGES_REASON_CODES: &[&str] = &[
+    "artifact_mismatch",
+    "quality_gap",
+    "policy_gap",
+    "docs_gap",
+    "other",
+];
+pub const REGISTRY_HOLD_REASON_CODES: &[&str] = &[
+    "release_window",
+    "incident",
+    "legal_hold",
+    "security_review",
+    "other",
+];
+pub const REGISTRY_RESUME_REASON_CODES: &[&str] = &[
+    "review_complete",
+    "incident_closed",
+    "legal_cleared",
+    "other",
+];
+pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
+    "local_runner_passed",
+    "manual_review_complete",
+    "build_failure",
+    "test_failure",
+    "policy_preflight_failed",
+    "security_findings",
+    "policy_exception",
+    "license_issue",
+    "manual_override",
+    "other",
+];
+
+#[derive(Debug, Error)]
+pub enum RegistryGovernanceError {
+    #[error("{0}")]
+    Malformed(String),
+    #[error("{0}")]
+    Unauthorized(String),
+    #[error("{0}")]
+    Forbidden(String),
+    #[error("{0}")]
+    NotFound(String),
+    #[error("{0}")]
+    Conflict(String),
+    #[error("internal registry governance error")]
+    Internal(#[source] anyhow::Error),
+}
+
+fn malformed_error(message: impl Into<String>) -> anyhow::Error {
+    anyhow::Error::new(RegistryGovernanceError::Malformed(message.into()))
+}
+
+fn forbidden_error(message: impl Into<String>) -> anyhow::Error {
+    anyhow::Error::new(RegistryGovernanceError::Forbidden(message.into()))
+}
+
+fn not_found_error(message: impl Into<String>) -> anyhow::Error {
+    anyhow::Error::new(RegistryGovernanceError::NotFound(message.into()))
+}
+
+fn conflict_error(message: impl Into<String>) -> anyhow::Error {
+    anyhow::Error::new(RegistryGovernanceError::Conflict(message.into()))
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryArtifactUpload {
+    pub content_type: String,
+    pub bytes: bytes::Bytes,
+}
+
+#[derive(Clone)]
+pub struct RegistryGovernanceService {
+    db: DatabaseConnection,
+    storage: Option<StorageService>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryValidationQueueResult {
+    pub request: registry_publish_request::Model,
+    pub queued: bool,
+    pub validation_job_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryValidationJobClaim {
+    job: registry_validation_job::Model,
+    request: registry_publish_request::Model,
+    should_run: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryValidationStageMutationResult {
+    pub request: registry_publish_request::Model,
+    pub stage: registry_validation_stage::Model,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryRemoteValidationClaim {
+    pub claim_id: String,
+    pub request_id: String,
+    pub slug: String,
+    pub version: String,
+    pub stage_key: String,
+    pub execution_mode: String,
+    pub runnable: bool,
+    pub requires_manual_confirmation: bool,
+    pub allowed_terminal_reason_codes: Vec<String>,
+    pub suggested_pass_reason_code: Option<String>,
+    pub suggested_failure_reason_code: Option<String>,
+    pub suggested_blocked_reason_code: Option<String>,
+    pub artifact_download_url: String,
+    pub artifact_checksum_sha256: String,
+    pub crate_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryPublishRequestSnapshot {
+    pub id: String,
+    pub status: String,
+    pub requested_by: RegistryPrincipalRef,
+    pub publisher: Option<RegistryPrincipalRef>,
+    pub approved_by: Option<RegistryPrincipalRef>,
+    pub rejected_by: Option<RegistryPrincipalRef>,
+    pub rejection_reason: Option<String>,
+    pub changes_requested_by: Option<RegistryPrincipalRef>,
+    pub changes_requested_reason: Option<String>,
+    pub changes_requested_reason_code: Option<String>,
+    pub changes_requested_at: Option<String>,
+    pub held_by: Option<RegistryPrincipalRef>,
+    pub held_reason: Option<String>,
+    pub held_reason_code: Option<String>,
+    pub held_at: Option<String>,
+    pub held_from_status: Option<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub published_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryModuleReleaseSnapshot {
+    pub version: String,
+    pub status: String,
+    pub publisher: RegistryPrincipalRef,
+    pub checksum_sha256: Option<String>,
+    pub published_at: String,
+    pub yanked_reason: Option<String>,
+    pub yanked_by: Option<RegistryPrincipalRef>,
+    pub yanked_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryModuleOwnerSnapshot {
+    pub owner: RegistryPrincipalRef,
+    pub bound_by: RegistryPrincipalRef,
+    pub bound_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryGovernanceEventSnapshot {
+    pub id: String,
+    pub event_type: String,
+    pub actor: RegistryPrincipalRef,
+    pub publisher: Option<RegistryPrincipalRef>,
+    pub payload: RegistryGovernanceEventPayload,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RegistryGovernanceEventPayload {
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
+    pub detail: Option<String>,
+    pub version: Option<String>,
+    pub stage_key: Option<String>,
+    pub attempt_number: Option<i32>,
+    pub owner_transition: Option<RegistryOwnerTransitionPayload>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryOwnerTransitionPayload {
+    pub previous_owner: Option<RegistryPrincipalRef>,
+    pub new_owner: Option<RegistryPrincipalRef>,
+    pub bound_by: Option<RegistryPrincipalRef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryFollowUpGateSnapshot {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryValidationStageSnapshot {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub attempt_number: i32,
+    pub updated_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryGovernanceActionSnapshot {
+    pub key: String,
+    pub reason_required: bool,
+    pub reason_code_required: bool,
+    pub reason_codes: Vec<String>,
+    pub destructive: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryModuleLifecycleSnapshot {
+    pub owner_binding: Option<RegistryModuleOwnerSnapshot>,
+    pub latest_request: Option<RegistryPublishRequestSnapshot>,
+    pub latest_release: Option<RegistryModuleReleaseSnapshot>,
+    pub recent_events: Vec<RegistryGovernanceEventSnapshot>,
+    pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
+    pub validation_stages: Vec<RegistryValidationStageSnapshot>,
+    pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryPublishRequestFollowUpSnapshot {
+    pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
+    pub validation_stages: Vec<RegistryValidationStageSnapshot>,
+    pub approval_override_required: bool,
+    pub governance_actions: Vec<RegistryGovernanceActionSnapshot>,
+}
+
+#[derive(Debug, Default)]
+struct RegistryArtifactValidation {
+    warnings: Vec<String>,
+    errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct RegistryValidationCheckDetail {
+    key: String,
+    status: String,
+    detail: String,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryLocalizedMetadata {
+    locale: String,
+    name: String,
+    description: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistryPublishArtifactBundle {
+    schema_version: u32,
+    artifact_type: String,
+    module: RegistryPublishArtifactModule,
+    files: RegistryPublishArtifactFiles,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistryPublishArtifactModule {
+    slug: String,
+    version: String,
+    crate_name: String,
+    module_name: String,
+    module_description: String,
+    ownership: String,
+    trust_level: String,
+    license: String,
+    module_entry_type: Option<String>,
+    marketplace: RegistryPublishArtifactMarketplace,
+    ui_packages: RegistryPublishArtifactUiPackages,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RegistryPublishArtifactMarketplace {
+    category: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RegistryPublishArtifactUiPackages {
+    admin: Option<RegistryPublishArtifactUiPackage>,
+    storefront: Option<RegistryPublishArtifactUiPackage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistryPublishArtifactUiPackage {
+    crate_name: String,
+    #[allow(dead_code)]
+    manifest_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RegistryPublishArtifactFiles {
+    #[serde(rename = "rustok-module.toml")]
+    package_manifest: Option<String>,
+    #[serde(rename = "Cargo.toml")]
+    crate_manifest: Option<String>,
+    #[serde(rename = "admin/Cargo.toml")]
+    admin_manifest: Option<String>,
+    #[serde(rename = "storefront/Cargo.toml")]
+    storefront_manifest: Option<String>,
+}
+
+
+pub mod publishing;
+pub mod validation;
+pub mod releases;
+
+#[cfg(test)]
+mod tests;
+
+impl RegistryGovernanceService {
+impl RegistryGovernanceService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db, storage: None }
+    }
+
+    pub fn with_storage(mut self, storage: StorageService) -> Self {
+        self.storage = Some(storage);
+        self
+    }
+
+    fn require_storage(&self) -> anyhow::Result<&StorageService> {
+        self.storage
+            .as_ref()
+            .ok_or_else(|| anyhow!("StorageService is required for registry artifact operations"))
+    }
+
+    async fn load_registry_artifact(
+        &self,
+        request: &registry_publish_request::Model,
+    ) -> anyhow::Result<RegistryArtifactUpload> {
+        let artifact_storage_key = request.artifact_storage_key.as_deref().ok_or_else(|| {
+            anyhow!(
+                "Registry publish request '{}' is missing artifact_storage_key",
+                request.id
+            )
+        })?;
+        let bytes = self
+            .require_storage()?
+            .read(artifact_storage_key)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to read registry artifact for request '{}' from storage key '{}'",
+                    request.id, artifact_storage_key
+                )
+            })?;
+
+        Ok(RegistryArtifactUpload {
+            content_type: request
+                .artifact_content_type
+                .clone()
+                .unwrap_or_else(|| "application/octet-stream".to_string()),
+            bytes,
+        })
+    }
+
+    async fn store_registry_artifact(
+        &self,
+        request: &registry_publish_request::Model,
+        artifact: &RegistryArtifactUpload,
+    ) -> anyhow::Result<StoredRegistryArtifact> {
+        let artifact_storage_key =
+            registry_artifact_storage_key(&request.id, &request.slug, &request.version);
+        let uploaded = self
+            .require_storage()?
+            .store(
+                &artifact_storage_key,
+                artifact.bytes.clone(),
+                &artifact.content_type,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to store registry artifact for request '{}' at '{}'",
+                    request.id, artifact_storage_key
+                )
+            })?;
+
+        Ok(StoredRegistryArtifact {
+            artifact_storage_key: uploaded.path,
+            artifact_size: uploaded.size as i64,
+        })
+    }
+
+    async fn record_governance_event(
+        &self,
+        slug: &str,
+        request_id: Option<&str>,
+        release_id: Option<&str>,
+        event_type: &str,
+        actor: &str,
+        publisher: Option<&str>,
+        details: serde_json::Value,
+    ) -> anyhow::Result<registry_governance_event::Model> {
+        let active = RegistryGovernanceEventActiveModel {
+            id: Set(format!("rge_{}", uuid::Uuid::new_v4().simple())),
+            slug: Set(slug.to_string()),
+            request_id: Set(request_id.map(ToString::to_string)),
+            release_id: Set(release_id.map(ToString::to_string)),
+            event_type: Set(event_type.to_string()),
+            actor: Set(actor_principal(actor).to_json_value()),
+            publisher: Set(optional_actor_principal(publisher).map(|value| value.to_json_value())),
+            details: Set(details),
+            created_at: Set(Utc::now()),
+        };
+        Ok(active.insert(&self.db).await?)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StoredRegistryArtifact {
+    artifact_storage_key: String,
+    artifact_size: i64,
+}
+
+fn registry_artifact_storage_key(request_id: &str, slug: &str, version: &str) -> String {
+    format!("registry/artifacts/{request_id}/{slug}-{version}.crate")
+}
+
+fn registry_artifact_download_path(request_id: &str) -> String {
+    format!("/v2/catalog/publish/{request_id}/artifact/download")
+}
+
+fn follow_up_validation_warning() -> &'static str {
+    "Automated artifact and manifest contract checks passed, but compile smoke, targeted test smoke, and security/policy review still remain external follow-up gates before production approval."
+}
+
+fn follow_up_gate_detail(gate: &str) -> &'static str {
+    match gate {
+        "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
+        "targeted_tests" => {
+            "Targeted module tests still run outside the current registry validator."
+        }
+        "security_policy_review" => {
+            "Security and policy review still require an external gate before production approval."
+        }
+        _ => "External follow-up gate is still pending.",
+    }
+}
+
+fn follow_up_validation_gate_details() -> Vec<RegistryValidationCheckDetail> {
+    REGISTRY_VALIDATION_FOLLOW_UP_GATES
+        .iter()
+        .map(|gate| RegistryValidationCheckDetail {
+            key: (*gate).to_string(),
+            status: "pending_follow_up".to_string(),
+            detail: follow_up_gate_detail(gate).to_string(),
+        })
+        .collect()
+}
+
+fn validation_passed_check_details() -> Vec<RegistryValidationCheckDetail> {
+    vec![RegistryValidationCheckDetail {
+        key: "artifact_bundle_contract".to_string(),
+        status: "passed".to_string(),
+        detail:
+            "Artifact bundle JSON, rustok-module.toml parity, and crate/UI manifest contract checks passed."
+                .to_string(),
+    }]
+}
+
+fn validation_failed_check_details(errors: &[String]) -> Vec<RegistryValidationCheckDetail> {
+    vec![RegistryValidationCheckDetail {
+        key: "artifact_bundle_contract".to_string(),
+        status: "failed".to_string(),
+        detail: errors
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "Artifact bundle contract validation failed.".to_string()),
+    }]
+}
+
+fn validation_retry_delay_seconds(failed_attempt: usize) -> Option<u64> {
+    REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS
+        .get(failed_attempt.saturating_sub(1))
+        .copied()
+}
+
+async fn load_publish_request_translation_rows<C>(
+    db: &C,
+    request_id: &str,
+) -> anyhow::Result<Vec<registry_publish_request_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(RegistryPublishRequestTranslationEntity::find()
+        .filter(registry_publish_request_translation::Column::RequestId.eq(request_id))
+        .order_by_asc(registry_publish_request_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+async fn load_release_translation_rows<C>(
+    db: &C,
+    release_id: &str,
+) -> anyhow::Result<Vec<registry_module_release_translation::Model>>
+where
+    C: ConnectionTrait,
+{
+    Ok(RegistryModuleReleaseTranslationEntity::find()
+        .filter(registry_module_release_translation::Column::ReleaseId.eq(release_id))
+        .order_by_asc(registry_module_release_translation::Column::Locale)
+        .all(db)
+        .await?)
+}
+
+fn resolve_registry_metadata<T, FName, FDescription, FLocale>(
+    translations: &[T],
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+    locale_of: FLocale,
+    name_of: FName,
+    description_of: FDescription,
+) -> Option<RegistryLocalizedMetadata>
+where
+    FLocale: Fn(&T) -> &str,
+    FName: Fn(&T) -> &str,
+    FDescription: Fn(&T) -> &str,
+{
+    let candidates = build_locale_candidates(
+        [
+            preferred_locale,
+            fallback_locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    );
+
+    for candidate in candidates {
+        if let Some(translation) = translations
+            .iter()
+            .find(|translation| locale_tags_match(locale_of(translation), &candidate))
+        {
+            return Some(RegistryLocalizedMetadata {
+                locale: normalize_registry_locale(locale_of(translation)),
+                name: name_of(translation).to_string(),
+                description: description_of(translation).to_string(),
+            });
+        }
+    }
+
+    translations
+        .first()
+        .map(|translation| RegistryLocalizedMetadata {
+            locale: normalize_registry_locale(locale_of(translation)),
+            name: name_of(translation).to_string(),
+            description: description_of(translation).to_string(),
+        })
+}
+
+async fn load_publish_request_metadata<C>(
+    db: &C,
+    request_id: &str,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> anyhow::Result<RegistryLocalizedMetadata>
+where
+    C: ConnectionTrait,
+{
+    let translations = load_publish_request_translation_rows(db, request_id).await?;
+    resolve_registry_metadata(
+        &translations,
+        preferred_locale,
+        fallback_locale,
+        |translation| translation.locale.as_str(),
+        |translation| translation.name.as_str(),
+        |translation| translation.description.as_str(),
+    )
+    .ok_or_else(|| {
+        anyhow!("Registry publish request '{request_id}' is missing metadata translations")
+    })
+}
+
+async fn load_release_metadata<C>(
+    db: &C,
+    release_id: &str,
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> anyhow::Result<RegistryLocalizedMetadata>
+where
+    C: ConnectionTrait,
+{
+    let translations = load_release_translation_rows(db, release_id).await?;
+    resolve_registry_metadata(
+        &translations,
+        preferred_locale,
+        fallback_locale,
+        |translation| translation.locale.as_str(),
+        |translation| translation.name.as_str(),
+        |translation| translation.description.as_str(),
+    )
+    .ok_or_else(|| anyhow!("Registry release '{release_id}' is missing metadata translations"))
+}
+
+async fn upsert_publish_request_translation_record<C>(
+    db: &C,
+    request_id: &str,
+    locale: &str,
+    name: &str,
+    description: &str,
+) -> anyhow::Result<()>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_registry_locale(locale);
+    if let Some(existing) = RegistryPublishRequestTranslationEntity::find_by_id((
+        request_id.to_string(),
+        locale.clone(),
+    ))
+    .one(db)
+    .await?
+    {
+        let mut active: RegistryPublishRequestTranslationActiveModel = existing.into();
+        active.name = Set(name.trim().to_string());
+        active.description = Set(description.trim().to_string());
+        active.updated_at = Set(Utc::now());
+        active.update(db).await?;
+    } else {
+        RegistryPublishRequestTranslationActiveModel {
+            request_id: Set(request_id.to_string()),
+            locale: Set(locale),
+            name: Set(name.trim().to_string()),
+            description: Set(description.trim().to_string()),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+        }
+        .insert(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn upsert_release_translation_record<C>(
+    db: &C,
+    release_id: &str,
+    locale: &str,
+    name: &str,
+    description: &str,
+) -> anyhow::Result<()>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_registry_locale(locale);
+    if let Some(existing) =
+        RegistryModuleReleaseTranslationEntity::find_by_id((release_id.to_string(), locale.clone()))
+            .one(db)
+            .await?
+    {
+        let mut active: RegistryModuleReleaseTranslationActiveModel = existing.into();
+        active.name = Set(name.trim().to_string());
+        active.description = Set(description.trim().to_string());
+        active.updated_at = Set(Utc::now());
+        active.update(db).await?;
+    } else {
+        RegistryModuleReleaseTranslationActiveModel {
+            release_id: Set(release_id.to_string()),
+            locale: Set(locale),
+            name: Set(name.trim().to_string()),
+            description: Set(description.trim().to_string()),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
+        }
+        .insert(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+fn actor_principal(actor: &str) -> RegistryPrincipalRef {
+    RegistryPrincipalRef::from_legacy_value(&normalize_actor(actor))
+}
+
+fn optional_actor_principal(actor: Option<&str>) -> Option<RegistryPrincipalRef> {
+    actor.map(actor_principal)
+}
+
+fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
+    RegistryPrincipalRef::from_json_value(value)
+}
+
+fn optional_principal_from_json(value: &Option<serde_json::Value>) -> Option<RegistryPrincipalRef> {
+    value.as_ref().map(principal_from_json)
+}
+
+fn principal_display_label(value: &serde_json::Value) -> String {
+    principal_from_json(value).label().to_string()
+}
+
+fn optional_principal_display_label(value: &Option<serde_json::Value>) -> Option<String> {
+    optional_principal_from_json(value).map(|principal| principal.label().to_string())
+}
+
+fn principal_matches_ref(value: &serde_json::Value, principal: &RegistryPrincipalRef) -> bool {
+    let left = principal_from_json(value);
+    if left.is_user() && principal.is_user() {
+        return left.user_id() == principal.user_id();
+    }
+    left.subject == principal.subject || left.persisted_label() == principal.persisted_label()
+}
+
+fn optional_principal_matches_ref(
+    value: &Option<serde_json::Value>,
+    principal: &RegistryPrincipalRef,
+) -> bool {
+    value
+        .as_ref()
+        .is_some_and(|persisted| principal_matches_ref(persisted, principal))
+}
+
+fn authority_actor(authority: &RegistryAuthority) -> &str {
+    authority.principal.label()
+}
+
+fn governance_event_payload(details: &serde_json::Value) -> RegistryGovernanceEventPayload {
+    let warnings = details
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(ToString::to_string))
+        .collect();
+    let errors = details
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(ToString::to_string))
+        .collect();
+    let attempt_number = details
+        .get("attempt_number")
+        .and_then(serde_json::Value::as_i64)
+        .map(|value| value as i32);
+
+    let owner_transition = details
+        .get("owner_transition")
+        .and_then(serde_json::Value::as_object)
+        .map(|transition| RegistryOwnerTransitionPayload {
+            previous_owner: transition
+                .get("previous_owner")
+                .map(RegistryPrincipalRef::from_json_value),
+            new_owner: transition
+                .get("new_owner")
+                .map(RegistryPrincipalRef::from_json_value),
+            bound_by: transition
+                .get("bound_by")
+                .map(RegistryPrincipalRef::from_json_value),
+        });
+
+    RegistryGovernanceEventPayload {
+        reason: details
+            .get("reason")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        reason_code: details
+            .get("reason_code")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        detail: details
+            .get("detail")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        version: details
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        stage_key: details
+            .get("stage_key")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        attempt_number,
+        owner_transition,
+        warnings,
+        errors,
+        mode: details
+            .get("mode")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+    }
+}
+
+fn authority_can_create_publish_request(
+    authority: &RegistryAuthority,
+    owner: Option<&registry_module_owner::Model>,
+) -> bool {
+    authority.can_manage_modules
+        || owner.is_some_and(|owner| {
+            principal_matches_ref(&owner.owner_principal, &authority.principal)
+        })
+        || owner.is_none() && authority.principal.is_user()
+}
+
+fn authority_can_manage_publish_request(
+    authority: &RegistryAuthority,
+    request: &registry_publish_request::Model,
+    owner: Option<&registry_module_owner::Model>,
+) -> bool {
+    let principal_matches_request =
+        principal_matches_ref(&request.requested_by, &authority.principal)
+            || optional_principal_matches_ref(&request.publisher_principal, &authority.principal);
+    let principal_matches_owner = owner
+        .is_some_and(|owner| principal_matches_ref(&owner.owner_principal, &authority.principal));
+
+    authority.can_manage_modules
+        || principal_matches_owner
+        || (owner.is_none() && principal_matches_request)
+}
+
+fn authority_can_review_publish_request(
+    authority: &RegistryAuthority,
+    owner: Option<&registry_module_owner::Model>,
+) -> bool {
+    authority.can_manage_modules
+        || owner.is_some_and(|owner| {
+            principal_matches_ref(&owner.owner_principal, &authority.principal)
+        })
+}
+
+fn authority_can_manage_release(
+    authority: &RegistryAuthority,
+    release: &registry_module_release::Model,
+    owner: Option<&registry_module_owner::Model>,
+) -> bool {
+    authority.can_manage_modules
+        || principal_matches_ref(&release.publisher, &authority.principal)
+        || owner.is_some_and(|owner| {
+            principal_matches_ref(&owner.owner_principal, &authority.principal)
+        })
+}
+
+fn authority_can_transfer_registry_owner(
+    authority: &RegistryAuthority,
+    binding: &registry_module_owner::Model,
+) -> bool {
+    authority.can_manage_modules
+        || principal_matches_ref(&binding.owner_principal, &authority.principal)
+}
+
+fn normalize_reason_code(
+    reason_code: &str,
+    allowed: &[&str],
+    action_label: &str,
+) -> anyhow::Result<String> {
+    let normalized = reason_code.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Err(malformed_error(format!(
+            "{action_label} requires a non-empty reason_code"
+        )));
+    }
+    if !allowed
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(&normalized))
+    {
+        return Err(malformed_error(format!(
+            "{} reason_code '{}' is not supported; expected one of {}",
+            action_label,
+            reason_code.trim(),
+            allowed.join(", ")
+        )));
+    }
+    Ok(normalized)
+}
+
+fn normalize_required_reason(reason: &str, action_label: &str) -> anyhow::Result<String> {
+    let normalized = reason.trim();
+    if normalized.is_empty() {
+        return Err(malformed_error(format!(
+            "{action_label} requires a non-empty reason"
+        )));
+    }
+    Ok(normalized.to_string())
+}
+
+}
