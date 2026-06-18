@@ -42,7 +42,7 @@ impl Task for MediaCleanupTask {
 #[cfg(feature = "mod-media")]
 async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
     use rustok_media::media::Entity as MediaEntity;
-    use rustok_storage::{StorageError, StorageService};
+    use rustok_storage::StorageService;
     use sea_orm::EntityTrait;
 
     let Some(storage) = ctx.shared_store.get::<StorageService>() else {
@@ -75,29 +75,12 @@ async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
         let id = record.id;
         let path = record.storage_path;
 
-        // For local storage, check if the file exists.
-        // For S3-compatible backends, we attempt a HEAD probe (a zero-byte
-        // write to a side-channel path would be destructive, so instead we
-        // rely on the `StorageError::NotFound` from `delete`).
-        //
-        // `delete` is idempotent and returns `Ok` for missing objects, but
-        // `StorageError::InvalidPath` signals a path that can never exist.
-        //
-        // Better approach: store + delete a sentinel at a deterministic probe
-        // path derived from the media ID — if that succeeds, the backend is
-        // alive but the real object may still be gone.  We accept this as a
-        // conservative "exists" check: if the backend is reachable but the
-        // path doesn't contain a valid object, local storage would have
-        // already failed the `store` call above.
-        //
-        // For now: missing object → `StorageError::InvalidPath` (local)
-        //          or future backends should return `StorageError::NotFound`.
-        let missing = matches!(
-            storage.delete(&path).await,
-            Err(StorageError::InvalidPath(_))
-        );
+        // Probe the exact object without mutating storage. Missing or invalid
+        // paths are safe orphan signals; transient backend/read errors are
+        // conservative keep decisions.
+        let decision = classify_storage_probe(storage.read(&path).await);
 
-        if missing {
+        if decision.remove_record {
             match MediaEntity::delete_by_id(id).exec(&ctx.db).await {
                 Ok(_) => {
                     removed += 1;
@@ -107,9 +90,71 @@ async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
                     tracing::warn!(media_id = %id, error = %e, "Failed to purge orphaned record");
                 }
             }
+        } else if let Some(error) = decision.keep_reason {
+            tracing::debug!(media_id = %id, path, error, "Keeping media record after conservative storage probe");
         }
     }
 
     tracing::info!(scanned = total, removed, "Media cleanup complete");
     Ok(())
+}
+
+#[cfg(feature = "mod-media")]
+struct CleanupProbeDecision {
+    remove_record: bool,
+    keep_reason: Option<String>,
+}
+
+#[cfg(feature = "mod-media")]
+fn classify_storage_probe(
+    result: std::result::Result<bytes::Bytes, rustok_storage::StorageError>,
+) -> CleanupProbeDecision {
+    use rustok_storage::StorageError;
+
+    match result {
+        Ok(_) => CleanupProbeDecision {
+            remove_record: false,
+            keep_reason: None,
+        },
+        Err(StorageError::NotFound(_) | StorageError::InvalidPath(_)) => CleanupProbeDecision {
+            remove_record: true,
+            keep_reason: None,
+        },
+        Err(error) => CleanupProbeDecision {
+            remove_record: false,
+            keep_reason: Some(error.to_string()),
+        },
+    }
+}
+
+#[cfg(all(test, feature = "mod-media"))]
+mod tests {
+    use super::classify_storage_probe;
+    use rustok_storage::StorageError;
+
+    #[test]
+    fn cleanup_probe_removes_records_for_missing_or_invalid_paths() {
+        let not_found = classify_storage_probe(Err(StorageError::NotFound("missing".to_string())));
+        let invalid = classify_storage_probe(Err(StorageError::InvalidPath("../bad".to_string())));
+
+        assert!(not_found.remove_record);
+        assert!(invalid.remove_record);
+        assert_eq!(not_found.keep_reason, None);
+        assert_eq!(invalid.keep_reason, None);
+    }
+
+    #[test]
+    fn cleanup_probe_keeps_records_when_object_is_readable_or_backend_errors() {
+        let readable = classify_storage_probe(Ok(bytes::Bytes::from_static(b"asset")));
+        let backend_error =
+            classify_storage_probe(Err(StorageError::Backend("timeout".to_string())));
+
+        assert!(!readable.remove_record);
+        assert_eq!(readable.keep_reason, None);
+        assert!(!backend_error.remove_record);
+        assert_eq!(
+            backend_error.keep_reason.as_deref(),
+            Some("Backend error: timeout")
+        );
+    }
 }
