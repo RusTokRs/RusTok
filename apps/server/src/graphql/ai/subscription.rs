@@ -19,6 +19,15 @@ impl AiSubscription {
         let auth = ctx.data::<AuthContext>()?;
         ensure_ai_session_read(auth)?;
 
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let exists = rustok_ai::AiManagementService::chat_session_detail(db, auth.tenant_id, session_id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .is_some();
+        if !exists {
+            return Err(async_graphql::Error::new("Session not found or access denied"));
+        }
+
         let receiver = rustok_ai::ai_run_stream_hub().subscribe();
 
         Ok(stream::unfold(receiver, move |mut receiver| async move {

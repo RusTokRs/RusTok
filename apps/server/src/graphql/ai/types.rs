@@ -474,6 +474,7 @@ pub struct AiChatMessageGql {
     pub tool_calls: Vec<AiToolCallGql>,
     pub metadata: String,
     pub created_at: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
 }
 
 impl TryFrom<AiChatMessageRecord> for AiChatMessageGql {
@@ -495,6 +496,7 @@ impl TryFrom<AiChatMessageRecord> for AiChatMessageGql {
                 .collect::<Result<Vec<_>, _>>()?,
             metadata: value.metadata.to_string(),
             created_at: value.created_at,
+            created_by: value.created_by,
         })
     }
 }
