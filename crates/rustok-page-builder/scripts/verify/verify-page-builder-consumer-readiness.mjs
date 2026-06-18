@@ -30,6 +30,7 @@ if (!crateName) {
 const moduleTomlPath = path.join(repoRoot, "crates", crateName, "rustok-module.toml");
 const implPlanPath = path.join(repoRoot, "crates", crateName, "docs", "implementation-plan.md");
 const forumFallbackMatrixPath = path.join(repoRoot, "crates", "rustok-forum", "contracts", "evidence", "fw2-fallback-static-matrix.json");
+const forumWave1EvidencePath = path.join(repoRoot, "crates", "rustok-forum", "contracts", "evidence", "forum-wave1-rollout-evidence.json");
 
 function fail(message) {
   console.error("[verify-page-builder-consumer-readiness] FAIL");
@@ -224,6 +225,78 @@ if (arg === "forum") {
       }
     }
   }
+
+  if (!fs.existsSync(forumWave1EvidencePath)) {
+    fail(`${arg}: missing Wave 1 rollout evidence packet: ${forumWave1EvidencePath}`);
+  }
+
+  let forumWave1Evidence;
+  try {
+    forumWave1Evidence = JSON.parse(fs.readFileSync(forumWave1EvidencePath, "utf8"));
+  } catch (error) {
+    fail(`${arg}: Wave 1 rollout evidence packet is not valid JSON: ${error.message}`);
+  }
+
+  const requiredWave1Markers = [
+    "page_builder_wave_evidence_packet",
+    "forum",
+    "live",
+    "control_plane_builder_wave_audit",
+    "live:forum-wave1:2026-06-15",
+    "all_on",
+    "publish_off",
+    "preview_off",
+    "builder_off",
+    "typed_feature_disabled_error_without_read_5xx",
+    "builder_write -> forum_publish -> storefront_read",
+  ];
+  const serializedWave1 = JSON.stringify(forumWave1Evidence);
+  for (const marker of requiredWave1Markers) {
+    if (!serializedWave1.includes(marker)) {
+      fail(`${arg}: Wave 1 rollout evidence missing marker '${marker}'`);
+    }
+  }
+
+  if (forumWave1Evidence.wave !== "1" || forumWave1Evidence.mode !== "live") {
+    fail(`${arg}: Wave 1 evidence must be live wave 1`);
+  }
+
+  const wave1Profiles = forumWave1Evidence.fallback?.profiles ?? [];
+  const requiredProfiles = new Set(["all_on", "publish_off", "preview_off", "builder_off"]);
+  for (const profile of wave1Profiles) {
+    requiredProfiles.delete(profile.name);
+    if (profile.read_guarantees?.admin_list_no_5xx !== true) {
+      fail(`${arg}: Wave 1 profile '${profile.name}' missing admin list no-5xx guarantee`);
+    }
+    if (profile.read_guarantees?.admin_read_no_5xx !== true) {
+      fail(`${arg}: Wave 1 profile '${profile.name}' missing admin read no-5xx guarantee`);
+    }
+    if (profile.read_guarantees?.storefront_read_no_5xx !== true) {
+      fail(`${arg}: Wave 1 profile '${profile.name}' missing storefront read no-5xx guarantee`);
+    }
+    if (profile.decision !== "keep") {
+      fail(`${arg}: Wave 1 profile '${profile.name}' must record keep decision`);
+    }
+  }
+  if (requiredProfiles.size > 0) {
+    fail(`${arg}: Wave 1 evidence missing fallback profiles: ${[...requiredProfiles].join(", ")}`);
+  }
+
+  if (forumWave1Evidence.observability?.slo_evaluation?.overall !== "pass") {
+    fail(`${arg}: Wave 1 evidence must record passing overall SLO evaluation`);
+  }
+  if (forumWave1Evidence.rollback?.decision !== "keep") {
+    fail(`${arg}: Wave 1 evidence must record rollback decision keep`);
+  }
+  for (const approver of ["platform_on_call", "forum_owner", "builder_owner", "runtime_owner"]) {
+    if (forumWave1Evidence.approvals?.[approver] !== "approved") {
+      fail(`${arg}: Wave 1 evidence missing approval from ${approver}`);
+    }
+  }
+  if ((forumWave1Evidence.waivers ?? []).length !== 0) {
+    fail(`${arg}: Wave 1 evidence must not rely on waivers`);
+  }
+
 }
 
 console.log("[verify-page-builder-consumer-readiness] PASS");
