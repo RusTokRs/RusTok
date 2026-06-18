@@ -126,6 +126,8 @@
 
 На 2026-06-16 ecommerce provider track дополнительно получил единый static evidence layer для будущих contract tests: `pricing`, `inventory`, `order`, `payment` и `fulfillment` имеют `contracts/evidence/*-contract-test-static-matrix.json`, команда `npm run verify:ecommerce:fba` запускает registry + evidence gates, включая проверку соответствия evidence-пакетов provider registry cases/fallback profiles через `npm run verify:ecommerce:fba-contract-evidence`. Это всё ещё не повышает статус до `boundary_ready`: runtime execution и fallback smoke остаются отдельным gate.
 
+На 2026-06-18 fast gate `npm run verify:ecommerce:fba-registries` дополнительно проверяет in-process provider implementations на уровне каждой операции, если registry объявляет `in_process_provider_impl`: read operations должны вызывать `require_deadline_semantics()?`, write operations с `idempotency_required = true` должны вызывать `require_write_semantics()?`, а read operations не должны случайно требовать write-idempotency. Это закрывает anti-drift для typed context/deadline/idempotency semantics без запуска долгой компиляции, но также не повышает статус без runtime contract execution.
+
 Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
 имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
 FFA/FBA status block. Теперь `page_builder` и `pages` отражены единообразно: local plan +

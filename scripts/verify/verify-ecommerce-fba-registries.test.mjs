@@ -197,7 +197,55 @@ test('verifyEcommerceFbaRegistries rejects missing read deadline enforcement', (
     () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
     {
       name: EcommerceFbaRegistryVerificationError.name,
-      message: 'pricing in-process provider impl must enforce read deadline semantics',
+      message: 'pricing.resolve_product_price read operation must enforce require_deadline_semantics',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects read operations that require write semantics', () => {
+  const root = createFixtureRoot();
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
+    'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_write_semantics()?; Ok(()) } }\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing.resolve_product_price read operation must not require write idempotency semantics',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects write operations without write semantics', () => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.ports[0].idempotency_required = true;
+      registry.ports[0].operations = ['create_or_reuse_collection'];
+      registry.ports[0].name = 'PaymentCollectionPort';
+      registry.in_process_provider_impl.service = 'PaymentService';
+      registry.contract_tests.cases = [
+        {
+          operation: 'create_or_reuse_collection',
+          profiles: ['in_process', 'remote_adapter_placeholder'],
+          assertions: ['typed_port_error_mapping', 'context_deadline_preserved', 'write_idempotency_required'],
+        },
+      ];
+    },
+  });
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
+    'use rustok_api::{PortContext, PortError};\ntrait PaymentCollectionPort {\n  fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PaymentCollectionPort for crate::PaymentService { fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) } }\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'pricing.create_or_reuse_collection write operation must enforce require_write_semantics',
     },
   );
 });
