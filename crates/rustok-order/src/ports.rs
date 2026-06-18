@@ -29,13 +29,78 @@ pub trait CheckoutCompletionPort: Send + Sync {
     ) -> Result<OrderStatusSnapshot, PortError>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[async_trait]
+impl CheckoutCompletionPort for crate::OrderService {
+    async fn complete_checkout(
+        &self,
+        context: PortContext,
+        request: CompleteCheckoutPortRequest,
+    ) -> Result<CheckoutCompletionSnapshot, PortError> {
+        context.require_write_semantics()?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let actor_id = parse_port_actor_id(&context)?;
+        let response = self
+            .create_order(
+                tenant_id,
+                actor_id,
+                crate::CreateOrderInput {
+                    customer_id: request.customer_id,
+                    currency_code: request.currency_code,
+                    shipping_total: request.shipping_total,
+                    line_items: request.line_items,
+                    adjustments: request.adjustments,
+                    tax_lines: request.tax_lines,
+                    metadata: request.metadata,
+                },
+            )
+            .await
+            .map_err(order_error_to_port_error)?;
+        Ok(CheckoutCompletionSnapshot::from_response(
+            &response,
+            request.payment_collection_id,
+        ))
+    }
+
+    async fn read_checkout_result(
+        &self,
+        context: PortContext,
+        request: CheckoutResultRequest,
+    ) -> Result<CheckoutCompletionSnapshot, PortError> {
+        context.require_deadline_semantics()?;
+        let _tenant_id = parse_port_tenant_id(&context)?;
+        let _cart_id = request.cart_id;
+        Err(PortError::unavailable(
+            "order.checkout_result_projection_unavailable",
+            "checkout result lookup by cart id is not exposed by the current order storage projection",
+        ))
+    }
+
+    async fn read_order_status(
+        &self,
+        context: PortContext,
+        request: OrderStatusRequest,
+    ) -> Result<OrderStatusSnapshot, PortError> {
+        context.require_deadline_semantics()?;
+        let tenant_id = parse_port_tenant_id(&context)?;
+        let response = self
+            .get_order(tenant_id, request.order_id)
+            .await
+            .map_err(order_error_to_port_error)?;
+        Ok(OrderStatusSnapshot::from_response(&response))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompleteCheckoutPortRequest {
     pub cart_id: Uuid,
     pub customer_id: Option<Uuid>,
     pub payment_collection_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
     pub currency_code: String,
+    pub shipping_total: Decimal,
+    pub line_items: Vec<crate::CreateOrderLineItemInput>,
+    pub adjustments: Vec<crate::CreateOrderAdjustmentInput>,
+    pub tax_lines: Vec<crate::CreateOrderTaxLineInput>,
     pub metadata: Value,
 }
 
@@ -78,5 +143,59 @@ impl OrderStatusSnapshot {
             delivered: response.delivered_at.is_some(),
             total_amount: response.total_amount,
         }
+    }
+}
+
+impl CheckoutCompletionSnapshot {
+    pub fn from_response(response: &OrderResponse, payment_collection_id: Option<Uuid>) -> Self {
+        Self {
+            order_id: response.id,
+            status: response.status.clone(),
+            currency_code: response.currency_code.clone(),
+            total: response.total_amount,
+            payment_collection_id,
+        }
+    }
+}
+
+fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        PortError::validation(
+            "order.tenant_id_invalid",
+            "PortContext.tenant_id must be a UUID for order ports",
+        )
+    })
+}
+
+fn parse_port_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.actor.id).map_err(|_| {
+        PortError::validation(
+            "order.actor_id_invalid",
+            "PortContext.actor.id must be a UUID for order write ports",
+        )
+    })
+}
+
+fn order_error_to_port_error(error: crate::OrderError) -> PortError {
+    match error {
+        crate::OrderError::Database(error) => PortError::unavailable(
+            "order.database_unavailable",
+            format!("order storage unavailable: {error}"),
+        ),
+        crate::OrderError::OrderNotFound(id) => PortError::new(
+            rustok_api::PortErrorKind::NotFound,
+            "order.order_not_found",
+            format!("order {id} not found"),
+            false,
+        ),
+        crate::OrderError::Validation(message) => {
+            PortError::validation("order.validation", message)
+        }
+        other => PortError::new(
+            rustok_api::PortErrorKind::InvariantViolation,
+            "order.invariant_violation",
+            other.to_string(),
+            false,
+        ),
     }
 }
