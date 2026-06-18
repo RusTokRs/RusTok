@@ -39,25 +39,58 @@ impl CheckoutCompletionPort for crate::OrderService {
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let actor_id = parse_port_actor_id(&context)?;
-        let response = self
-            .create_order(
+        let CompleteCheckoutPortRequest {
+            cart_id: _,
+            customer_id,
+            payment_collection_id,
+            shipping_option_id: _,
+            channel_id,
+            channel_slug,
+            locale,
+            fallback_locale,
+            currency_code,
+            shipping_total,
+            line_items,
+            adjustments,
+            tax_lines,
+            metadata,
+        } = request;
+        let mut response = self
+            .create_order_with_channel(
                 tenant_id,
                 actor_id,
                 crate::CreateOrderInput {
-                    customer_id: request.customer_id,
-                    currency_code: request.currency_code,
-                    shipping_total: request.shipping_total,
-                    line_items: request.line_items,
-                    adjustments: request.adjustments,
-                    tax_lines: request.tax_lines,
-                    metadata: request.metadata,
+                    customer_id,
+                    currency_code,
+                    shipping_total,
+                    line_items,
+                    adjustments,
+                    tax_lines,
+                    metadata,
                 },
+                channel_id,
+                channel_slug,
             )
             .await
             .map_err(order_error_to_port_error)?;
+        response = self
+            .confirm_order(tenant_id, actor_id, response.id)
+            .await
+            .map_err(order_error_to_port_error)?;
+        if let Some(locale) = locale.as_deref() {
+            response = self
+                .get_order_with_locale_fallback(
+                    tenant_id,
+                    response.id,
+                    locale,
+                    fallback_locale.as_deref(),
+                )
+                .await
+                .map_err(order_error_to_port_error)?;
+        }
         Ok(CheckoutCompletionSnapshot::from_response(
             &response,
-            request.payment_collection_id,
+            payment_collection_id,
         ))
     }
 
@@ -96,6 +129,10 @@ pub struct CompleteCheckoutPortRequest {
     pub customer_id: Option<Uuid>,
     pub payment_collection_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub locale: Option<String>,
+    pub fallback_locale: Option<String>,
     pub currency_code: String,
     pub shipping_total: Decimal,
     pub line_items: Vec<crate::CreateOrderLineItemInput>,

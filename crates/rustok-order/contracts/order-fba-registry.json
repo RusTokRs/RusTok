@@ -99,7 +99,7 @@
     "source": "crates/rustok-order/src/ports.rs",
     "status": "implemented",
     "notes": [
-      "complete_checkout enforces write semantics and delegates to owner OrderService create_order path",
+      "complete_checkout enforces write semantics, delegates to OrderService create_order_with_channel, confirms the order, and reloads localized projection when locale context is provided",
       "read_order_status delegates to owner OrderService read projection",
       "read_checkout_result keeps typed unavailable until cart-id projection lands"
     ]
