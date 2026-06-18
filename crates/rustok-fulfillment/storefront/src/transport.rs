@@ -28,6 +28,50 @@ pub struct ShippingSelectionUpdate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShippingSelectionTransportError {
+    Graphql(String),
+    ServerFn(String),
+    Validation(String),
+}
+
+impl ShippingSelectionTransportError {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Graphql(message) | Self::ServerFn(message) | Self::Validation(message) => message,
+        }
+    }
+
+    pub fn should_fallback_to_graphql(&self) -> bool {
+        match self {
+            Self::ServerFn(server_error) => {
+                server_error.contains("MissingServer")
+                    || server_error.contains("missing server")
+                    || server_error.contains("not available on this target")
+            }
+            _ => false,
+        }
+    }
+}
+
+pub async fn select_shipping_option_with_fallback<N, NFut, G, GFut>(
+    request: SelectShippingOptionRequest,
+    native: N,
+    graphql: G,
+) -> Result<(), ShippingSelectionTransportError>
+where
+    N: FnOnce(SelectShippingOptionRequest) -> NFut,
+    NFut: std::future::Future<Output = Result<(), ShippingSelectionTransportError>>,
+    G: FnOnce(SelectShippingOptionRequest) -> GFut,
+    GFut: std::future::Future<Output = Result<(), ShippingSelectionTransportError>>,
+{
+    match native(request.clone()).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.should_fallback_to_graphql() => graphql(request).await,
+        Err(error) => Err(error),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShippingSelectionError {
     MissingDeliveryGroup {
         shipping_profile_slug: String,
@@ -175,6 +219,24 @@ mod tests {
             Some("ship-1")
         );
         assert_eq!(plan[1].selected_shipping_option_id.as_deref(), Some("keep"));
+    }
+
+    #[test]
+    fn server_function_missing_error_can_fallback_to_graphql() {
+        assert!(
+            ShippingSelectionTransportError::ServerFn("MissingServerFunction".into())
+                .should_fallback_to_graphql()
+        );
+        assert!(ShippingSelectionTransportError::ServerFn(
+            "server function is not available on this target".into()
+        )
+        .should_fallback_to_graphql());
+        assert!(
+            !ShippingSelectionTransportError::Validation("bad cart".into())
+                .should_fallback_to_graphql()
+        );
+        assert!(!ShippingSelectionTransportError::Graphql("network".into())
+            .should_fallback_to_graphql());
     }
 
     #[test]

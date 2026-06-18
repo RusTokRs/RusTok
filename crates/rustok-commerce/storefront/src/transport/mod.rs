@@ -9,6 +9,9 @@ use crate::core::{
 use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };
+use rustok_fulfillment_storefront::transport::{
+    select_shipping_option_with_fallback, ShippingSelectionTransportError,
+};
 
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,
@@ -35,13 +38,25 @@ pub async fn create_storefront_payment_collection(
 pub async fn select_storefront_shipping_option(
     request: SelectShippingOptionRequest,
 ) -> Result<(), ApiError> {
-    match native_server_adapter::select_storefront_shipping_option(request.clone()).await {
-        Ok(()) => Ok(()),
-        Err(error) if should_fallback_to_graphql(&error) => {
-            graphql_adapter::select_storefront_shipping_option(request).await
-        }
-        Err(error) => Err(error),
-    }
+    select_shipping_option_with_fallback(
+        request.owner_request,
+        |owner_request| async move {
+            native_server_adapter::select_storefront_shipping_option(SelectShippingOptionRequest {
+                owner_request,
+            })
+            .await
+            .map_err(ShippingSelectionTransportError::from)
+        },
+        |owner_request| async move {
+            graphql_adapter::select_storefront_shipping_option(SelectShippingOptionRequest {
+                owner_request,
+            })
+            .await
+            .map_err(ShippingSelectionTransportError::from)
+        },
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 pub async fn complete_storefront_checkout(
@@ -54,13 +69,26 @@ pub async fn complete_storefront_checkout(
 }
 
 fn should_fallback_to_graphql(error: &ApiError) -> bool {
-    match error {
-        ApiError::ServerFn(server_error) => {
-            server_error.contains("MissingServer")
-                || server_error.contains("missing server")
-                || server_error.contains("not available on this target")
+    ShippingSelectionTransportError::from(error.clone()).should_fallback_to_graphql()
+}
+
+impl From<ApiError> for ShippingSelectionTransportError {
+    fn from(value: ApiError) -> Self {
+        match value {
+            ApiError::Graphql(message) => Self::Graphql(message),
+            ApiError::ServerFn(message) => Self::ServerFn(message),
+            ApiError::Validation(message) => Self::Validation(message),
         }
-        _ => false,
+    }
+}
+
+impl From<ShippingSelectionTransportError> for ApiError {
+    fn from(value: ShippingSelectionTransportError) -> Self {
+        match value {
+            ShippingSelectionTransportError::Graphql(message) => Self::Graphql(message),
+            ShippingSelectionTransportError::ServerFn(message) => Self::ServerFn(message),
+            ShippingSelectionTransportError::Validation(message) => Self::Validation(message),
+        }
     }
 }
 
