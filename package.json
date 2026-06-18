@@ -61,7 +61,8 @@
     "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:provider-spi-evidence",
     "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:provider-spi-evidence",
     "verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.mjs",
-    "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs"
+    "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
+    "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
