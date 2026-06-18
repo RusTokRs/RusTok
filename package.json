@@ -57,7 +57,8 @@
     "test:verify:ecommerce:provider-spi-evidence": "node scripts/verify/verify-ecommerce-provider-spi-evidence.test.mjs",
     "verify:ecommerce:provider-spi-evidence": "node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
     "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:provider-spi-evidence",
-    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:provider-spi-evidence"
+    "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:provider-spi-evidence",
+    "verify:page-builder:wave1-readiness": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave1-readiness-draft.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
