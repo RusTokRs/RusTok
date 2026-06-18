@@ -104,6 +104,9 @@ Shared foundation / support crates:
   domain-change операций: положительный cache живёт до `TENANT_CACHE_TTL=300s`,
   negative cache miss — до `TENANT_NEGATIVE_CACHE_TTL=60s`, поэтому без
   invalidation stale resolver state допустим только в рамках этих TTL.
+  Regression matrix дополнительно фиксирует lifecycle сценарии stale positive
+  cache после deactivate/update, negative cache после create-like flow, host
+  cache после domain-change и UUID invalidation.
 
 ## Границы ответственности
 
