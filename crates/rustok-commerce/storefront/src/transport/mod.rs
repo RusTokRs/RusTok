@@ -27,7 +27,10 @@ pub async fn create_storefront_payment_collection(
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
     match native_server_adapter::create_storefront_payment_collection(request.clone()).await {
         Ok(collection) => Ok(collection),
-        Err(_) => graphql_adapter::create_storefront_payment_collection(request).await,
+        Err(error) if should_fallback_to_graphql(&error) => {
+            graphql_adapter::create_storefront_payment_collection(request).await
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -49,7 +52,10 @@ pub async fn complete_storefront_checkout(
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
     match native_server_adapter::complete_storefront_checkout(request.clone()).await {
         Ok(completion) => Ok(completion),
-        Err(_) => graphql_adapter::complete_storefront_checkout(request).await,
+        Err(error) if should_fallback_to_graphql(&error) => {
+            graphql_adapter::complete_storefront_checkout(request).await
+        }
+        Err(error) => Err(error),
     }
 }
 
@@ -79,7 +85,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_and_graphql_errors_do_not_trigger_fetch_fallback() {
+    fn validation_and_graphql_errors_do_not_trigger_compatibility_fallback() {
         assert!(!should_fallback_to_graphql(&ApiError::Validation(
             "cart_id must be a valid UUID".into()
         )));
