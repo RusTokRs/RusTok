@@ -8,11 +8,11 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_guardrails
-- Last checkpoint: Standalone Flex guardrails tightened without compilation: schema settings and entry data must be JSON objects, statuses must be normalized machine identifiers, standalone schema field count is capped at 50, DB-column length caps are enforced before adapter persistence, and localized entry upsert lookup is tenant-scoped.
+- Last checkpoint: Standalone Flex guardrails tightened without compilation: schema settings and entry data must be JSON objects, statuses and schema names must be pre-normalized without surrounding whitespace, standalone schema field count is capped at 50, DB-column length caps are enforced before adapter persistence, and localized entry upsert lookup is tenant-scoped.
 - Next step: When compilations are allowed, run `cargo test -p flex --lib` first, then `cargo test -p rustok-server --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify the standalone guardrail validators and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed.
-- Last updated at (UTC): 2026-06-15T00:00:00Z
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify the standalone guardrail validators, including schema-name normalization, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed.
+- Last updated at (UTC): 2026-06-18T00:00:00Z
 
 ## Область работ
 
@@ -300,7 +300,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - Repo-side multilingual drift gate проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
   - 2026-06-14 no-compile iteration: standalone contract guardrail tests added for untrimmed schema slugs, field keys and `entity_type`; localized entry row loading now includes tenant filtering to keep the parallel storage lookup tenant-scoped.
   - 2026-06-15 no-compile iteration: standalone contract validators now reject non-object schema settings, non-object entry data, untrimmed statuses and schemas with more than 50 fields; localized entry upsert lookup also filters by tenant.
-  - 2026-06-16 no-compile iteration: standalone contract validators now enforce persistence-bound limits before adapter writes: schema slug <= 64, schema name <= 255, entry `entity_type` <= 64, entry `status` <= 32, and status values must be normalized machine identifiers.
+  - 2026-06-16 no-compile iteration: standalone contract validators now enforce persistence-bound limits before adapter writes: schema slug <= 64, schema name <= 255, entry `entity_type` <= 64, entry `status` <= 32, schema names must not carry surrounding whitespace, and status values must be normalized machine identifiers.
   - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone guardrail fix и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
