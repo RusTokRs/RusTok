@@ -109,6 +109,26 @@
         "default_provider_id": "manual",
         "lifecycle_owner_service": "FulfillmentService"
       }
+    },
+    {
+      "module": "product",
+      "contract_version": "product.catalog_read.v1",
+      "registry": "crates/rustok-product/contracts/product-fba-registry.json",
+      "ports": [
+        "ProductCatalogReadPort"
+      ],
+      "profiles": [
+        "checkout_product_projection"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat",
+        "graphql_storefront_compat"
+      ],
+      "degraded_modes": [
+        "use_cart_product_snapshot",
+        "show_product_refresh_required"
+      ]
     }
   ],
   "evidence": {

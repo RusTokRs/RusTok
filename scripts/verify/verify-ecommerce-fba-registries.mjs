@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory'];
+export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product'];
 
 export class EcommerceFbaRegistryVerificationError extends Error {
   constructor(message) {
@@ -315,7 +315,7 @@ export function verifyEcommerceFbaRegistries({
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     verifyEcommerceFbaRegistries();
-    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory');
+    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory, product');
   } catch (error) {
     if (error instanceof EcommerceFbaRegistryVerificationError) {
       console.error(`ecommerce FBA registry verification failed: ${error.message}`);
