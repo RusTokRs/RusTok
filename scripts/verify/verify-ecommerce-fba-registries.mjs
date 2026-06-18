@@ -71,6 +71,17 @@ const assertOperationContextSemantics = ({ module, operation, port, portSource }
   }
 };
 
+const assertOrderCheckoutCompletionNotPrematurelyImplemented = ({ registry, portSource }) => {
+  if (registry.module !== 'order') return;
+  const hasImplMetadata = Boolean(registry.in_process_provider_impl);
+  const hasOwnerImpl = portSource.includes('impl CheckoutCompletionPort for crate::OrderService');
+  if (!hasImplMetadata && !hasOwnerImpl) return;
+  const runtimeEvidenceStatus = registry.runtime_evidence?.checkout_completion_owner_path?.status;
+  if (runtimeEvidenceStatus !== 'runtime_verified') {
+    fail('order CheckoutCompletionPort in-process implementation requires runtime_verified checkout_completion_owner_path evidence');
+  }
+};
+
 const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSource, ownerService }) => {
   if (providerSpi.status !== 'manual_baseline_locked') fail(`${module} provider SPI status drift`);
   if (!providerSpi.source || !providerSpi.source.startsWith(`crates/rustok-${module}/src/`)) {
@@ -197,6 +208,7 @@ export function verifyEcommerceFbaRegistries({
     if (!cargo.includes('rustok-api.workspace = true')) fail(`${module} Cargo.toml lacks rustok-api dependency`);
     if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail(`${module} lib.rs must export ports`);
     if (!portSource.includes('rustok_api::{PortContext, PortError}')) fail(`${module} src/ports.rs must import neutral port primitives`);
+    assertOrderCheckoutCompletionNotPrematurelyImplemented({ registry, portSource });
 
     if (registry.provider_spi) {
       if (!registry.in_process_provider_impl?.service) {

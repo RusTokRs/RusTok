@@ -380,3 +380,140 @@ test('verifyEcommerceFbaRegistries rejects provider SPI capability fields missin
     message: 'pricing provider SPI source lacks bool capability field authorize',
   });
 });
+
+const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = false, runtimeVerified = false } = {}) => {
+  const rootPath = mkdtempSync(join(tmpdir(), 'rustok-order-fba-'));
+  const write = (relativePath, content) => {
+    const fullPath = join(rootPath, ...relativePath.split('/'));
+    mkdirSync(fullPath.slice(0, fullPath.lastIndexOf(sep)), { recursive: true });
+    writeFileSync(fullPath, content);
+  };
+
+  const registry = {
+    schema_version: 1,
+    module: 'order',
+    role: 'provider',
+    status: 'in_progress',
+    contract_version: 'order.checkout_completion.v1',
+    ports: [
+      {
+        name: 'CheckoutCompletionPort',
+        owner: 'order',
+        operations: ['complete_checkout', 'read_checkout_result', 'read_order_status'],
+        context: 'rustok_api::ports::PortContext',
+        error: 'rustok_api::ports::PortError',
+        idempotency_required: true,
+        deadline_required: true,
+      },
+    ],
+    consumers: [
+      {
+        module: 'commerce',
+        profile: 'checkout_completion_orchestration',
+        degraded_modes: ['show_completion_retry'],
+        fallback_profiles: ['embedded_native'],
+      },
+    ],
+    evidence: {
+      local_plan: 'crates/rustok-order/docs/implementation-plan.md',
+      central_board: 'docs/modules/registry.md',
+      verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
+    },
+    contract_tests: {
+      status: 'planned_cases_locked',
+      source: 'crates/rustok-order/contracts/order-fba-registry.json',
+      runner: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
+      profiles: ['in_process', 'remote_adapter_placeholder'],
+      cases: [
+        { operation: 'complete_checkout', profiles: ['in_process', 'remote_adapter_placeholder'], assertions: ['typed_port_error_mapping', 'context_deadline_preserved', 'write_idempotency_required'] },
+        { operation: 'read_checkout_result', profiles: ['in_process', 'remote_adapter_placeholder'], assertions: ['typed_port_error_mapping', 'context_deadline_preserved'] },
+        { operation: 'read_order_status', profiles: ['in_process', 'remote_adapter_placeholder'], assertions: ['typed_port_error_mapping', 'context_deadline_preserved'] },
+      ],
+      fallback_smoke: {
+        status: 'planned',
+        profiles: ['embedded_native'],
+        degraded_modes: ['show_completion_retry'],
+      },
+    },
+  };
+
+  if (withImplMetadata) {
+    registry.in_process_provider_impl = {
+      service: 'OrderService',
+      source: 'crates/rustok-order/src/ports.rs',
+      status: 'implemented',
+    };
+  }
+  if (runtimeVerified) {
+    registry.runtime_evidence = {
+      checkout_completion_owner_path: { status: 'runtime_verified' },
+    };
+  }
+
+  const implSource = withOwnerImpl
+    ? '\nimpl CheckoutCompletionPort for crate::OrderService {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError> { context.require_write_semantics()?; Ok(()) }\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) }\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) }\n}\n'
+    : '';
+
+  write('docs/modules/registry.md', '| `order` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-order/docs/implementation-plan.md` (`crates/rustok-order/contracts/order-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');
+  write('crates/rustok-order/contracts/order-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
+  write('crates/rustok-order/docs/implementation-plan.md', '# Plan\n- FBA status: `in_progress`\n`order-fba-registry.json`\n');
+  write('crates/rustok-order/rustok-module.toml', '[fba.provider]\nregistry = "contracts/order-fba-registry.json"\ncontract_version = "order.checkout_completion.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
+  write('crates/rustok-order/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
+  write('crates/rustok-order/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
+  write('crates/rustok-order/src/ports.rs', `use rustok_api::{PortContext, PortError};\ntrait CheckoutCompletionPort {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError>;\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError>;\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError>;\n}\n${implSource}`);
+
+  const commerceRegistry = {
+    schema_version: 1,
+    module: 'commerce',
+    role: 'orchestrator_consumer',
+    status: 'in_progress',
+    contract_version: 'commerce.checkout_orchestration.fba.v1',
+    providers: [
+      {
+        module: 'order',
+        contract_version: registry.contract_version,
+        registry: 'crates/rustok-order/contracts/order-fba-registry.json',
+        ports: ['CheckoutCompletionPort'],
+        profiles: ['checkout_completion_orchestration'],
+        fallback_profiles: ['embedded_native'],
+        degraded_modes: ['show_completion_retry'],
+      },
+    ],
+    evidence: {
+      local_plan: 'crates/rustok-commerce/docs/implementation-plan.md',
+      central_board: 'docs/modules/registry.md',
+      verifier: 'scripts/verify/verify-ecommerce-fba-registries.mjs',
+    },
+  };
+  write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
+  write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
+  write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
+  write('crates/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
+  write('crates/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
+
+  return pathToFileURL(`${rootPath}/`);
+};
+
+test('verifyEcommerceFbaRegistries rejects premature order in-process metadata without runtime evidence', () => {
+  const root = createOrderFixtureRoot({ withImplMetadata: true, withOwnerImpl: true });
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: ['order'] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'order CheckoutCompletionPort in-process implementation requires runtime_verified checkout_completion_owner_path evidence',
+    },
+  );
+});
+
+test('verifyEcommerceFbaRegistries rejects premature order source impl without registry metadata', () => {
+  const root = createOrderFixtureRoot({ withOwnerImpl: true });
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: ['order'] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'order CheckoutCompletionPort in-process implementation requires runtime_verified checkout_completion_owner_path evidence',
+    },
+  );
+});
