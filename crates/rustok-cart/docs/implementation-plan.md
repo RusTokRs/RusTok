@@ -16,15 +16,16 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA provider registry `crates/rustok-cart/contracts/cart-fba-registry.json`, static contract evidence `crates/rustok-cart/contracts/evidence/cart-contract-test-static-matrix.json` and neutral `CartSnapshotReadPort`/`cart.checkout_snapshot.v1` are locked for commerce checkout snapshot consumers; runtime contract execution/fallback smoke remain pending before `boundary_ready`;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - storefront slice выделяет `core/` helpers для route/input normalization, UUID validation, adjustment metadata mapping, channel-slug normalization, decrement policy, typed fetch/decrement/remove request objects, GraphQL decrement command dispatch, stable serializable transport fallback error evidence, DOM evidence adapter, display/view-model mapping and checkout handoff summary view-model consumed by commerce orchestration;
   - `ui/leptos::CartView` теперь вызывает thin `transport` facade через core-owned request objects, получает prepared view-model values из `core/` и рендерит error evidence attributes `data-cart-transport-failed-path`, `data-cart-transport-fallback-attempted`, `data-cart-transport-native-error`, `data-cart-transport-graphql-error`; transport facade сохраняет validation errors без GraphQL retry и возвращает `CartTransportError` со stable `failed_path` (`native_server`/`graphql`), `fallback_attempted`, `native_error` и `graphql_error`, а native `#[server]` + GraphQL adapter calls остаются внутри API adapter layer, при этом API layer больше не пересчитывает GraphQL decrement policy;
   - Cart-owned checkout handoff decision: cart status/handoff presentation belongs to `rustok-cart/storefront`; umbrella `rustok-commerce` may pass checkout context but must consume the cart-owned component rather than owning cart presentation;
   - дальнейшее повышение до `parity_verified` выполняется только вместе с full parity evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-06-12T13:20:43Z
+- Last verified at (UTC): 2026-06-18T00:00:00Z
 - Owner: `rustok-cart` module team
 
 ## Область работ

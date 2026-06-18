@@ -34,3 +34,9 @@ page_title = "Products"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
+
+[fba.provider]
+registry = "contracts/product-fba-registry.json"
+contract_version = "product.catalog_read.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"

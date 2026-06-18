@@ -526,7 +526,7 @@ pub enum FlexError {
 - `CreateFlexSchemaCommand`, `UpdateFlexSchemaCommand`
 - `CreateFlexEntryCommand`, `UpdateFlexEntryCommand`
 - `FlexStandaloneService`
-- Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command` теперь проверяют форму JSON-object для payload, нормализованные identifiers/statuses, лимит 50 fields per schema и DB-column length caps для schema slugs/names, а также entry `entity_type`/`status`.
+- Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command` теперь проверяют форму JSON-object для payload, нормализованные identifiers/statuses/schema names, лимит 50 fields per schema и DB-column length caps для schema slugs/names, а также entry `entity_type`/`status`.
 - Orchestration helpers: `list/find/create/update/delete` для schemas и entries
 - SeaORM adapter `FlexStandaloneSeaOrmService`
 - GraphQL queries/mutations в `apps/server` для schemas и entries с отдельными `flex_schemas:*` и `flex_entries:*` permission gates

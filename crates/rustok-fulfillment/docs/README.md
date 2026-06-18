@@ -30,7 +30,7 @@
 ## Интеграция
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
-- transport и GraphQL surface пока публикуются через `rustok-commerce`, admin UI ownership уже вынесен в `rustok-fulfillment/admin`, а storefront presentation/selection ownership — в `rustok-fulfillment/storefront`;
+- transport endpoint/body и GraphQL surface пока публикуются через `rustok-commerce`, admin UI ownership уже вынесен в `rustok-fulfillment/admin`, а storefront presentation/selection DTO/core/transport-fallback ownership — в `rustok-fulfillment/storefront`;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
 
 ## Разделение FFA для admin

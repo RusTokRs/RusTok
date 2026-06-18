@@ -7,7 +7,8 @@
 ## Responsibilities
 
 - Own content moderation AI contracts.
-- Keep moderation policy wiring outside `rustok-ai` core runtime.
+- Own blog draft generated payload contracts and validation.
+- Keep content policy wiring outside `rustok-ai` core runtime.
 
 ## Interactions
 
@@ -17,6 +18,9 @@
 ## Entry points
 
 - `register_content_ai_verticals`
+- `register_content_ai_vertical_handlers`
+- `validate_blog_draft_payload`
+- `validate_moderation_decision`
 
 ## Docs
 

@@ -6,23 +6,25 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_native_adapter_split
-- Last checkpoint: Admin customer core теперь владеет shell/list/detail header view-models, refresh/open action-state policy, field placeholder DTOs, detail section/profile-empty copy, timestamp/user/locale/visibility display labels, submit/transport error message mapping и page/editor state helpers; Leptos adapter переводит host-provided locale в label DTOs, рендерит core-owned copy/action/error state и вызывает transport facade. Native Leptos server functions остаются в `admin/src/transport/native_server_adapter.rs`.
-- Next step: Завершить оставшиеся мелкие render-only срезы в `admin/src/ui/leptos.rs` (possible form control layout markers и non-domain CSS grouping), затем собрать focused evidence для перевода customer admin к следующему FFA gate; при появлении второго transport path добавить explicit adapter рядом с `native_server_adapter.rs`.
+- Current phase: fba_customer_read_projection_provider_slice
+- Last checkpoint: Customer получил первый FBA provider slice: `CustomerReadPort` закрепляет нейтральный read/list projection boundary поверх owner `CustomerService`; `rustok-module.toml`, `contracts/customer-fba-registry.json` и static evidence packet публикуют customer read-projection provider metadata для commerce/order consumers без переноса customer rules в commerce transport.
+- Next step: Закрыть runtime contract tests/fallback smoke для `CustomerReadPort`, затем готовить повышение выше `in_progress`; не запускать долгую компиляцию, использовать fast verifier `npm run verify:ecommerce:fba`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и держать central readiness board синхронизированным.
-- Last updated at (UTC): 2026-06-12T20:38:00Z
+- Last updated at (UTC): 2026-06-18T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - модуль ведётся в ускоренном FFA migration track; FBA остаётся `not_started` до закрытия FFA phase-gate как часть ecommerce family;
+  - `src/ports.rs` экспортирует `CustomerReadPort` и DTO для customer read/list projection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
+  - метаданные FBA-provider открыты для `customer read projection` через `crates/rustok-customer/contracts/customer-fba-registry.json`; статус остаётся `in_progress` до contract tests/remote transport evidence;
+  - static evidence packet `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates); это закрывает metadata/evidence anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` list request policy, submit-command validation/preparation, submit/transport error message mapping, form snapshot mapping, shell/list/detail header view-models, field placeholder DTOs, detail section/profile-empty copy, timestamp/user/locale/visibility display labels, list/detail row view-model policy, active row CSS policy, page-level list/detail empty/error/loading states, refresh/open action-state policy and editor action-state policy; `admin/src/transport/mod.rs` remains the module-owned facade over native-only `admin/src/transport/native_server_adapter.rs` `#[server]` endpoints; explicit Leptos render adapter `admin/src/ui/leptos.rs` consumes core view-models/snapshots/states and no longer owns covered shell/list/detail header copy, list/detail fallback strings, timestamp/profile display labels, submit/transport error copy/formatting, form placeholders, detail section/profile-empty copy, refresh/open disabled policy, active-row class decisions or editor mode/disabled policy; legacy `admin/src/api.rs` удалён, `admin/src/lib.rs` только wires modules и re-export `CustomerAdmin`.
-- Last verified at (UTC): 2026-06-12T20:38:00Z
+- Last verified at (UTC): 2026-06-18T00:00:00Z
 - Owner: `rustok-customer` module team
 
 ## Область работ

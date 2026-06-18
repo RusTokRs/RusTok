@@ -1,7 +1,8 @@
 use axum::{
-    extract::{Path, Query, State},
-    routing::{get, post, put},
     Json,
+    extract::{Path, Query, State},
+    http::HeaderMap,
+    routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
@@ -18,7 +19,8 @@ use crate::services::mcp_management::{
     ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpAuditFilters, McpClientDetails,
     McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
 };
-use rustok_mcp::{McpActorType, ScaffoldModuleRequest};
+use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapResponse};
+use rustok_mcp::{McpActorType, McpSessionContext, ScaffoldModuleRequest};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMcpClientRequest {
@@ -60,6 +62,15 @@ pub struct UpdateMcpPolicyRequest {
     pub granted_permissions: Vec<String>,
     #[serde(default)]
     pub granted_scopes: Vec<String>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BootstrapMcpRemoteSessionRequest {
+    pub transport: Option<String>,
+    pub plaintext_token: Option<String>,
+    pub correlation_id: Option<String>,
     #[serde(default = "default_metadata")]
     pub metadata: serde_json::Value,
 }
@@ -179,6 +190,43 @@ pub struct McpModuleScaffoldDraftResponse {
     pub created_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+async fn bootstrap_remote_session(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Json(input): Json<BootstrapMcpRemoteSessionRequest>,
+) -> Result<Json<McpRemoteBootstrapResponse>> {
+    let plaintext_token = input
+        .plaintext_token
+        .or_else(|| bearer_token_from_headers(&headers))
+        .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
+    let transport = input
+        .transport
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "http".to_string());
+
+    let bridge = ctx
+        .shared_store
+        .get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
+        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
+
+    let response = bridge
+        .bootstrap_remote_session(
+            McpSessionContext::default()
+                .with_transport(transport)
+                .with_plaintext_token(plaintext_token)
+                .with_metadata(input.metadata)
+                .with_correlation_id(
+                    input
+                        .correlation_id
+                        .clone()
+                        .unwrap_or_else(|| Uuid::new_v4().to_string()),
+                ),
+        )
+        .await?;
+
+    Ok(Json(response))
 }
 
 async fn list_clients(
@@ -414,6 +462,7 @@ async fn apply_scaffold_draft(
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/mcp")
+        .add("/runtime/bootstrap", post(bootstrap_remote_session))
         .add("/clients", get(list_clients).post(create_client))
         .add("/clients/{id}", get(get_client))
         .add("/clients/{id}/rotate-token", post(rotate_token))
@@ -427,6 +476,16 @@ pub fn routes() -> Routes {
         .add("/scaffold-drafts/{id}", get(get_scaffold_draft))
         .add("/scaffold-drafts/{id}/apply", post(apply_scaffold_draft))
         .add("/audit", get(list_audit_events))
+}
+
+fn bearer_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn parse_actor_type(value: &str) -> Result<McpActorType> {

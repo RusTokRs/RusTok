@@ -90,6 +90,10 @@ for (const marker of [
   "ProductAdminRouteQueryIntent",
   "ProductAdminSelectedProductQueryState",
   "product_admin_selected_product_query_state",
+  "ProductAdminProductsLoadViewModel",
+  "product_admin_products_load_view_from_result",
+  "ProductAdminShippingProfilesLoadViewModel",
+  "product_admin_shipping_profiles_load_view_from_result",
   "show_shipping_profile",
 ]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
@@ -102,6 +106,8 @@ assertContains(ui, "ProductAdminOpenProductViewModel", `${uiPath}: UI must consu
 assertContains(ui, "product_admin_pricing_preview_state_from_result", `${uiPath}: UI must use core-owned pricing preview state mapping`);
 assertContains(ui, "build_product_admin_summary_panel_copy", `${uiPath}: UI must consume core-owned selected-summary panel copy`);
 assertContains(ui, "product_admin_selected_product_query_state", `${uiPath}: UI must use core-owned selected product query state`);
+assertContains(ui, "product_admin_products_load_view_from_result", `${uiPath}: UI must use core-owned products load-result normalization`);
+assertContains(ui, "product_admin_shipping_profiles_load_view_from_result", `${uiPath}: UI must use core-owned shipping-profiles load-result normalization`);
 for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "ProductService", "PricingService"] ) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);
 }
@@ -114,6 +120,10 @@ for (const marker of ["item_shipping_profile_label.is_some", "item_shipping_prof
 for (const marker of ["product_id.trim().is_empty()", "selected_product_query.get() {"]) {
   assertNotContains(ui, marker, `${uiPath}: selected product query normalization must stay in core (${marker})`);
 }
+for (const marker of ["list.items.is_empty()", "list.items.into_iter().map"] ) {
+  assertNotContains(ui, marker, `${uiPath}: products load-result normalization must stay in core (${marker})`);
+}
+assertNotContains(ui, "match shipping_profiles.get()", `${uiPath}: shipping-profile consumers must share core-owned load-result normalization`);
 
 for (const marker of [
   "fetch_bootstrap",

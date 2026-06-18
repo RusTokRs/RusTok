@@ -12,25 +12,21 @@ use crate::core::{
     build_product_admin_editor_copy, build_product_admin_editor_form_state,
     build_product_admin_editor_view_model, build_product_admin_error_copy,
     build_product_admin_list_action_labels, build_product_admin_list_controls_view_model,
-    build_product_admin_list_empty_view_model, build_product_admin_list_error_view_model,
-    build_product_admin_list_item_view_model, build_product_admin_list_loading_view_model,
-    build_product_admin_open_product_view_model,
-    build_product_admin_profile_panel_error_view_model,
-    build_product_admin_profile_panel_loading_view_model,
-    build_product_admin_profile_panel_ready_view_model, build_product_admin_save_command,
-    build_product_admin_seo_panel_copy, build_product_admin_shell_view_model,
-    build_product_admin_shipping_profile_options, build_product_admin_status_mutation_command,
+    build_product_admin_list_item_view_model, build_product_admin_open_product_view_model,
+    build_product_admin_save_command, build_product_admin_seo_panel_copy,
+    build_product_admin_shell_view_model, build_product_admin_status_mutation_command,
     build_product_admin_status_mutation_result_view_model, build_product_admin_summary_panel_copy,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
     parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
     product_admin_pricing_preview_request_from_product,
-    product_admin_pricing_preview_state_from_result, product_admin_saved_product_query_intent,
-    product_admin_selected_product_query_state, shipping_profile_choice_label, text_or_none,
-    ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
-    ProductAdminErrorCopy, ProductAdminOpenProductViewModel, ProductAdminRouteQueryIntent,
-    ProductAdminSaveMode, ProductAdminSelectedProductQueryState, ProductAdminStatusMutationOutcome,
-    ProductAdminStatusTarget, SelectedProductSummaryViewModel,
+    product_admin_pricing_preview_state_from_result, product_admin_products_load_view_from_result,
+    product_admin_saved_product_query_intent, product_admin_selected_product_query_state,
+    product_admin_shipping_profiles_load_view_from_result, text_or_none, ProductAdminDeleteOutcome,
+    ProductAdminDraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
+    ProductAdminOpenProductViewModel, ProductAdminProductsLoadViewModel,
+    ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminSelectedProductQueryState,
+    ProductAdminStatusMutationOutcome, ProductAdminStatusTarget, SelectedProductSummaryViewModel,
 };
 use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
 use crate::transport;
@@ -440,41 +436,20 @@ pub fn ProductAdmin() -> impl IntoView {
                     </div>
 
                     <div class="mt-5 space-y-3">
-                        {move || match products.get() {
-                            None => {
-                                let state = build_product_admin_list_loading_view_model(
-                                    ui_locale_for_list.as_deref(),
-                                );
+                        {move || match product_admin_products_load_view_from_result(
+                            ui_locale_for_list.as_deref(),
+                            products.get(),
+                        ) {
+                            ProductAdminProductsLoadViewModel::State(state) => {
                                 view! {
                                     <div class=state.container_class>
                                         {state.message}
                                     </div>
                                 }.into_any()
                             },
-                            Some(Err(err)) => {
-                                let state = build_product_admin_list_error_view_model(
-                                    ui_locale_for_list.as_deref(),
-                                    err,
-                                );
-                                view! {
-                                    <div class=state.container_class>
-                                        {state.message}
-                                    </div>
-                                }.into_any()
-                            },
-                            Some(Ok(list)) if list.items.is_empty() => {
-                                let state = build_product_admin_list_empty_view_model(
-                                    ui_locale_for_list.as_deref(),
-                                );
-                                view! {
-                                    <div class=state.container_class>
-                                        {state.message}
-                                    </div>
-                                }.into_any()
-                            },
-                            Some(Ok(list)) => view! {
+                            ProductAdminProductsLoadViewModel::Ready(items) => view! {
                                 <>
-                                    {list.items.into_iter().map(|product| {
+                                    {items.into_iter().map(|product| {
                                         let item_locale = ui_locale_for_list.clone();
                                         let item_locale_for_buttons = item_locale.clone();
                                         let _item_locale_for_edit = item_locale.clone();
@@ -680,17 +655,15 @@ pub fn ProductAdmin() -> impl IntoView {
                             <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_140px]">
                                 <select class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || shipping_profile_slug.get() on:change=move |ev| set_shipping_profile_slug.set(event_target_value(&ev))>
                                     <option value="">{editor_copy.no_shipping_profile_label.clone()}</option>
-                                    {move || match shipping_profiles.get() {
-                                        Some(Ok(list)) => build_product_admin_shipping_profile_options(
-                                            ui_locale_for_profiles.as_deref(),
-                                            &list.items,
-                                        )
+                                    {move || product_admin_shipping_profiles_load_view_from_result(
+                                        ui_locale_for_profiles.as_deref(),
+                                        shipping_profiles.get(),
+                                    )
+                                        .options
                                         .into_iter()
                                         .map(|option| view! { <option value=option.value>{option.label}</option> })
                                         .collect_view()
-                                        .into_any(),
-                                        _ => ().into_any(),
-                                    }}
+                                    }
                                 </select>
                                 <input type="number" class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_copy.inventory_quantity_placeholder.clone() prop:value=move || inventory_quantity.get().to_string() on:input=move |ev| set_inventory_quantity.set(parse_product_admin_inventory_quantity_input(
                                     &event_target_value(&ev),
@@ -709,22 +682,10 @@ pub fn ProductAdmin() -> impl IntoView {
                         </form>
 
                         <div class="mt-4 rounded-2xl border border-border bg-background p-4 text-xs text-muted-foreground">
-                            {move || match shipping_profiles.get() {
-                                None => build_product_admin_profile_panel_loading_view_model(
-                                    ui_locale_for_profile_panel.as_deref(),
-                                )
-                                .into_message(),
-                                Some(Err(err)) => build_product_admin_profile_panel_error_view_model(
-                                    ui_locale_for_profile_panel.as_deref(),
-                                    err,
-                                )
-                                .into_message(),
-                                Some(Ok(list)) => build_product_admin_profile_panel_ready_view_model(
-                                    ui_locale_for_profile_panel.as_deref(),
-                                    &list.items,
-                                )
-                                .into_message(),
-                            }}
+                            {move || product_admin_shipping_profiles_load_view_from_result(
+                                ui_locale_for_profile_panel.as_deref(),
+                                shipping_profiles.get(),
+                            ).panel.into_message()}
                         </div>
                     </section>
 

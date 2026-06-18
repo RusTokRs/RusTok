@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_core::Result;
-use rustok_iggy_connector::{IggyConnector, PublishRequest};
+use rustok_iggy_connector::{IggyConnector, PublishRequest, SubscriberMessageMetadata};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -13,6 +13,43 @@ pub struct DlqEntry {
     pub payload: Vec<u8>,
     pub error: String,
     pub retry_count: u32,
+    pub connector_metadata: Option<SubscriberMessageMetadata>,
+}
+
+impl DlqEntry {
+    pub fn new(
+        event_id: Uuid,
+        original_topic: impl Into<String>,
+        payload: Vec<u8>,
+        error: impl Into<String>,
+        retry_count: u32,
+    ) -> Self {
+        Self {
+            event_id,
+            original_topic: original_topic.into(),
+            payload,
+            error: error.into(),
+            retry_count,
+            connector_metadata: None,
+        }
+    }
+
+    pub fn with_connector_metadata(mut self, metadata: SubscriberMessageMetadata) -> Self {
+        self.connector_metadata = Some(metadata);
+        self
+    }
+
+    pub fn source_offset(&self) -> Option<u64> {
+        self.connector_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.offset)
+    }
+
+    pub fn ack_token(&self) -> Option<&str> {
+        self.connector_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.ack_token.as_deref())
+    }
 }
 
 #[derive(Debug)]
@@ -61,6 +98,8 @@ impl DlqManager {
             original_topic = %entry.original_topic,
             error = %entry.error,
             retry_count = entry.retry_count,
+            source_offset = ?entry.source_offset(),
+            has_ack_token = entry.ack_token().is_some(),
             dlq_stream = %stream,
             dlq_topic = %topic,
             "Moving event to dead letter queue"
@@ -82,17 +121,57 @@ impl DlqManager {
         Ok(())
     }
 
+    pub async fn retry_entry(
+        &self,
+        connector: &dyn IggyConnector,
+        entry: DlqEntry,
+        target_topic: String,
+    ) -> Result<()> {
+        let max_retries = *self.max_retries.read().await;
+        if entry.retry_count >= max_retries {
+            return Err(rustok_core::Error::External(format!(
+                "DLQ entry {} exceeded retry limit {}",
+                entry.event_id, max_retries
+            )));
+        }
+
+        let stream = self.stream.read().await.clone();
+        info!(
+            event_id = %entry.event_id,
+            original_topic = %entry.original_topic,
+            target_topic = %target_topic,
+            retry_count = entry.retry_count + 1,
+            source_offset = ?entry.source_offset(),
+            "Retrying DLQ entry"
+        );
+
+        let request = PublishRequest::new(
+            stream,
+            target_topic,
+            entry.event_id.to_string(),
+            entry.payload,
+            format!("retry-{}-{}", entry.retry_count + 1, entry.event_id),
+        );
+
+        connector
+            .publish(request)
+            .await
+            .map_err(|e| rustok_core::Error::External(e.to_string()))
+    }
+
     pub async fn retry_from_dlq(
         &self,
         _connector: &dyn IggyConnector,
-        _event_id: Uuid,
-        _target_topic: String,
+        event_id: Uuid,
+        target_topic: String,
     ) -> Result<()> {
         let max_retries = *self.max_retries.read().await;
 
         info!(
+            event_id = %event_id,
+            target_topic = %target_topic,
             max_retries = max_retries,
-            "DLQ retry requested - implementation pending message consumption"
+            "DLQ retry requested without payload metadata; use retry_entry for metadata-preserving retry movement"
         );
 
         Ok(())
@@ -113,13 +192,13 @@ mod tests {
 
     #[test]
     fn dlq_entry_creation() {
-        let entry = DlqEntry {
-            event_id: Uuid::new_v4(),
-            original_topic: "domain".to_string(),
-            payload: vec![1, 2, 3],
-            error: "Processing failed".to_string(),
-            retry_count: 2,
-        };
+        let entry = DlqEntry::new(
+            Uuid::new_v4(),
+            "domain",
+            vec![1, 2, 3],
+            "Processing failed",
+            2,
+        );
 
         assert!(!entry.payload.is_empty());
         assert_eq!(entry.retry_count, 2);
