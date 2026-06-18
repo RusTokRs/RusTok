@@ -129,6 +129,25 @@
         "use_cart_product_snapshot",
         "show_product_refresh_required"
       ]
+    },
+    {
+      "module": "customer",
+      "contract_version": "customer.read_projection.v1",
+      "registry": "crates/rustok-customer/contracts/customer-fba-registry.json",
+      "ports": [
+        "CustomerReadPort"
+      ],
+      "profiles": [
+        "checkout_customer_projection"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat"
+      ],
+      "degraded_modes": [
+        "use_checkout_customer_snapshot",
+        "show_customer_refresh_required"
+      ]
     }
   ],
   "evidence": {

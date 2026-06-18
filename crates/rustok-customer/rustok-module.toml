@@ -20,3 +20,9 @@ nav_label = "Customers"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/customer-fba-registry.json"
+contract_version = "customer.read_projection.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
