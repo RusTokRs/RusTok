@@ -280,6 +280,9 @@ export function verifyEcommerceFbaRegistries({
     if (consumer.registry !== `crates/rustok-${module}/contracts/${module}-fba-registry.json`) {
       fail(`commerce provider ${module} registry path drift`);
     }
+    if (!commercePlan.includes(consumer.registry)) {
+      fail(`commerce local plan lacks provider registry evidence for ${module}`);
+    }
     for (const port of provider.ports) {
       if (!consumer.ports.includes(port.name)) {
         fail(`commerce provider ${module} port drift`);
