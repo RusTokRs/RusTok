@@ -24,6 +24,16 @@ use rustok_mcp::{
     TOOL_MCP_WHOAMI,
 };
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct McpRemoteBootstrapResponse {
+    pub transport: String,
+    pub correlation_id: Option<String>,
+    pub tenant_id: Option<String>,
+    pub client_id: Option<String>,
+    pub token_id: Option<String>,
+    pub access_context: McpAccessContext,
+}
+
 pub struct DbBackedMcpRuntimeBridge {
     db: DatabaseConnection,
 }
@@ -46,6 +56,64 @@ impl DbBackedMcpRuntimeBridge {
             .with_session_context(session_context)
             .with_access_resolver(Arc::clone(self))
             .with_audit_sink(Arc::clone(self))
+    }
+
+    pub async fn bootstrap_remote_session(
+        &self,
+        session_context: McpSessionContext,
+    ) -> Result<McpRemoteBootstrapResponse> {
+        if session_context.transport.trim().is_empty() || session_context.transport == "stdio" {
+            return Err(Error::BadRequest(
+                "Remote MCP bootstrap requires a non-stdio transport".to_string(),
+            ));
+        }
+
+        let plaintext_token = session_context
+            .plaintext_token
+            .as_deref()
+            .ok_or_else(|| Error::Unauthorized("MCP bearer token is required".into()))?;
+        let binding = self.resolve_binding_for_token(plaintext_token).await?;
+
+        McpManagementService::record_audit_event(
+            &self.db,
+            RecordMcpAuditEventInput {
+                tenant_id: parse_uuid(binding.tenant_id.as_deref()).ok_or_else(|| {
+                    Error::BadRequest("MCP runtime binding did not include tenant_id".to_string())
+                })?,
+                client_id: parse_uuid(binding.client_id.as_deref()),
+                token_id: parse_uuid(binding.token_id.as_deref()),
+                actor_id: binding
+                    .access_context
+                    .identity
+                    .as_ref()
+                    .map(|identity| identity.actor_id.clone()),
+                actor_type: binding
+                    .access_context
+                    .identity
+                    .as_ref()
+                    .map(|identity| actor_type_slug(identity.actor_type).to_string()),
+                action: "remote_session_bootstrapped".to_string(),
+                outcome: "success".to_string(),
+                tool_name: None,
+                reason: None,
+                correlation_id: session_context.correlation_id.clone(),
+                metadata: serde_json::json!({
+                    "transport": session_context.transport,
+                    "session_metadata": session_context.metadata,
+                }),
+                created_by: actor_user_id_from_access_context(&binding.access_context),
+            },
+        )
+        .await?;
+
+        Ok(McpRemoteBootstrapResponse {
+            transport: session_context.transport,
+            correlation_id: session_context.correlation_id,
+            tenant_id: binding.tenant_id,
+            client_id: binding.client_id,
+            token_id: binding.token_id,
+            access_context: binding.access_context,
+        })
     }
 
     pub async fn resolve_binding_for_token(
@@ -296,17 +364,20 @@ fn actor_user_id_from_runtime_context(context: &McpScaffoldDraftRuntimeContext) 
     context
         .access_context
         .as_ref()
-        .and_then(|access| access.identity.as_ref())
-        .and_then(|identity| {
-            identity
-                .delegated_user_id
-                .as_deref()
-                .and_then(|value| parse_uuid(Some(value)))
-                .or_else(|| match identity.actor_type {
-                    McpActorType::HumanUser => parse_uuid(Some(identity.actor_id.as_str())),
-                    _ => None,
-                })
-        })
+        .and_then(actor_user_id_from_access_context)
+}
+
+fn actor_user_id_from_access_context(access: &McpAccessContext) -> Option<Uuid> {
+    access.identity.as_ref().and_then(|identity| {
+        identity
+            .delegated_user_id
+            .as_deref()
+            .and_then(|value| parse_uuid(Some(value)))
+            .or_else(|| match identity.actor_type {
+                McpActorType::HumanUser => parse_uuid(Some(identity.actor_id.as_str())),
+                _ => None,
+            })
+    })
 }
 
 fn identity_for_client(client: &mcp_clients::Model, policy: &mcp_policies::Model) -> McpIdentity {
