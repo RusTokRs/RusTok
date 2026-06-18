@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "module": "comments",
+  "status": "planned_cases_locked",
+  "generated_from": "crates/rustok-comments/contracts/comments-fba-registry.json",
+  "cases": [
+    {"operation": "create_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
+    {"operation": "get_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
+    {"operation": "list_comments_for_target", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
+    {"operation": "update_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
+    {"operation": "delete_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]}
+  ],
+  "fallback_smoke": {
+    "status": "planned",
+    "profiles": ["embedded_native"],
+    "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"]
+  }
+}

@@ -6,6 +6,8 @@ pub mod error;
 #[cfg(feature = "server")]
 pub mod migrations;
 #[cfg(feature = "server")]
+pub mod ports;
+#[cfg(feature = "server")]
 pub mod services;
 
 #[cfg(feature = "server")]
@@ -25,6 +27,8 @@ pub use dto::{
 pub use entities::*;
 #[cfg(feature = "server")]
 pub use error::{CommentsError, CommentsResult};
+#[cfg(feature = "server")]
+pub use ports::*;
 #[cfg(feature = "server")]
 pub use services::CommentsService;
 
