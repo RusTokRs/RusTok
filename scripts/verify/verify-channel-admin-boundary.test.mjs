@@ -33,22 +33,44 @@ ${includeLeptos ? "use leptos::prelude::*;" : ""}
 pub(crate) fn channel_selection_exists(bootstrap: &ChannelAdminBootstrap, channel_id: &str) -> bool {
     bootstrap.channels.iter().any(|channel| channel.channel.id == channel_id)
 }
+pub(crate) enum ChannelPolicySelectionCleanup { None, ClearRule, ClearPolicySetAndRule }
+pub(crate) fn channel_policy_selection_cleanup() -> ChannelPolicySelectionCleanup { ChannelPolicySelectionCleanup::None }
+pub(crate) struct PolicyRuleFormState;
+impl PolicyRuleFormState {
+    pub(crate) fn create_payload(&self) {}
+    pub(crate) fn update_payload(&self) {}
+}
+pub(crate) fn policy_rule_create_form_state() -> PolicyRuleFormState { PolicyRuleFormState }
+pub(crate) fn policy_rule_edit_form_state() -> PolicyRuleFormState { PolicyRuleFormState }
+pub(crate) fn reorder_policy_rule_ids() -> Option<Vec<String>> { None }
+pub(crate) fn policy_rule_active_update_payload() {}
 struct ChannelAdminBootstrap { channels: Vec<ChannelDetail> }
 struct ChannelDetail { channel: ChannelRecord }
 struct ChannelRecord { id: String }
 `;
 }
 
-function uiSource({ rawTransport = false, includeApiCall = false } = {}) {
+function uiSource({ rawTransport = false, includeApiCall = false, inlinePolicySelection = false, inlineRuleFormMapping = false, inlineReorderPolicy = false, inlineRulePayload = false } = {}) {
   return `
-use crate::core::channel_selection_exists;
+use crate::core::{channel_policy_selection_cleanup, channel_selection_exists, policy_rule_active_update_payload, policy_rule_edit_form_state, reorder_policy_rule_ids, PolicyRuleFormState};
 use crate::transport;
 
 pub fn ChannelAdmin() {
     let _policy = channel_selection_exists;
+    let _policy_cleanup = channel_policy_selection_cleanup;
+    let _rule_form = policy_rule_edit_form_state;
+    let _reorder = reorder_policy_rule_ids;
+    let _active_payload = policy_rule_active_update_payload;
+    let state = PolicyRuleFormState;
+    state.create_payload();
+    state.update_payload();
     let _facade = transport::fetch_bootstrap;
     ${rawTransport ? "let _native = native_server_adapter::channel_bootstrap_native;" : ""}
     ${includeApiCall ? "api::fetch_bootstrap().await;" : ""}
+    ${inlinePolicySelection ? "let _selected = policy_sets.iter().find(|policy_set| policy_set.policy_set.id == selected_id);" : ""}
+    ${inlineRuleFormMapping ? "fn policy_rule_edit_form_state() {}" : ""}
+    ${inlineReorderPolicy ? "fn reorder_rule_ids() {}" : ""}
+    ${inlineRulePayload ? "let _payload = CreateResolutionRulePayload { priority: 1 };" : ""}
 }
 `;
 }
@@ -96,7 +118,17 @@ function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-channel-boundary-"));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/core.rs", coreSource(options));
-  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/mod.rs", `
+mod channel_card;
+mod policy_set_card;
+mod policy_workbench;
+mod runtime_context;
+${uiSource(options)}
+`);
+  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/channel_card.rs", "pub(super) fn ChannelCard() {}");
+  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/policy_set_card.rs", "pub(super) fn PolicySetCard() {}");
+  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/policy_workbench.rs", "pub(super) fn PolicyWorkbench() {}");
+  writeFixtureFile(root, "crates/rustok-channel/admin/src/ui/leptos/runtime_context.rs", "pub(super) fn RuntimeContext() {}");
   writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/mod.rs", transportModSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
   writeFixtureFile(root, "crates/rustok-channel/admin/src/transport/rest_adapter.rs", restAdapterSource({ includeServerEndpoint: options.restServerEndpoint }));
@@ -167,6 +199,50 @@ test("channel admin boundary verifier rejects Leptos-specific core", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected Leptos core fixture to fail");
     assert.match(result.stderr, /core must stay Leptos\/server-function free/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects inline policy selection lookup", () => {
+  const root = withFixture({ inlinePolicySelection: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected inline policy selection fixture to fail");
+    assert.match(result.stderr, /UI must not own policy-set selection lookup/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects policy-rule form mapping in UI", () => {
+  const root = withFixture({ inlineRuleFormMapping: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected inline rule-form mapping fixture to fail");
+    assert.match(result.stderr, /UI must not define policy-rule edit mapping/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects policy-rule reorder policy in UI", () => {
+  const root = withFixture({ inlineReorderPolicy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected inline reorder policy fixture to fail");
+    assert.match(result.stderr, /UI must not define policy-rule reorder bounds policy/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("channel admin boundary verifier rejects inline policy-rule payload construction", () => {
+  const root = withFixture({ inlineRulePayload: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected inline rule payload fixture to fail");
+    assert.match(result.stderr, /UI must not construct policy-rule create payloads inline/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

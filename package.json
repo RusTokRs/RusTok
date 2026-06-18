@@ -30,6 +30,8 @@
     "verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.mjs",
     "verify:region:admin-boundary": "node scripts/verify/verify-region-admin-boundary.mjs",
     "test:verify:region:admin-boundary": "node scripts/verify/verify-region-admin-boundary.test.mjs",
+    "verify:region:storefront-boundary": "node scripts/verify/verify-region-storefront-boundary.mjs",
+    "test:verify:region:storefront-boundary": "node scripts/verify/verify-region-storefront-boundary.test.mjs",
     "verify:blog:admin-boundary": "node scripts/verify/verify-blog-admin-boundary.mjs",
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
     "verify:fulfillment:admin-boundary": "node scripts/verify/verify-fulfillment-admin-boundary.mjs",

@@ -3,7 +3,11 @@ use chrono::{DateTime, Utc};
 use rustok_api::graphql::PageInfo;
 use uuid::Uuid;
 
-use crate::model::{EventType, HttpMethod, Script, ScriptStatus, ScriptTrigger};
+use crate::{
+    context::ExecutionPhase,
+    execution_log::ExecutionLogEntry,
+    model::{EventType, HttpMethod, Script, ScriptStatus, ScriptTrigger},
+};
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 #[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
@@ -206,6 +210,59 @@ pub struct GqlExecutionResult {
     pub error: Option<String>,
     pub return_value: Option<async_graphql::Json<serde_json::Value>>,
     pub changes: Option<async_graphql::Json<serde_json::Value>>,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlExecutionPhase {
+    Before,
+    After,
+    OnCommit,
+    Manual,
+    Scheduled,
+}
+
+impl From<ExecutionPhase> for GqlExecutionPhase {
+    fn from(phase: ExecutionPhase) -> Self {
+        match phase {
+            ExecutionPhase::Before => Self::Before,
+            ExecutionPhase::After => Self::After,
+            ExecutionPhase::OnCommit => Self::OnCommit,
+            ExecutionPhase::Manual => Self::Manual,
+            ExecutionPhase::Scheduled => Self::Scheduled,
+        }
+    }
+}
+
+#[derive(SimpleObject)]
+pub struct GqlExecutionLogEntry {
+    pub id: Uuid,
+    pub script_id: Uuid,
+    pub script_name: String,
+    pub phase: GqlExecutionPhase,
+    pub outcome: String,
+    pub duration_ms: i64,
+    pub error: Option<String>,
+    pub user_id: Option<String>,
+    pub tenant_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<ExecutionLogEntry> for GqlExecutionLogEntry {
+    fn from(entry: ExecutionLogEntry) -> Self {
+        Self {
+            id: entry.id,
+            script_id: entry.script_id,
+            script_name: entry.script_name,
+            phase: entry.phase.into(),
+            outcome: entry.outcome,
+            duration_ms: entry.duration_ms,
+            error: entry.error,
+            user_id: entry.user_id,
+            tenant_id: entry.tenant_id,
+            created_at: entry.created_at,
+        }
+    }
 }
 
 #[derive(SimpleObject)]

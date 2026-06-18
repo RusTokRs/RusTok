@@ -21,6 +21,7 @@ pub struct ScopedAlloyRuntime {
     pub storage: Arc<SeaOrmStorage>,
     pub orchestrator: Arc<ScriptOrchestrator<SeaOrmStorage>>,
     pub execution_log: Arc<SeaOrmExecutionLog>,
+    pub tenant_id: Uuid,
 }
 
 #[derive(Clone)]
@@ -40,6 +41,7 @@ impl AlloyRuntime {
             storage,
             orchestrator,
             execution_log: self.execution_log.clone(),
+            tenant_id,
         }
     }
 }
