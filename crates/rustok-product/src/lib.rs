@@ -16,9 +16,11 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod entities;
 pub mod migrations;
+pub mod ports;
 mod seo_targets;
 pub mod services;
 
+pub use ports::*;
 pub use services::{CatalogService, StorefrontProductList, StorefrontProductListItem};
 
 pub struct ProductModule;

@@ -857,9 +857,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "1.136.0"
+version = "1.137.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbd03e531a7d981fba45114c5813a7565dd470a1bd3ef1188ca98c98ebdfc668"
+checksum = "c2dd7213994e2ff9382ff100403b78c30d1b74cdfcd8fa9d0d1dc3a94a5c4874"
 dependencies = [
  "arc-swap",
  "aws-credential-types",
@@ -9856,6 +9856,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "rust_decimal",
+ "rustok-api",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-fulfillment",
@@ -10151,6 +10152,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-core",
  "rustok-profiles",
  "rustok-test-utils",
@@ -10770,6 +10772,7 @@ dependencies = [
  "chrono",
  "flex",
  "rust_decimal",
+ "rustok-api",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-events",
@@ -11243,6 +11246,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "rust_decimal",
+ "rustok-api",
  "rustok-core",
  "sea-orm-migration",
  "serde",

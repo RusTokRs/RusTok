@@ -49,6 +49,56 @@ async fn setup_tenant_router(settings: RustokSettings) -> (AppContext, Router) {
     (ctx, app)
 }
 
+async fn request_tenant_slug(app: &Router, tenant_header: &str) -> (StatusCode, Option<String>) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/tenant-probe")
+                .header("X-Tenant-ID", tenant_header)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("tenant probe request should complete");
+
+    let status = response.status();
+    if !status.is_success() {
+        return (status, None);
+    }
+
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json payload");
+    (status, payload["slug"].as_str().map(ToString::to_string))
+}
+
+async fn request_host_tenant_slug(app: &Router, host: &str) -> (StatusCode, Option<String>) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/tenant-probe")
+                .header("host", host)
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("tenant host probe request should complete");
+
+    let status = response.status();
+    if !status.is_success() {
+        return (status, None);
+    }
+
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let payload: serde_json::Value = serde_json::from_slice(&body).expect("json payload");
+    (status, payload["slug"].as_str().map(ToString::to_string))
+}
+
 async fn insert_tenant(
     ctx: &AppContext,
     slug: &str,
@@ -218,4 +268,149 @@ async fn resolver_returns_forbidden_for_inactive_tenant() {
         .expect("disabled tenant request should complete");
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+#[serial]
+async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
+    let mut settings = RustokSettings::default();
+    settings.tenant.enabled = true;
+    settings.tenant.resolution = "header".to_string();
+
+    let (ctx, app) = setup_tenant_router(settings).await;
+    let tenant_model = insert_tenant(&ctx, "resolver-deactivate-cache", None, true).await;
+
+    let (status, slug) = request_tenant_slug(&app, "resolver-deactivate-cache").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(slug.as_deref(), Some("resolver-deactivate-cache"));
+
+    let mut active: rustok_server::models::_entities::tenants::ActiveModel = tenant_model.into();
+    active.is_active = Set(false);
+    active.updated_at = Set(chrono::Utc::now().into());
+    active
+        .update(&ctx.db)
+        .await
+        .expect("tenant deactivation should persist");
+
+    let (stale_status, stale_slug) = request_tenant_slug(&app, "resolver-deactivate-cache").await;
+    assert_eq!(stale_status, StatusCode::OK);
+    assert_eq!(stale_slug.as_deref(), Some("resolver-deactivate-cache"));
+
+    tenant::invalidate_tenant_cache_by_slug(&ctx, "resolver-deactivate-cache").await;
+
+    let (refreshed_status, refreshed_slug) =
+        request_tenant_slug(&app, "resolver-deactivate-cache").await;
+    assert_eq!(refreshed_status, StatusCode::FORBIDDEN);
+    assert_eq!(refreshed_slug, None);
+}
+
+#[tokio::test]
+#[serial]
+async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
+    let mut settings = RustokSettings::default();
+    settings.tenant.enabled = true;
+    settings.tenant.resolution = "header".to_string();
+
+    let (ctx, app) = setup_tenant_router(settings).await;
+
+    let (missing_status, _) = request_tenant_slug(&app, "resolver-created-after-miss").await;
+    assert_eq!(missing_status, StatusCode::NOT_FOUND);
+
+    insert_tenant(&ctx, "resolver-created-after-miss", None, true).await;
+
+    let (cached_miss_status, cached_miss_slug) =
+        request_tenant_slug(&app, "resolver-created-after-miss").await;
+    assert_eq!(cached_miss_status, StatusCode::NOT_FOUND);
+    assert_eq!(cached_miss_slug, None);
+
+    tenant::invalidate_tenant_cache_by_slug(&ctx, "resolver-created-after-miss").await;
+
+    let (refreshed_status, refreshed_slug) =
+        request_tenant_slug(&app, "resolver-created-after-miss").await;
+    assert_eq!(refreshed_status, StatusCode::OK);
+    assert_eq!(
+        refreshed_slug.as_deref(),
+        Some("resolver-created-after-miss")
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn host_cache_invalidation_refreshes_domain_change() {
+    let mut settings = RustokSettings::default();
+    settings.tenant.enabled = true;
+    settings.tenant.resolution = "host".to_string();
+
+    let (ctx, app) = setup_tenant_router(settings).await;
+    let tenant_model = insert_tenant(
+        &ctx,
+        "resolver-domain-change",
+        Some("old-domain.example.test"),
+        true,
+    )
+    .await;
+
+    let (old_status, old_slug) = request_host_tenant_slug(&app, "old-domain.example.test").await;
+    assert_eq!(old_status, StatusCode::OK);
+    assert_eq!(old_slug.as_deref(), Some("resolver-domain-change"));
+
+    let mut active: rustok_server::models::_entities::tenants::ActiveModel = tenant_model.into();
+    active.domain = Set(Some("new-domain.example.test".to_string()));
+    active.updated_at = Set(chrono::Utc::now().into());
+    active
+        .update(&ctx.db)
+        .await
+        .expect("tenant domain change should persist");
+
+    let (stale_old_status, stale_old_slug) =
+        request_host_tenant_slug(&app, "old-domain.example.test").await;
+    assert_eq!(stale_old_status, StatusCode::OK);
+    assert_eq!(stale_old_slug.as_deref(), Some("resolver-domain-change"));
+
+    tenant::invalidate_tenant_cache_by_host(&ctx, "old-domain.example.test").await;
+    tenant::invalidate_tenant_cache_by_host(&ctx, "new-domain.example.test").await;
+
+    let (old_refreshed_status, old_refreshed_slug) =
+        request_host_tenant_slug(&app, "old-domain.example.test").await;
+    assert_eq!(old_refreshed_status, StatusCode::NOT_FOUND);
+    assert_eq!(old_refreshed_slug, None);
+
+    let (new_refreshed_status, new_refreshed_slug) =
+        request_host_tenant_slug(&app, "new-domain.example.test").await;
+    assert_eq!(new_refreshed_status, StatusCode::OK);
+    assert_eq!(
+        new_refreshed_slug.as_deref(),
+        Some("resolver-domain-change")
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
+    let mut settings = RustokSettings::default();
+    settings.tenant.enabled = true;
+    settings.tenant.resolution = "header".to_string();
+
+    let (ctx, app) = setup_tenant_router(settings).await;
+    let tenant_model = insert_tenant(&ctx, "resolver-uuid-cache", None, true).await;
+    let tenant_id = tenant_model.id;
+
+    let (status, slug) = request_tenant_slug(&app, &tenant_id.to_string()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(slug.as_deref(), Some("resolver-uuid-cache"));
+
+    let mut active: rustok_server::models::_entities::tenants::ActiveModel = tenant_model.into();
+    active.is_active = Set(false);
+    active.updated_at = Set(chrono::Utc::now().into());
+    active
+        .update(&ctx.db)
+        .await
+        .expect("tenant update should persist");
+
+    tenant::invalidate_tenant_cache_by_uuid(&ctx, tenant_id).await;
+
+    let (refreshed_status, refreshed_slug) =
+        request_tenant_slug(&app, &tenant_id.to_string()).await;
+    assert_eq!(refreshed_status, StatusCode::FORBIDDEN);
+    assert_eq!(refreshed_slug, None);
 }

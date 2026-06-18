@@ -69,8 +69,8 @@
 | `leptos-table` | `leptos-table` | `crates/leptos-table/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p leptos-table --lib` |
 | `leptos-zod` | `leptos-zod` | `crates/leptos-zod/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p leptos-zod --lib` |
 | `leptos-zustand` | `leptos-zustand` | `crates/leptos-zustand/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p leptos-zustand --lib` |
-| `rustok-ai` | `rustok-ai` | `crates/rustok-ai/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-ai --lib` |
-| `rustok-ai-content` | `rustok-ai-content` | `crates/rustok-ai-content/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-ai-content --lib` |
+| `rustok-ai` | `rustok-ai` | `crates/rustok-ai/docs/implementation-plan.md` | `in_progress` | `68%` | `agent` | `2026-06-18T00:00:00Z` | `no-compile AI ownership slice: blog_draft task/tool identity and GeneratedBlogDraft validation moved into rustok-ai-content; rustok-ai registers blog handler through content-owned adapter API` | Продолжить вынос media/alloy generated payload contracts/validation в owner support crates или explicit capability adapters | compile/test evidence отложен по явному ограничению итерации: без компиляций | `cargo test -p rustok-ai --lib` |
+| `rustok-ai-content` | `rustok-ai-content` | `crates/rustok-ai-content/docs/implementation-plan.md` | `in_progress` | `45%` | `agent` | `2026-06-18T00:00:00Z` | `content support crate now owns content_moderation plus blog_draft descriptors, GeneratedBlogDraft and blank-field validation consumed by rustok-ai` | Добавить policy matrix/approval routing integration для moderation и расширить blog contract тестами при разрешённых компиляциях | compile/test evidence отложен по явному ограничению итерации: без компиляций | `cargo test -p rustok-ai-content --lib` |
 | `rustok-ai-product` | `rustok-ai-product` | `crates/rustok-ai-product/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-ai-product --lib` |
 | `rustok-ai-order` | `rustok-ai-order` | `crates/rustok-ai-order/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-ai-order --lib` |
 | `rustok-api` | `rustok-api` | `crates/rustok-api/docs/implementation-plan.md` | `not_started` | `0%` | `unassigned` | `-` | `-` | Синхронизировать план с текущим кодом и заполнить checkpoint | `-` | `cargo test -p rustok-api --lib` |
@@ -189,3 +189,9 @@
 3. Сохраняйте только действительно важный контекст: в `implementation-plan.md` (раздел critical context) или в `DECISIONS/` для архитектурных решений.
 4. Если у плана сменился путь/название — обновляйте текущую строку, а не создавайте дубль.
 5. При каждом weekly sweep удаляйте пустые/дублированные строки и проверяйте уникальность `Plan ID`.
+
+
+## Evidence-пакеты Page Builder
+
+- `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json` — синтетический dry-run evidence-пакет Wave 0.
+- `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json` — черновик readiness-пакета Wave 1; проверяется `verify-page-builder-wave1-readiness-draft.mjs` и не заменяет фактический tenant sign-off.

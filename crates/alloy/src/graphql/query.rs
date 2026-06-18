@@ -76,6 +76,47 @@ impl AlloyQuery {
         }
     }
 
+    async fn script_executions(
+        &self,
+        ctx: &Context<'_>,
+        script_id: Option<Uuid>,
+        limit: Option<i32>,
+    ) -> Result<Vec<GqlExecutionLogEntry>> {
+        require_admin(ctx).await?;
+        let state = runtime_from_graphql_ctx(ctx)?;
+        let requested_limit = limit.map(|value| value.max(0) as u64);
+        let limit = limit.unwrap_or(50).clamp(1, 100) as u64;
+
+        let entries = match script_id {
+            Some(script_id) => {
+                state
+                    .execution_log
+                    .list_for_script_for_tenant(script_id, state.tenant_id, limit)
+                    .await
+            }
+            None => {
+                state
+                    .execution_log
+                    .list_recent_for_tenant(state.tenant_id, limit)
+                    .await
+            }
+        }
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+
+        metrics::record_read_path_budget(
+            "graphql",
+            "alloy.script_executions",
+            requested_limit,
+            limit,
+            entries.len(),
+        );
+
+        Ok(entries
+            .into_iter()
+            .map(GqlExecutionLogEntry::from)
+            .collect())
+    }
+
     async fn scripts_for_event(
         &self,
         ctx: &Context<'_>,

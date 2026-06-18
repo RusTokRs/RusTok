@@ -13,9 +13,9 @@ use uuid::Uuid;
 
 use crate::{
     api::{
-        CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogResponse,
-        ListScriptsQuery, ListScriptsResponse, RunScriptRequest, RunScriptResponse, ScriptResponse,
-        UpdateScriptRequest,
+        CreateScriptRequest, EntityInput, ExecutionLogEntryResponse, ListExecutionLogQuery,
+        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
+        RunScriptResponse, ScriptResponse, UpdateScriptRequest,
     },
     model::{EntityProxy, Script, ScriptStatus},
     runner::ExecutionOutcome,
@@ -353,6 +353,7 @@ pub fn routes() -> Routes {
         .add("/scripts", get(list_scripts).post(create_script))
         .add("/executions", get(list_recent_executions))
         .add("/scripts/validate", post(validate_script))
+        .add("/executions", get(list_execution_log))
         .add(
             "/scripts/{id}",
             get(get_script).put(update_script).delete(delete_script),

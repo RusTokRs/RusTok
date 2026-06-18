@@ -97,6 +97,30 @@ impl IggyTransport {
             .await
     }
 
+    pub async fn ack_consumed(&self, consumed: &crate::consumer::ConsumedEvent) -> Result<()> {
+        self.consumers
+            .ack_consumed(&*self.connector, consumed)
+            .await
+    }
+
+    pub async fn move_to_dlq(&self, entry: crate::dlq::DlqEntry) -> Result<()> {
+        crate::dlq::DlqManager::new()
+            .with_stream(self.config.topology.stream_name.clone())
+            .move_to_dlq(&*self.connector, entry)
+            .await
+    }
+
+    pub async fn retry_dlq_entry(
+        &self,
+        entry: crate::dlq::DlqEntry,
+        target_topic: String,
+    ) -> Result<()> {
+        crate::dlq::DlqManager::new()
+            .with_stream(self.config.topology.stream_name.clone())
+            .retry_entry(&*self.connector, entry, target_topic)
+            .await
+    }
+
     pub async fn replay(&self) -> Result<()> {
         if !self.topology.is_initialized().await {
             return Err(rustok_core::Error::External(

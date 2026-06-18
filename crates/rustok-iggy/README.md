@@ -7,7 +7,7 @@
 ## Responsibilities
 
 - Implement the RusToK event transport contract on top of Iggy.
-- Own transport-level topology, serialization/deserialization, replay, and DLQ helpers.
+- Own transport-level topology, serialization/deserialization, replay, DLQ helpers, and connector metadata hand-off for ack/retry coordination.
 - Keep high-level event-streaming behavior separate from connector lifecycle concerns.
 - Delegate embedded-vs-remote connection management to `rustok-iggy-connector`.
 
@@ -17,7 +17,7 @@
 - `IggyConfig`
 - `TopologyManager`
 - `ConsumerGroupManager`
-- `ConsumedEvent` / `IggyTransport::consume_next_as_group`
+- `ConsumedEvent` / `IggyTransport::consume_next_as_group` / `IggyTransport::ack_consumed`
 - `DlqManager`
 - `ReplayManager`
 

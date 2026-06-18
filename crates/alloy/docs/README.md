@@ -14,7 +14,7 @@
 
 - `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` и execution lifecycle;
 - storage/migrations для scripts и execution log;
-- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`);
+- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`), включая tenant-scoped execution history;
 - интеграционные контракты `ScriptableEntity` и `HookExecutor` для host-модулей;
 - отсутствие превращения script runtime в отдельный tenant-бизнес-домен.
 

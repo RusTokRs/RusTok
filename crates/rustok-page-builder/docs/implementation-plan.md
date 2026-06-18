@@ -33,7 +33,7 @@
 - Evidence:
   - модуль существует как самостоятельный reference provider для `preview/tree/properties/publish`;
   - machine-readable registry фиксирует provider/consumer versions, fallback profiles, health states, degradation reasons и SLO thresholds;
-  - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template и synthetic Wave 0 packet;
+  - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet и Wave 1 readiness draft;
   - runtime health contract фиксирует `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds и typed SLO evaluation evidence в коде;
   - первый migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext` и enforce write semantics для `publish` без изменения DTO contract.
   - server-side handler seam добавил permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` с `pages:manage` override и registry/manifest anti-drift проверкой.
@@ -43,7 +43,7 @@
 ## Ближайшие шаги
 
 1. Подключить server-side handler seam к реальным transport adapters после выбора GraphQL/server-function entrypoints.
-2. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync и Wave evidence формы.
+2. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync и Wave evidence формы.
 3. Описать sunset path для legacy block-driven compatibility.
 
 ## Область работ

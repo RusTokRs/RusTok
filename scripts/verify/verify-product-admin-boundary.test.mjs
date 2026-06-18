@@ -39,11 +39,15 @@ pub(crate) struct ProductAdminSeoPanelCopy;
 pub(crate) struct ProductAdminSummaryPanelCopy;
 pub(crate) struct ProductAdminRouteQueryIntent;
 pub(crate) enum ProductAdminSelectedProductQueryState { Open, Clear }
+pub(crate) enum ProductAdminProductsLoadViewModel { State, Ready }
+pub(crate) struct ProductAdminShippingProfilesLoadViewModel;
 pub(crate) struct ProductAdminListItemViewModel { pub show_shipping_profile: bool }
 pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 { 0 }
 ${omitOpenProduct ? "" : "pub(crate) enum ProductAdminOpenProductViewModel { Ready, Empty }"}
 pub(crate) fn product_admin_pricing_preview_state_from_result() {}
 pub(crate) fn product_admin_selected_product_query_state() -> ProductAdminSelectedProductQueryState { ProductAdminSelectedProductQueryState::Clear }
+pub(crate) fn product_admin_products_load_view_from_result() -> ProductAdminProductsLoadViewModel { ProductAdminProductsLoadViewModel::State }
+pub(crate) fn product_admin_shipping_profiles_load_view_from_result() -> ProductAdminShippingProfilesLoadViewModel { ProductAdminShippingProfilesLoadViewModel }
 pub(crate) fn build_product_admin_summary_panel_copy() -> ProductAdminSummaryPanelCopy { ProductAdminSummaryPanelCopy }
 `;
 }
@@ -54,9 +58,11 @@ function uiSource({
   directSummaryCopy = false,
   uiShippingProfilePolicy = false,
   uiSelectedQueryPolicy = false,
+  uiProductsLoadPolicy = false,
+  uiShippingProfilesLoadPolicy = false,
 } = {}) {
   return `
-use crate::core::{build_product_admin_save_command, build_product_admin_summary_panel_copy, ProductAdminOpenProductViewModel, product_admin_pricing_preview_state_from_result, product_admin_selected_product_query_state};
+use crate::core::{build_product_admin_save_command, build_product_admin_summary_panel_copy, ProductAdminOpenProductViewModel, product_admin_pricing_preview_state_from_result, product_admin_products_load_view_from_result, product_admin_selected_product_query_state, product_admin_shipping_profiles_load_view_from_result};
 use crate::transport;
 
 pub fn ProductAdmin() {
@@ -66,11 +72,15 @@ pub fn ProductAdmin() {
     let _pricing = product_admin_pricing_preview_state_from_result;
     let _summary = build_product_admin_summary_panel_copy;
     let _query_state = product_admin_selected_product_query_state;
+    let _products_load = product_admin_products_load_view_from_result;
+    let _shipping_profiles_load = product_admin_shipping_profiles_load_view_from_result;
     ${rawApiCall ? "let _raw = api::fetch_products;" : ""}
     ${rawServiceCall ? "let _service = ProductService::new;" : ""}
     ${directSummaryCopy ? 'let _copy = "Selected product";' : ""}
     ${uiShippingProfilePolicy ? "let item_shipping_profile_label = Some(String::new()); let _show = item_shipping_profile_label.is_some();" : ""}
     ${uiSelectedQueryPolicy ? "let product_id = String::new(); let _open = !product_id.trim().is_empty();" : ""}
+    ${uiProductsLoadPolicy ? "let list = ProductList { items: Vec::new() }; if list.items.is_empty() {}" : ""}
+    ${uiShippingProfilesLoadPolicy ? "let shipping_profiles = Resource; match shipping_profiles.get() { _ => {} }" : ""}
 }
 `;
 }
@@ -206,6 +216,28 @@ test("product admin boundary verifier rejects selected product query policy in U
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected selected query policy fixture to fail");
     assert.match(result.stderr, /selected product query normalization must stay in core/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects products load-result policy in UI", () => {
+  const root = withFixture({ uiProductsLoadPolicy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected products load-result policy fixture to fail");
+    assert.match(result.stderr, /products load-result normalization must stay in core/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects duplicated shipping-profile load policy in UI", () => {
+  const root = withFixture({ uiShippingProfilesLoadPolicy: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected shipping-profile load policy fixture to fail");
+    assert.match(result.stderr, /shipping-profile consumers must share core-owned load-result normalization/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

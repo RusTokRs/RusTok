@@ -26,3 +26,7 @@ Leptos storefront UI package for the `rustok-forum` module.
 ## Documentation
 
 - See [platform docs](../../../docs/index.md).
+
+## FFA boundary
+
+The package keeps runtime-independent storefront policy in `src/core.rs`: route hrefs, rich-content summaries, count/slug labels, category/topic card view-models, accent fallback, and stable status badge class mapping. `src/transport.rs` remains the native-first/GraphQL fallback facade, while `src/ui/leptos.rs` is the explicit Leptos adapter. The fast non-compiling guardrail is `npm run verify:forum:storefront-boundary`.

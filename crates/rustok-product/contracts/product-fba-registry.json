@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "module": "product",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "product.catalog_read.v1",
+  "ports": [
+    {
+      "name": "ProductCatalogReadPort",
+      "owner": "product",
+      "operations": [
+        "read_product_projection",
+        "list_published_products"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_product_projection",
+      "degraded_modes": [
+        "use_cart_product_snapshot",
+        "show_product_refresh_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat",
+        "graphql_storefront_compat"
+      ]
+    },
+    {
+      "module": "pricing",
+      "profile": "pricing_product_projection",
+      "degraded_modes": [
+        "skip_product_enrichment"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-product/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "CatalogService",
+    "source": "crates/rustok-product/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-product/contracts/product-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "read_product_projection",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_published_products",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat",
+        "graphql_storefront_compat"
+      ],
+      "degraded_modes": [
+        "use_cart_product_snapshot",
+        "show_product_refresh_required",
+        "skip_product_enrichment"
+      ]
+    }
+  }
+}

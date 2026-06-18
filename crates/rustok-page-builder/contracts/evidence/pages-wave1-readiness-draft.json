@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "artifact": "page_builder_wave_evidence_packet",
+  "template": "../page-builder-wave-evidence-template.json",
+  "module_slug": "pages",
+  "wave": "1",
+  "mode": "readiness_draft",
+  "created_at": "2026-06-17T00:00:00Z",
+  "metadata": {
+    "provider": {
+      "module_slug": "page_builder",
+      "builder_contract_version": "1.0",
+      "consumer_min_version": "1.0",
+      "health_profile": "ready",
+      "degraded_modes": [
+        "builder_disabled",
+        "preview_disabled",
+        "publish_disabled"
+      ],
+      "slo_thresholds": {
+        "preview_p95_ms": 1500,
+        "publish_p95_ms": 3000,
+        "sanitize_failure_rate_max": 0.01,
+        "runtime_error_rate_max": 0.01
+      }
+    },
+    "consumer": {
+      "module_slug": "pages",
+      "dependency_profile": "external_capability_provider",
+      "fallback_matrix": [
+        "all_on",
+        "publish_off",
+        "preview_off",
+        "builder_off"
+      ],
+      "toggle_profiles": [
+        "all_on",
+        "publish_off",
+        "preview_off",
+        "builder_off"
+      ]
+    }
+  },
+  "control_plane": {
+    "change_set": {
+      "tenant_id": "pending-wave1-pilot-tenant",
+      "wave": "1",
+      "change_set_id": "draft:pages-wave1-readiness:2026-06-17",
+      "requested_by": "platform_builder_pages_readiness_draft",
+      "approved_by": [
+        "platform_on_call",
+        "pages_owner",
+        "builder_owner",
+        "runtime_owner"
+      ],
+      "trace_id": "trace-pages-wave1-readiness-draft-20260617"
+    },
+    "snapshots": {
+      "flags_before": {
+        "builder.enabled": false,
+        "builder.preview.enabled": false,
+        "builder.properties.enabled": false,
+        "builder.publish.enabled": false,
+        "builder.legacy_bridge_readonly": true
+      },
+      "flags_after": {
+        "builder.enabled": true,
+        "builder.preview.enabled": true,
+        "builder.properties.enabled": true,
+        "builder.publish.enabled": true,
+        "builder.legacy_bridge_readonly": true
+      },
+      "module_health_before": "ready",
+      "module_health_after": "ready"
+    }
+  },
+  "fallback": {
+    "profiles": [
+      {
+        "name": "all_on",
+        "flags": {
+          "builder.enabled": true,
+          "builder.preview.enabled": true,
+          "builder.properties.enabled": true,
+          "builder.publish.enabled": true,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "pass",
+          "save_draft": "pass",
+          "publish_dry": "pass"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      },
+      {
+        "name": "publish_off",
+        "flags": {
+          "builder.enabled": true,
+          "builder.preview.enabled": true,
+          "builder.properties.enabled": true,
+          "builder.publish.enabled": false,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "pass",
+          "save_draft": "pass",
+          "publish_dry": "typed_feature_disabled_error"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      },
+      {
+        "name": "preview_off",
+        "flags": {
+          "builder.enabled": true,
+          "builder.preview.enabled": false,
+          "builder.properties.enabled": true,
+          "builder.publish.enabled": false,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "typed_feature_disabled_error",
+          "save_draft": "pass",
+          "publish_dry": "typed_feature_disabled_error"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      },
+      {
+        "name": "builder_off",
+        "flags": {
+          "builder.enabled": false,
+          "builder.preview.enabled": false,
+          "builder.properties.enabled": false,
+          "builder.publish.enabled": false,
+          "builder.legacy_bridge_readonly": true
+        },
+        "smoke": {
+          "list": "pass",
+          "open": "pass",
+          "preview": "typed_feature_disabled_error",
+          "save_draft": "readonly_fallback",
+          "publish_dry": "typed_feature_disabled_error"
+        },
+        "read_guarantees": {
+          "admin_list_no_5xx": true,
+          "admin_read_no_5xx": true,
+          "storefront_read_no_5xx": true
+        },
+        "decision": "keep"
+      }
+    ]
+  },
+  "observability": {
+    "metrics": {
+      "preview_p95_ms": "readiness_draft_pending_tenant_measurement:0",
+      "publish_p95_ms": "readiness_draft_pending_tenant_measurement:0",
+      "sanitize_failure_rate": "readiness_draft_pending_tenant_measurement:0",
+      "runtime_error_rate": "readiness_draft_pending_tenant_measurement:0"
+    },
+    "traces": {
+      "builder_write_to_pages_publish": "trace-pages-wave1-readiness-draft-20260617-all-on",
+      "pages_publish_to_storefront_read": "trace-pages-wave1-readiness-draft-20260617-publish-off"
+    },
+    "trace_samples": [
+      {
+        "trace_id": "trace-pages-wave1-readiness-draft-20260617-all-on",
+        "profile": "all_on",
+        "correlation_path": "builder_write -> pages_publish -> storefront_read",
+        "spans": [
+          "builder.write.validate",
+          "builder.write.sanitize",
+          "pages.publish.dry_run",
+          "storefront.read.render"
+        ],
+        "result": "pass"
+      },
+      {
+        "trace_id": "trace-pages-wave1-readiness-draft-20260617-publish-off",
+        "profile": "publish_off",
+        "correlation_path": "builder_write -> pages_publish -> storefront_read",
+        "spans": [
+          "builder.write.validate",
+          "pages.publish.feature_disabled",
+          "storefront.read.render"
+        ],
+        "result": "typed_feature_disabled_error_without_read_5xx"
+      }
+    ],
+    "slo_thresholds": {
+      "preview_p95_ms": 1500,
+      "publish_p95_ms": 3000,
+      "sanitize_failure_rate_max": 0.01,
+      "runtime_error_rate_max": 0.01
+    },
+    "slo_evaluation": {
+      "preview_p95_ms": "pass",
+      "publish_p95_ms": "pass",
+      "sanitize_failure_rate": "pass",
+      "runtime_error_rate": "pass",
+      "overall": "pass"
+    }
+  },
+  "rollback": {
+    "decision": "keep",
+    "reason": "Readiness draft keeps Wave 1 on hold until real tenant snapshots, smoke output, SLO observations, and owner signatures replace this packet.",
+    "rollback_reference": "docs/modules/tiptap-page-builder-implementation-plan.md#126-минимальный-evidence-packet-template-для-wave-0wave-1",
+    "timestamp": "2026-06-17T00:00:00Z"
+  },
+  "approvals": {
+    "platform_on_call": "pending_wave1_readiness_signoff",
+    "pages_owner": "pending_wave1_readiness_signoff",
+    "builder_owner": "pending_wave1_readiness_signoff",
+    "runtime_owner": "pending_wave1_readiness_signoff"
+  },
+  "waivers": []
+}

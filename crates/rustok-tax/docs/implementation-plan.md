@@ -1,15 +1,27 @@
 ﻿# План реализации `rustok-tax`
 
-Статус: foundation phase.
+Статус: FBA provider boundary in progress.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: fba_provider_static_evidence
+- Last checkpoint: Tax calculation provider boundary now has a neutral `TaxCalculationPort`, module metadata, machine-readable registry and static evidence verified by `npm run verify:tax:fba`.
+- Next step: Replace static contract evidence with runtime contract execution and fallback smoke before any `boundary_ready` promotion.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-06-18T00:00:00Z
+
+
+## FFA/FBA status
+
+- FFA status: `not_started`
+- FBA status: `in_progress`
+- Structural shape: `no_ui_boundary`
+- Evidence:
+  - FBA provider registry `crates/rustok-tax/contracts/tax-fba-registry.json`, static contract evidence `crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json` and neutral `TaxCalculationPort`/`tax.calculation.v1` are locked for cart tax calculation consumers; runtime contract execution/fallback smoke remain pending before `boundary_ready`;
+  - `scripts/verify/verify-tax-fba.mjs` checks manifest metadata, local/central plan sync, typed `PortContext`/`PortError`, in-process `TaxService` implementation, serializable tax DTOs and static evidence drift.
+- Last verified at (UTC): 2026-06-18T00:00:00Z
+- Owner: `rustok-tax` module team
 
 ## Цель
 

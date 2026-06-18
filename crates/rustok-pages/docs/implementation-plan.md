@@ -41,6 +41,7 @@
 - Latest FBA rollout update: manifest `fba.builder_consumer.rollout_policy` теперь закрепляет control-plane audit trail, mandatory before/after tenant snapshots, keep/rollback decision, owner sign-off, rollback target <= 10 минут без redeploy, SLO rollback triggers и pilot smoke `preview -> properties -> publish(dry)`; `verify-page-builder-consumer-readiness.mjs pages` проверяет эти markers без компиляции.
 - Latest legacy bridge update: `verify-page-builder-pages-legacy-bridge.mjs` добавлен в FBA baseline и фиксирует read/bridge semantics для legacy `blocks`: import/create разрешён, visual-builder body writes не удаляют blocks, update surface не получает новый block write contract, admin/storefront показывают compatibility evidence.
 - Latest FFA maintenance update: admin capability-card presentation helpers (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`) и storefront list helpers (`page_link_href`, `page_status_label`) вынесены в `core`, а `verify-pages-ui-boundary.mjs` теперь фиксирует эти no-compile boundary markers.
+- Latest FFA maintenance update: admin save/publish busy-state helpers (`is_save_action_busy`, `is_publish_action_disabled`) и storefront load-error composition (`load_error_message`) вынесены в `core`; быстрый `verify-pages-ui-boundary.mjs` и его fixture tests закрепляют новые no-compile boundary markers.
 - Latest quality backlog update: README/docs schema audit refreshed module-owned storage tables and pages-vs-builder ownership split; RBAC regression tests now lock admin/authenticated bypass for draft and page-channel allowlist semantics; explicit `npm run verify:page-builder:error-catalog` entry documents backend/UI error catalog drift gate without Cargo compilation.
 - Latest RBAC Wave 1 readiness update: no-compile guardrail `verify-page-builder-pages-rbac-readiness.mjs` now pins RBAC regression coverage and local/central docs sync inside the FBA baseline without running Cargo.
 
@@ -308,6 +309,8 @@ Rollback target: переключение tenant flags назад должно �
 - [x] Slice 18: storefront Leptos render/bind code moved to explicit `storefront/src/ui/leptos.rs` adapter; crate root now only wires modules and re-exports `PagesView`.
 - [x] Slice 19: admin capability-card view helpers moved to core (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`).
 - [x] Slice 20: storefront published-page link/status presentation moved to core (`page_link_href`, `page_status_label`).
+- [x] Slice 21: admin save/publish busy-state helpers moved to core (`is_save_action_busy`, `is_publish_action_disabled`).
+- [x] Slice 22: storefront load-error composition moved to core (`load_error_message`).
 
 
 ## Phase B pilot closure (rustok-pages)

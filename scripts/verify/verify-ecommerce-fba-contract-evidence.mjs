@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const defaultModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory'];
+const defaultModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
 const defaultRoot = new URL('../../', import.meta.url);
 
 export class EcommerceFbaContractEvidenceError extends Error {
@@ -92,7 +92,7 @@ export function verifyEcommerceFbaContractEvidence({
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     verifyEcommerceFbaContractEvidence();
-    console.log('ecommerce FBA static contract evidence verified: payment, fulfillment, order, pricing, inventory');
+    console.log('ecommerce FBA static contract evidence verified: payment, fulfillment, order, pricing, inventory, product, customer, cart');
   } catch (error) {
     if (error instanceof EcommerceFbaContractEvidenceError) {
       console.error(`ecommerce FBA contract evidence verification failed: ${error.message}`);
