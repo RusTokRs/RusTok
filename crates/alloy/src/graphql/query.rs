@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::{storage::ScriptQuery, ScriptRegistry};
 
 use super::{
-    require_admin, runtime_from_graphql_ctx, GqlEventType, GqlExecutionLogEntry, GqlScript,
-    GqlScriptConnection, GqlScriptStatus,
+    require_admin, runtime_from_graphql_ctx, GqlEventType, GqlExecutionLogConnection,
+    GqlExecutionLogEntry, GqlScript, GqlScriptConnection, GqlScriptStatus,
 };
 
 #[derive(Default)]
@@ -155,5 +155,86 @@ impl AlloyQuery {
         );
 
         Ok(scripts)
+    }
+
+    async fn script_execution_history(
+        &self,
+        ctx: &Context<'_>,
+        script_id: Uuid,
+        #[graphql(default)] pagination: PaginationInput,
+    ) -> Result<GqlExecutionLogConnection> {
+        require_admin(ctx).await?;
+        let state = runtime_from_graphql_ctx(ctx)?;
+        let requested_limit = pagination.requested_limit();
+        let (offset, limit) = pagination.normalize()?;
+
+        let mut entries = state
+            .execution_log
+            .list_for_script(script_id, (offset + limit + 1) as u64)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .into_iter()
+            .skip(offset as usize)
+            .map(GqlExecutionLogEntry::from)
+            .collect::<Vec<_>>();
+        let has_next = entries.len() > limit as usize;
+        entries.truncate(limit as usize);
+
+        metrics::record_read_path_budget(
+            "graphql",
+            "alloy.script_execution_history",
+            Some(requested_limit),
+            limit as u64,
+            entries.len(),
+        );
+
+        Ok(GqlExecutionLogConnection {
+            page_info: PageInfo::new(
+                offset + entries.len() as i64 + if has_next { 1 } else { 0 },
+                offset,
+                limit,
+            ),
+            items: entries,
+        })
+    }
+
+    async fn recent_script_executions(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(default)] pagination: PaginationInput,
+    ) -> Result<GqlExecutionLogConnection> {
+        require_admin(ctx).await?;
+        let state = runtime_from_graphql_ctx(ctx)?;
+        let requested_limit = pagination.requested_limit();
+        let (offset, limit) = pagination.normalize()?;
+
+        let mut entries = state
+            .execution_log
+            .list_recent((offset + limit + 1) as u64)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            .into_iter()
+            .skip(offset as usize)
+            .map(GqlExecutionLogEntry::from)
+            .collect::<Vec<_>>();
+        let has_next = entries.len() > limit as usize;
+        entries.truncate(limit as usize);
+
+        metrics::record_read_path_budget(
+            "graphql",
+            "alloy.recent_script_executions",
+            Some(requested_limit),
+            limit as u64,
+            entries.len(),
+        );
+
+        Ok(GqlExecutionLogConnection {
+            page_info: PageInfo::new(
+                offset + entries.len() as i64 + if has_next { 1 } else { 0 },
+                offset,
+                limit,
+            ),
+            items: entries,
+        })
     }
 }

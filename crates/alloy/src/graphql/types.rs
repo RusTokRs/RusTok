@@ -266,6 +266,12 @@ impl From<ExecutionLogEntry> for GqlExecutionLogEntry {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlExecutionLogConnection {
+    pub items: Vec<GqlExecutionLogEntry>,
+    pub page_info: PageInfo,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlScriptConnection {
     pub items: Vec<GqlScript>,
     pub page_info: PageInfo,

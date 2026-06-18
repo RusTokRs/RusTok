@@ -70,11 +70,15 @@ availability из побочных эффектов регистрации.
    `ScriptExecutor` пишет execution-history запись для каждого runtime path,
    подключённого через `AlloyRuntime`: GraphQL/HTTP manual runs, hooks,
    on-commit scripts и scheduler jobs. Replay должен сохранять тот же phase и
-   tenant context, чтобы bridge/helper availability оставалась phase-aware. Для
-   операторского просмотра используйте GraphQL `scriptExecutions(scriptId, limit)`
-   или REST `GET /api/alloy/executions?script_id=<uuid>&limit=<1..100>`; обе
-   поверхности возвращают только строки текущего tenant и используют canonical
-   `script_executions` history.
+   tenant context, чтобы bridge/helper availability оставалась phase-aware.
+   Для чтения истории используйте поддержанные transport surfaces:
+   GraphQL `scriptExecutionHistory(scriptId, pagination)` /
+   `recentScriptExecutions(pagination)`, HTTP/Loco
+   `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` или
+   generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
+   Все ответы основаны на `SeaOrmExecutionLog`, отсортированы newest-first и
+   возвращают canonical fields: execution id, script id/name, phase, outcome,
+   duration, error, user/tenant context и creation time.
 5. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.
