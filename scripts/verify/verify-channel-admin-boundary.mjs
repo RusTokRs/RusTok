@@ -53,12 +53,18 @@ function assertNotContains(text, pattern, description) {
 function assertChannelAdminBoundary() {
   const libPath = "crates/rustok-channel/admin/src/lib.rs";
   const corePath = "crates/rustok-channel/admin/src/core.rs";
-  const uiPath = "crates/rustok-channel/admin/src/ui/leptos.rs";
+  const uiModPath = "crates/rustok-channel/admin/src/ui/leptos/mod.rs";
+  const uiComponentPaths = [
+    "crates/rustok-channel/admin/src/ui/leptos/runtime_context.rs",
+    "crates/rustok-channel/admin/src/ui/leptos/policy_workbench.rs",
+    "crates/rustok-channel/admin/src/ui/leptos/policy_set_card.rs",
+    "crates/rustok-channel/admin/src/ui/leptos/channel_card.rs",
+  ];
   const transportModPath = "crates/rustok-channel/admin/src/transport/mod.rs";
   const nativeAdapterPath = "crates/rustok-channel/admin/src/transport/native_server_adapter.rs";
   const restAdapterPath = "crates/rustok-channel/admin/src/transport/rest_adapter.rs";
 
-  for (const path of [libPath, corePath, uiPath, transportModPath, nativeAdapterPath, restAdapterPath]) {
+  for (const path of [libPath, corePath, uiModPath, ...uiComponentPaths, transportModPath, nativeAdapterPath, restAdapterPath]) {
     assertExists(path, `${path}: expected channel admin FFA boundary file`);
   }
   assertMissing(
@@ -72,7 +78,8 @@ function assertChannelAdminBoundary() {
 
   const lib = readRepo(libPath);
   const core = readRepo(corePath);
-  const ui = readRepo(uiPath);
+  const uiMod = readRepo(uiModPath);
+  const ui = [uiMod, ...uiComponentPaths.map(readRepo)].join("\n");
   const transportMod = readRepo(transportModPath);
   const nativeAdapter = readRepo(nativeAdapterPath);
   const restAdapter = readRepo(restAdapterPath);
@@ -87,9 +94,33 @@ function assertChannelAdminBoundary() {
     assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
   }
   assertContains(core, "channel_selection_exists", `${corePath}: core must own selected-channel route cleanup policy`);
+  assertContains(core, "ChannelPolicySelectionCleanup", `${corePath}: core must own policy-set/rule route cleanup outcome`);
+  assertContains(core, "channel_policy_selection_cleanup", `${corePath}: core must own policy-set/rule route cleanup policy`);
+  assertContains(core, "PolicyRuleFormState", `${corePath}: core must own policy-rule form state`);
+  assertContains(core, "policy_rule_create_form_state", `${corePath}: core must own policy-rule create defaults`);
+  assertContains(core, "policy_rule_edit_form_state", `${corePath}: core must own policy-rule edit mapping`);
+  assertContains(core, "reorder_policy_rule_ids", `${corePath}: core must own policy-rule reorder boundary policy`);
+  assertContains(core, "fn create_payload(&self)", `${corePath}: core form state must build create payloads`);
+  assertContains(core, "fn update_payload(&self)", `${corePath}: core form state must build update payloads`);
+  assertContains(core, "policy_rule_active_update_payload", `${corePath}: core must build active toggle payloads`);
 
-  assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
-  assertContains(ui, "channel_selection_exists", `${uiPath}: Leptos adapter must consume core-owned route selection policy`);
+  assertContains(uiMod, "mod channel_card;", `${uiModPath}: adapter directory must wire ChannelCard`);
+  assertContains(uiMod, "mod policy_set_card;", `${uiModPath}: adapter directory must wire PolicySetCard`);
+  assertContains(uiMod, "mod policy_workbench;", `${uiModPath}: adapter directory must wire PolicyWorkbench`);
+  assertContains(uiMod, "mod runtime_context;", `${uiModPath}: adapter directory must wire RuntimeContext`);
+  assertContains(ui, "use crate::transport;", `${uiModPath}: Leptos adapter must call the module-owned transport facade`);
+  assertContains(ui, "channel_selection_exists", `${uiModPath}: Leptos adapter must consume core-owned route selection policy`);
+  assertContains(ui, "channel_policy_selection_cleanup", `${uiModPath}: Leptos adapter must consume core-owned policy selection cleanup`);
+  assertContains(ui, "policy_rule_edit_form_state", `${uiModPath}: Leptos adapter must consume core-owned policy-rule form mapping`);
+  assertContains(ui, "reorder_policy_rule_ids", `${uiModPath}: Leptos adapter must consume core-owned reorder policy`);
+  assertContains(ui, ".create_payload()", `${uiModPath}: Leptos adapter must consume core-owned create payload preparation`);
+  assertContains(ui, ".update_payload()", `${uiModPath}: Leptos adapter must consume core-owned update payload preparation`);
+  assertContains(ui, "policy_rule_active_update_payload", `${uiModPath}: Leptos adapter must consume core-owned active payload preparation`);
+  assertNotContains(ui, ".find(|policy_set| policy_set.policy_set.id", `${uiModPath}: UI must not own policy-set selection lookup`);
+  assertNotContains(ui, "fn policy_rule_edit_form_state(", `${uiModPath}: UI must not define policy-rule edit mapping`);
+  assertNotContains(ui, "fn reorder_rule_ids(", `${uiModPath}: UI must not define policy-rule reorder bounds policy`);
+  assertNotContains(ui, "CreateResolutionRulePayload {", `${uiModPath}: UI must not construct policy-rule create payloads inline`);
+  assertNotContains(ui, "&UpdateResolutionRulePayload {", `${uiModPath}: UI must not construct policy-rule update payloads inline`);
   for (const marker of [
     "mod api;",
     "crate::api",
@@ -99,7 +130,7 @@ function assertChannelAdminBoundary() {
     "reqwest::",
     "#[server",
   ]) {
-    assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw/pre-FFA transport (${marker})`);
+    assertNotContains(ui, marker, `${uiModPath}: UI adapter must not call raw/pre-FFA transport (${marker})`);
   }
 
   assertContains(transportMod, "mod native_server_adapter;", `${transportModPath}: transport facade must wire native server adapter`);
