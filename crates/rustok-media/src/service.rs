@@ -148,6 +148,7 @@ impl MediaService {
     ) -> Result<MediaTranslationItem> {
         // Ensure media belongs to tenant
         let _ = self.get(tenant_id, media_id).await?;
+        let input = input.normalize().map_err(MediaError::InvalidLocale)?;
 
         let existing = TransEntity::find()
             .filter(TransCol::MediaId.eq(media_id))

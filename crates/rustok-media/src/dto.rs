@@ -35,6 +35,45 @@ pub struct UpsertTranslationInput {
     pub caption: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizedTranslationInput {
+    pub locale: String,
+    pub title: Option<String>,
+    pub alt_text: Option<String>,
+    pub caption: Option<String>,
+}
+
+impl UpsertTranslationInput {
+    /// Normalizes user-entered translation metadata at the module boundary.
+    ///
+    /// The media runtime accepts host-selected locales, but the stored locale key
+    /// must be explicit, short, and path/header-safe because it is reused by
+    /// GraphQL, REST, and admin transport adapters. Optional text fields are
+    /// trimmed and empty strings are stored as `NULL` to keep read-side fallback
+    /// semantics deterministic.
+    pub fn normalize(self) -> std::result::Result<NormalizedTranslationInput, String> {
+        let locale = normalize_locale(self.locale)?;
+
+        Ok(NormalizedTranslationInput {
+            locale,
+            title: normalize_string(self.title),
+            alt_text: normalize_string(self.alt_text),
+            caption: normalize_string(self.caption),
+        })
+    }
+}
+
+fn normalize_locale(value: String) -> std::result::Result<String, String> {
+    let locale = value.trim().to_ascii_lowercase().replace('_', "-");
+    let valid = !locale.is_empty()
+        && locale.len() <= 32
+        && locale
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-');
+
+    valid.then_some(locale).ok_or(value)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaTranslationItem {
     pub id: Uuid,
@@ -150,7 +189,46 @@ pub const DEFAULT_MAX_SIZE: u64 = 50 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests {
-    use super::MediaImageDescriptor;
+    use super::{MediaImageDescriptor, UpsertTranslationInput};
+
+    #[test]
+    fn upsert_translation_input_normalizes_locale_and_optional_text() {
+        let normalized = UpsertTranslationInput {
+            locale: " EN_us ".to_string(),
+            title: Some("  Hero  ".to_string()),
+            alt_text: Some("   ".to_string()),
+            caption: Some("Caption".to_string()),
+        }
+        .normalize()
+        .expect("input should normalize");
+
+        assert_eq!(normalized.locale, "en-us");
+        assert_eq!(normalized.title.as_deref(), Some("Hero"));
+        assert_eq!(normalized.alt_text, None);
+        assert_eq!(normalized.caption.as_deref(), Some("Caption"));
+    }
+
+    #[test]
+    fn upsert_translation_input_rejects_empty_or_unsafe_locale() {
+        for locale in [
+            "   ",
+            "en/us",
+            "ru@test",
+            "abcdefghijklmnopqrstuvwxyzabcdefg",
+        ] {
+            assert!(
+                UpsertTranslationInput {
+                    locale: locale.to_string(),
+                    title: None,
+                    alt_text: None,
+                    caption: None,
+                }
+                .normalize()
+                .is_err(),
+                "locale `{locale}` should be rejected"
+            );
+        }
+    }
 
     #[test]
     fn media_image_descriptor_normalizes_mime_and_derived_fields() {

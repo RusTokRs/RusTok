@@ -6,7 +6,7 @@
 
 ## Responsibilities
 
-- Provide the shared media domain service and SeaORM entities for uploads and localized metadata.
+- Provide the shared media domain service and SeaORM entities for uploads and localized metadata with normalized locale/text translation inputs.
 - Own media GraphQL and REST transport adapters for module-facing APIs.
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Integrate storage-backed file lifecycle with tenant-aware media records.
@@ -37,7 +37,7 @@
 - `MediaItem`
 - `MediaTranslationItem`
 - `UploadInput`
-- `UpsertTranslationInput`
+- `UpsertTranslationInput` / `NormalizedTranslationInput`
 
 ## Docs
 
