@@ -8,11 +8,11 @@ SPI и post-order delivery changes ещё остаются в активном b
 ## Execution checkpoint
 
 - Current phase: ffa_storefront_selection_boundary
-- Last checkpoint: Provider SPI static contract evidence added for rate quote/create label/cancel error/idempotency boundaries plus fulfillment tracking webhook replay requirements; `npm run verify:ecommerce:fba` now verifies the provider SPI evidence packet alongside FBA registries and port contract evidence while lifecycle persistence remains in `FulfillmentService`.
-- Next step: Move the select-shipping-option transport facade/server-function from commerce compatibility into `rustok-fulfillment/storefront` while keeping GraphQL fallback parity until host cutover evidence is captured, then replace static provider SPI evidence with runtime contract execution.
+- Last checkpoint: no-compile storefront transport increment moved native-first/GraphQL fallback policy and typed transport errors into `rustok-fulfillment/storefront/src/transport.rs`; commerce compatibility adapter now delegates select-shipping-option fallback decisions to the owner facade while the server function remains in commerce until host cutover.
+- Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then replace static provider SPI evidence with runtime contract execution.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-16T00:00:00Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 ## FFA/FBA status
 
@@ -27,7 +27,7 @@ SPI и post-order delivery changes ещё остаются в активном b
   - provider SPI evidence теперь закреплён в `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`: manual/remote-placeholder cases для `quote_rates`/`create_label`/`cancel` проверяют typed provider error mapping, idempotency-key preservation и запрет persistence в adapter layer, а tracking webhook replay contract фиксирует idempotent duplicate delivery и делегирование lifecycle transition в `FulfillmentService`; packet проверяется `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` через `npm run verify:ecommerce:fba` и не повышает FBA статус без runtime execution;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
-  - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core split and aggregate package wiring while commerce temporarily retains transport callback.
+  - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs`, `storefront/src/transport.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation/normalization plus native-first/GraphQL fallback policy consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core/transport split and aggregate package wiring while commerce temporarily retains the SSR endpoint body.
 - Last verified at (UTC): 2026-06-13T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 
@@ -47,7 +47,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - admin/post-order create fulfillment path в `rustok-commerce` уже использует typed `items[]` и валидирует order-line ownership + remaining quantity до вызова `FulfillmentService`;
 - item-level `ship` / `deliver` adjustments уже работают поверх typed fulfillment items и пишут language-agnostic audit trail в metadata fulfillment/item'ов; `delivered_note` не дублируется в audit JSON;
 - explicit `reopen` / `reship` recovery path уже работает поверх того же typed fulfillment boundary: delivered fulfillment можно вернуть в `shipped`, cancelled fulfillment можно вернуть в actionable state, а повторная shipment attempt фиксируется audit-safe без language-dependent metadata;
-- admin/operator surface уже использует typed lifecycle для shipping options, а module-owned route `rustok-fulfillment/admin` забрал ownership shipping-option UI у umbrella `rustok-commerce-admin` и теперь держит `admin/src/core.rs` настройки request по умолчанию, `admin/src/transport.rs` facade и явный `admin/src/ui/leptos.rs` адаптер отрисовки; storefront handoff presentation и request normalization для shipping selection теперь живут в `rustok-fulfillment/storefront`.
+- admin/operator surface уже использует typed lifecycle для shipping options, а module-owned route `rustok-fulfillment/admin` забрал ownership shipping-option UI у umbrella `rustok-commerce-admin` и теперь держит `admin/src/core.rs` настройки request по умолчанию, `admin/src/transport.rs` facade и явный `admin/src/ui/leptos.rs` адаптер отрисовки; storefront handoff presentation, request normalization и transport fallback policy для shipping selection теперь живут в `rustok-fulfillment/storefront`, а commerce compatibility пока держит только endpoint/body adapter до host cutover.
 
 ## Этапы
 

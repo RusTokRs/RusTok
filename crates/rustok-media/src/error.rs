@@ -15,6 +15,9 @@ pub enum MediaError {
     #[error("File too large: {size} bytes (max {max} bytes)")]
     FileTooLarge { size: u64, max: u64 },
 
+    #[error("Invalid locale: {0}")]
+    InvalidLocale(String),
+
     #[error("Storage error: {0}")]
     Storage(#[from] rustok_storage::StorageError),
 

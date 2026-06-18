@@ -15,6 +15,7 @@ use crate::model::{EntityProxy, ScriptStatus};
 use crate::runner::ScriptOrchestrator;
 use crate::storage::{ScriptQuery, ScriptRegistry};
 use crate::utils::{dynamic_to_json, json_to_dynamic};
+use crate::SeaOrmExecutionLog;
 
 use super::dto::*;
 
@@ -22,6 +23,7 @@ pub struct AppState<S: ScriptRegistry> {
     pub registry: Arc<S>,
     pub orchestrator: Arc<ScriptOrchestrator<S>>,
     pub engine: Arc<crate::engine::ScriptEngine>,
+    pub execution_log: Arc<SeaOrmExecutionLog>,
 }
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -327,6 +329,59 @@ pub async fn run_script_by_name<S: ScriptRegistry>(
         changes,
         return_value,
     }))
+}
+
+#[instrument(skip(state))]
+pub async fn list_recent_executions<S: ScriptRegistry>(
+    State(state): State<Arc<AppState<S>>>,
+    Query(query): Query<ListScriptsQuery>,
+) -> ApiResult<Json<ListExecutionLogResponse>> {
+    let requested = query.offset() + query.limit();
+    let executions = state
+        .execution_log
+        .list_recent(requested)
+        .await
+        .map_err(ApiError::from)?;
+    let total = executions.len();
+    let executions = executions
+        .into_iter()
+        .skip(query.offset() as usize)
+        .map(ExecutionLogResponse::from)
+        .collect();
+
+    Ok(Json(ListExecutionLogResponse::new(
+        executions,
+        total,
+        query.page,
+        query.per_page,
+    )))
+}
+
+#[instrument(skip(state), fields(script_id = %id))]
+pub async fn list_script_executions<S: ScriptRegistry>(
+    State(state): State<Arc<AppState<S>>>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ListScriptsQuery>,
+) -> ApiResult<Json<ListExecutionLogResponse>> {
+    let requested = query.offset() + query.limit();
+    let executions = state
+        .execution_log
+        .list_for_script(id, requested)
+        .await
+        .map_err(ApiError::from)?;
+    let total = executions.len();
+    let executions = executions
+        .into_iter()
+        .skip(query.offset() as usize)
+        .map(ExecutionLogResponse::from)
+        .collect();
+
+    Ok(Json(ListExecutionLogResponse::new(
+        executions,
+        total,
+        query.page,
+        query.per_page,
+    )))
 }
 
 #[instrument(skip(state))]

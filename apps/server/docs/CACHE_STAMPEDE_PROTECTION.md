@@ -181,6 +181,9 @@ Stampede protection is critical in these scenarios:
 When provisioning or deprovisioning a tenant, host flows must call
 `invalidate_tenant_cache_by_uuid`, `invalidate_tenant_cache_by_slug`, or
 `invalidate_tenant_cache_by_host` after create/update/deactivate/domain changes.
+The resolver regression matrix covers stale positive cache after deactivate/update,
+negative cache after create-like flows, host cache after domain changes, and UUID
+invalidation refreshes.
 
 Without explicit invalidation, stale resolver state can persist until TTL expiry:
 - positive cache: `TENANT_CACHE_TTL = 300s`

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-16T00:00:00Z",
+  "updatedAt": "2026-06-17T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -170,11 +170,32 @@
       "command": "rg -n \"storefront/seo-page-context|fetch_seo_page_context_server|fetch_seo_page_context_graphql|to_seo_page_context\" apps/storefront/src/shared/context/seo_page_context.rs",
       "compileFree": true,
       "expected": "Leptos storefront keeps server-function first with GraphQL fallback and shared renderer conversion"
+    },
+    {
+      "gate": "backend_rbac_gating_static_review",
+      "scope": "crates/rustok-seo/src/graphql/mod.rs;crates/rustok-seo/src/controllers/mod.rs",
+      "command": "rg -n \"require_seo_permission|ensure_seo_permission|SEO_MANAGE|SEO_READ\" crates/rustok-seo/src/graphql/mod.rs crates/rustok-seo/src/controllers/mod.rs",
+      "compileFree": true,
+      "expected": "GraphQL and REST control-plane surfaces keep explicit SEO_READ/SEO_MANAGE permission guards."
+    },
+    {
+      "gate": "replay_index_idempotency_static_review",
+      "scope": "crates/rustok-seo/src/services/events.rs;crates/rustok-seo/src/entities/mod.rs;crates/rustok-seo/src/migrations",
+      "command": "rg -n \"idempotency_key|idx_seo_event_deliveries_idempotency|idx_seo_index_deliveries_unique_transition|ReplayCompleted|RepairOnly\" crates/rustok-seo/src/services/events.rs crates/rustok-seo/src/entities/mod.rs crates/rustok-seo/src/migrations",
+      "compileFree": true,
+      "expected": "Delivery trackers and replay state symbols keep idempotency and forward-only replay invariants visible."
+    },
+    {
+      "gate": "next_host_runtime_entrypoints_static_review",
+      "scope": "apps/next-frontend/src/app/robots.ts;apps/next-frontend/src/app/sitemap.ts;apps/next-frontend/src/app/[locale]/page.tsx",
+      "command": "rg -n \"resolveRobotsMetadata|resolveSitemapMetadata|generateMetadata|resolveSeoPageContextForRoute|buildSeoMetadata\" apps/next-frontend/src/app",
+      "compileFree": true,
+      "expected": "Next robots, sitemap and page metadata remain wired to runtime SEO adapter entrypoints."
     }
   ],
   "d8EvidencePacket": {
     "status": "lightweight_static_baseline",
-    "capturedAt": "2026-06-16T00:00:00Z",
+    "capturedAt": "2026-06-17T00:00:00Z",
     "compilationPolicy": "not_run_by_request",
     "coveredBatches": [
       "D8.1 fixture invariants",
@@ -183,7 +204,10 @@
       "D9.1 docs sync matrix seed",
       "D9.3 owner sign-off checklist seed",
       "D8.2 backend transport static contract",
-      "D8.3 Leptos storefront static contract"
+      "D8.3 Leptos storefront static contract",
+      "D8.2 RBAC/module gating static matrix",
+      "D8.3 replay/index idempotency static matrix",
+      "D8.3 host runtime entrypoint static matrix"
     ],
     "deferredBatches": [
       "D8.1 Rust unit execution",
@@ -198,7 +222,10 @@
       "missing long-tail diff allowlist",
       "missing compile-free verification matrix",
       "missing backend transport static evidence",
-      "missing Leptos storefront server-function/GraphQL parity evidence"
+      "missing Leptos storefront server-function/GraphQL parity evidence",
+      "missing RBAC/module gating static evidence",
+      "missing replay/index idempotency static evidence",
+      "missing host runtime entrypoint wiring"
     ]
   },
   "docsSyncMatrix": [
@@ -297,7 +324,7 @@
       "unexplained GraphQL/REST error-code drift",
       "cursor moves backward or duplicate idempotency transition observed"
     ],
-    "staticSubstituteCapturedAt": "2026-06-16T00:00:00Z",
+    "staticSubstituteCapturedAt": "2026-06-17T00:00:00Z",
     "staticSubstituteReason": "User requested no compilations; this packet only proves contract files and adapter symbols remain wired before live backend/host evidence."
   },
   "staticEvidenceAssertions": [
@@ -352,6 +379,126 @@
         "fetch_seo_page_context_server",
         "fetch_seo_page_context_graphql",
         "to_seo_page_context"
+      ]
+    }
+  ],
+  "rbacModuleGatingMatrix": [
+    {
+      "surface": "GraphQL page context read",
+      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "seo_page_context",
+        "Permission::SEO_READ",
+        "require_seo_permission"
+      ],
+      "expected": "seoPageContext keeps read permission guard before service resolution."
+    },
+    {
+      "surface": "GraphQL index tracking/replay manage",
+      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "seo_index_delivery_status",
+        "run_seo_index_repair_replay",
+        "Permission::SEO_MANAGE"
+      ],
+      "expected": "index tracking and replay remain SEO_MANAGE-gated."
+    },
+    {
+      "surface": "REST diagnostics/tracking/replay manage",
+      "path": "crates/rustok-seo/src/controllers/mod.rs",
+      "mustContain": [
+        "ensure_seo_permission",
+        "Permission::SEO_MANAGE",
+        "run_index_repair_replay"
+      ],
+      "expected": "REST control-plane parity endpoints keep permission checks."
+    },
+    {
+      "surface": "Next runtime fallback classification",
+      "path": "apps/next-frontend/src/shared/seo/runtime.ts",
+      "mustContain": [
+        "module_disabled",
+        "PERMISSION_DENIED",
+        "TRANSPORT_ERROR",
+        "fallback_static"
+      ],
+      "expected": "Next host maps module gating, permission and transport failures to safe static fallback."
+    }
+  ],
+  "replayIndexInvariantMatrix": [
+    {
+      "invariant": "event delivery idempotency",
+      "path": "crates/rustok-seo/src/services/events.rs",
+      "mustContain": [
+        "load_delivery_by_idempotency_key",
+        "skipping duplicate SEO domain event emission",
+        "idx_seo_event_deliveries_idempotency"
+      ]
+    },
+    {
+      "invariant": "index delivery unique transition",
+      "path": "crates/rustok-seo/src/services/events.rs",
+      "mustContain": [
+        "upsert_index_delivery",
+        "idx_seo_index_deliveries_unique_transition",
+        "skipping duplicate"
+      ]
+    },
+    {
+      "invariant": "forward-only replay modes",
+      "path": "crates/rustok-seo/src/dto.rs",
+      "mustContain": [
+        "NotStarted",
+        "RepairOnly",
+        "ReplayRequested",
+        "Replaying",
+        "ReplayCompleted"
+      ]
+    },
+    {
+      "invariant": "operator replay API parity",
+      "path": "apps/next-admin/src/shared/api/seo.ts",
+      "mustContain": [
+        "SeoIndexReplayMode",
+        "runSeoIndexRepairReplay",
+        "/api/seo/index/repair-replay",
+        "BAD_USER_INPUT",
+        "PERMISSION_DENIED",
+        "NOT_FOUND"
+      ]
+    }
+  ],
+  "hostRuntimeEntrypointMatrix": [
+    {
+      "host": "Next frontend robots",
+      "path": "apps/next-frontend/src/app/robots.ts",
+      "mustContain": [
+        "resolveRobotsMetadata"
+      ]
+    },
+    {
+      "host": "Next frontend sitemap",
+      "path": "apps/next-frontend/src/app/sitemap.ts",
+      "mustContain": [
+        "resolveSitemapMetadata"
+      ]
+    },
+    {
+      "host": "Next frontend metadata",
+      "path": "apps/next-frontend/src/app/[locale]/page.tsx",
+      "mustContain": [
+        "generateMetadata",
+        "resolveSeoPageContextForRoute",
+        "buildSeoMetadata"
+      ]
+    },
+    {
+      "host": "Leptos storefront SSR preflight",
+      "path": "apps/storefront/src/lib.rs",
+      "mustContain": [
+        "build_seo_head",
+        "render_head_html",
+        "render_module_page_response"
       ]
     }
   ]

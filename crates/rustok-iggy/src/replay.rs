@@ -13,6 +13,8 @@ pub struct ReplayConfig {
     pub from_offset: Option<u64>,
     pub to_offset: Option<u64>,
     pub consumer_group: Option<String>,
+    pub source_partition: u32,
+    pub target_topic: Option<String>,
 }
 
 impl Default for ReplayConfig {
@@ -23,6 +25,8 @@ impl Default for ReplayConfig {
             from_offset: None,
             to_offset: None,
             consumer_group: None,
+            source_partition: 1,
+            target_topic: None,
         }
     }
 }
@@ -50,6 +54,27 @@ impl ReplayConfig {
         self.consumer_group = Some(group);
         self
     }
+
+    pub fn source_partition(mut self, partition: u32) -> Self {
+        self.source_partition = partition;
+        self
+    }
+
+    pub fn target_topic(mut self, topic: String) -> Self {
+        self.target_topic = Some(topic);
+        self
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if let (Some(from), Some(to)) = (self.from_offset, self.to_offset) {
+            if from > to {
+                return Err(rustok_core::Error::External(format!(
+                    "Replay from_offset {from} is greater than to_offset {to}"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -62,6 +87,7 @@ pub struct ActiveReplay {
     pub id: Uuid,
     pub config: ReplayConfig,
     pub status: ReplayStatus,
+    pub processed_offsets: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,18 +125,32 @@ impl ReplayManager {
             from_offset = ?config.from_offset,
             to_offset = ?config.to_offset,
             consumer_group = ?config.consumer_group,
+            source_partition = config.source_partition,
+            target_topic = ?config.target_topic,
             "Starting event replay"
         );
+
+        config.validate()?;
+        let processed_offsets = Self::planned_offsets(&config);
 
         let replay = ActiveReplay {
             id: replay_id,
             config,
             status: ReplayStatus::Running,
+            processed_offsets,
         };
 
         self.active_replays.write().await.push(replay);
 
         Ok(replay_id)
+    }
+
+    fn planned_offsets(config: &ReplayConfig) -> Vec<u64> {
+        match (config.from_offset, config.to_offset) {
+            (Some(from), Some(to)) => (from..=to).collect(),
+            (Some(from), None) => vec![from],
+            _ => Vec::new(),
+        }
     }
 
     pub async fn get_replay_status(&self, replay_id: Uuid) -> Option<ReplayStatus> {
@@ -163,6 +203,15 @@ mod tests {
         assert_eq!(config.from_offset, Some(100));
         assert_eq!(config.to_offset, Some(200));
         assert_eq!(config.consumer_group, Some("replayer".to_string()));
+    }
+
+    #[test]
+    fn replay_config_rejects_inverted_offsets() {
+        let config = ReplayConfig::new("stream1".to_string(), "topic1".to_string())
+            .from_offset(200)
+            .to_offset(100);
+
+        assert!(config.validate().is_err());
     }
 
     #[tokio::test]

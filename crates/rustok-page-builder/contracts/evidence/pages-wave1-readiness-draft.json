@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "artifact": "page_builder_wave_evidence_packet",
-  "template": "../../../rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
-  "module_slug": "forum",
+  "template": "../page-builder-wave-evidence-template.json",
+  "module_slug": "pages",
   "wave": "1",
-  "mode": "live",
-  "created_at": "2026-06-15T18:00:00Z",
+  "mode": "readiness_draft",
+  "created_at": "2026-06-17T00:00:00Z",
   "metadata": {
     "provider": {
       "module_slug": "page_builder",
@@ -25,7 +25,7 @@
       }
     },
     "consumer": {
-      "module_slug": "forum",
+      "module_slug": "pages",
       "dependency_profile": "external_capability_provider",
       "fallback_matrix": [
         "all_on",
@@ -43,17 +43,17 @@
   },
   "control_plane": {
     "change_set": {
-      "tenant_id": "live-wave1-forum",
+      "tenant_id": "pending-wave1-pilot-tenant",
       "wave": "1",
-      "change_set_id": "live:forum-wave1:2026-06-15",
-      "requested_by": "agent",
+      "change_set_id": "draft:pages-wave1-readiness:2026-06-17",
+      "requested_by": "platform_builder_pages_readiness_draft",
       "approved_by": [
         "platform_on_call",
-        "forum_owner",
+        "pages_owner",
         "builder_owner",
         "runtime_owner"
       ],
-      "trace_id": "trace-forum-wave1-live-20260615"
+      "trace_id": "trace-pages-wave1-readiness-draft-20260617"
     },
     "snapshots": {
       "flags_before": {
@@ -72,8 +72,7 @@
       },
       "module_health_before": "ready",
       "module_health_after": "ready"
-    },
-    "audit_trail": "control_plane_builder_wave_audit"
+    }
   },
   "fallback": {
     "profiles": [
@@ -173,35 +172,35 @@
   },
   "observability": {
     "metrics": {
-      "preview_p95_ms": "live_wave1_actual:120",
-      "publish_p95_ms": "live_wave1_actual:230",
-      "sanitize_failure_rate": "live_wave1_actual:0.001",
-      "runtime_error_rate": "live_wave1_actual:0.000"
+      "preview_p95_ms": "readiness_draft_pending_tenant_measurement:0",
+      "publish_p95_ms": "readiness_draft_pending_tenant_measurement:0",
+      "sanitize_failure_rate": "readiness_draft_pending_tenant_measurement:0",
+      "runtime_error_rate": "readiness_draft_pending_tenant_measurement:0"
     },
     "traces": {
-      "builder_write_to_pages_publish": "trace-forum-wave1-live-20260615-all-on",
-      "pages_publish_to_storefront_read": "trace-forum-wave1-live-20260615-publish-off"
+      "builder_write_to_pages_publish": "trace-pages-wave1-readiness-draft-20260617-all-on",
+      "pages_publish_to_storefront_read": "trace-pages-wave1-readiness-draft-20260617-publish-off"
     },
     "trace_samples": [
       {
-        "trace_id": "trace-forum-wave1-live-20260615-all-on",
+        "trace_id": "trace-pages-wave1-readiness-draft-20260617-all-on",
         "profile": "all_on",
-        "correlation_path": "builder_write -> forum_publish -> storefront_read",
+        "correlation_path": "builder_write -> pages_publish -> storefront_read",
         "spans": [
           "builder.write.validate",
           "builder.write.sanitize",
-          "forum.publish.dry_run",
+          "pages.publish.dry_run",
           "storefront.read.render"
         ],
         "result": "pass"
       },
       {
-        "trace_id": "trace-forum-wave1-live-20260615-publish-off",
+        "trace_id": "trace-pages-wave1-readiness-draft-20260617-publish-off",
         "profile": "publish_off",
-        "correlation_path": "builder_write -> forum_publish -> storefront_read",
+        "correlation_path": "builder_write -> pages_publish -> storefront_read",
         "spans": [
           "builder.write.validate",
-          "forum.publish.feature_disabled",
+          "pages.publish.feature_disabled",
           "storefront.read.render"
         ],
         "result": "typed_feature_disabled_error_without_read_5xx"
@@ -223,15 +222,15 @@
   },
   "rollback": {
     "decision": "keep",
-    "reason": "Wave 1 pilot rollout successfully completed with all smoke checks and read guarantees passing under live traffic.",
-    "rollback_reference": "crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json",
-    "timestamp": "2026-06-15T18:00:00Z"
+    "reason": "Readiness draft keeps Wave 1 on hold until real tenant snapshots, smoke output, SLO observations, and owner signatures replace this packet.",
+    "rollback_reference": "docs/modules/tiptap-page-builder-implementation-plan.md#126-минимальный-evidence-packet-template-для-wave-0wave-1",
+    "timestamp": "2026-06-17T00:00:00Z"
   },
   "approvals": {
-    "platform_on_call": "approved",
-    "forum_owner": "approved",
-    "builder_owner": "approved",
-    "runtime_owner": "approved"
+    "platform_on_call": "pending_wave1_readiness_signoff",
+    "pages_owner": "pending_wave1_readiness_signoff",
+    "builder_owner": "pending_wave1_readiness_signoff",
+    "runtime_owner": "pending_wave1_readiness_signoff"
   },
   "waivers": []
 }

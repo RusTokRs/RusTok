@@ -62,6 +62,7 @@ Shared foundation / support crates:
 - Repo-side surface для текущего `module-system` считается закрытым для цели Admin-driven install/uninstall/upgrade/deploy с progress feedback; дальше остаётся поддерживать targeted verification и docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
 - GraphQL control-plane surface публикует read/write contract для lifecycle recovery: `moduleOperationRecoveryPlan` и `failedModuleOperationRecoveryPlans` отдают tenant-scoped retryability/action metadata из `module_operations`, а `retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` выполняют recovery только через `ModuleLifecycleService` и `modules:manage`, без raw SQL/bypass rollback.
 - GraphQL auth surface `me.permissions` отдаёт request-scoped RBAC snapshot для headless/mobile UI gating; это не заменяет server-side permission enforcement на mutations/queries.
+- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` выполняет server-owned token-to-runtime-binding handshake для non-stdio transport: принимает Bearer/plaintext MCP token, возвращает tenant/client/token binding и effective access context, обновляет last-used timestamps и пишет audit event `remote_session_bootstrapped` с correlation id.
 - Гибридный product installer вводится через support crate `rustok-installer`:
   CLI `rustok-server install ...` и `/api/install/*` endpoints должны
   делегировать plan/state/receipt/preflight semantics в этот crate. Web wizard
@@ -104,6 +105,9 @@ Shared foundation / support crates:
   domain-change операций: положительный cache живёт до `TENANT_CACHE_TTL=300s`,
   negative cache miss — до `TENANT_NEGATIVE_CACHE_TTL=60s`, поэтому без
   invalidation stale resolver state допустим только в рамках этих TTL.
+  Regression matrix дополнительно фиксирует lifecycle сценарии stale positive
+  cache после deactivate/update, negative cache после create-like flow, host
+  cache после domain-change и UUID invalidation.
 
 ## Границы ответственности
 

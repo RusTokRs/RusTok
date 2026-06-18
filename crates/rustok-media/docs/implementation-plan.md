@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: FFA-разделение admin ui/core/transport
-- Last checkpoint: runtime hardening продвинут без transport parity changes: cleanup task перешёл на немутирующий read-probe с консервативной классификацией ошибок, translation upsert нормализует locale/text payload, а translation list стабилизирован сортировкой по locale; добавлены targeted unit tests для cleanup classification и translation normalization.
-- Next step: Добрать интеграционные проверки owner-module SEO providers, которые используют descriptor contract, и расширить DB-backed integration coverage для upload/storage failure и translation persistence edge-cases без изменения transport parity.
+- Last checkpoint: Runtime translation boundary усилен: `UpsertTranslationInput` теперь нормализует locale (`trim/lowercase/_ -> -`), отбрасывает пустые optional text fields и отклоняет пустые/unsafe locale ключи до записи; edge-case unit tests добавлены без изменения transport parity.
+- Next step: Добрать интеграционные проверки owner-module SEO providers, которые используют descriptor contract, и расширить targeted runtime tests для cleanup/storage edge-cases без изменения transport parity.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 ## FFA/FBA status
 
@@ -48,7 +48,7 @@
 
 ### 2. Runtime hardening
 
-- [~] покрыть cleanup task, storage failures и translation edge-cases targeted integration tests; cleanup classification и translation normalization покрыты unit tests, DB-backed integration coverage остаётся следующим шагом;
+- [~] покрыть cleanup task, storage failures и translation edge-cases targeted integration tests; translation boundary теперь имеет unit coverage для locale/text normalization, cleanup/storage остаются открытыми;
 - [ ] развивать richer metadata/use-case surfaces только через module-owned service layer;
 - [ ] уточнить long-term policy для public URLs и storage-driver-specific guarantees.
 

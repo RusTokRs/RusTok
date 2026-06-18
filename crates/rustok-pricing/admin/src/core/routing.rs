@@ -84,6 +84,23 @@ pub(crate) fn apply_selected_channel_option(
     }
 }
 
+pub(crate) fn legacy_channel_option_label(
+    locale: Option<&str>,
+    channel_id: &str,
+    channel_slug: &str,
+) -> String {
+    format!(
+        "{}: {}",
+        t(locale, "pricing.channel.legacy", "Legacy scope"),
+        format_channel_scope_text(
+            None,
+            normalize_channel_value(channel_id).as_deref(),
+            normalize_channel_value(channel_slug).as_deref(),
+        )
+        .unwrap_or_else(|| t(locale, "pricing.common.notSet", "not set")),
+    )
+}
+
 pub(crate) fn format_channel_option_label(
     locale: Option<&str>,
     option: &PricingChannelOption,
@@ -119,6 +136,18 @@ mod tests {
         assert_eq!(
             selected_channel_key("unknown", "", &channels),
             LEGACY_CHANNEL_KEY
+        );
+    }
+
+    #[test]
+    fn legacy_channel_option_label_formats_scope_or_not_set() {
+        assert_eq!(
+            legacy_channel_option_label(Some("en"), "channel-id", "web"),
+            "Legacy scope: channel web (channel-id)"
+        );
+        assert_eq!(
+            legacy_channel_option_label(Some("en"), "", ""),
+            "Legacy scope: not set"
         );
     }
 }

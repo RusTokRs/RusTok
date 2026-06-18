@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_ready
-- Last checkpoint: Search FFA Phase B считается закрытой на slice #40: текущие admin/storefront surfaces уже имеют `core/transport/ui` split, Leptos adapters не вызывают raw `api::*`, а дополнительные переносы без нового search UX/transport функционала будут считаться over-extraction.
-- Next step: Не продолжать механический перевод `rustok-search`; следующий work item — parity/evidence hardening для существующих native/GraphQL storefront/admin paths либо новый FFA-срез только при появлении реального search UX/transport функционала.
+- Current phase: parity/evidence hardening
+- Last checkpoint: Search FFA Phase B считается закрытой на slice #40; slice #41 добавил fast guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`, чтобы удерживать admin/storefront `core/transport/ui` split и native/GraphQL fallback ownership без компиляции.
+- Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths: расширять static guardrails и runtime-independent fixtures, не открывая новый FFA-срез без реального search UX/transport функционала.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-12T13:20:43Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 
 ## FFA/FBA status
@@ -46,7 +46,8 @@
   - Phase B slice #39 добавил `StorefrontSearchRouteIntent` и `build_storefront_search_route_intent` в `storefront/src/core.rs`; storefront Leptos navigation больше не решает inline set/delete policy для `q` и `preset`, а только применяет prepared route intent к browser URL.
   - Phase B slice #40 добавил `DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest` и `build_storefront_suggestion_fetch_request` в `storefront/src/core.rs`; storefront Leptos suggestions resource больше не владеет inline autocomplete min-length gate или query trim policy.
   - Phase B closure decision: search FFA больше не расширяется без нового функционального surface; текущий кодовый split достаточен для `phase_b_ready`, а дальнейшая работа переводится в parity/evidence hardening.
-- Last verified at (UTC): 2026-06-12T13:20:43Z
+  - Slice #41 evidence hardening добавил `verify-search-ui-boundary.mjs` и fixture tests, проверяющие admin/storefront crate-root wiring, Leptos-free core helpers, запрет raw `api::*`/adapter calls из UI и storefront native-first + GraphQL fallback split.
+- Last verified at (UTC): 2026-06-17T00:00:00Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -105,7 +106,7 @@
 
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля (`npm run verify:search:ui-boundary`, `npm run test:verify:search:ui-boundary`).
 
 
 ## FFA pilot migration tracker (rustok-search)
@@ -155,3 +156,5 @@
 - [x] Slice 38: storefront search fetch request policy перенесён в core (`StorefrontSearchFetchRequest`, `search_preview_filters_from_route`, `build_storefront_search_fetch_request`), поэтому Leptos resource исполняет подготовленный request и не владеет blank-query skip/query trim/preset normalization/filter payload mapping.
 - [x] Slice 39: storefront search route-query policy перенесён в core (`StorefrontSearchRouteIntent`, `build_storefront_search_route_intent`), поэтому Leptos navigation adapter применяет готовый `q`/`preset` set/delete intent без inline normalization policy.
 - [x] Slice 40: storefront suggestions request policy перенесён в core (`DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest`, `build_storefront_suggestion_fetch_request`), поэтому Leptos suggestions resource исполняет prepared request и не владеет autocomplete threshold/query trim policy.
+
+- [x] Slice 41: parity/evidence hardening добавил fast boundary guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`; aggregate `verify:ffa:ui:migration`/`test:verify:ffa:ui:migration` теперь запускают search UI boundary без компиляции.

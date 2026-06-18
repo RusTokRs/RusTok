@@ -5,8 +5,8 @@ mod routing;
 pub(crate) use presentation::{
     build_product_detail_header_view_model, build_product_list_item_view_model,
     build_variant_card_view_model, format_adjustment_preview, format_effective_context,
-    format_price_list_option_label, format_price_scope,
-    pricing_product_list_item_class, summarize_pricing,
+    format_price_list_option_label, format_price_scope, pricing_product_list_item_class,
+    summarize_pricing,
 };
 #[cfg(feature = "ssr")]
 pub(crate) use requests::parse_optional_currency_code;
@@ -20,5 +20,6 @@ pub(crate) use requests::{
 };
 pub(crate) use routing::{
     apply_selected_channel_option, format_channel_option_label, format_channel_scope_text,
-    normalize_channel_value, selected_channel_key, GLOBAL_CHANNEL_KEY, LEGACY_CHANNEL_KEY,
+    legacy_channel_option_label, normalize_channel_value, selected_channel_key, GLOBAL_CHANNEL_KEY,
+    LEGACY_CHANNEL_KEY,
 };

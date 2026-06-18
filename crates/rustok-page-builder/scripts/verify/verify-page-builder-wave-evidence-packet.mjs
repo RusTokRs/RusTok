@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
-const packetPath = path.join(
+const defaultPacketPath = path.join(
   repoRoot,
   "crates",
   "rustok-page-builder",
@@ -15,6 +15,9 @@ const packetPath = path.join(
   "evidence",
   "pages-wave0-dry-run-evidence.json",
 );
+const packetPath = process.argv[2]
+  ? path.resolve(repoRoot, process.argv[2])
+  : defaultPacketPath;
 const templatePath = path.join(
   repoRoot,
   "crates",
@@ -80,8 +83,9 @@ if (packet.schema_version !== template.schema_version) {
 if (packet.artifact !== "page_builder_wave_evidence_packet") {
   fail(`unexpected artifact: ${packet.artifact}`);
 }
-if (packet.mode !== "dry_run") {
-  fail(`unexpected mode: ${packet.mode}`);
+const expectedMode = process.argv[3] ?? "dry_run";
+if (packet.mode !== expectedMode) {
+  fail(`unexpected mode: ${packet.mode}; expected ${expectedMode}`);
 }
 if (packet.module_slug !== "pages") {
   fail(`unexpected module_slug: ${packet.module_slug}`);
@@ -145,7 +149,7 @@ for (const [key, value] of Object.entries(packet.observability.slo_evaluation)) 
   }
 }
 if (packet.observability.slo_evaluation.overall !== "pass") {
-  fail("dry-run evidence packet requires observability.slo_evaluation.overall=pass");
+  fail(`${expectedMode} evidence packet requires observability.slo_evaluation.overall=pass`);
 }
 expectObjectHas(
   packet.observability?.traces,
@@ -179,9 +183,10 @@ for (const [index, trace] of packet.observability.trace_samples.entries()) {
       `observability.trace_samples[${index}].spans must contain at least 2 spans`,
     );
   }
-  if (!String(trace.trace_id).startsWith("trace-pages-wave0-")) {
+  const expectedTracePrefix = `trace-pages-wave${packet.wave}-`;
+  if (!String(trace.trace_id).startsWith(expectedTracePrefix)) {
     fail(
-      `observability.trace_samples[${index}].trace_id must use trace-pages-wave0-* namespace`,
+      `observability.trace_samples[${index}].trace_id must use ${expectedTracePrefix}* namespace`,
     );
   }
   if (
@@ -295,7 +300,7 @@ if (packet.rollback.decision !== "keep") {
   fail(`rollback.decision expected keep, got ${packet.rollback.decision}`);
 }
 if ((packet.waivers ?? []).length !== 0) {
-  fail("dry-run evidence packet must not carry waivers");
+  fail(`${expectedMode} evidence packet must not carry waivers`);
 }
 
 console.log("[verify-page-builder-wave-evidence-packet] PASS");
