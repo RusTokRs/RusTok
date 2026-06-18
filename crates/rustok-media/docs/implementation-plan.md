@@ -62,7 +62,7 @@
 
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
-- targeted tests для upload policy, translations, cleanup task и storage error handling
+- targeted tests для upload policy, translation normalization/persistence, cleanup task classification и storage error handling
 
 ## Правила обновления
 

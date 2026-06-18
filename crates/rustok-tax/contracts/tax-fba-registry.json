@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "module": "tax",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "tax.calculation.v1",
+  "ports": [
+    {
+      "name": "TaxCalculationPort",
+      "owner": "tax",
+      "operations": [
+        "calculate_tax"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "cart",
+      "profile": "cart_tax_calculation",
+      "degraded_modes": [
+        "block_checkout_with_tax_refresh"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-tax/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-tax-fba.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "TaxService",
+    "source": "crates/rustok-tax/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-tax/contracts/tax-fba-registry.json",
+    "runner": "scripts/verify/verify-tax-fba.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "calculate_tax",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "block_checkout_with_tax_refresh"
+      ]
+    }
+  }
+}

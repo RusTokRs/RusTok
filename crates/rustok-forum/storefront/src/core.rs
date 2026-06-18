@@ -1,5 +1,137 @@
 use crate::i18n::t;
 
+const DEFAULT_CATEGORY_ACCENT_STYLE: &str =
+    "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumStorefrontCategoryRailLabels {
+    pub no_description: String,
+    pub total_template: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumStorefrontCategoryCardViewModel {
+    pub href: String,
+    pub is_active: bool,
+    pub container_class: &'static str,
+    pub accent_style: String,
+    pub name: String,
+    pub slug_badge: String,
+    pub topic_count: i32,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForumStorefrontTopicCardViewModel {
+    pub href: String,
+    pub is_active: bool,
+    pub container_class: &'static str,
+    pub status_class: &'static str,
+    pub status_badge_class: &'static str,
+    pub status: String,
+    pub effective_locale: String,
+    pub is_pinned: bool,
+    pub is_locked: bool,
+    pub title: String,
+    pub slug_label: String,
+    pub reply_count: i32,
+}
+
+pub fn forum_storefront_count_label(template: &str, count: impl ToString) -> String {
+    template.replace("{count}", count.to_string().as_str())
+}
+
+pub fn forum_storefront_slug_label(template: &str, slug: &str) -> String {
+    template.replace("{slug}", slug)
+}
+
+pub fn forum_storefront_category_card_class(is_active: bool) -> &'static str {
+    if is_active {
+        "border-primary/40 bg-primary/5 shadow-sm"
+    } else {
+        "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
+    }
+}
+
+pub fn forum_storefront_topic_card_class(is_active: bool) -> &'static str {
+    if is_active {
+        "border-primary/40 bg-primary/5 shadow-sm"
+    } else {
+        "border-border bg-background hover:border-primary/25 hover:shadow-sm"
+    }
+}
+
+pub fn forum_storefront_accent_style(color: Option<&str>) -> String {
+    color
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("background:{};", value))
+        .unwrap_or_else(|| DEFAULT_CATEGORY_ACCENT_STYLE.to_string())
+}
+
+pub fn forum_storefront_status_badge_class(status_class: &'static str) -> &'static str {
+    match status_class {
+        "success" => {
+            "rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
+        }
+        "warning" => {
+            "rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+        }
+        "muted" => {
+            "rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+        }
+        _ => {
+            "rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+        }
+    }
+}
+
+pub fn forum_storefront_category_card_view_model(
+    module_route_base: &str,
+    item: &crate::model::ForumCategoryListItem,
+    selected_category_id: Option<&str>,
+    labels: &ForumStorefrontCategoryRailLabels,
+) -> ForumStorefrontCategoryCardViewModel {
+    let is_active = selected_category_id == Some(item.id.as_str());
+    ForumStorefrontCategoryCardViewModel {
+        href: category_href(module_route_base, item.id.as_str()),
+        is_active,
+        container_class: forum_storefront_category_card_class(is_active),
+        accent_style: forum_storefront_accent_style(item.color.as_deref()),
+        name: item.name.clone(),
+        slug_badge: forum_storefront_slug_label("#{slug}", item.slug.as_str()),
+        topic_count: item.topic_count,
+        description: item
+            .description
+            .clone()
+            .unwrap_or_else(|| labels.no_description.clone()),
+    }
+}
+
+pub fn forum_storefront_topic_card_view_model(
+    module_route_base: &str,
+    item: &crate::model::ForumTopicListItem,
+    selected_category_id: Option<&str>,
+    selected_topic_id: Option<&str>,
+    slug_template: &str,
+) -> ForumStorefrontTopicCardViewModel {
+    let is_active = selected_topic_id == Some(item.id.as_str());
+    let status_class = topic_status_class(item.status.as_str());
+    ForumStorefrontTopicCardViewModel {
+        href: topic_href(module_route_base, selected_category_id, item.id.as_str()),
+        is_active,
+        container_class: forum_storefront_topic_card_class(is_active),
+        status_class,
+        status_badge_class: forum_storefront_status_badge_class(status_class),
+        status: item.status.clone(),
+        effective_locale: item.effective_locale.clone(),
+        is_pinned: item.is_pinned,
+        is_locked: item.is_locked,
+        title: item.title.clone(),
+        slug_label: forum_storefront_slug_label(slug_template, item.slug.as_str()),
+        reply_count: item.reply_count,
+    }
+}
+
 pub fn category_href(module_route_base: &str, category_id: &str) -> String {
     format!("{module_route_base}?category={category_id}")
 }
@@ -75,5 +207,19 @@ mod tests {
         assert_eq!(topic_status_class("pending"), "warning");
         assert_eq!(topic_status_class("closed"), "muted");
         assert_eq!(topic_status_class("unknown"), "default");
+    }
+
+    #[test]
+    fn builds_storefront_copy_and_class_policies_without_framework_state() {
+        assert_eq!(forum_storefront_count_label("{count} threads", 12_u64), "12 threads");
+        assert_eq!(forum_storefront_slug_label("slug: {slug}", "welcome"), "slug: welcome");
+        assert!(forum_storefront_category_card_class(true).contains("border-primary/40"));
+        assert!(forum_storefront_topic_card_class(false).contains("hover:shadow-sm"));
+        assert!(forum_storefront_accent_style(Some(" #fff ")).contains(" #fff "));
+        assert!(forum_storefront_accent_style(Some(" ")).contains("linear-gradient"));
+        assert!(forum_storefront_status_badge_class("success").contains("emerald"));
+        assert!(forum_storefront_status_badge_class("warning").contains("amber"));
+        assert!(forum_storefront_status_badge_class("muted").contains("bg-muted"));
+        assert!(forum_storefront_status_badge_class("default").contains("border-border"));
     }
 }

@@ -10,16 +10,17 @@
 - Next step: Continue FFA-first sequencing only for small result/input/copy/state policy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-17T00:00:00Z
+- Last updated at (UTC): 2026-06-18T00:00:00Z
 
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
+  - FBA slice: `crates/rustok-product/src/ports.rs` declares `ProductCatalogReadPort`/`product.catalog_read.v1` for catalog read projections consumed by commerce checkout/storefront compatibility paths and pricing enrichment; `crates/rustok-product/contracts/product-fba-registry.json` plus `contracts/evidence/product-contract-test-static-matrix.json` lock provider metadata, fallback profiles and planned contract-test cases under `npm run verify:ecommerce:fba`; status remains below `boundary_ready` until runtime contract execution/fallback smoke lands;
   - FFA slice: storefront catalog rail title/total/empty/open labels, item fallback labels, seller boundary text, published timestamp fallback and handle links now live in framework-agnostic `ProductCatalogRailViewModel` with unit-test evidence;
   - FFA slice: selected-product card empty state, pricing context label, ownership note, metric labels and pricing action label now live in `SelectedProductEmptyViewModel` / `SelectedProductViewModel` with unit-test evidence;
   - FFA slice: storefront shell badge/title/subtitle/load-error copy and typed fetch request shape now live in `ProductStorefrontShellViewModel` / `ProductStorefrontFetchRequest` with unit-test evidence;
@@ -45,6 +46,8 @@
   - FFA slice: product admin status mutation refresh/error outcome policy is composed by `ProductAdminStatusMutationOutcome` / `ProductAdminStatusMutationResultViewModel` in `admin/src/core.rs`; Leptos status action effects only dispatch transport and apply prepared intents;
   - FFA slice: product admin route/query selection writes are composed by `ProductAdminRouteQueryIntent` helpers in `admin/src/core.rs`; Leptos applies typed push/replace/clear intents without owning the product selection query policy;
   - FFA slice: product admin selected-product query normalization is composed by `ProductAdminSelectedProductQueryState` / `product_admin_selected_product_query_state` in `admin/src/core.rs`; Leptos applies the prepared open/clear state without owning `product_id.trim().is_empty()` policy;
+  - FFA slice: product admin products-list async result normalization is composed by `ProductAdminProductsLoadViewModel` / `product_admin_products_load_view_from_result` in `admin/src/core.rs`; Leptos renders prepared loading/error/empty state or ready items without unpacking `ProductList` or owning empty-result classification;
+  - FFA slice: product admin shipping-profile async result normalization is composed once by `ProductAdminShippingProfilesLoadViewModel` / `product_admin_shipping_profiles_load_view_from_result` in `admin/src/core.rs`; the editor select and registry status panel consume the same prepared options/panel envelope instead of maintaining duplicate Leptos branches;
   - FFA slice: product admin SEO panel title/subtitle/empty-message copy is composed by `ProductAdminSeoPanelCopy` in `admin/src/core.rs`; Leptos passes prepared copy into `SeoEntityPanel` without owning product SEO copy policy;
   - FFA slice: product admin inventory quantity input normalization is composed by `parse_product_admin_inventory_quantity_input` in `admin/src/core.rs`; Leptos forwards raw input text and no longer owns invalid-number fallback policy;
   - FFA slice: product admin open-product result policy is composed by `ProductAdminOpenProductViewModel` / `build_product_admin_open_product_view_model` in `admin/src/core.rs`; Leptos applies prepared selected-product/form-state/error outcomes without owning not-found/load-error reset policy;
@@ -63,7 +66,7 @@
   - FFA guardrail: `scripts/verify/verify-product-admin-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-admin-boundary.test.mjs`; it checks product admin core/transport/ui split without long Cargo compilation;
   - FFA guardrail: `scripts/verify/verify-product-storefront-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-storefront-boundary.test.mjs`; it checks product storefront core/transport/ui split plus catalog rail label and selected metadata ownership without long Cargo compilation;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-06-17T00:00:00Z
+- Last verified at (UTC): 2026-06-18T00:00:00Z
 - Owner: `rustok-product` module team
 
 ## Область работ

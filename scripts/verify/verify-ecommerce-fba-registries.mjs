@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory'];
+export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
 
 export class EcommerceFbaRegistryVerificationError extends Error {
   constructor(message) {
@@ -32,6 +32,55 @@ const containsStringLiteral = (source, value) =>
 
 const containsAsyncFunction = (source, functionName) =>
   new RegExp(`async\\s+fn\\s+${escapeRegExp(functionName)}\\s*\\(`).test(source);
+
+const findFunctionBody = (source, functionName) => {
+  const signature = new RegExp(`(?:async\\s+)?fn\\s+${escapeRegExp(functionName)}\\s*\\(`, 'gm');
+  let match;
+  while ((match = signature.exec(source)) !== null) {
+    const nextSemicolon = source.indexOf(';', match.index);
+    const openBrace = source.indexOf('{', match.index);
+    if (openBrace === -1) return null;
+    if (nextSemicolon !== -1 && nextSemicolon < openBrace) continue;
+    let depth = 0;
+    for (let index = openBrace; index < source.length; index += 1) {
+      if (source[index] === '{') depth += 1;
+      if (source[index] === '}') {
+        depth -= 1;
+        if (depth === 0) return source.slice(openBrace + 1, index);
+      }
+    }
+  }
+  return null;
+};
+
+const assertOperationContextSemantics = ({ module, operation, port, portSource }) => {
+  const body = findFunctionBody(portSource, operation);
+  if (!body) fail(`${module}.${operation} source body not found`);
+  const writeOperation = !isReadOnlyOperation(operation) && port.idempotency_required === true;
+  if (writeOperation) {
+    if (!body.includes('require_write_semantics()?')) {
+      fail(`${module}.${operation} write operation must enforce require_write_semantics`);
+    }
+    return;
+  }
+  if (body.includes('require_write_semantics()?')) {
+    fail(`${module}.${operation} read operation must not require write idempotency semantics`);
+  }
+  if (!body.includes('require_deadline_semantics()?')) {
+    fail(`${module}.${operation} read operation must enforce require_deadline_semantics`);
+  }
+};
+
+const assertOrderCheckoutCompletionNotPrematurelyImplemented = ({ registry, portSource }) => {
+  if (registry.module !== 'order') return;
+  const hasImplMetadata = Boolean(registry.in_process_provider_impl);
+  const hasOwnerImpl = portSource.includes('impl CheckoutCompletionPort for crate::OrderService');
+  if (!hasImplMetadata && !hasOwnerImpl) return;
+  const runtimeEvidenceStatus = registry.runtime_evidence?.checkout_completion_owner_path?.status;
+  if (runtimeEvidenceStatus !== 'runtime_verified') {
+    fail('order CheckoutCompletionPort in-process implementation requires runtime_verified checkout_completion_owner_path evidence');
+  }
+};
 
 const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSource, ownerService }) => {
   if (providerSpi.status !== 'manual_baseline_locked') fail(`${module} provider SPI status drift`);
@@ -159,6 +208,7 @@ export function verifyEcommerceFbaRegistries({
     if (!cargo.includes('rustok-api.workspace = true')) fail(`${module} Cargo.toml lacks rustok-api dependency`);
     if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail(`${module} lib.rs must export ports`);
     if (!portSource.includes('rustok_api::{PortContext, PortError}')) fail(`${module} src/ports.rs must import neutral port primitives`);
+    assertOrderCheckoutCompletionNotPrematurelyImplemented({ registry, portSource });
 
     if (registry.provider_spi) {
       if (!registry.in_process_provider_impl?.service) {
@@ -180,11 +230,10 @@ export function verifyEcommerceFbaRegistries({
     if (registry.in_process_provider_impl) {
       const implDeclaration = `impl ${registry.ports[0].name} for crate::${registry.in_process_provider_impl.service}`;
       if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
-      if (registry.ports.some((port) => port.idempotency_required === true) && !portSource.includes('require_write_semantics()?')) {
-        fail(`${module} in-process provider impl must enforce write semantics`);
-      }
-      if (registry.ports.some((port) => port.deadline_required === true) && !portSource.includes('require_deadline_semantics()?')) {
-        fail(`${module} in-process provider impl must enforce read deadline semantics`);
+      for (const port of registry.ports) {
+        for (const operation of port.operations) {
+          assertOperationContextSemantics({ module, operation, port, portSource });
+        }
       }
     }
 
@@ -243,6 +292,9 @@ export function verifyEcommerceFbaRegistries({
     if (consumer.registry !== `crates/rustok-${module}/contracts/${module}-fba-registry.json`) {
       fail(`commerce provider ${module} registry path drift`);
     }
+    if (!commercePlan.includes(consumer.registry)) {
+      fail(`commerce local plan lacks provider registry evidence for ${module}`);
+    }
     for (const port of provider.ports) {
       if (!consumer.ports.includes(port.name)) {
         fail(`commerce provider ${module} port drift`);
@@ -278,7 +330,7 @@ export function verifyEcommerceFbaRegistries({
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     verifyEcommerceFbaRegistries();
-    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory');
+    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory, product, customer, cart');
   } catch (error) {
     if (error instanceof EcommerceFbaRegistryVerificationError) {
       console.error(`ecommerce FBA registry verification failed: ${error.message}`);

@@ -31,6 +31,35 @@ pub struct ConsumedEvent {
     pub connector_metadata: SubscriberMessageMetadata,
 }
 
+impl ConsumedEvent {
+    /// Returns the connector-owned offset when the backend exposed one.
+    pub fn offset(&self) -> Option<u64> {
+        self.connector_metadata.offset
+    }
+
+    /// Returns the opaque connector acknowledgement token when one is available.
+    pub fn ack_token(&self) -> Option<&str> {
+        self.connector_metadata.ack_token.as_deref()
+    }
+
+    /// Builds a DLQ entry preserving the connector metadata observed at consume time.
+    pub fn into_dlq_entry(
+        self,
+        payload: Vec<u8>,
+        error: impl Into<String>,
+        retry_count: u32,
+    ) -> crate::dlq::DlqEntry {
+        crate::dlq::DlqEntry {
+            event_id: self.envelope.id,
+            original_topic: self.topic,
+            payload,
+            error: error.into(),
+            retry_count,
+            connector_metadata: Some(self.connector_metadata),
+        }
+    }
+}
+
 impl ConsumerGroup {
     pub fn new(name: String, stream: String, topic: String) -> Self {
         Self {
@@ -115,6 +144,29 @@ impl ConsumerGroupManager {
             Ok(None) => Ok(None),
             Err(error) => Err(rustok_core::Error::External(error.to_string())),
         }
+    }
+
+    pub async fn ack_consumed(
+        &self,
+        connector: &dyn IggyConnector,
+        consumed: &ConsumedEvent,
+    ) -> Result<()> {
+        let ack_token = consumed.ack_token().ok_or_else(|| {
+            rustok_core::Error::External(format!(
+                "Consumed event {} has no connector ack token",
+                consumed.envelope.id
+            ))
+        })?;
+
+        let mut subscriber = connector
+            .subscribe(&consumed.stream, &consumed.topic, consumed.partition)
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))?;
+
+        subscriber
+            .ack(ack_token)
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))
     }
 }
 
@@ -223,6 +275,8 @@ mod tests {
         assert_eq!(consumed.partition, 1);
         assert_eq!(consumed.envelope.id, envelope.id);
         assert_eq!(consumed.connector_metadata.offset, Some(42));
+        assert_eq!(consumed.offset(), Some(42));
+        assert_eq!(consumed.ack_token(), Some("fake-ack-42"));
         assert_eq!(
             consumed.connector_metadata.ack_token.as_deref(),
             Some("fake-ack-42")
