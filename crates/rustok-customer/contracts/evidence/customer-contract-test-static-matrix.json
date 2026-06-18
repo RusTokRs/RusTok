@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "module": "customer",
+  "packet": "contract-test-placeholder-matrix",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-customer/contracts/customer-fba-registry.json",
+  "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
+  "contract_version": "customer.read_projection.v1",
+  "profiles": [
+    "in_process",
+    "remote_adapter_placeholder"
+  ],
+  "cases": [
+    {
+      "operation": "read_customer_projection",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ]
+    },
+    {
+      "operation": "list_customer_projections",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "static_locked_runtime_pending",
+    "profiles": [
+      "embedded_native",
+      "graphql_checkout_compat"
+    ],
+    "degraded_modes": [
+      "use_checkout_customer_snapshot",
+      "show_customer_refresh_required",
+      "use_order_customer_snapshot"
+    ]
+  },
+  "promotion_gate": "does_not_raise_boundary_ready_without_runtime_execution"
+}
