@@ -525,6 +525,25 @@ pub fn BlogAdmin() -> impl IntoView {
             core::blog_post_admin_open_post_query_intent(post_id),
         );
     });
+    let raw_body_warning_view = Memo::new({
+        let form_raw_warning = form_raw_warning.clone();
+        move |_| {
+            core::blog_post_admin_raw_body_warning_view(
+                body_format.get().as_str(),
+                form_raw_warning.clone(),
+            )
+        }
+    });
+    let form_view = Memo::new({
+        let ui_locale = ui_locale.clone();
+        move |_| {
+            blog_form_view_model(
+                ui_locale.as_deref(),
+                editing_post_id.get().as_deref(),
+                busy_key.get().as_deref(),
+            )
+        }
+    });
 
     view! {
         <div class="space-y-6">
@@ -636,14 +655,7 @@ pub fn BlogAdmin() -> impl IntoView {
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="space-y-1">
                         <h2 class="text-lg font-semibold text-card-foreground">
-                            {{let ui_locale_heading = ui_locale.clone(); move || {
-                                blog_form_view_model(
-                                    ui_locale_heading.as_deref(),
-                                    editing_post_id.get().as_deref(),
-                                    busy_key.get().as_deref(),
-                                )
-                                .title
-                            }}}
+                            {move || form_view.get().title}
                         </h2>
                         <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
                     </div>
@@ -799,23 +811,9 @@ pub fn BlogAdmin() -> impl IntoView {
                         <button
                             type="submit"
                             class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                            disabled={{let ui_locale_d = ui_locale.clone(); move || {
-                                blog_form_view_model(
-                                    ui_locale_d.as_deref(),
-                                    editing_post_id.get().as_deref(),
-                                    busy_key.get().as_deref(),
-                                )
-                                .submit_disabled
-                            }}}
+                            disabled=move || form_view.get().submit_disabled
                         >
-                            {{let ui_locale_s = ui_locale.clone(); move || {
-                                blog_form_view_model(
-                                    ui_locale_s.as_deref(),
-                                    editing_post_id.get().as_deref(),
-                                    busy_key.get().as_deref(),
-                                )
-                                .submit_label
-                            }}}
+                            {move || form_view.get().submit_label}
                         </button>
                     </form>
                 </section>
@@ -1051,10 +1049,10 @@ fn BlogPostsTable(
 
 #[component]
 fn StatusBadge(status: String) -> impl IntoView {
-    let badge_css = core::status_badge_css(status.as_str());
+    let badge = core::blog_post_status_badge_view(status);
     view! {
-        <span class=badge_css>
-            {status}
+        <span class=badge.class>
+            {badge.status}
         </span>
     }
 }

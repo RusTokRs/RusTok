@@ -128,6 +128,19 @@ pub fn status_badge_css(status: &str) -> String {
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostStatusBadgeViewModel {
+    pub status: String,
+    pub class: String,
+}
+
+pub fn blog_post_status_badge_view(status: String) -> BlogPostStatusBadgeViewModel {
+    BlogPostStatusBadgeViewModel {
+        class: status_badge_css(status.as_str()),
+        status,
+    }
+}
+
 pub fn has_non_empty_text(value: &str) -> bool {
     !value.trim().is_empty()
 }
@@ -1286,6 +1299,13 @@ mod tests {
         assert_eq!(
             status_badge_css("published"),
             "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+        );
+        assert_eq!(
+            blog_post_status_badge_view("published".to_string()),
+            BlogPostStatusBadgeViewModel {
+                status: "published".to_string(),
+                class: "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400".to_string(),
+            }
         );
         assert!(has_non_empty_text(" x "));
         assert!(!has_non_empty_text("   "));

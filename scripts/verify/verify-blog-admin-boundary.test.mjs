@@ -43,6 +43,8 @@ pub struct BlogPostAdminTableViewModel;
 pub fn blog_post_admin_table_view() {}
 pub struct BlogPostAdminFormViewModel;
 pub fn blog_post_admin_form_view() {}
+pub struct BlogPostStatusBadgeViewModel;
+pub fn blog_post_status_badge_view() {}
 pub struct BlogPostAdminEditBannerViewModel;
 pub fn blog_post_admin_edit_banner_view() {}
 pub struct BlogPostAdminRawBodyWarningViewModel;
@@ -87,6 +89,8 @@ pub fn BlogAdmin() {
     let _saved = core::blog_post_save_result_view;
     let _edit_banner = core::blog_post_admin_edit_banner_view;
     let _raw_warning = core::blog_post_admin_raw_body_warning_view;
+    let _status_badge = core::blog_post_status_badge_view;
+    let form_view = Memo::new;
     let _posts_load = core::blog_post_admin_posts_load_view_from_list;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;

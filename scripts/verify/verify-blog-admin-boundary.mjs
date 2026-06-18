@@ -101,6 +101,8 @@ for (const marker of [
   "blog_post_admin_table_view",
   "BlogPostAdminFormViewModel",
   "blog_post_admin_form_view",
+  "BlogPostStatusBadgeViewModel",
+  "blog_post_status_badge_view",
   "BlogPostAdminEditBannerViewModel",
   "blog_post_admin_edit_banner_view",
   "BlogPostAdminRawBodyWarningViewModel",
@@ -134,6 +136,8 @@ assertContains(ui, "core::prepare_blog_post_save_command", `${uiPath}: UI must u
 assertContains(ui, "core::BlogPostSaveOperation", `${uiPath}: UI must dispatch core-owned save operations`);
 assertContains(ui, "core::blog_post_admin_edit_banner_view", `${uiPath}: UI must use core-owned edit-banner view policy`);
 assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI must use core-owned raw-body warning view policy`);
+assertContains(ui, "core::blog_post_status_badge_view", `${uiPath}: UI must use core-owned status-badge view policy`);
+assertContains(ui, "let form_view = Memo::new", `${uiPath}: UI must memoize core-owned form view instead of rebuilding labels inline per field`);
 assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_load_result_view", `${uiPath}: UI must use core-owned load result policy`);
 assertContains(ui, "core::blog_post_transport_failure_issue", `${uiPath}: UI must use core-owned transport failure issue mapping`);
