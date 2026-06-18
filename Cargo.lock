@@ -9940,6 +9940,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-content",
  "rustok-core",
  "rustok-telemetry",

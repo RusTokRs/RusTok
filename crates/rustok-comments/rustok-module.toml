@@ -20,3 +20,9 @@ nav_label = "Comments"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/comments-fba-registry.json"
+contract_version = "comments.thread.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
