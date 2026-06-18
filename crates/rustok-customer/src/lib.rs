@@ -7,11 +7,13 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod ports;
 pub mod services;
 
 pub use dto::*;
 pub use entities::*;
 pub use error::{CustomerError, CustomerResult};
+pub use ports::*;
 pub use services::CustomerService;
 
 pub struct CustomerModule;
