@@ -7,8 +7,8 @@ production-grade уровня.
 ## Execution checkpoint
 
 - Current phase: real_integration_hardening
-- Last checkpoint: no-compile инкремент: transport consume path переключён на connector `recv_with_metadata()`, `ConsumedEvent` переносит offset/opaque ack metadata; fake-connector tests обновлены под metadata assertions.
-- Next step: связать offset/ack metadata с DLQ/replay movement и real SDK ack override.
+- Last checkpoint: no-compile инкремент: offset/ack metadata связана с transport surface (`ack_consumed`), DLQ entry movement/retry сохраняет source metadata, replay config валидирует offset window и фиксирует planned offsets.
+- Next step: заменить simulated connector ack на real SDK subscriber ack/offset commit path и добавить фактическое targeted test evidence.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: Следующий инкремент должен связать metadata-bearing consume path с retry_from_dlq/replay и real SDK ack semantics.
 - Last updated at (UTC): 2026-06-15T00:00:00Z
@@ -39,8 +39,10 @@ production-grade уровня.
 - [ ] довести full Iggy SDK integration path;
 - [ ] закрыть реальные consumption, offset management, DLQ movement и replay flows;
   - [x] добавить первый transport-owned consume path поверх connector `subscribe` и serializer deserialize;
-  - [ ] добавить offset/ack metadata и wire-up для DLQ/replay movement;
+  - [x] добавить offset/ack metadata и wire-up для DLQ/replay movement;
     - [x] consume path переносит connector offset/opaque ack metadata в `ConsumedEvent`;
+    - [x] transport exposes `ack_consumed`; DLQ entries retain connector metadata and retry republishes with retry-limit validation;
+    - [x] replay config validates offset windows and records planned offsets for bounded replay runs;
 - [ ] покрывать performance/recovery/security edge-cases targeted tests и drills.
 
 ### 3. Operability
@@ -68,6 +70,6 @@ production-grade уровня.
 ## Quality backlog
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены roundtrip deserialize и consume_next fake-connector tests.
-- [ ] Добавить DLQ/replay tests поверх offset/ack metadata после real SDK ack override.
+- [x] Добавить DLQ/replay tests поверх offset/ack metadata для transport-owned metadata plumbing (real SDK ack evidence remains open).
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
