@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 pub const CONTENT_MODERATION_TASK_SLUG: &str = "content_moderation";
+pub const BLOG_DRAFT_TASK_SLUG: &str = "blog_draft";
 pub const CONTENT_MODERATION_TOOL_NAME: &str = "direct.content.moderation";
+pub const BLOG_DRAFT_TOOL_NAME: &str = "direct.blog.generate_draft";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContentAiVerticalDescriptor {
@@ -12,11 +14,18 @@ pub struct ContentAiVerticalDescriptor {
     pub sensitive: bool,
 }
 
-pub const CONTENT_AI_VERTICALS: &[ContentAiVerticalDescriptor] = &[ContentAiVerticalDescriptor {
-    task_slug: CONTENT_MODERATION_TASK_SLUG,
-    tool_name: CONTENT_MODERATION_TOOL_NAME,
-    sensitive: true,
-}];
+pub const CONTENT_AI_VERTICALS: &[ContentAiVerticalDescriptor] = &[
+    ContentAiVerticalDescriptor {
+        task_slug: CONTENT_MODERATION_TASK_SLUG,
+        tool_name: CONTENT_MODERATION_TOOL_NAME,
+        sensitive: true,
+    },
+    ContentAiVerticalDescriptor {
+        task_slug: BLOG_DRAFT_TASK_SLUG,
+        tool_name: BLOG_DRAFT_TOOL_NAME,
+        sensitive: false,
+    },
+];
 
 /// Domain-owned registration entrypoint for content AI vertical metadata.
 pub fn content_ai_verticals() -> &'static [ContentAiVerticalDescriptor] {
@@ -38,6 +47,39 @@ pub fn register_content_ai_vertical_handlers(
     for vertical in content_ai_verticals() {
         register(vertical);
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GeneratedBlogDraft {
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    pub body: Option<String>,
+    pub excerpt: Option<String>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
+}
+
+pub fn validate_blog_draft_payload(payload: &GeneratedBlogDraft) -> Result<(), String> {
+    let text_fields = [
+        ("title", payload.title.as_deref()),
+        ("slug", payload.slug.as_deref()),
+        ("body", payload.body.as_deref()),
+        ("excerpt", payload.excerpt.as_deref()),
+        ("seo_title", payload.seo_title.as_deref()),
+        ("seo_description", payload.seo_description.as_deref()),
+    ];
+
+    for (field, value) in text_fields
+        .into_iter()
+        .filter_map(|(field, value)| value.map(|value| (field, value)))
+    {
+        if value.trim().is_empty() {
+            return Err(format!(
+                "blog_draft {field} must not be blank when provided"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +130,8 @@ pub fn validate_moderation_decision(
 mod tests {
     use super::{
         content_ai_verticals, normalize_moderation_decision, validate_moderation_decision,
-        GeneratedModerationDecision, CONTENT_MODERATION_TASK_SLUG,
+        GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG,
+        CONTENT_MODERATION_TASK_SLUG,
     };
 
     #[test]
@@ -98,6 +141,28 @@ mod tests {
             CONTENT_MODERATION_TASK_SLUG
         );
         assert!(content_ai_verticals()[0].sensitive);
+        assert_eq!(content_ai_verticals()[1].task_slug, BLOG_DRAFT_TASK_SLUG);
+        assert!(!content_ai_verticals()[1].sensitive);
+    }
+
+    #[test]
+    fn accepts_partial_blog_draft_payload() {
+        let payload = GeneratedBlogDraft {
+            title: Some("Title".to_string()),
+            body: Some("Body".to_string()),
+            ..GeneratedBlogDraft::default()
+        };
+        assert!(super::validate_blog_draft_payload(&payload).is_ok());
+    }
+
+    #[test]
+    fn rejects_blank_blog_draft_body_when_provided() {
+        let payload = GeneratedBlogDraft {
+            title: Some("Title".to_string()),
+            body: Some(" ".to_string()),
+            ..GeneratedBlogDraft::default()
+        };
+        assert!(super::validate_blog_draft_payload(&payload).is_err());
     }
 
     #[test]

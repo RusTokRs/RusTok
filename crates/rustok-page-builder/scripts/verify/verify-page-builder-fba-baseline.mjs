@@ -16,6 +16,7 @@ const checks = [
   "verify-page-builder-fallback-matrix-docs.mjs",
   "verify-page-builder-wave-evidence-template.mjs",
   "verify-page-builder-wave-evidence-packet.mjs",
+  "verify-page-builder-wave1-readiness-draft.mjs",
   "verify-page-builder-runtime-fallback-gate.mjs",
   "verify-page-builder-pages-fallback-gate.mjs",
   "verify-page-builder-pages-legacy-bridge.mjs",

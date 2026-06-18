@@ -12,12 +12,13 @@
 
 ## Зона ответственности
 
-- `MediaService`, media entities/DTOs и контракт обновления переводов;
+- `MediaService`, media entities/DTOs и контракт обновления переводов с нормализацией locale/text на runtime boundary;
 - типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers);
 - GraphQL- и REST-адаптеры модуля;
 - валидацию загрузок по size/MIME policy и tenant isolation;
 - модульный admin UI package `rustok-media-admin` с FFA-разделением `core`/`transport`/`ui/leptos`;
-- observability-сигналы для здоровья загрузки, удаления и хранения.
+- observability-сигналы для здоровья загрузки, удаления и хранения;
+- нормализацию переводов: `locale` trim/lowercase, пустые `title`/`alt_text`/`caption` сохраняются как `None`, списки переводов возвращаются в стабильном порядке по locale.
 
 ## Интеграция
 
@@ -31,7 +32,7 @@
 
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
-- targeted tests для валидации загрузок, обновления переводов, очистки хранилища и admin-facing read/write contracts
+- targeted tests для валидации загрузок, нормализации переводов, очистки хранилища и admin-facing read/write contracts
 
 ## Связанные документы
 

@@ -6,9 +6,9 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_boundary_aggregate_fixture_wiring_slice
-- Last checkpoint: FFA slice #39 подключила region boundary fixture suite к aggregate `test:verify:ffa:ui:migration` и усилила verifier self-check: package wiring теперь должен содержать не только `test:verify:region:admin-boundary`, но и aggregate test script с `npm run test:verify:region:admin-boundary`.
-- Next step: Перейти к parity/evidence hardening для region admin/storefront native/GraphQL paths либо брать только новый небольшой FFA-срез при появлении реальной UI/transport coupling-проблемы; region boundary fixture evidence теперь включено в aggregate FFA UI migration test path.
+- Current phase: ffa_storefront_native_graphql_parity_guardrail
+- Last checkpoint: FFA slice #40 добавила отдельный storefront boundary verifier и fixture suite для native→GraphQL fallback order, adapter isolation, Leptos-free core и stable error DOM evidence; оба script-а включены в aggregate FFA pipelines.
+- Next step: Собрать runtime/integration evidence для storefront native success, native failure + GraphQL success и double-failure error envelope; до runtime evidence статус остаётся `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
 - Last updated at (UTC): 2026-06-13T00:00:00Z
@@ -62,7 +62,8 @@
   - FFA slice #37 добавила `scripts/verify/verify-region-admin-boundary.test.mjs` и npm script `test:verify:region:admin-boundary`, чтобы fast guardrail имел canonical fixture и negative fixtures для Leptos-specific core, raw UI api/service calls, отсутствующего route/query writer helper и stale central readiness board;
   - FFA slice #38 усилила verifier self-check: `verify-region-admin-boundary.mjs` теперь проверяет `package.json` wiring для `test:verify:region:admin-boundary` и наличие canonical/docs-sync cases в fixture test file, а fixture suite отвергает отсутствующий package test script;
   - FFA slice #39 подключила `npm run test:verify:region:admin-boundary` в aggregate `test:verify:ffa:ui:migration` и добавила self-check/negative fixture, чтобы region boundary fixture evidence не выпадало из общего FFA UI migration test path.
-- Last verified at (UTC): 2026-06-13T00:00:00Z
+  - FFA slice #40 добавила `scripts/verify/verify-region-storefront-boundary.mjs` и fixture suite: guardrail фиксирует native-first fallback order, наличие native/GraphQL adapters, transport error evidence, DOM status/locale-key attributes и запрет raw adapter calls из Leptos; scripts подключены к aggregate verify/test pipelines.
+- Last verified at (UTC): 2026-06-18T00:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ

@@ -9,6 +9,7 @@ description = "Tax domain foundation and provider seam for commerce"
 async-trait.workspace = true
 rust_decimal.workspace = true
 rustok-core.workspace = true
+rustok-api.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true

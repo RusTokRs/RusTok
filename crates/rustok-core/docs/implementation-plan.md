@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: quality_backlog_hardening
+- Last checkpoint: Added targeted contract coverage for permission parsing, namespaced resources, and rt_json sanitization guardrails without changing runtime surface.
+- Next step: Run the documented module verification gates when compilation is allowed and keep coverage expanding around cache/resilience contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 ## Область работ
 
@@ -55,7 +55,7 @@
 - контрактные тесты покрывают все публичные use-case
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests для primitives, validation, security и compatibility exports
+- targeted tests для primitives, validation, security, permissions, rt_json sanitization и compatibility exports
 
 ## Правила обновления
 
@@ -67,6 +67,6 @@
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля — добавлены permission/rt_json contract tests.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs — README/docs остаются aligned с foundation-only surface; runtime changes не вносились.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля — documented gates сохранены; запуск отложен из-за запрета компиляций в этой итерации.
