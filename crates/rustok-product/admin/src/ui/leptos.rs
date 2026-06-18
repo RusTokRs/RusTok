@@ -26,7 +26,7 @@ use crate::core::{
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
     product_admin_pricing_preview_request_from_product,
     product_admin_pricing_preview_state_from_result, product_admin_saved_product_query_intent,
-    product_admin_selected_product_query_state, shipping_profile_choice_label, text_or_none,
+    product_admin_selected_product_query_state, text_or_none,
     ProductAdminDeleteOutcome, ProductAdminDraftForm, ProductAdminEditorFormState,
     ProductAdminErrorCopy, ProductAdminOpenProductViewModel, ProductAdminRouteQueryIntent,
     ProductAdminSaveMode, ProductAdminSelectedProductQueryState, ProductAdminStatusMutationOutcome,

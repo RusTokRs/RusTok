@@ -603,7 +603,7 @@ pub fn build_product_catalog_rail_view_model(
     locale: Option<&str>,
     labels: ProductCatalogRailLabels,
 ) -> ProductCatalogRailViewModel {
-    let items = items
+    let items: Vec<ProductCatalogRailItemViewModel> = items
         .iter()
         .map(|product| ProductCatalogRailItemViewModel {
             product_type: product

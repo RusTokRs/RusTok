@@ -119,6 +119,13 @@ pub fn BlogAdmin() -> impl IntoView {
             editing_banner_create_new_label.clone(),
         )
     });
+    let raw_body_warning_msg = form_raw_warning.clone();
+    let raw_body_warning_view = Memo::new(move |_| {
+        core::blog_post_admin_raw_body_warning_view(
+            body_format.get().as_str(),
+            raw_body_warning_msg.clone(),
+        )
+    });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
