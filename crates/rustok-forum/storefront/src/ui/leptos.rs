@@ -2,7 +2,11 @@ use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
-use crate::core::{category_href, summarize_rich_content, topic_href, topic_status_class};
+use crate::core::{
+    forum_storefront_category_card_view_model, forum_storefront_count_label,
+    forum_storefront_status_badge_class, forum_storefront_topic_card_view_model,
+    summarize_rich_content, topic_status_class, ForumStorefrontCategoryRailLabels,
+};
 use crate::i18n::t;
 use crate::model::{
     ForumCategoryListItem, ForumReplyDetail, ForumTopicDetail, ForumTopicListItem,
@@ -157,43 +161,43 @@ fn ForumCategoryRail(
                 </p>
                 <h3 class="mt-2 text-xl font-semibold text-card-foreground">{categories_title}</h3>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    {categories_total_template.replace("{count}", total.to_string().as_str())}
+                    {forum_storefront_count_label(categories_total_template.as_str(), total)}
                 </p>
             </div>
 
             <div class="space-y-2">
                 {items.into_iter().map(|item| {
-                    let href = category_href(module_route_base.as_str(), item.id.as_str());
-                    let is_active = selected_category_id.as_deref() == Some(item.id.as_str());
-                    let accent_style = item.color.as_deref()
-                        .filter(|value| !value.trim().is_empty())
-                        .map(|value| format!("background:{};", value))
-                        .unwrap_or_else(|| "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);".to_string());
+                    let labels = ForumStorefrontCategoryRailLabels {
+                        no_description: no_description_label.clone(),
+                        total_template: categories_total_template.clone(),
+                    };
+                    let card = forum_storefront_category_card_view_model(
+                        module_route_base.as_str(),
+                        &item,
+                        selected_category_id.as_deref(),
+                        &labels,
+                    );
                     view! {
                         <a
-                            class=move || format!(
+                            class=format!(
                                 "relative block overflow-hidden rounded-[1.35rem] border p-4 transition {}",
-                                if is_active {
-                                    "border-primary/40 bg-primary/5 shadow-sm"
-                                } else {
-                                    "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
-                                }
+                                card.container_class
                             )
-                            href=href
+                            href=card.href
                         >
-                            <span class="absolute inset-y-0 left-0 w-1.5" style=accent_style.clone()></span>
+                            <span class="absolute inset-y-0 left-0 w-1.5" style=card.accent_style></span>
                             <div class="pl-3">
                                 <div class="flex items-start justify-between gap-3">
                                     <div>
-                                        <h4 class="text-sm font-semibold text-foreground">{item.name}</h4>
-                                        <p class="mt-1 text-xs text-muted-foreground">{format!("#{}", item.slug)}</p>
+                                        <h4 class="text-sm font-semibold text-foreground">{card.name}</h4>
+                                        <p class="mt-1 text-xs text-muted-foreground">{card.slug_badge}</p>
                                     </div>
                                     <span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                                        {item.topic_count}
+                                        {card.topic_count}
                                     </span>
                                 </div>
                                 <p class="mt-3 line-clamp-3 text-sm text-muted-foreground">
-                                    {item.description.unwrap_or_else(|| no_description_label.clone())}
+                                    {card.description}
                                 </p>
                             </div>
                         </a>
@@ -255,59 +259,55 @@ fn ForumTopicFeed(
                     <h3 class="mt-2 text-2xl font-semibold text-card-foreground">{feed_title}</h3>
                 </div>
                 <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                    {threads_template.replace("{count}", total.to_string().as_str())}
+                    {forum_storefront_count_label(threads_template.as_str(), total)}
                 </span>
             </div>
 
             <div class="space-y-3">
                 {items.into_iter().map(|item| {
-                    let href = topic_href(
+                    let card = forum_storefront_topic_card_view_model(
                         module_route_base.as_str(),
+                        &item,
                         selected_category_id.as_deref(),
-                        item.id.as_str(),
+                        selected_topic_id.as_deref(),
+                        slug_template.as_str(),
                     );
-                    let is_active = selected_topic_id.as_deref() == Some(item.id.as_str());
-                    let status_class = topic_status_class(item.status.as_str());
                     view! {
                         <a
-                            class=move || format!(
+                            class=format!(
                                 "block rounded-[1.5rem] border p-5 transition {}",
-                                if is_active {
-                                    "border-primary/40 bg-primary/5 shadow-sm"
-                                } else {
-                                    "border-border bg-background hover:border-primary/25 hover:shadow-sm"
-                                }
+                                card.container_class
                             )
-                            href=href
+                            href=card.href
                         >
                             <div class="flex flex-wrap items-start justify-between gap-4">
                                 <div class="space-y-3">
                                     <div class="flex flex-wrap items-center gap-2">
-                                        <span class=status_badge_class(status_class)>{item.status.clone()}</span>
+                                        <span class=card.status_badge_class>{card.status.clone()}</span>
                                         <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                                            {item.effective_locale.clone()}
+                                            {card.effective_locale.clone()}
                                         </span>
-                                        {item.is_pinned.then(|| view! {
+                                        {card.is_pinned.then(|| view! {
                                             <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                                                 {pinned_label.clone()}
                                             </span>
                                         })}
-                                        {item.is_locked.then(|| view! {
+                                        {card.is_locked.then(|| view! {
                                             <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">
                                                 {locked_label.clone()}
                                             </span>
                                         })}
                                     </div>
                                     <div>
-                                        <h4 class="text-lg font-semibold text-foreground">{item.title}</h4>
-                                        <p class="mt-1 text-sm text-muted-foreground">{slug_template.replace("{slug}", item.slug.as_str())}</p>
+                                        <h4 class="text-lg font-semibold text-foreground">{card.title}</h4>
+                                        <p class="mt-1 text-sm text-muted-foreground">{card.slug_label}</p>
                                     </div>
                                 </div>
                                 <div class="text-right">
                                     <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                                         {replies_label.clone()}
                                     </p>
-                                    <p class="mt-1 text-2xl font-semibold text-foreground">{item.reply_count}</p>
+                                    <p class="mt-1 text-2xl font-semibold text-foreground">{card.reply_count}</p>
                                 </div>
                             </div>
                         </a>
@@ -367,7 +367,7 @@ fn ForumThreadPanel(
         <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm xl:sticky xl:top-6 xl:self-start">
             <div class="space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class=status_badge_class(status_class)>{topic.status.clone()}</span>
+                    <span class=forum_storefront_status_badge_class(status_class)>{topic.status.clone()}</span>
                     <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                         {topic.effective_locale.clone()}
                     </span>
@@ -384,7 +384,7 @@ fn ForumThreadPanel(
                 </div>
                 <div>
                     <h3 class="text-2xl font-semibold text-card-foreground">{topic.title}</h3>
-                    <p class="mt-2 text-sm text-muted-foreground">{slug_template.replace("{slug}", topic.slug.as_str())}</p>
+                    <p class="mt-2 text-sm text-muted-foreground">{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
                 </div>
                 <p class="whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
             </div>
@@ -406,7 +406,7 @@ fn ForumThreadPanel(
             <div class="rounded-[1.35rem] border border-border bg-background p-4">
                 <div class="flex items-center justify-between gap-3">
                     <p class="text-sm font-semibold text-foreground">{replies_title}</p>
-                    <span class="text-xs text-muted-foreground">{replies_total_template.replace("{count}", replies_total.to_string().as_str())}</span>
+                    <span class="text-xs text-muted-foreground">{forum_storefront_count_label(replies_total_template.as_str(), replies_total)}</span>
                 </div>
                 {if replies.is_empty() {
                     view! {
@@ -439,29 +439,12 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
             <div class="flex items-center justify-between gap-3">
-                <span class=status_badge_class(status_class)>{reply.status}</span>
+                <span class=forum_storefront_status_badge_class(status_class)>{reply.status}</span>
                 <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     {reply.effective_locale}
                 </span>
             </div>
             <p class="mt-3 whitespace-pre-line text-sm leading-6 text-muted-foreground">{content}</p>
         </article>
-    }
-}
-
-fn status_badge_class(status_class: &'static str) -> &'static str {
-    match status_class {
-        "success" => {
-            "rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
-        }
-        "warning" => {
-            "rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
-        }
-        "muted" => {
-            "rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
-        }
-        _ => {
-            "rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
-        }
     }
 }

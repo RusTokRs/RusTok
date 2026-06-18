@@ -67,7 +67,7 @@ pub fn PagesView() -> impl IntoView {
                                 Ok(data) => view! { <PagesShowcase data /> }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                        {format!("{}: {err}", load_error)}
+                                        {core::load_error_message(load_error.as_str(), err.as_str())}
                                     </div>
                                 }.into_any(),
                             }

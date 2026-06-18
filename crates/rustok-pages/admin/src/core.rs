@@ -509,6 +509,14 @@ pub fn busy_key_matches_action(busy_key: Option<&str>, action: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn is_save_action_busy(busy_key: Option<&str>) -> bool {
+    busy_key == Some("create") || busy_key_matches_action(busy_key, "save")
+}
+
+pub fn is_publish_action_disabled(editing_page_id: Option<&str>, busy_key: Option<&str>) -> bool {
+    editing_page_id.is_none() || busy_key_matches_action(busy_key, "publish")
+}
+
 pub fn empty_edit_form_seed(default_locale: &str) -> EditFormSeed {
     EditFormSeed {
         locale: default_locale.to_string(),
@@ -722,6 +730,12 @@ mod tests {
     #[test]
     fn builder_surface_view_helpers_are_core_owned() {
         assert_eq!(channel_count_label(" web, mobile, web "), "2");
+        assert!(is_save_action_busy(Some("create")));
+        assert!(is_save_action_busy(Some("save:p_1")));
+        assert!(!is_save_action_busy(Some("publish:p_1")));
+        assert!(is_publish_action_disabled(None, None));
+        assert!(is_publish_action_disabled(Some("p_1"), Some("publish:p_1")));
+        assert!(!is_publish_action_disabled(Some("p_1"), Some("save:p_1")));
 
         let draft_state = publish_state_view(false);
         assert_eq!(draft_state.status, "draft");

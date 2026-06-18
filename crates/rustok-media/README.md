@@ -6,10 +6,10 @@
 
 ## Responsibilities
 
-- Provide the shared media domain service and SeaORM entities for uploads and localized metadata.
+- Provide the shared media domain service and SeaORM entities for uploads and localized metadata with normalized locale/text translation inputs.
 - Own media GraphQL and REST transport adapters for module-facing APIs.
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
-- Integrate storage-backed file lifecycle with tenant-aware media records.
+- Integrate storage-backed file lifecycle with tenant-aware media records, including conservative cleanup probes that never delete readable storage objects during orphan detection.
 - Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers) for SEO and other read-side consumers.
 
 ## Interactions
@@ -37,7 +37,12 @@
 - `MediaItem`
 - `MediaTranslationItem`
 - `UploadInput`
-- `UpsertTranslationInput`
+- `UpsertTranslationInput` / `NormalizedTranslationInput`
+
+## Runtime notes
+
+- Translation upserts normalize locale and text payloads before persistence: locale values are trimmed/lowercased, blank optional text fields become `None`, and translation lists are returned in locale order.
+- Server cleanup uses a read probe for the exact `storage_path`; `NotFound`/`InvalidPath` remove only the DB record, while transient backend errors keep the record for a later retry.
 
 ## Docs
 

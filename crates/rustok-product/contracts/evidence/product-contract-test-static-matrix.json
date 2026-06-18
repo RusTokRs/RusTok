@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "module": "product",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-product/contracts/product-fba-registry.json",
+  "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
+  "contract_version": "product.catalog_read.v1",
+  "profiles": [
+    "in_process",
+    "remote_adapter_placeholder"
+  ],
+  "promotion_gate": "does_not_raise_boundary_ready_without_runtime_execution",
+  "cases": [
+    {
+      "operation": "read_product_projection",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ]
+    },
+    {
+      "operation": "list_published_products",
+      "execution_status": "static_locked_runtime_pending",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "static_locked_runtime_pending",
+    "profiles": [
+      "embedded_native",
+      "graphql_checkout_compat",
+      "graphql_storefront_compat"
+    ],
+    "degraded_modes": [
+      "use_cart_product_snapshot",
+      "show_product_refresh_required",
+      "skip_product_enrichment"
+    ]
+  }
+}
