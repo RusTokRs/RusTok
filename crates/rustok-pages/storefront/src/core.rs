@@ -117,6 +117,10 @@ pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{}: {}", label, value)
 }
 
+pub fn load_error_message(label: &str, error: &str) -> String {
+    format!("{}: {}", label, error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
