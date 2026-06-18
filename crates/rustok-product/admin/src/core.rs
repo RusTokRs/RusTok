@@ -2,8 +2,8 @@ use rustok_api::AdminQueryKey;
 
 use crate::i18n::t;
 use crate::model::{
-    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductListItem, ProductPricingDetail,
-    ProductTranslation, ShippingProfile,
+    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductListItem,
+    ProductPricingDetail, ProductTranslation, ShippingProfile, ShippingProfileList,
 };
 
 fn locale_tags_match(left: &str, right: &str) -> bool {
@@ -1028,6 +1028,32 @@ pub(crate) fn build_product_admin_shipping_profile_options(
         .collect()
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAdminShippingProfilesLoadViewModel {
+    pub options: Vec<ProductAdminShippingProfileOption>,
+    pub panel: ProductAdminProfilePanelViewModel,
+}
+
+pub(crate) fn product_admin_shipping_profiles_load_view_from_result<E: std::fmt::Display>(
+    locale: Option<&str>,
+    result: Option<Result<ShippingProfileList, E>>,
+) -> ProductAdminShippingProfilesLoadViewModel {
+    match result {
+        None => ProductAdminShippingProfilesLoadViewModel {
+            options: Vec::new(),
+            panel: build_product_admin_profile_panel_loading_view_model(locale),
+        },
+        Some(Err(error)) => ProductAdminShippingProfilesLoadViewModel {
+            options: Vec::new(),
+            panel: build_product_admin_profile_panel_error_view_model(locale, error),
+        },
+        Some(Ok(list)) => ProductAdminShippingProfilesLoadViewModel {
+            options: build_product_admin_shipping_profile_options(locale, &list.items),
+            panel: build_product_admin_profile_panel_ready_view_model(locale, &list.items),
+        },
+    }
+}
+
 pub(crate) fn shipping_profile_choice_label(
     locale: Option<&str>,
     profile: &ShippingProfile,
@@ -1206,6 +1232,30 @@ pub(crate) fn build_product_admin_list_error_view_model(
                 "Failed to load products"
             )
         ),
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ProductAdminProductsLoadViewModel {
+    State(ProductAdminListStateViewModel),
+    Ready(Vec<ProductListItem>),
+}
+
+pub(crate) fn product_admin_products_load_view_from_result<E: std::fmt::Display>(
+    locale: Option<&str>,
+    result: Option<Result<ProductList, E>>,
+) -> ProductAdminProductsLoadViewModel {
+    match result {
+        None => ProductAdminProductsLoadViewModel::State(
+            build_product_admin_list_loading_view_model(locale),
+        ),
+        Some(Err(error)) => ProductAdminProductsLoadViewModel::State(
+            build_product_admin_list_error_view_model(locale, error),
+        ),
+        Some(Ok(list)) if list.items.is_empty() => ProductAdminProductsLoadViewModel::State(
+            build_product_admin_list_empty_view_model(locale),
+        ),
+        Some(Ok(list)) => ProductAdminProductsLoadViewModel::Ready(list.items),
     }
 }
 
@@ -1476,6 +1526,48 @@ mod tests {
         assert_eq!(error.kind, ProductAdminListStateKind::Error);
         assert_eq!(error.message, "Failed to load products: network");
         assert!(error.container_class.contains("destructive"));
+    }
+
+    #[test]
+    fn product_admin_products_load_result_normalization_stays_in_core() {
+        let loading = product_admin_products_load_view_from_result::<&str>(Some("en"), None);
+        assert!(matches!(
+            loading,
+            ProductAdminProductsLoadViewModel::State(ProductAdminListStateViewModel {
+                kind: ProductAdminListStateKind::Loading,
+                ..
+            })
+        ));
+
+        let empty = product_admin_products_load_view_from_result::<&str>(
+            Some("en"),
+            Some(Ok(ProductList {
+                items: Vec::new(),
+                total: 0,
+                page: 1,
+                per_page: 20,
+                has_next: false,
+            })),
+        );
+        assert!(matches!(
+            empty,
+            ProductAdminProductsLoadViewModel::State(ProductAdminListStateViewModel {
+                kind: ProductAdminListStateKind::Empty,
+                ..
+            })
+        ));
+
+        let error = product_admin_products_load_view_from_result(
+            Some("en"),
+            Some(Err::<ProductList, _>("network")),
+        );
+        match error {
+            ProductAdminProductsLoadViewModel::State(state) => {
+                assert_eq!(state.kind, ProductAdminListStateKind::Error);
+                assert_eq!(state.message, "Failed to load products: network");
+            }
+            ProductAdminProductsLoadViewModel::Ready(_) => panic!("expected error state"),
+        }
     }
 
     #[test]
@@ -1942,6 +2034,41 @@ mod tests {
                 },
             ],
         );
+    }
+
+    #[test]
+    fn product_admin_shipping_profiles_load_result_is_normalized_once() {
+        let loading =
+            product_admin_shipping_profiles_load_view_from_result::<&str>(Some("en"), None);
+        assert!(loading.options.is_empty());
+        assert!(matches!(
+            loading.panel,
+            ProductAdminProfilePanelViewModel::Loading { .. }
+        ));
+
+        let error = product_admin_shipping_profiles_load_view_from_result(
+            Some("en"),
+            Some(Err::<ShippingProfileList, _>("network")),
+        );
+        assert!(error.options.is_empty());
+        assert_eq!(
+            error.panel.into_message(),
+            "Failed to load shipping profiles: network"
+        );
+
+        let ready = product_admin_shipping_profiles_load_view_from_result::<&str>(
+            Some("en"),
+            Some(Ok(ShippingProfileList {
+                items: vec![shipping_profile("standard", true)],
+                total: 1,
+                page: 1,
+                per_page: 20,
+                has_next: false,
+            })),
+        );
+        assert_eq!(ready.options.len(), 1);
+        assert_eq!(ready.options[0].value, "standard");
+        assert_eq!(ready.panel.into_message(), "Known profiles: standard");
     }
 
     #[test]
