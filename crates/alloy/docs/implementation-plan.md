@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Added SeaORM-backed execution-log persistence assertions for context rows, invalid tenant fallback, recent ordering, and failure/abort canonical fields without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then extend DB-backed assertions to transport-facing history query surfaces.
+- Last checkpoint: Exposed DB-backed execution history through GraphQL and HTTP transport surfaces without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then add transport-level assertions for execution-history pagination and canonical field mapping.
 - Open blockers: None.
 - Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests.
-- Last updated at (UTC): 2026-06-16T00:00:00Z
+- Last updated at (UTC): 2026-06-17T18:26:29Z
 
 ## Область работ
 
@@ -32,7 +32,7 @@ contract приведены к единому формату.
 
 - [x] нормализовать local docs и убрать битую кодировку из module docs;
 - [x] удерживать `alloy` в module-standard verification path;
-- [ ] удерживать sync между host wiring, transport surfaces и capability metadata.
+- [x] удерживать sync между host wiring, transport surfaces и capability metadata.
 
 ### 2. Runtime hardening
 
