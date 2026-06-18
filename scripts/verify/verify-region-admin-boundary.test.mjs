@@ -95,7 +95,7 @@ ${omitGuardrail ? "" : "- Fast guardrail: scripts/verify/verify-region-admin-bou
 function registrySource({ staleSlice = false, omitGuardrail = false } = {}) {
   return `
 | Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
-| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #38" : "slice #39"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
+| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #39" : "slice #40"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
 `;
 }
 
@@ -181,7 +181,7 @@ test("region admin boundary verifier rejects missing route writer core helper", 
 test("region admin boundary verifier rejects stale central readiness board", () => {
   withTempFixture({ staleSlice: true }, (result) => {
     assert.notEqual(result.status, 0, "Expected stale registry fixture to fail");
-    assert.match(result.stderr, /central readiness board must record slice #39/);
+    assert.match(result.stderr, /central readiness board must record slice #40/);
   });
 });
 

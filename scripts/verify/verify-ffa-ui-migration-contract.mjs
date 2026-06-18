@@ -626,6 +626,8 @@ function collectProductAdminShellProfileContractErrors() {
     "build_product_admin_profile_panel_loading_view_model",
     "build_product_admin_profile_panel_error_view_model",
     "build_product_admin_profile_panel_ready_view_model",
+    "ProductAdminShippingProfilesLoadViewModel",
+    "product_admin_shipping_profiles_load_view_from_result",
   ].forEach((contractName) => {
     if (!core.includes(contractName)) {
       errors.push(`Product admin core должен содержать shell/profile view-model contract: ${contractName}`);
@@ -634,9 +636,7 @@ function collectProductAdminShellProfileContractErrors() {
 
   [
     "build_product_admin_shell_view_model",
-    "build_product_admin_profile_panel_loading_view_model",
-    "build_product_admin_profile_panel_error_view_model",
-    "build_product_admin_profile_panel_ready_view_model",
+    "product_admin_shipping_profiles_load_view_from_result",
   ].forEach((contractName) => {
     if (!leptosUi.includes(contractName)) {
       errors.push(`Product admin Leptos adapter должен использовать core-owned shell/profile helper: ${contractName}`);

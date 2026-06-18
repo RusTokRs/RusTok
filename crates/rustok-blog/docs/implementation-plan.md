@@ -9,8 +9,6 @@ packages и module metadata синхронизированы.
 
 - Current phase: ffa_admin_posts_load_result_normalization
 - Last checkpoint: FFA slice #94 moved admin posts-list `BlogPostList` result normalization into `blog_post_admin_posts_load_view_from_list`, so the Leptos adapter no longer unpacks list DTOs before invoking the core-owned load-result envelope.
-- Current phase: ffa_admin_posts_contract_unavailable_parity_boundary
-- Last checkpoint: FFA slice #92 removed the over-extracted admin shell-copy helper and fixed posts contract-unavailable classification so the GraphQL adapter no longer swallows fallback errors before the Leptos parity branch can render the prepared empty state.
 - Next step: Continue with small admin render/command fragments that reduce real coupling without changing the dual-path contract, or add adapter-level parity evidence around transport failure classification.
 - Open blockers: None.
 - Hand-off notes for next agent:
