@@ -30,6 +30,8 @@
     "verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.mjs",
     "verify:region:admin-boundary": "node scripts/verify/verify-region-admin-boundary.mjs",
     "test:verify:region:admin-boundary": "node scripts/verify/verify-region-admin-boundary.test.mjs",
+    "verify:region:storefront-boundary": "node scripts/verify/verify-region-storefront-boundary.mjs",
+    "test:verify:region:storefront-boundary": "node scripts/verify/verify-region-storefront-boundary.test.mjs",
     "verify:blog:admin-boundary": "node scripts/verify/verify-blog-admin-boundary.mjs",
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
     "verify:fulfillment:admin-boundary": "node scripts/verify/verify-fulfillment-admin-boundary.mjs",
@@ -58,8 +60,9 @@
     "verify:ecommerce:provider-spi-evidence": "node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
     "verify:ecommerce:fba": "npm run verify:ecommerce:fba-registries && npm run verify:ecommerce:fba-contract-evidence && npm run verify:ecommerce:provider-spi-evidence",
     "test:verify:ecommerce:fba": "npm run test:verify:ecommerce:fba-registries && npm run test:verify:ecommerce:fba-contract-evidence && npm run test:verify:ecommerce:provider-spi-evidence",
-    "verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.mjs",
-    "test:verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.test.mjs"
+    "verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.mjs",
+    "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
+    "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
