@@ -1,6 +1,6 @@
 pub mod core;
-pub mod transport;
 mod model;
+pub mod transport;
 mod ui;
 
 pub use model::{StorefrontDeliveryGroup, StorefrontShippingOption};
