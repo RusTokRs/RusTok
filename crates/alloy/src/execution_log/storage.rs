@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    entity::prelude::*, ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryOrder,
-    QuerySelect,
+    entity::prelude::*, ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Select,
 };
 use uuid::Uuid;
 
@@ -100,19 +100,57 @@ impl SeaOrmExecutionLog {
         script_id: ScriptId,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        let models = Entity::find()
-            .filter(Column::ScriptId.eq(script_id))
-            .order_by_desc(Column::CreatedAt)
-            .limit(limit)
-            .all(&self.db)
-            .await
-            .map_err(|err| ScriptError::Storage(err.to_string()))?;
+        self.list_for_script_scoped(script_id, None, limit).await
+    }
 
-        Ok(models.into_iter().map(model_to_entry).collect())
+    pub async fn list_for_script_for_tenant(
+        &self,
+        script_id: ScriptId,
+        tenant_id: Uuid,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.list_for_script_scoped(script_id, Some(tenant_id), limit)
+            .await
     }
 
     pub async fn list_recent(&self, limit: u64) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        let models = Entity::find()
+        self.list_recent_scoped(None, limit).await
+    }
+
+    pub async fn list_recent_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.list_recent_scoped(Some(tenant_id), limit).await
+    }
+
+    async fn list_for_script_scoped(
+        &self,
+        script_id: ScriptId,
+        tenant_id: Option<Uuid>,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        let query = Entity::find().filter(Column::ScriptId.eq(script_id));
+        self.fetch_entries(apply_tenant_filter(query, tenant_id), limit)
+            .await
+    }
+
+    async fn list_recent_scoped(
+        &self,
+        tenant_id: Option<Uuid>,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.fetch_entries(apply_tenant_filter(Entity::find(), tenant_id), limit)
+            .await
+    }
+
+    async fn fetch_entries(
+        &self,
+        query: Select<Entity>,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        let models = query
             .order_by_desc(Column::CreatedAt)
             .limit(limit)
             .all(&self.db)
@@ -137,6 +175,13 @@ impl ExecutionLogSink for SeaOrmExecutionLog {
 
         self.record_with_context(result, ctx.user_id.clone(), tenant_id)
             .await
+    }
+}
+
+fn apply_tenant_filter(query: Select<Entity>, tenant_id: Option<Uuid>) -> Select<Entity> {
+    match tenant_id {
+        Some(tenant_id) => query.filter(Column::TenantId.eq(tenant_id)),
+        None => query,
     }
 }
 
@@ -293,6 +338,57 @@ mod tests {
             .expect("one execution row should exist");
         assert_eq!(entry.user_id.as_deref(), Some("operator-43"));
         assert_eq!(entry.tenant_id, None);
+    }
+
+    #[tokio::test]
+    async fn tenant_scoped_history_filters_recent_and_script_rows() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+        let tenant_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+        let result_a = result_for(
+            script_id,
+            "tenant_a_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            0,
+        );
+        let result_b = result_for(
+            script_id,
+            "tenant_b_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            1_000,
+        );
+
+        log.record_with_context(&result_a, Some("operator-a".to_string()), Some(tenant_a))
+            .await
+            .expect("tenant A execution row should persist");
+        log.record_with_context(&result_b, Some("operator-b".to_string()), Some(tenant_b))
+            .await
+            .expect("tenant B execution row should persist");
+
+        let tenant_a_recent = log
+            .list_recent_for_tenant(tenant_a, 10)
+            .await
+            .expect("tenant-scoped recent rows should be queryable");
+        assert_eq!(tenant_a_recent.len(), 1);
+        assert_eq!(tenant_a_recent[0].id, result_a.execution_id);
+        assert_eq!(tenant_a_recent[0].tenant_id, Some(tenant_a));
+
+        let tenant_b_script_rows = log
+            .list_for_script_for_tenant(script_id, tenant_b, 10)
+            .await
+            .expect("tenant-scoped script rows should be queryable");
+        assert_eq!(tenant_b_script_rows.len(), 1);
+        assert_eq!(tenant_b_script_rows[0].id, result_b.execution_id);
+        assert_eq!(tenant_b_script_rows[0].tenant_id, Some(tenant_b));
     }
 
     #[tokio::test]
