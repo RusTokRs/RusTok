@@ -414,6 +414,12 @@ fn validate_schema_name(name: &str) -> Result<(), FlexError> {
         ));
     }
 
+    if name.trim() != name {
+        return Err(FlexError::InvalidFieldKey(
+            "schema name must already be normalized without surrounding whitespace".to_string(),
+        ));
+    }
+
     if name.len() > MAX_SCHEMA_NAME_LEN {
         return Err(FlexError::InvalidFieldKey(format!(
             "schema name must be at most {MAX_SCHEMA_NAME_LEN} characters"
@@ -628,6 +634,12 @@ mod tests {
         };
         assert!(validate_update_schema_command(&empty_name).is_err());
 
+        let untrimmed_name = UpdateFlexSchemaCommand {
+            name: Some(" Landing".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_update_schema_command(&untrimmed_name).is_err());
+
         let duplicate_keys = UpdateFlexSchemaCommand {
             fields_config: Some(vec![sample_definition("title"), sample_definition("title")]),
             ..Default::default()
@@ -654,6 +666,17 @@ mod tests {
 
     #[test]
     fn validate_schema_command_rejects_storage_bound_overflows() {
+        let untrimmed_name = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing ".to_string(),
+            description: None,
+            fields_config: vec![],
+            settings: None,
+            is_active: None,
+        };
+
+        assert!(validate_create_schema_command(&untrimmed_name).is_err());
+
         let oversized_slug = CreateFlexSchemaCommand {
             slug: format!("a{}", "a".repeat(64)),
             name: "Landing".to_string(),

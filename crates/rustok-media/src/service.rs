@@ -27,6 +27,57 @@ pub struct MediaService {
     storage: StorageService,
 }
 
+fn normalize_translation_input(input: UpsertTranslationInput) -> UpsertTranslationInput {
+    UpsertTranslationInput {
+        locale: normalize_locale(input.locale),
+        title: normalize_optional_text(input.title),
+        alt_text: normalize_optional_text(input.alt_text),
+        caption: normalize_optional_text(input.caption),
+    }
+}
+
+fn normalize_locale(locale: String) -> String {
+    locale.trim().to_ascii_lowercase()
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_locale, normalize_optional_text, normalize_translation_input};
+    use crate::dto::UpsertTranslationInput;
+
+    #[test]
+    fn normalize_translation_input_trims_locale_and_optional_text() {
+        let normalized = normalize_translation_input(UpsertTranslationInput {
+            locale: " RU ".to_string(),
+            title: Some("  Hero  ".to_string()),
+            alt_text: Some("   ".to_string()),
+            caption: Some(" Caption text ".to_string()),
+        });
+
+        assert_eq!(normalized.locale, "ru");
+        assert_eq!(normalized.title.as_deref(), Some("Hero"));
+        assert_eq!(normalized.alt_text, None);
+        assert_eq!(normalized.caption.as_deref(), Some("Caption text"));
+    }
+
+    #[test]
+    fn normalize_locale_keeps_region_shape_but_canonicalizes_case() {
+        assert_eq!(normalize_locale(" En-US ".to_string()), "en-us");
+    }
+
+    #[test]
+    fn normalize_optional_text_converts_blank_values_to_none() {
+        assert_eq!(normalize_optional_text(Some("\t\n ".to_string())), None);
+        assert_eq!(normalize_optional_text(None), None);
+    }
+}
+
 impl MediaService {
     pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
         Self { db, storage }
@@ -148,6 +199,7 @@ impl MediaService {
     ) -> Result<MediaTranslationItem> {
         // Ensure media belongs to tenant
         let _ = self.get(tenant_id, media_id).await?;
+        let input = normalize_translation_input(input);
 
         let existing = TransEntity::find()
             .filter(TransCol::MediaId.eq(media_id))
@@ -192,6 +244,7 @@ impl MediaService {
         let _ = self.get(tenant_id, media_id).await?;
         let rows = TransEntity::find()
             .filter(TransCol::MediaId.eq(media_id))
+            .order_by_asc(TransCol::Locale)
             .all(&self.db)
             .await?;
         Ok(rows

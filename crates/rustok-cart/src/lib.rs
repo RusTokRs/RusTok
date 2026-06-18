@@ -6,11 +6,13 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+pub mod ports;
 pub mod services;
 
 pub use dto::*;
 pub use entities::*;
 pub use error::{CartError, CartResult};
+pub use ports::*;
 pub use services::CartService;
 
 pub struct CartModule;

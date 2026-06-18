@@ -1,0 +1,322 @@
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use loco_rs::{app::AppContext, Error, Result};
+use rustok_api::{
+    loco::transactional_event_bus_from_context, OptionalAuthContext, RequestContext, TenantContext,
+};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
+use uuid::Uuid;
+
+use crate::{
+    dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
+    entities::{product, product_translation},
+    storefront_channel::{
+        apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
+        public_channel_slug_from_request,
+    },
+    storefront_shipping::{
+        is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
+        shipping_profile_slug_from_product_metadata,
+    },
+    CatalogService, RegionService, FulfillmentService, CartService,
+};
+use crate::controllers::products::ProductListItem;
+use super::{
+    super::common::{PaginatedResponse, PaginationMeta},
+    StoreContextQuery, StoreListProductsParams,
+};
+
+/// List published storefront products
+#[utoipa::path(
+    get,
+    path = "/store/products",
+    tag = "store",
+    params(StoreListProductsParams),
+    responses(
+        (status = 200, description = "Published storefront products", body = PaginatedResponse<ProductListItem>),
+        (status = 400, description = "Invalid request")
+    )
+)]
+pub async fn list_products(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+    Query(params): Query<StoreListProductsParams>,
+) -> Result<Json<PaginatedResponse<ProductListItem>>> {
+    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
+    let _requested_limit = params
+        .pagination
+        .as_ref()
+        .map(|pagination| pagination.per_page);
+    let pagination = params.pagination.unwrap_or_default();
+    let locale = params
+        .locale
+        .as_deref()
+        .unwrap_or(request_context.locale.as_str());
+
+    let public_channel_slug = public_channel_slug_from_request(&request_context);
+    let mut query = product::Entity::find()
+        .filter(product::Column::TenantId.eq(tenant.id))
+        .filter(product::Column::Status.eq(product::ProductStatus::Active))
+        .filter(product::Column::PublishedAt.is_not_null());
+
+    if let Some(vendor) = &params.vendor {
+        query = query.filter(product::Column::Vendor.eq(vendor));
+    }
+    if let Some(product_type) = &params.product_type {
+        query = query.filter(product::Column::ProductType.eq(product_type));
+    }
+    if let Some(search) = &params.search {
+        query = query.filter(crate::search::product_translation_title_search_condition(
+            ctx.db.get_database_backend(),
+            locale,
+            search,
+        ));
+    }
+
+    let visible_products = query
+        .order_by_desc(product::Column::PublishedAt)
+        .order_by_desc(product::Column::CreatedAt)
+        .all(&ctx.db)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .into_iter()
+        .filter(|product| {
+            is_metadata_visible_for_public_channel(
+                &product.metadata,
+                public_channel_slug.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let total = visible_products.len() as u64;
+    let products = visible_products
+        .into_iter()
+        .skip(pagination.offset() as usize)
+        .take(pagination.limit() as usize)
+        .collect::<Vec<_>>();
+
+    let product_ids = products
+        .iter()
+        .map(|product| product.id)
+        .collect::<Vec<_>>();
+    let translations = if product_ids.is_empty() {
+        Vec::new()
+    } else {
+        product_translation::Entity::find()
+            .filter(product_translation::Column::ProductId.is_in(product_ids))
+            .all(&ctx.db)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?
+    };
+
+    let mut translation_map =
+        std::collections::HashMap::<Uuid, Vec<product_translation::Model>>::new();
+    for translation in translations {
+        translation_map
+            .entry(translation.product_id)
+            .or_default()
+            .push(translation);
+    }
+    let catalog = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let product_tags = catalog
+        .load_product_tag_map(
+            tenant.id,
+            &products,
+            locale,
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let items = products
+        .into_iter()
+        .map(|product| {
+            let translation = translation_map.get(&product.id).and_then(|items| {
+                super::pick_product_translation(items, locale, tenant.default_locale.as_str())
+            });
+            ProductListItem {
+                id: product.id,
+                status: product.status.to_string(),
+                title: translation
+                    .map(|value| value.title.clone())
+                    .unwrap_or_default(),
+                handle: translation
+                    .map(|value| value.handle.clone())
+                    .unwrap_or_default(),
+                seller_id: product.seller_id,
+                vendor: product.vendor,
+                product_type: product.product_type,
+                shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
+                    &product.metadata,
+                )),
+                tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
+                created_at: product.created_at.to_rfc3339(),
+                published_at: product.published_at.map(|value| value.to_rfc3339()),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(PaginatedResponse {
+        data: items,
+        meta: PaginationMeta::new(pagination.page, pagination.limit(), total),
+    }))
+}
+
+/// Show published storefront product
+#[utoipa::path(
+    get,
+    path = "/store/products/{id}",
+    tag = "store",
+    params(("id" = Uuid, Path, description = "Product ID")),
+    responses(
+        (status = 200, description = "Product details", body = ProductResponse),
+        (status = 404, description = "Product not found")
+    )
+)]
+pub async fn show_product(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ProductResponse>> {
+    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let public_channel_slug = public_channel_slug_from_request(&request_context);
+    let mut product = service
+        .get_product_with_locale_fallback(
+            tenant.id,
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    if product.status != product::ProductStatus::Active
+        || product.published_at.is_none()
+        || !is_metadata_visible_for_public_channel(
+            &product.metadata,
+            public_channel_slug.as_deref(),
+        )
+    {
+        return Err(Error::NotFound);
+    }
+
+    apply_public_channel_inventory_to_product(
+        &ctx.db,
+        tenant.id,
+        &mut product,
+        public_channel_slug.as_deref(),
+    )
+    .await
+    .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    Ok(Json(product))
+}
+
+/// List available storefront regions
+#[utoipa::path(
+    get,
+    path = "/store/regions",
+    tag = "store",
+    responses(
+        (status = 200, description = "Store regions", body = Vec<RegionResponse>)
+    )
+)]
+pub async fn list_regions(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+) -> Result<Json<Vec<RegionResponse>>> {
+    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
+    let service = RegionService::new(ctx.db.clone());
+    let regions = service
+        .list_regions(
+            tenant.id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(regions))
+}
+
+/// List active storefront shipping options
+#[utoipa::path(
+    get,
+    path = "/store/shipping-options",
+    tag = "store",
+    params(StoreContextQuery),
+    responses(
+        (status = 200, description = "Shipping options", body = Vec<ShippingOptionResponse>)
+    )
+)]
+pub async fn list_shipping_options(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: OptionalAuthContext,
+    request_context: RequestContext,
+    Query(query): Query<StoreContextQuery>,
+) -> Result<Json<Vec<ShippingOptionResponse>>> {
+    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+
+    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
+    let (context, public_channel_slug, required_shipping_profiles) =
+        if let Some(cart_id) = query.cart_id {
+            let cart_service = CartService::new(ctx.db.clone());
+            let cart = cart_service
+                .get_cart(tenant.id, cart_id)
+                .await
+                .map_err(super::map_cart_error)?;
+            super::ensure_store_cart_access(&cart, customer_id)?;
+            let required_shipping_profiles =
+                load_cart_shipping_profile_slugs(&ctx.db, tenant.id, &cart)
+                    .await
+                    .map_err(|err| Error::BadRequest(err.to_string()))?;
+            (
+                super::resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?,
+                super::storefront_public_channel_slug_for_cart(&cart, &request_context),
+                required_shipping_profiles,
+            )
+        } else {
+            (
+                super::resolve_context(
+                    &ctx,
+                    tenant.id,
+                    &request_context,
+                    query.region_id,
+                    query.country_code.clone(),
+                    query.locale.clone(),
+                    query.currency_code.clone(),
+                )
+                .await?,
+                public_channel_slug_from_request(&request_context),
+                Default::default(),
+            )
+        };
+
+    let service = FulfillmentService::new(ctx.db.clone());
+    let mut options = service
+        .list_shipping_options(
+            tenant.id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    if let Some(currency_code) = context.currency_code.as_deref() {
+        options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
+    }
+    options.retain(|option| {
+        is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug.as_deref())
+            && is_shipping_option_compatible_with_profiles(option, &required_shipping_profiles)
+    });
+
+    Ok(Json(options))
+}

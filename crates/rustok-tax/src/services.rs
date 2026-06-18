@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
@@ -8,7 +9,7 @@ use crate::error::{TaxError, TaxResult};
 
 pub const REGION_DEFAULT_TAX_PROVIDER_ID: &str = "region_default";
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TaxPolicySnapshot {
     pub provider_id: Option<String>,
     pub channel_provider_id: Option<String>,
@@ -18,14 +19,14 @@ pub struct TaxPolicySnapshot {
     pub country_rules: Vec<TaxPolicyCountryRule>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TaxPolicyCountryRule {
     pub country_code: String,
     pub tax_rate: Decimal,
     pub tax_included: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TaxableAmount {
     pub line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
@@ -35,7 +36,7 @@ pub struct TaxableAmount {
     pub amount: Decimal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TaxCalculationInput {
     pub currency_code: String,
     pub channel_id: Option<Uuid>,
@@ -44,7 +45,7 @@ pub struct TaxCalculationInput {
     pub taxable_amounts: Vec<TaxableAmount>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CalculatedTaxLine {
     pub line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
@@ -56,7 +57,7 @@ pub struct CalculatedTaxLine {
     pub metadata: Value,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct TaxCalculationResult {
     pub tax_total: Decimal,
     pub tax_included: bool,
@@ -313,8 +314,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        RegionTaxProvider, TaxCalculationInput, TaxPolicyCountryRule, TaxPolicySnapshot,
-        TaxProvider, TaxableAmount, REGION_DEFAULT_TAX_PROVIDER_ID,
+        REGION_DEFAULT_TAX_PROVIDER_ID, RegionTaxProvider, TaxCalculationInput,
+        TaxPolicyCountryRule, TaxPolicySnapshot, TaxProvider, TaxableAmount,
     };
 
     #[tokio::test]
@@ -359,18 +360,24 @@ mod tests {
 
         assert_eq!(result.tax_total, Decimal::from(22));
         assert_eq!(result.lines.len(), 2);
-        assert!(result
-            .lines
-            .iter()
-            .all(|line| line.provider_id == REGION_DEFAULT_TAX_PROVIDER_ID));
-        assert!(result
-            .lines
-            .iter()
-            .any(|line| line.line_item_id == Some(line_item_id)));
-        assert!(result
-            .lines
-            .iter()
-            .any(|line| line.shipping_option_id == Some(shipping_option_id)));
+        assert!(
+            result
+                .lines
+                .iter()
+                .all(|line| line.provider_id == REGION_DEFAULT_TAX_PROVIDER_ID)
+        );
+        assert!(
+            result
+                .lines
+                .iter()
+                .any(|line| line.line_item_id == Some(line_item_id))
+        );
+        assert!(
+            result
+                .lines
+                .iter()
+                .any(|line| line.shipping_option_id == Some(shipping_option_id))
+        );
     }
 
     #[tokio::test]
@@ -401,9 +408,11 @@ mod tests {
             .await
             .expect_err("unknown provider should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("unknown tax provider_id: external_tax"));
+        assert!(
+            error
+                .to_string()
+                .contains("unknown tax provider_id: external_tax")
+        );
     }
 
     #[tokio::test]
@@ -466,9 +475,11 @@ mod tests {
             .await
             .expect_err("unknown channel provider should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("unknown tax provider_id: external_tax"));
+        assert!(
+            error
+                .to_string()
+                .contains("unknown tax provider_id: external_tax")
+        );
     }
 
     #[tokio::test]

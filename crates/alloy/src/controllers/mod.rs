@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 use crate::{
     api::{
-        CreateScriptRequest, EntityInput, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
+        CreateScriptRequest, EntityInput, ExecutionLogEntryResponse, ListExecutionLogQuery,
+        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
         RunScriptResponse, ScriptResponse, UpdateScriptRequest,
     },
     model::{EntityProxy, Script, ScriptStatus},
@@ -203,6 +204,36 @@ pub async fn run_script_by_name(
     Ok(Json(run_response(result)))
 }
 
+pub async fn list_execution_log(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    Query(query): Query<ListExecutionLogQuery>,
+) -> Result<Json<ListExecutionLogResponse>> {
+    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let limit = query.normalized_limit();
+
+    let entries = match query.script_id {
+        Some(script_id) => runtime
+            .execution_log
+            .list_for_script_for_tenant(script_id, tenant.id, limit)
+            .await
+            .map_err(script_error)?,
+        None => runtime
+            .execution_log
+            .list_recent_for_tenant(tenant.id, limit)
+            .await
+            .map_err(script_error)?,
+    };
+
+    Ok(Json(ListExecutionLogResponse {
+        executions: entries
+            .into_iter()
+            .map(ExecutionLogEntryResponse::from)
+            .collect(),
+        limit,
+    }))
+}
+
 pub async fn validate_script(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
@@ -296,6 +327,7 @@ pub fn routes() -> Routes {
         .prefix("api/alloy")
         .add("/scripts", get(list_scripts).post(create_script))
         .add("/scripts/validate", post(validate_script))
+        .add("/executions", get(list_execution_log))
         .add(
             "/scripts/{id}",
             get(get_script).put(update_script).delete(delete_script),

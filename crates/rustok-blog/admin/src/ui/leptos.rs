@@ -126,6 +126,16 @@ pub fn BlogAdmin() -> impl IntoView {
             raw_body_warning_msg.clone(),
         )
     });
+    let issue_banner_view =
+        Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
+    let form_view_locale = ui_locale.clone();
+    let form_view_model = Memo::new(move |_| {
+        blog_form_view_model(
+            form_view_locale.as_deref(),
+            editing_post_id.get().as_deref(),
+            busy_key.get().as_deref(),
+        )
+    });
     let reset_current_post = Callback::new({
         let query_writer = query_writer.clone();
         move |_| {
@@ -534,323 +544,297 @@ pub fn BlogAdmin() -> impl IntoView {
     });
 
     view! {
-        <div class="space-y-6">
-            <header class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
-                <div class="space-y-2">
-                    <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {t(ui_locale.as_deref(), "blog.badge", "blog")}
-                    </span>
-                    <h1 class="text-2xl font-semibold text-card-foreground">
-                        {t(ui_locale.as_deref(), "blog.title", "Blog Publishing")}
-                    </h1>
-                    <p class="max-w-2xl text-sm text-muted-foreground">
-                        {t(
-                            ui_locale.as_deref(),
-                            "blog.subtitle",
-                            "Canonical module-owned CRUD flow for blog posts through the blog GraphQL contract.",
-                        )}
-                    </p>
-                </div>
-            </header>
-
-            <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
-                <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                    <div class="mb-4 flex items-end justify-between gap-4">
-                        <div>
-                            <h2 class="text-lg font-semibold text-card-foreground">
-                                {t(ui_locale.as_deref(), "blog.posts.title", "Posts")}
-                            </h2>
-                            <p class="text-sm text-muted-foreground">
-                                {t(
-                                    ui_locale.as_deref(),
-                                    "blog.posts.subtitle",
-                                    "Loaded from rustok-blog-admin via GraphQL, not wired manually in apps/admin.",
-                                )}
-                            </p>
-                        </div>
-                        <label class="block space-y-2">
-                            <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                {t(ui_locale.as_deref(), "blog.form.locale", "Locale")}
-                            </span>
-                            <input
-                                type="text"
-                                class="rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                prop:value=locale
-                                on:input=move |ev| set_locale.set(event_target_value(&ev))
-                            />
-                        </label>
+            <div class="space-y-6">
+                <header class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
+                    <div class="space-y-2">
+                        <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                            {t(ui_locale.as_deref(), "blog.badge", "blog")}
+                        </span>
+                        <h1 class="text-2xl font-semibold text-card-foreground">
+                            {t(ui_locale.as_deref(), "blog.title", "Blog Publishing")}
+                        </h1>
+                        <p class="max-w-2xl text-sm text-muted-foreground">
+                            {t(
+                                ui_locale.as_deref(),
+                                "blog.subtitle",
+                                "Canonical module-owned CRUD flow for blog posts through the blog GraphQL contract.",
+                            )}
+                        </p>
                     </div>
+                </header>
 
-                    <Suspense
-                        fallback=move || view! {
-                            <div class="space-y-2">
-                                {(0..4).map(|_| view! {
-                                    <div class="h-14 animate-pulse rounded-xl bg-muted"></div>
-                                }).collect_view()}
+                <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
+                    <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                        <div class="mb-4 flex items-end justify-between gap-4">
+                            <div>
+                                <h2 class="text-lg font-semibold text-card-foreground">
+                                    {t(ui_locale.as_deref(), "blog.posts.title", "Posts")}
+                                </h2>
+                                <p class="text-sm text-muted-foreground">
+                                    {t(
+                                        ui_locale.as_deref(),
+                                        "blog.posts.subtitle",
+                                        "Loaded from rustok-blog-admin via GraphQL, not wired manually in apps/admin.",
+                                    )}
+                                </p>
                             </div>
-                        }
-                    >
-                        {move || {
-                            posts_resource.get().map(|result| {
-                                let contract_unavailable = result
-                                    .as_ref()
-                                    .err()
-                                    .map(transport::is_posts_contract_unavailable)
-                                    .unwrap_or(false);
-                                let posts_view = core::blog_post_admin_posts_load_view_from_list(
-                                    result.map_err(|err| err.to_string()),
-                                    contract_unavailable,
-                                    load_posts_error_label.as_str(),
-                                );
-
-                                match posts_view {
-                                    core::BlogPostAdminPostsLoadViewModel::Loaded { items, total } => view! {
-                                        <BlogPostsTable
-                                            items=items
-                                            total=total
-                                            editing_post_id=editing_post_id.get()
-                                            busy_key=busy_key.get()
-                                            on_edit=open_post
-                                            on_toggle_publish=toggle_publish
-                                            on_archive=archive_post
-                                            on_delete=delete_post
-                                        />
-                                    }.into_any(),
-                                    core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable => view! {
-                                        <BlogPostsTable
-                                            items=Vec::new()
-                                            total=0
-                                            editing_post_id=editing_post_id.get()
-                                            busy_key=busy_key.get()
-                                            on_edit=open_post
-                                            on_toggle_publish=toggle_publish
-                                            on_archive=archive_post
-                                            on_delete=delete_post
-                                        />
-                                    }.into_any(),
-                                    core::BlogPostAdminPostsLoadViewModel::Error { message } => view! {
-                                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                            {message}
-                                        </div>
-                                    }.into_any(),
-                                }
-                            })
-                        }}
-                    </Suspense>
-                </div>
-
-                <div class="space-y-6">
-                <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                    <div class="space-y-1">
-                        <h2 class="text-lg font-semibold text-card-foreground">
-                            {{let ui_locale_heading = ui_locale.clone(); move || {
-                                blog_form_view_model(
-                                    ui_locale_heading.as_deref(),
-                                    editing_post_id.get().as_deref(),
-                                    busy_key.get().as_deref(),
-                                )
-                                .title
-                            }}}
-                        </h2>
-                        <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
-                    </div>
-
-                    <Show when=move || editing_banner_view.get().visible>
-                        <BlogEditBanner
-                            banner_text=Signal::derive({
-                                let editing_banner_view = editing_banner_view;
-                                move || editing_banner_view.get().banner_text
-                            })
-                            create_new_label=Signal::derive({
-                                let editing_banner_view = editing_banner_view;
-                                move || editing_banner_view.get().create_new_label
-                            })
-                            on_reset=reset_current_post
-                        />
-                    </Show>
-
-                    <form class="mt-5 space-y-4" on:submit=submit_post>
-                        <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">
-                                {t(ui_locale.as_deref(), "blog.form.title", "Title")}
-                            </span>
-                            <input
-                                type="text"
-                                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                prop:value=title
-                                on:input=move |ev| {
-                                    let value = event_target_value(&ev);
-                                    if core::should_autofill_slug(slug.get_untracked().as_str()) {
-                                        set_slug.set(core::slugify(value.as_str()));
-                                    }
-                                    set_title.set(value);
-                                }
-                            />
-                        </label>
-
-                        <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">
-                                {t(ui_locale.as_deref(), "blog.form.slug", "Slug")}
-                            </span>
-                            <input
-                                type="text"
-                                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                prop:value=slug
-                                on:input=move |ev| set_slug.set(event_target_value(&ev))
-                            />
-                        </label>
-
-                        <div class="grid gap-4 md:grid-cols-2">
                             <label class="block space-y-2">
-                                <span class="text-sm font-medium text-card-foreground">
+                                <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                     {t(ui_locale.as_deref(), "blog.form.locale", "Locale")}
                                 </span>
                                 <input
                                     type="text"
-                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class="rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                     prop:value=locale
                                     on:input=move |ev| set_locale.set(event_target_value(&ev))
+                                />
+                            </label>
+                        </div>
+
+                        <Suspense
+                            fallback=move || view! {
+                                <div class="space-y-2">
+                                    {(0..4).map(|_| view! {
+                                        <div class="h-14 animate-pulse rounded-xl bg-muted"></div>
+                                    }).collect_view()}
+                                </div>
+                            }
+                        >
+                            {move || {
+                                posts_resource.get().map(|result| {
+                                    let contract_unavailable = result
+                                        .as_ref()
+                                        .err()
+                                        .map(transport::is_posts_contract_unavailable)
+                                        .unwrap_or(false);
+                                    let posts_view = core::blog_post_admin_posts_load_view_from_list(
+                                        result.map_err(|err| err.to_string()),
+                                        contract_unavailable,
+                                        load_posts_error_label.as_str(),
+                                    );
+
+                                    match posts_view {
+                                        core::BlogPostAdminPostsLoadViewModel::Loaded { items, total } => view! {
+                                            <BlogPostsTable
+                                                items=items
+                                                total=total
+                                                editing_post_id=editing_post_id.get()
+                                                busy_key=busy_key.get()
+                                                on_edit=open_post
+                                                on_toggle_publish=toggle_publish
+                                                on_archive=archive_post
+                                                on_delete=delete_post
+                                            />
+                                        }.into_any(),
+                                        core::BlogPostAdminPostsLoadViewModel::EmptyContractUnavailable => view! {
+                                            <BlogPostsTable
+                                                items=Vec::new()
+                                                total=0
+                                                editing_post_id=editing_post_id.get()
+                                                busy_key=busy_key.get()
+                                                on_edit=open_post
+                                                on_toggle_publish=toggle_publish
+                                                on_archive=archive_post
+                                                on_delete=delete_post
+                                            />
+                                        }.into_any(),
+                                        core::BlogPostAdminPostsLoadViewModel::Error { message } => view! {
+                                            <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                                                {message}
+                                            </div>
+                                        }.into_any(),
+                                    }
+                                })
+                            }}
+                        </Suspense>
+                    </div>
+
+                    <div class="space-y-6">
+                    <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                        <div class="space-y-1">
+                            <h2 class="text-lg font-semibold text-card-foreground">
+    {move || form_view_model.get().title}
+                            </h2>
+                            <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
+                        </div>
+
+                        <Show when=move || editing_banner_view.get().visible>
+                            <BlogEditBanner
+                                banner_text=Signal::derive({
+                                    let editing_banner_view = editing_banner_view;
+                                    move || editing_banner_view.get().banner_text
+                                })
+                                create_new_label=Signal::derive({
+                                    let editing_banner_view = editing_banner_view;
+                                    move || editing_banner_view.get().create_new_label
+                                })
+                                on_reset=reset_current_post
+                            />
+                        </Show>
+
+                        <form class="mt-5 space-y-4" on:submit=submit_post>
+                            <label class="block space-y-2">
+                                <span class="text-sm font-medium text-card-foreground">
+                                    {t(ui_locale.as_deref(), "blog.form.title", "Title")}
+                                </span>
+                                <input
+                                    type="text"
+                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    prop:value=title
+                                    on:input=move |ev| {
+                                        let value = event_target_value(&ev);
+                                        if core::should_autofill_slug(slug.get_untracked().as_str()) {
+                                            set_slug.set(core::slugify(value.as_str()));
+                                        }
+                                        set_title.set(value);
+                                    }
                                 />
                             </label>
 
                             <label class="block space-y-2">
                                 <span class="text-sm font-medium text-card-foreground">
-                                    {t(ui_locale.as_deref(), "blog.form.bodyFormat", "Body format")}
+                                    {t(ui_locale.as_deref(), "blog.form.slug", "Slug")}
                                 </span>
-                                <select
+                                <input
+                                    type="text"
                                     class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                    prop:value=body_format
-                                    on:change=move |ev| set_body_format.set(event_target_value(&ev))
-                                >
-                                    <option value="markdown">"markdown"</option>
-                                    <option value="rt_json_v1">"rt_json_v1"</option>
-                                </select>
+                                    prop:value=slug
+                                    on:input=move |ev| set_slug.set(event_target_value(&ev))
+                                />
                             </label>
-                        </div>
 
-                        <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">
-                                {t(ui_locale.as_deref(), "blog.form.excerpt", "Excerpt")}
-                            </span>
-                            <textarea
-                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                prop:value=excerpt
-                                on:input=move |ev| set_excerpt.set(event_target_value(&ev))
-                            />
-                        </label>
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <label class="block space-y-2">
+                                    <span class="text-sm font-medium text-card-foreground">
+                                        {t(ui_locale.as_deref(), "blog.form.locale", "Locale")}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                        prop:value=locale
+                                        on:input=move |ev| set_locale.set(event_target_value(&ev))
+                                    />
+                                </label>
 
-                        <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">
-                                {t(ui_locale.as_deref(), "blog.form.body", "Body")}
-                            </span>
-                            <textarea
-                                class="min-h-48 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                prop:value=body
-                                on:input=move |ev| set_body.set(event_target_value(&ev))
-                            />
-                        </label>
-
-                        <Show when=move || raw_body_warning_view.get().visible>
-                            <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                {move || raw_body_warning_view.get().message}
+                                <label class="block space-y-2">
+                                    <span class="text-sm font-medium text-card-foreground">
+                                        {t(ui_locale.as_deref(), "blog.form.bodyFormat", "Body format")}
+                                    </span>
+                                    <select
+                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                        prop:value=body_format
+                                        on:change=move |ev| set_body_format.set(event_target_value(&ev))
+                                    >
+                                        <option value="markdown">"markdown"</option>
+                                        <option value="rt_json_v1">"rt_json_v1"</option>
+                                    </select>
+                                </label>
                             </div>
-                        </Show>
 
-                        <label class="block space-y-2">
-                            <span class="text-sm font-medium text-card-foreground">
-                                {form_tags_label.clone()}
-                            </span>
-                            <input
-                                type="text"
-                                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                placeholder=form_tags_placeholder.clone()
-                                prop:value=tags_input
-                                on:input=move |ev| set_tags_input.set(event_target_value(&ev))
-                            />
-                        </label>
+                            <label class="block space-y-2">
+                                <span class="text-sm font-medium text-card-foreground">
+                                    {t(ui_locale.as_deref(), "blog.form.excerpt", "Excerpt")}
+                                </span>
+                                <textarea
+                                    class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    prop:value=excerpt
+                                    on:input=move |ev| set_excerpt.set(event_target_value(&ev))
+                                />
+                            </label>
 
-                        <label class="flex items-center gap-2 text-sm text-card-foreground">
-                            <input
-                                type="checkbox"
-                                prop:checked=publish_now
-                                on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
-                            />
-                            {t(
-                                ui_locale.as_deref(),
-                                "blog.form.publishNow",
-                                "Publish immediately",
-                            )}
-                        </label>
+                            <label class="block space-y-2">
+                                <span class="text-sm font-medium text-card-foreground">
+                                    {t(ui_locale.as_deref(), "blog.form.body", "Body")}
+                                </span>
+                                <textarea
+                                    class="min-h-48 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    prop:value=body
+                                    on:input=move |ev| set_body.set(event_target_value(&ev))
+                                />
+                            </label>
 
-                        <Show when=move || {
-                            core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()).visible
-                        }>
-                            <div class=move || {
-                                core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()).class
-                            }>
-                                {move || {
-                                    let issue_banner =
-                                        core::blog_post_admin_issue_banner_view(submit_error.get().as_ref());
+                            <Show when=move || raw_body_warning_view.get().visible>
+                                <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                    {move || raw_body_warning_view.get().message}
+                                </div>
+                            </Show>
 
-                                    view! {
-                                        <span>
-                                            <strong>{issue_banner.label}</strong>
-                                            {": "}
-                                            {issue_banner.message}
-                                        </span>
-                                    }
-                                }}
-                            </div>
-                        </Show>
+                            <label class="block space-y-2">
+                                <span class="text-sm font-medium text-card-foreground">
+                                    {form_tags_label.clone()}
+                                </span>
+                                <input
+                                    type="text"
+                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    placeholder=form_tags_placeholder.clone()
+                                    prop:value=tags_input
+                                    on:input=move |ev| set_tags_input.set(event_target_value(&ev))
+                                />
+                            </label>
 
-                        <button
-                            type="submit"
-                            class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                            disabled={{let ui_locale_d = ui_locale.clone(); move || {
-                                blog_form_view_model(
-                                    ui_locale_d.as_deref(),
-                                    editing_post_id.get().as_deref(),
-                                    busy_key.get().as_deref(),
-                                )
-                                .submit_disabled
-                            }}}
-                        >
-                            {{let ui_locale_s = ui_locale.clone(); move || {
-                                blog_form_view_model(
-                                    ui_locale_s.as_deref(),
-                                    editing_post_id.get().as_deref(),
-                                    busy_key.get().as_deref(),
-                                )
-                                .submit_label
-                            }}}
-                        </button>
-                    </form>
+                            <label class="flex items-center gap-2 text-sm text-card-foreground">
+                                <input
+                                    type="checkbox"
+                                    prop:checked=publish_now
+                                    on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
+                                />
+                                {t(
+                                    ui_locale.as_deref(),
+                                    "blog.form.publishNow",
+                                    "Publish immediately",
+                                )}
+                            </label>
+
+                            <Show when=move || issue_banner_view.get().visible>
+                                <div class=move || issue_banner_view.get().class>
+                                    {move || {
+                                        let issue_banner = issue_banner_view.get();
+
+                                        view! {
+                                            <span>
+                                                <strong>{issue_banner.label}</strong>
+                                                {": "}
+                                                {issue_banner.message}
+                                            </span>
+                                        }
+                                    }}
+                                </div>
+                            </Show>
+
+                            <button
+                                type="submit"
+                                class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+    disabled=move || form_view_model.get().submit_disabled
+                            >
+    {move || form_view_model.get().submit_label}
+                            </button>
+                        </form>
+                    </section>
+
+                    <SeoEntityPanel
+                        target_kind=SeoTargetSlug::new(seo_builtin_slug::BLOG_POST).expect("builtin SEO target slug")
+                        target_id=Signal::derive(move || editing_post_id.get())
+                        locale=Signal::derive({
+                            let host_locale_for_seo = host_locale_for_seo.clone();
+                            move || host_locale_for_seo.clone()
+                        })
+                        show_control_plane_widgets=true
+                        panel_title=t(seo_locale.as_deref(), "blog.seo.title", "Post SEO")
+                        panel_subtitle=t(
+                            seo_locale.as_deref(),
+                            "blog.seo.subtitle",
+                            "Explicit metadata, social tags and diagnostics for the selected blog post.",
+                        )
+                        empty_message=t(
+                            seo_locale.as_deref(),
+                            "blog.seo.empty",
+                            "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
+                        )
+                    />
+                    </div>
                 </section>
-
-                <SeoEntityPanel
-                    target_kind=SeoTargetSlug::new(seo_builtin_slug::BLOG_POST).expect("builtin SEO target slug")
-                    target_id=Signal::derive(move || editing_post_id.get())
-                    locale=Signal::derive({
-                        let host_locale_for_seo = host_locale_for_seo.clone();
-                        move || host_locale_for_seo.clone()
-                    })
-                    show_control_plane_widgets=true
-                    panel_title=t(seo_locale.as_deref(), "blog.seo.title", "Post SEO")
-                    panel_subtitle=t(
-                        seo_locale.as_deref(),
-                        "blog.seo.subtitle",
-                        "Explicit metadata, social tags and diagnostics for the selected blog post.",
-                    )
-                    empty_message=t(
-                        seo_locale.as_deref(),
-                        "blog.seo.empty",
-                        "Create or open a post first. SEO stays inside the blog editor rather than a global SEO hub.",
-                    )
-                />
-                </div>
-            </section>
-        </div>
-    }
+            </div>
+        }
 }
 
 fn blog_form_view_model(
@@ -1058,10 +1042,10 @@ fn BlogPostsTable(
 
 #[component]
 fn StatusBadge(status: String) -> impl IntoView {
-    let badge_css = core::status_badge_css(status.as_str());
+    let badge = core::blog_post_admin_status_badge_view(status.as_str());
     view! {
-        <span class=badge_css>
-            {status}
+        <span class=badge.class>
+            {badge.status}
         </span>
     }
 }

@@ -9,7 +9,10 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use loco_rs::app::AppContext;
-use rustok_ai_content::{validate_moderation_decision, GeneratedModerationDecision};
+use rustok_ai_content::{
+    validate_blog_draft_payload, validate_moderation_decision, GeneratedBlogDraft,
+    GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
+};
 use rustok_ai_product::{
     validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
     GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG, PRODUCT_COPY_TOOL_NAME,
@@ -21,7 +24,7 @@ use rustok_commerce::{CatalogService, ProductTranslationInput, UpdateProductInpu
 use rustok_mcp::alloy_tools::{alloy_validate_script, AlloyMcpState, ValidateScriptRequest};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
 use rustok_storage::StorageService;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -94,7 +97,6 @@ impl DirectExecutionRegistry {
         let mut registry = Self::default();
         registry.register(Arc::new(AlloyScriptAssistHandler));
         registry.register(Arc::new(MediaImageAssetHandler));
-        registry.register(Arc::new(BlogDraftHandler));
         registry
     }
 
@@ -679,20 +681,10 @@ impl DirectTaskHandler for ProductCopyHandler {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct GeneratedBlogDraft {
-    title: Option<String>,
-    slug: Option<String>,
-    body: Option<String>,
-    excerpt: Option<String>,
-    seo_title: Option<String>,
-    seo_description: Option<String>,
-}
-
 #[async_trait]
 impl DirectTaskHandler for BlogDraftHandler {
     fn task_slug(&self) -> &'static str {
-        "blog_draft"
+        BLOG_DRAFT_TASK_SLUG
     }
 
     async fn execute(
@@ -868,7 +860,7 @@ impl DirectTaskHandler for BlogDraftHandler {
             )
         };
         let trace = ToolTrace {
-            tool_name: "direct.blog.generate_draft".to_string(),
+            tool_name: BLOG_DRAFT_TOOL_NAME.to_string(),
             input_payload: request.task_input_json.clone(),
             output_payload: Some(operation_payload.clone()),
             status: "completed".to_string(),
@@ -1095,7 +1087,9 @@ async fn generate_blog_draft(
         AiError::Provider("provider returned empty content for blog_draft".to_string())
     })?;
     let parsed = parse_json_object_from_text(&content)?;
-    serde_json::from_value(parsed).map_err(AiError::Json)
+    let generated: GeneratedBlogDraft = serde_json::from_value(parsed).map_err(AiError::Json)?;
+    validate_blog_draft_payload(&generated).map_err(AiError::Validation)?;
+    Ok(generated)
 }
 
 pub(crate) async fn generate_content_moderation(
@@ -1696,7 +1690,6 @@ mod tests {
         let registry = super::DirectExecutionRegistry::with_core_defaults();
         assert!(registry.handler("alloy_code").is_some());
         assert!(registry.handler("image_asset").is_some());
-        assert!(registry.handler("blog_draft").is_some());
 
         assert!(registry.handler("content_moderation").is_none());
         assert!(registry.handler("product_copy").is_none());
@@ -1710,7 +1703,7 @@ mod tests {
         let registry = super::DirectExecutionRegistry::with_defaults();
         assert!(registry.handler("alloy_code").is_some());
         assert!(registry.handler("image_asset").is_some());
-        assert!(registry.handler("blog_draft").is_some());
+        assert!(registry.handler(BLOG_DRAFT_TASK_SLUG).is_some());
 
         assert!(registry.handler("content_moderation").is_some());
         assert!(registry.handler("product_copy").is_some());
