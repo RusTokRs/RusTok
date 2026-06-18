@@ -189,3 +189,9 @@
 3. Сохраняйте только действительно важный контекст: в `implementation-plan.md` (раздел critical context) или в `DECISIONS/` для архитектурных решений.
 4. Если у плана сменился путь/название — обновляйте текущую строку, а не создавайте дубль.
 5. При каждом weekly sweep удаляйте пустые/дублированные строки и проверяйте уникальность `Plan ID`.
+
+
+## Evidence-пакеты Page Builder
+
+- `crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json` — синтетический dry-run evidence-пакет Wave 0.
+- `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json` — черновик readiness-пакета Wave 1; проверяется `verify-page-builder-wave1-readiness-draft.mjs` и не заменяет фактический tenant sign-off.
