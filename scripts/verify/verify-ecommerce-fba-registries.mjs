@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory'];
+export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product'];
 
 export class EcommerceFbaRegistryVerificationError extends Error {
   constructor(message) {
@@ -32,6 +32,44 @@ const containsStringLiteral = (source, value) =>
 
 const containsAsyncFunction = (source, functionName) =>
   new RegExp(`async\\s+fn\\s+${escapeRegExp(functionName)}\\s*\\(`).test(source);
+
+const findFunctionBody = (source, functionName) => {
+  const signature = new RegExp(`(?:async\\s+)?fn\\s+${escapeRegExp(functionName)}\\s*\\(`, 'gm');
+  let match;
+  while ((match = signature.exec(source)) !== null) {
+    const nextSemicolon = source.indexOf(';', match.index);
+    const openBrace = source.indexOf('{', match.index);
+    if (openBrace === -1) return null;
+    if (nextSemicolon !== -1 && nextSemicolon < openBrace) continue;
+    let depth = 0;
+    for (let index = openBrace; index < source.length; index += 1) {
+      if (source[index] === '{') depth += 1;
+      if (source[index] === '}') {
+        depth -= 1;
+        if (depth === 0) return source.slice(openBrace + 1, index);
+      }
+    }
+  }
+  return null;
+};
+
+const assertOperationContextSemantics = ({ module, operation, port, portSource }) => {
+  const body = findFunctionBody(portSource, operation);
+  if (!body) fail(`${module}.${operation} source body not found`);
+  const writeOperation = !isReadOnlyOperation(operation) && port.idempotency_required === true;
+  if (writeOperation) {
+    if (!body.includes('require_write_semantics()?')) {
+      fail(`${module}.${operation} write operation must enforce require_write_semantics`);
+    }
+    return;
+  }
+  if (body.includes('require_write_semantics()?')) {
+    fail(`${module}.${operation} read operation must not require write idempotency semantics`);
+  }
+  if (!body.includes('require_deadline_semantics()?')) {
+    fail(`${module}.${operation} read operation must enforce require_deadline_semantics`);
+  }
+};
 
 const assertProviderSpiSource = ({ module, providerSpi, providerSource, libSource, ownerService }) => {
   if (providerSpi.status !== 'manual_baseline_locked') fail(`${module} provider SPI status drift`);
@@ -180,11 +218,10 @@ export function verifyEcommerceFbaRegistries({
     if (registry.in_process_provider_impl) {
       const implDeclaration = `impl ${registry.ports[0].name} for crate::${registry.in_process_provider_impl.service}`;
       if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
-      if (registry.ports.some((port) => port.idempotency_required === true) && !portSource.includes('require_write_semantics()?')) {
-        fail(`${module} in-process provider impl must enforce write semantics`);
-      }
-      if (registry.ports.some((port) => port.deadline_required === true) && !portSource.includes('require_deadline_semantics()?')) {
-        fail(`${module} in-process provider impl must enforce read deadline semantics`);
+      for (const port of registry.ports) {
+        for (const operation of port.operations) {
+          assertOperationContextSemantics({ module, operation, port, portSource });
+        }
       }
     }
 
@@ -278,7 +315,7 @@ export function verifyEcommerceFbaRegistries({
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     verifyEcommerceFbaRegistries();
-    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory');
+    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory, product');
   } catch (error) {
     if (error instanceof EcommerceFbaRegistryVerificationError) {
       console.error(`ecommerce FBA registry verification failed: ${error.message}`);

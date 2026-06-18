@@ -10770,6 +10770,7 @@ dependencies = [
  "chrono",
  "flex",
  "rust_decimal",
+ "rustok-api",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-events",

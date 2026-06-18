@@ -14,6 +14,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress` (readiness hardening для уже готовых slices; remote transport/runtime profile ещё не считается включённым)
+- Product catalog read provider dependency is now tracked through `crates/rustok-product/contracts/product-fba-registry.json` / `ProductCatalogReadPort` with static contract-test evidence; commerce remains the orchestrator/consumer and does not own product catalog rules.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
