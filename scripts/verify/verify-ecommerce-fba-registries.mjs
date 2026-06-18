@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer'];
+export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
 
 export class EcommerceFbaRegistryVerificationError extends Error {
   constructor(message) {
@@ -292,6 +292,9 @@ export function verifyEcommerceFbaRegistries({
     if (consumer.registry !== `crates/rustok-${module}/contracts/${module}-fba-registry.json`) {
       fail(`commerce provider ${module} registry path drift`);
     }
+    if (!commercePlan.includes(consumer.registry)) {
+      fail(`commerce local plan lacks provider registry evidence for ${module}`);
+    }
     for (const port of provider.ports) {
       if (!consumer.ports.includes(port.name)) {
         fail(`commerce provider ${module} port drift`);
@@ -327,7 +330,7 @@ export function verifyEcommerceFbaRegistries({
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     verifyEcommerceFbaRegistries();
-    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory, product, customer');
+    console.log('ecommerce FBA registries verified: payment, fulfillment, order, pricing, inventory, product, customer, cart');
   } catch (error) {
     if (error instanceof EcommerceFbaRegistryVerificationError) {
       console.error(`ecommerce FBA registry verification failed: ${error.message}`);

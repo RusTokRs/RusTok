@@ -3,9 +3,11 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod error;
+pub mod ports;
 pub mod services;
 
 pub use error::{TaxError, TaxResult};
+pub use ports::*;
 pub use services::{
     CalculatedTaxLine, TaxCalculationInput, TaxCalculationResult, TaxPolicyCountryRule,
     TaxPolicySnapshot, TaxService, TaxableAmount,

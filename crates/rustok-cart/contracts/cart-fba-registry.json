@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "module": "cart",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "cart.checkout_snapshot.v1",
+  "ports": [
+    {
+      "name": "CartSnapshotReadPort",
+      "owner": "cart",
+      "operations": [
+        "read_cart_checkout_snapshot"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profile": "checkout_cart_snapshot",
+      "degraded_modes": [
+        "preserve_cart_checkout_state",
+        "show_cart_refresh_required"
+      ],
+      "fallback_profiles": [
+        "embedded_native",
+        "graphql_checkout_compat",
+        "graphql_storefront_compat"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-cart/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "CartService",
+    "source": "crates/rustok-cart/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-cart/contracts/cart-fba-registry.json",
+    "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "read_cart_checkout_snapshot",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native",
+        "graphql_checkout_compat",
+        "graphql_storefront_compat"
+      ],
+      "degraded_modes": [
+        "preserve_cart_checkout_state",
+        "show_cart_refresh_required"
+      ]
+    }
+  }
+}

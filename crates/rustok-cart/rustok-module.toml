@@ -19,3 +19,12 @@ page_title = "Cart"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
+
+[fba.provider]
+registry = "contracts/cart-fba-registry.json"
+contract_version = "cart.checkout_snapshot.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["checkout_cart_snapshot"]
+fallback_profiles = ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"]
+degraded_modes = ["preserve_cart_checkout_state", "show_cart_refresh_required"]

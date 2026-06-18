@@ -121,7 +121,7 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
   write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) } }\n');
   write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
   write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
-  write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\n');
+  write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\ncrates/rustok-pricing/contracts/pricing-fba-registry.json\n');
   write('crates/rustok-commerce/src/lib.rs', 'pub mod fba;\n');
   write('crates/rustok-commerce/src/fba.rs', 'pub const COMMERCE_FBA_REGISTRY_JSON: &str = include_str!("../contracts/commerce-fba-registry.json");\n');
 
@@ -165,6 +165,25 @@ test('verifyEcommerceFbaRegistries rejects evidence drift', () => {
     {
       name: EcommerceFbaRegistryVerificationError.name,
       message: 'pricing registry local_plan evidence drift',
+    },
+  );
+});
+
+
+
+test('verifyEcommerceFbaRegistries rejects commerce local provider evidence drift', () => {
+  const root = createFixtureRoot();
+  const rootPath = fileURLToPath(root);
+  writeFileSync(
+    join(rootPath, 'crates/rustok-commerce/docs/implementation-plan.md'),
+    '# Plan\ncommerce-fba-registry.json\n',
+  );
+
+  assert.throws(
+    () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceFbaRegistryVerificationError.name,
+      message: 'commerce local plan lacks provider registry evidence for pricing',
     },
   );
 });
