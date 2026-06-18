@@ -148,10 +148,50 @@ for (const row of staticAssertions) {
   }
 }
 
+function assertStaticTokenMatrix(sectionName, rows, minimumRows) {
+  assert(
+    Array.isArray(rows) && rows.length >= minimumRows,
+    `${sectionName} must contain at least ${minimumRows} rows`,
+  );
+  for (const row of rows) {
+    const label = row.surface ?? row.invariant ?? row.host ?? row.name ?? sectionName;
+    assert(row.path, `${sectionName} row misses path: ${label}`);
+    assert(
+      Array.isArray(row.mustContain) && row.mustContain.length >= 1,
+      `${sectionName} row misses token assertions: ${label}`,
+    );
+    const absolutePath = join(repoRoot, row.path);
+    assert(existsSync(absolutePath), `${sectionName} path does not exist: ${row.path}`);
+    const source = readFileSync(absolutePath, "utf8");
+    for (const token of row.mustContain) {
+      assert(source.includes(token), `${sectionName} ${label} misses token ${token}`);
+    }
+  }
+}
+
+assertStaticTokenMatrix(
+  "RBAC/module gating static matrix",
+  fixtures.rbacModuleGatingMatrix,
+  4,
+);
+assertStaticTokenMatrix(
+  "Replay/index invariant static matrix",
+  fixtures.replayIndexInvariantMatrix,
+  4,
+);
+assertStaticTokenMatrix(
+  "Host runtime entrypoint static matrix",
+  fixtures.hostRuntimeEntrypointMatrix,
+  4,
+);
+
 console.log(
   `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, `
     + `${routeRows.length} route rows, ${smokeRows.length} smoke routes, `
     + `${matrix.length} D8 gates, ${docsRows.length} docs rows, `
     + `${signoffRows.length} sign-off rows, `
-    + `${staticAssertions.length} static assertions`,
+    + `${staticAssertions.length} static assertions, `
+    + `${fixtures.rbacModuleGatingMatrix.length} RBAC rows, `
+    + `${fixtures.replayIndexInvariantMatrix.length} replay/index rows, `
+    + `${fixtures.hostRuntimeEntrypointMatrix.length} host entrypoint rows`,
 );
