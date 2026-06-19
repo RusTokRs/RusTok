@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "module": "comments",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "comments.thread.v1",
+  "ports": [
+    {
+      "name": "CommentsThreadPort",
+      "owner": "comments",
+      "operations": [
+        "create_comment",
+        "get_comment",
+        "list_comments_for_target",
+        "update_comment",
+        "delete_comment"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true,
+      "write_operations": [
+        "create_comment",
+        "update_comment",
+        "delete_comment"
+      ],
+      "read_operations": [
+        "get_comment",
+        "list_comments_for_target"
+      ]
+    }
+  ],
+  "consumers": [
+    {
+      "module": "blog",
+      "profile": "blog_post_comments",
+      "degraded_modes": [
+        "hide_comment_form",
+        "show_cached_thread_snapshot"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-comments/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-comments-fba.mjs",
+    "static_matrix": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json"
+  },
+  "in_process_provider_impl": {
+    "service": "CommentsService",
+    "source": "crates/rustok-comments/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-comments/contracts/comments-fba-registry.json",
+    "runner": "scripts/verify/verify-comments-fba.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "create_comment",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "get_comment",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
+        "operation": "list_comments_for_target",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
+        "operation": "update_comment",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      },
+      {
+        "operation": "delete_comment",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"]
+    }
+  }
+}

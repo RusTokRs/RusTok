@@ -5,12 +5,12 @@ contract приведены к единому формату.
 
 ## Execution checkpoint
 
-- Current phase: transport_history_hardening
-- Last checkpoint: Exposed canonical execution history through tenant-scoped GraphQL `scriptExecutions` and REST `GET /api/alloy/executions` surfaces, reusing the DB-backed execution log and bounded read limits without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then add end-to-end assertions for GraphQL/REST history serialization and permission paths.
+- Current phase: runtime_hardening
+- Last checkpoint: Exposed DB-backed execution history through GraphQL and HTTP transport surfaces without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then add transport-level assertions for execution-history pagination and canonical field mapping.
 - Open blockers: None.
 - Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-06-17T18:26:29Z
 
 ## Область работ
 

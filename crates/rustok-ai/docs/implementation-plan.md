@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: ai_domain_vertical_ownership_slice
-- Last checkpoint: content support crate now owns `blog_draft` task/tool identity plus generated draft validation; `rustok-ai` registers the blog handler through the content-owned adapter API while keeping executable runtime composition local. Product/content/order support crates continue exposing domain-owned handler adapter APIs consumed by direct registration slices.
-- Next step: продолжить вынос remaining generated payload contracts/validation for media/alloy direct handlers into their owning support crates or explicit capability adapters, без удаления существующего runtime composition в `rustok-ai`.
+- Current phase: ai_domain_vertical_ownership_slice_complete
+- Last checkpoint: Extracted remaining generated payload contracts and validation for `media` (`image_asset`) and `alloy` (`alloy_code`) direct handlers into explicit capability adapters `rustok-ai-media` and `rustok-ai-alloy`, and registered them dynamically via adapter APIs. All tests and workspace compilation pass cleanly.
+- Next step: Parity and evidence hardening.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-06-19T05:30:00Z
 
 ## Состояние на 2026-04-04
 

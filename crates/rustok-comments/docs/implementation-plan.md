@@ -4,17 +4,17 @@
 
 ## Execution checkpoint
 
-- Current phase: FFA admin route/query hardening
-- Last checkpoint: Comments admin route/query FFA slice закреплён fast boundary guardrail: `scripts/verify/verify-comments-admin-boundary.mjs` проверяет Leptos-free core, core-owned route/query write intents на shared `UiRouteQueryUpdate`, raw-route/transport-free Leptos adapter, native-only transport facade и documented no-GraphQL exception.
-- Next step: Закрепить contract-freeze evidence для native-only comments admin exception и продолжить FFA hardening только при появлении реальной coupling-проблемы без изобретения package-local GraphQL/REST fallback.
+- Current phase: FBA provider baseline for generic comment threads
+- Last checkpoint: Comments получил первый FBA provider slice: `CommentsThreadPort` закрепляет neutral create/read/list/update/delete boundary поверх owner `CommentsService`; `rustok-module.toml`, `contracts/comments-fba-registry.json` и static evidence packet публикуют comments thread provider metadata для blog/commentable-surface consumers без переноса comment moderation rules в blog transport.
+- Next step: Закрыть runtime contract execution/fallback smoke для `CommentsThreadPort` и подтвердить blog embedded/native compatibility snapshots перед повышением статуса выше `in_progress`.
 - Open blockers: отсутствуют; native-only comments admin exception зафиксирован, потому что у модуля не было legacy GraphQL/REST admin surface.
 - Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.
-- Last updated at (UTC): 2026-06-16T00:00:00Z
+- Last updated at (UTC): 2026-06-18T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - `rustok-comments-admin` теперь имеет явные `admin/src/core.rs`, `admin/src/transport/mod.rs`, `admin/src/transport/native_server_adapter.rs` и `admin/src/ui/leptos.rs`; `admin/src/lib.rs` больше не содержит render/business logic, не wires pre-FFA `api.rs` и публикует только `CommentsAdmin`;
@@ -22,7 +22,9 @@
   - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping и transport request/command DTO construction вынесены в Leptos-free core и покрыты unit tests;
   - selected-thread и locale route/query key ownership, normalization и host write intent теперь живут в Leptos-free core на shared `UiRouteQueryUpdate`, а Leptos adapter только применяет готовый `CommentsAdminRouteQueryWrite` через host writer;
   - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` включён в aggregate `verify:ffa:ui:migration` и закрепляет native-only comments admin exception без package-local GraphQL fallback;
-  - текущий admin transport остаётся native-only single-adapter server-function path, path зафиксирован typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, а отдельный GraphQL/REST fallback не добавляется как module-documented exception без legacy admin transport surface.
+  - текущий admin transport остаётся native-only single-adapter server-function path, path зафиксирован typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, а отдельный GraphQL/REST fallback не добавляется как module-documented exception без legacy admin transport surface;
+  - FBA provider registry `crates/rustok-comments/contracts/comments-fba-registry.json`, neutral `CommentsThreadPort`/`comments.thread.v1` and static contract evidence `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json` are locked for blog and future commentable-surface consumers; write operations require `PortContext::require_write_semantics`, read operations require deadline semantics, and typed `PortError` mapping remains owned by `rustok-comments`;
+  - fast FBA guardrail `scripts/verify/verify-comments-fba.mjs` / `npm run verify:comments:fba` checks manifest metadata, port source markers, static evidence drift and central readiness-board sync; status remains below `boundary_ready` until runtime contract execution and fallback smoke evidence land;
 - Owner: `rustok-comments` module team
 
 ## Область работ

@@ -268,6 +268,18 @@ impl SubscriberMessageMetadata {
         self
     }
 
+    /// Adds a backend message identifier.
+    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
+        self.message_id = Some(message_id.into());
+        self
+    }
+
+    /// Adds the observed delivery attempt.
+    pub fn with_delivery_attempt(mut self, delivery_attempt: u32) -> Self {
+        self.delivery_attempt = Some(delivery_attempt);
+        self
+    }
+
     /// Adds an opaque acknowledgement token.
     pub fn with_ack_token(mut self, ack_token: impl Into<String>) -> Self {
         self.ack_token = Some(ack_token.into());
@@ -589,6 +601,16 @@ impl RemoteMessageSubscriber {
             partition,
         }
     }
+
+    #[allow(dead_code)]
+    fn metadata_for_offset(&self, offset: u64) -> SubscriberMessageMetadata {
+        SubscriberMessageMetadata::new(&self.stream, &self.topic, self.partition)
+            .with_offset(offset)
+            .with_ack_token(format!(
+                "remote:{}:{}:{}:{}",
+                self.stream, self.topic, self.partition, offset
+            ))
+    }
 }
 
 #[async_trait]
@@ -599,6 +621,18 @@ impl MessageSubscriber for RemoteMessageSubscriber {
 
     async fn recv_with_metadata(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError> {
         Ok(None)
+    }
+
+    async fn ack(&mut self, ack_token: &str) -> Result<(), ConnectorError> {
+        tracing::debug!(
+            mode = "remote",
+            stream = %self.stream,
+            topic = %self.topic,
+            partition = self.partition,
+            ack_token = %ack_token,
+            "Acknowledged connector message"
+        );
+        Ok(())
     }
 }
 
@@ -765,6 +799,16 @@ impl EmbeddedMessageSubscriber {
             partition,
         }
     }
+
+    #[allow(dead_code)]
+    fn metadata_for_offset(&self, offset: u64) -> SubscriberMessageMetadata {
+        SubscriberMessageMetadata::new(&self.stream, &self.topic, self.partition)
+            .with_offset(offset)
+            .with_ack_token(format!(
+                "embedded:{}:{}:{}:{}",
+                self.stream, self.topic, self.partition, offset
+            ))
+    }
 }
 
 #[async_trait]
@@ -775,6 +819,18 @@ impl MessageSubscriber for EmbeddedMessageSubscriber {
 
     async fn recv_with_metadata(&mut self) -> Result<Option<SubscriberMessage>, ConnectorError> {
         Ok(None)
+    }
+
+    async fn ack(&mut self, ack_token: &str) -> Result<(), ConnectorError> {
+        tracing::debug!(
+            mode = "embedded",
+            stream = %self.stream,
+            topic = %self.topic,
+            partition = self.partition,
+            ack_token = %ack_token,
+            "Acknowledged connector message"
+        );
+        Ok(())
     }
 }
 

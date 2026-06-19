@@ -1,0 +1,13 @@
+[package]
+name = "rustok-ai-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Domain-owned AI verticals for media flows"
+
+[features]
+default = []
+server = []
+
+[dependencies]
+serde.workspace = true

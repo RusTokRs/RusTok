@@ -42,12 +42,14 @@ const libPath = "crates/rustok-fulfillment/storefront/src/lib.rs";
 const modelPath = "crates/rustok-fulfillment/storefront/src/model.rs";
 const corePath = "crates/rustok-fulfillment/storefront/src/core/mod.rs";
 const uiPath = "crates/rustok-fulfillment/storefront/src/ui/leptos.rs";
+const transportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
+const commerceTransportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const planPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, modelPath, corePath, uiPath, commerceUiPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, modelPath, corePath, uiPath, transportPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected fulfillment storefront FFA file`);
 }
 
@@ -55,6 +57,8 @@ const lib = readRepo(libPath);
 const model = readRepo(modelPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
+const transport = readRepo(transportPath);
+const commerceTransport = readRepo(commerceTransportPath);
 const commerceUi = readRepo(commerceUiPath);
 const plan = readRepo(planPath);
 const registry = readRepo(registryPath);
@@ -98,6 +102,19 @@ for (const marker of [
 for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[server"]) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call commerce transport directly (${marker})`);
 }
+
+for (const marker of [
+  "ShippingSelectionTransportError",
+  "select_shipping_option_with_fallback",
+  "should_fallback_to_graphql",
+]) {
+  assertContains(transport, marker, `${transportPath}: expected owner transport facade marker ${marker}`);
+}
+for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[server"]) {
+  assertNotContains(transport, marker, `${transportPath}: owner transport facade must stay host-transport free (${marker})`);
+}
+assertContains(commerceTransport, "select_shipping_option_with_fallback", `${commerceTransportPath}: commerce compatibility adapter must delegate shipping selection fallback policy to fulfillment owner facade`);
+assertContains(commerceTransport, "ShippingSelectionTransportError", `${commerceTransportPath}: commerce compatibility adapter must map errors through owner transport DTO`);
 
 assertContains(commerceUi, "FulfillmentShippingSelectionPanel", `${commerceUiPath}: commerce host must render fulfillment-owned selection UI`);
 assertContains(commerceUi, "transport::select_storefront_shipping_option", `${commerceUiPath}: commerce host may keep transitional aggregate transport callback`);

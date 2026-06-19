@@ -72,7 +72,8 @@
       },
       "module_health_before": "ready",
       "module_health_after": "ready"
-    }
+    },
+    "audit_trail": "control_plane_builder_wave_audit"
   },
   "fallback": {
     "profiles": [

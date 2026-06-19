@@ -16,6 +16,8 @@ server = [
   "dep:rustok-ai-content",
   "dep:rustok-ai-order",
   "dep:rustok-ai-product",
+  "dep:rustok-ai-media",
+  "dep:rustok-ai-alloy",
   "dep:rustok-api",
   "dep:rustok-blog",
   "dep:rustok-commerce",
@@ -44,6 +46,8 @@ rhai = { workspace = true, optional = true }
 rustok-ai-content = { workspace = true, optional = true }
 rustok-ai-order = { workspace = true, optional = true }
 rustok-ai-product = { workspace = true, optional = true }
+rustok-ai-media = { workspace = true, optional = true }
+rustok-ai-alloy = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }

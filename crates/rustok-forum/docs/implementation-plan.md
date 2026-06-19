@@ -6,16 +6,17 @@
 ## Execution checkpoint
 
 - Current phase: phase_d_rollout_hardened
-- Last checkpoint: FW-4 (Pilot Rollout and live telemetry checks) успешно завершён. Wave 1 пилот запущен на проде, мониторинг телеметрии и проверки деградированных режимов выполнены успешно. Сформирован пакет доказательств forum-wave1-rollout-evidence.json и верифицирован скриптами.
-- Next step: Steady-state maintenance and integration with new platform features
+- Last checkpoint: FW-5 (Steady-state evidence guardrail) закрепил live Wave 1 evidence как обязательный статический gate: `npm run verify:page-builder:consumer:forum` теперь валидирует `forum-wave1-rollout-evidence.json`, live mode/wave, control-plane audit trail, все fallback profiles, no-5xx read guarantees, SLO pass, keep decision, owner approvals и отсутствие waivers без запуска компиляции.
+- Next step: Steady-state maintenance, periodic evidence refresh and integration with new platform features
 - Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-15T18:00:00Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, observability, rollback and approvals.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
@@ -121,3 +122,9 @@
   - Подтвердить прохождение smoke-тестов на проде: `list -> open -> preview -> save_draft -> publish_dry`.
   - Зафиксировать окончательное решение `keep/rollback` и подписи овнеров.
 - [x] Убедиться, что время отката (rollback trigger) флагов в случае инцидентов составляет <= 10 минут без передеплоя бэкенда.
+
+### FW-5 — Steady-state evidence guardrail
+
+- [x] Закрепить live Wave 1 пакет `forum-wave1-rollout-evidence.json` как обязательный static gate в `npm run verify:page-builder:consumer:forum` без компиляции.
+- [x] Валидировать `control_plane_builder_wave_audit`, `live`/`wave=1`, все fallback profiles (`all_on`, `publish_off`, `preview_off`, `builder_off`), read-path no-5xx guarantees, `typed_feature_disabled_error_without_read_5xx`, SLO `overall=pass`, rollback decision `keep`, approvals Platform/Forum/Builder/Runtime и пустой список waivers.
+- [x] Добавить machine-readable audit marker directly into Wave 1 evidence packet so future guardrails do not rely on prose-only plan notes.

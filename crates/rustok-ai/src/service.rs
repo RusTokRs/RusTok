@@ -1,363 +1,41 @@
-#![cfg(feature = "server")]
+pub mod types;
+pub mod mapping;
+pub mod helpers;
+pub mod mcp;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-use chrono::{DateTime, Utc};
-use loco_rs::app::AppContext;
-use once_cell::sync::Lazy;
-use rustok_core::normalize_locale_tag as normalize_core_locale_tag;
-use rustok_core::permissions::{Action, Permission};
-use rustok_core::registry::ModuleRegistry;
-use rustok_mcp::alloy_tools::{
-    self, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest, DeleteScriptRequest,
-    GetScriptRequest, ListScriptsRequest, ReviewModuleScaffoldRequest, RunScriptRequest,
-    UpdateScriptRequest, ValidateScriptRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
-    TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
-    TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
-    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
-};
-use rustok_mcp::tools::{
-    self, McpHealthResponse, McpState, McpToolResponse, ModuleLookupRequest, ModuleQueryRequest,
-    TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE, TOOL_LIST_MODULES, TOOL_MCP_HEALTH,
-    TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_PAGES_MODULE,
-    TOOL_QUERY_MODULES,
-};
-use rustok_mcp::{
-    default_tool_requirement, McpAccessContext, McpAccessPolicy, McpActorType, McpIdentity,
-    StagedModuleScaffold,
-};
-use schemars::schema_for;
+use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait,
-    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
+use loco_rs::app::AppContext;
 
-use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
+use rustok_core::permissions::Permission;
+
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
-use crate::mcp::{McpClientAdapter, ToolExecutionResult};
-use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{
-    AiProviderConfig, AiRunDecisionTrace, ChatMessage, ChatMessageRole, ExecutionMode,
-    ExecutionOverride, PendingApproval, ProviderCapability, ProviderKind, ProviderStreamEmitter,
-    ProviderStreamEvent, ProviderTestResult, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest,
-    TaskProfile, ToolCall, ToolDefinition, ToolTrace,
+    ChatMessage, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderStreamEmitter,
+    ProviderStreamEvent, ProviderTestResult, RuntimeOutcome, ToolTrace,
 };
-use crate::policy::ToolExecutionPolicy;
-use crate::provider::{provider_for_kind, ModelProvider};
-use crate::router::{AiRouter, RouterProviderProfile};
+use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
+use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
+use crate::router::AiRouter;
 use crate::runtime::AiRuntime;
-use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
-use crate::{AiError, AiResult};
+use crate::provider::{provider_for_kind, ModelProvider};
+use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
+use crate::{AiError, AiResult, McpClientAdapter};
 
-static STAGED_SCAFFOLDS: Lazy<Arc<Mutex<HashMap<Uuid, StagedModuleScaffold>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
-
-#[derive(Clone)]
-pub struct SharedAiModuleRegistry(pub ModuleRegistry);
-
-#[derive(Debug, Clone)]
-pub struct AiOperatorContext {
-    pub tenant_id: Uuid,
-    pub user_id: Uuid,
-    pub permissions: Vec<Permission>,
-    pub role_slugs: Vec<String>,
-    pub preferred_locale: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateAiProviderProfileInput {
-    pub slug: String,
-    pub display_name: String,
-    pub provider_kind: ProviderKind,
-    pub base_url: String,
-    pub model: String,
-    pub api_key_secret: Option<String>,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub capabilities: Vec<ProviderCapability>,
-    pub usage_policy: ProviderUsagePolicy,
-    pub metadata: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateAiProviderProfileInput {
-    pub display_name: String,
-    pub base_url: String,
-    pub model: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub capabilities: Vec<ProviderCapability>,
-    pub usage_policy: ProviderUsagePolicy,
-    pub metadata: serde_json::Value,
-    pub is_active: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateAiTaskProfileInput {
-    pub slug: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub target_capability: ProviderCapability,
-    pub system_prompt: Option<String>,
-    pub allowed_provider_profile_ids: Vec<Uuid>,
-    pub preferred_provider_profile_ids: Vec<Uuid>,
-    pub fallback_strategy: String,
-    pub tool_profile_id: Option<Uuid>,
-    pub approval_policy: serde_json::Value,
-    pub default_execution_mode: ExecutionMode,
-    pub metadata: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateAiTaskProfileInput {
-    pub display_name: String,
-    pub description: Option<String>,
-    pub target_capability: ProviderCapability,
-    pub system_prompt: Option<String>,
-    pub allowed_provider_profile_ids: Vec<Uuid>,
-    pub preferred_provider_profile_ids: Vec<Uuid>,
-    pub fallback_strategy: String,
-    pub tool_profile_id: Option<Uuid>,
-    pub approval_policy: serde_json::Value,
-    pub default_execution_mode: ExecutionMode,
-    pub metadata: serde_json::Value,
-    pub is_active: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateAiToolProfileInput {
-    pub slug: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub allowed_tools: Vec<String>,
-    pub denied_tools: Vec<String>,
-    pub sensitive_tools: Vec<String>,
-    pub metadata: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateAiToolProfileInput {
-    pub display_name: String,
-    pub description: Option<String>,
-    pub allowed_tools: Vec<String>,
-    pub denied_tools: Vec<String>,
-    pub sensitive_tools: Vec<String>,
-    pub metadata: serde_json::Value,
-    pub is_active: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StartAiChatSessionInput {
-    pub title: String,
-    pub provider_profile_id: Option<Uuid>,
-    pub task_profile_id: Option<Uuid>,
-    pub tool_profile_id: Option<Uuid>,
-    pub execution_mode: Option<ExecutionMode>,
-    pub override_config: ExecutionOverride,
-    pub locale: Option<String>,
-    pub initial_message: Option<String>,
-    pub metadata: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunAiTaskJobInput {
-    pub title: String,
-    pub provider_profile_id: Option<Uuid>,
-    pub task_profile_id: Uuid,
-    pub execution_mode: Option<ExecutionMode>,
-    pub locale: Option<String>,
-    pub task_input_json: serde_json::Value,
-    pub metadata: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SendAiChatMessageInput {
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResumeAiApprovalInput {
-    pub approved: bool,
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiProviderProfileRecord {
-    pub id: Uuid,
-    pub slug: String,
-    pub display_name: String,
-    pub provider_kind: ProviderKind,
-    pub base_url: String,
-    pub model: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub is_active: bool,
-    pub has_secret: bool,
-    pub capabilities: Vec<ProviderCapability>,
-    pub usage_policy: ProviderUsagePolicy,
-    pub metadata: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiTaskProfileRecord {
-    pub id: Uuid,
-    pub slug: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub target_capability: ProviderCapability,
-    pub system_prompt: Option<String>,
-    pub allowed_provider_profile_ids: Vec<Uuid>,
-    pub preferred_provider_profile_ids: Vec<Uuid>,
-    pub fallback_strategy: String,
-    pub tool_profile_id: Option<Uuid>,
-    pub approval_policy: serde_json::Value,
-    pub default_execution_mode: ExecutionMode,
-    pub is_active: bool,
-    pub metadata: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiToolProfileRecord {
-    pub id: Uuid,
-    pub slug: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub allowed_tools: Vec<String>,
-    pub denied_tools: Vec<String>,
-    pub sensitive_tools: Vec<String>,
-    pub is_active: bool,
-    pub metadata: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatMessageRecord {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub run_id: Option<Uuid>,
-    pub role: ChatMessageRole,
-    pub content: Option<String>,
-    pub name: Option<String>,
-    pub tool_call_id: Option<String>,
-    pub tool_calls: Vec<ToolCall>,
-    pub metadata: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatRunRecord {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub provider_profile_id: Uuid,
-    pub task_profile_id: Option<Uuid>,
-    pub tool_profile_id: Option<Uuid>,
-    pub status: String,
-    pub model: String,
-    pub execution_mode: ExecutionMode,
-    pub execution_path: ExecutionMode,
-    pub requested_locale: Option<String>,
-    pub resolved_locale: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<i32>,
-    pub error_message: Option<String>,
-    pub pending_approval_id: Option<Uuid>,
-    pub decision_trace: AiRunDecisionTrace,
-    pub metadata: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-    pub started_at: DateTime<Utc>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiRecentRunRecord {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub session_title: String,
-    pub provider_profile_id: Uuid,
-    pub provider_display_name: String,
-    pub provider_kind: ProviderKind,
-    pub task_profile_id: Option<Uuid>,
-    pub task_profile_slug: Option<String>,
-    pub status: String,
-    pub model: String,
-    pub execution_mode: ExecutionMode,
-    pub execution_path: ExecutionMode,
-    pub execution_target: Option<String>,
-    pub requested_locale: Option<String>,
-    pub resolved_locale: String,
-    pub error_message: Option<String>,
-    pub started_at: DateTime<Utc>,
-    pub completed_at: Option<DateTime<Utc>>,
-    pub updated_at: DateTime<Utc>,
-    pub duration_ms: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiApprovalRequestRecord {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub run_id: Uuid,
-    pub tool_name: String,
-    pub tool_call_id: String,
-    pub tool_input: serde_json::Value,
-    pub reason: Option<String>,
-    pub status: String,
-    pub resolved_by: Option<Uuid>,
-    pub resolved_at: Option<DateTime<Utc>>,
-    pub metadata: serde_json::Value,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatSessionSummary {
-    pub id: Uuid,
-    pub title: String,
-    pub provider_profile_id: Uuid,
-    pub task_profile_id: Option<Uuid>,
-    pub tool_profile_id: Option<Uuid>,
-    pub execution_mode: ExecutionMode,
-    pub requested_locale: Option<String>,
-    pub resolved_locale: String,
-    pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub latest_run_status: Option<String>,
-    pub pending_approvals: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatSessionDetail {
-    pub session: AiChatSessionSummary,
-    pub provider_profile: AiProviderProfileRecord,
-    pub task_profile: Option<AiTaskProfileRecord>,
-    pub tool_profile: Option<AiToolProfileRecord>,
-    pub messages: Vec<AiChatMessageRecord>,
-    pub runs: Vec<AiChatRunRecord>,
-    pub tool_traces: Vec<ToolTrace>,
-    pub approvals: Vec<AiApprovalRequestRecord>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiSendMessageResult {
-    pub session: AiChatSessionDetail,
-    pub run: AiChatRunRecord,
-}
+pub use types::*;
+pub use mapping::*;
+pub use helpers::*;
+pub use mcp::*;
 
 pub struct AiManagementService;
 
@@ -427,10 +105,10 @@ impl AiManagementService {
                 .collect()
         };
 
-        Ok(runs
+        runs
             .into_iter()
             .map(|run| map_recent_run_record(run, &session_map, &provider_map, &task_map))
-            .collect())
+            .collect()
     }
 
     pub async fn list_provider_profiles(
@@ -443,7 +121,7 @@ impl AiManagementService {
             .all(db)
             .await
             .map_err(db_err)?;
-        Ok(profiles.into_iter().map(map_provider_profile).collect())
+        profiles.into_iter().map(map_provider_profile).collect()
     }
 
     pub async fn get_provider_profile(
@@ -456,7 +134,7 @@ impl AiManagementService {
             .one(db)
             .await
             .map_err(db_err)?;
-        Ok(profile.map(map_provider_profile))
+        profile.map(map_provider_profile).transpose()
     }
 
     pub async fn create_provider_profile(
@@ -492,7 +170,7 @@ impl AiManagementService {
         .insert(db)
         .await
         .map_err(db_err)?;
-        Ok(map_provider_profile(profile))
+        map_provider_profile(profile)
     }
 
     pub async fn update_provider_profile(
@@ -519,7 +197,7 @@ impl AiManagementService {
         active.updated_by = Set(Some(operator.user_id));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
-        Ok(map_provider_profile(saved))
+        map_provider_profile(saved)
     }
 
     pub async fn rotate_provider_secret(
@@ -534,7 +212,7 @@ impl AiManagementService {
         active.updated_by = Set(Some(operator.user_id));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
-        Ok(map_provider_profile(saved))
+        map_provider_profile(saved)
     }
 
     pub async fn deactivate_provider_profile(
@@ -548,7 +226,7 @@ impl AiManagementService {
         active.updated_by = Set(Some(operator.user_id));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
-        Ok(map_provider_profile(saved))
+        map_provider_profile(saved)
     }
 
     pub async fn test_provider_profile(
@@ -557,7 +235,7 @@ impl AiManagementService {
         id: Uuid,
     ) -> AiResult<ProviderTestResult> {
         let profile = require_provider_profile(db, tenant_id, id).await?;
-        let provider = provider_for_kind(provider_kind_from_slug(&profile.provider_kind));
+        let provider = provider_for_kind(provider_kind_from_slug(&profile.provider_kind)?);
         provider.test_connection(&provider_config(&profile)?).await
     }
 
@@ -840,7 +518,7 @@ impl AiManagementService {
                     max_tokens: detail.provider_profile.max_tokens,
                     error_message: None,
                     pending_approval_id: None,
-                    decision_trace: AiRunDecisionTrace::default(),
+                    decision_trace: crate::model::AiRunDecisionTrace::default(),
                     metadata: json!({}),
                     created_at: Utc::now(),
                     started_at: Utc::now(),
@@ -1021,7 +699,7 @@ impl AiManagementService {
                 provider_profile_id: session.provider_profile_id,
                 task_profile_id: session.task_profile_id,
                 tool_profile_id: session.tool_profile_id,
-                execution_mode: execution_mode_from_slug(&session.execution_mode),
+                execution_mode: execution_mode_from_slug(&session.execution_mode)?,
                 requested_locale: session.requested_locale,
                 resolved_locale: session.resolved_locale,
                 status: session.status,
@@ -1086,7 +764,7 @@ impl AiManagementService {
             .map_err(db_err)?
             .into_iter()
             .map(map_run_record)
-            .collect();
+            .collect::<AiResult<Vec<_>>>()?;
         let tool_traces: Vec<_> = ai_tool_traces::Entity::find()
             .filter(
                 Condition::all()
@@ -1128,7 +806,7 @@ impl AiManagementService {
                 provider_profile_id: session.provider_profile_id,
                 task_profile_id: session.task_profile_id,
                 tool_profile_id: session.tool_profile_id,
-                execution_mode: execution_mode_from_slug(&session.execution_mode),
+                execution_mode: execution_mode_from_slug(&session.execution_mode)?,
                 requested_locale: session.requested_locale,
                 resolved_locale: session.resolved_locale,
                 status: session.status,
@@ -1137,7 +815,7 @@ impl AiManagementService {
                 latest_run_status,
                 pending_approvals,
             },
-            provider_profile: map_provider_profile(provider),
+            provider_profile: map_provider_profile(provider)?,
             task_profile,
             tool_profile,
             messages,
@@ -1246,7 +924,7 @@ impl AiManagementService {
                 .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
             return Ok(AiSendMessageResult {
                 session: detail,
-                run: map_run_record(saved_run),
+                run: map_run_record(saved_run)?,
             });
         }
 
@@ -1300,7 +978,7 @@ impl AiManagementService {
             provider,
             task_profile,
             tool_profile,
-            execution_mode_from_slug(&session.execution_mode),
+            execution_mode_from_slug(&session.execution_mode)?,
             session.requested_locale.clone(),
             session.resolved_locale.clone(),
             None,
@@ -1319,7 +997,7 @@ impl AiManagementService {
         active.completed_at = Set(Some(Utc::now().into()));
         active.updated_at = Set(Utc::now().into());
         let saved = active.update(db).await.map_err(db_err)?;
-        Ok(map_run_record(saved))
+        Ok(map_run_record(saved)?)
     }
 
     async fn execute_latest_turn(
@@ -1339,7 +1017,7 @@ impl AiManagementService {
             Some(id) => Some(require_tool_profile(db, operator.tenant_id, id).await?),
             None => None,
         };
-        let execution_mode = execution_mode_from_slug(&session.execution_mode);
+        let execution_mode = execution_mode_from_slug(&session.execution_mode)?;
         let requested_locale = session.requested_locale.clone();
         let resolved_locale = session.resolved_locale.clone();
 
@@ -1411,7 +1089,7 @@ impl AiManagementService {
             Some(id) => Some(require_tool_profile(db, operator.tenant_id, id).await?),
             None => None,
         };
-        let execution_mode = execution_mode_from_slug(&session.execution_mode);
+        let execution_mode = execution_mode_from_slug(&session.execution_mode)?;
 
         let run = ai_chat_runs::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -1477,11 +1155,11 @@ impl AiManagementService {
     ) -> AiResult<AiSendMessageResult> {
         let db = &app_ctx.db;
         let run_started = std::time::Instant::now();
-        let provider_kind = provider_kind_from_slug(&provider_profile.provider_kind);
+        let provider_kind = provider_kind_from_slug(&provider_profile.provider_kind)?;
         publish_ai_run_stream_event(
             session_id,
             run_id,
-            AiRunStreamEventKind::Started,
+            crate::streaming::AiRunStreamEventKind::Started,
             None,
             None,
             None,
@@ -1520,7 +1198,7 @@ impl AiManagementService {
                         publish_ai_run_stream_event(
                             session_id,
                             run_id,
-                            AiRunStreamEventKind::Delta,
+                            crate::streaming::AiRunStreamEventKind::Delta,
                             Some(delta),
                             Some(accumulated.clone()),
                             None,
@@ -1561,7 +1239,7 @@ impl AiManagementService {
                         publish_ai_run_stream_event(
                             session_id,
                             run_id,
-                            AiRunStreamEventKind::Failed,
+                            crate::streaming::AiRunStreamEventKind::Failed,
                             None,
                             Some(read_stream_buffer(&stream_buffer)),
                             Some(error.to_string()),
@@ -1588,7 +1266,7 @@ impl AiManagementService {
                     direct_result.traces,
                 )
                 .await?;
-                let mut decision_trace: AiRunDecisionTrace =
+                let mut decision_trace: crate::model::AiRunDecisionTrace =
                     serde_json::from_value(run.decision_trace.clone()).unwrap_or_default();
                 decision_trace = enrich_decision_trace(
                     decision_trace,
@@ -1625,14 +1303,14 @@ impl AiManagementService {
                 publish_ai_run_stream_event(
                     session_id,
                     run_id,
-                    AiRunStreamEventKind::Completed,
+                    crate::streaming::AiRunStreamEventKind::Completed,
                     None,
                     Some(read_stream_buffer(&stream_buffer)),
                     None,
                 );
                 return Ok(AiSendMessageResult {
                     session: detail,
-                    run: map_run_record(run),
+                    run: map_run_record(run)?,
                 });
             }
         }
@@ -1654,7 +1332,7 @@ impl AiManagementService {
                 publish_ai_run_stream_event(
                     session_id,
                     run_id,
-                    AiRunStreamEventKind::Delta,
+                    crate::streaming::AiRunStreamEventKind::Delta,
                     Some(delta),
                     Some(accumulated.clone()),
                     None,
@@ -1664,7 +1342,7 @@ impl AiManagementService {
         let outcome = match runtime
             .run(
                 &provider_config(&provider_profile)?,
-                RuntimeRequest {
+                crate::model::RuntimeRequest {
                     model: provider_profile.model.clone(),
                     messages,
                     temperature: provider_profile.temperature,
@@ -1686,7 +1364,7 @@ impl AiManagementService {
                 publish_ai_run_stream_event(
                     session_id,
                     run_id,
-                    AiRunStreamEventKind::Failed,
+                    crate::streaming::AiRunStreamEventKind::Failed,
                     None,
                     Some(read_stream_buffer(&stream_buffer)),
                     Some(error.to_string()),
@@ -1737,7 +1415,7 @@ impl AiManagementService {
                 publish_ai_run_stream_event(
                     session_id,
                     run_id,
-                    AiRunStreamEventKind::Completed,
+                    crate::streaming::AiRunStreamEventKind::Completed,
                     None,
                     Some(read_stream_buffer(&stream_buffer)),
                     None,
@@ -1775,7 +1453,7 @@ impl AiManagementService {
                 publish_ai_run_stream_event(
                     session_id,
                     run_id,
-                    AiRunStreamEventKind::Failed,
+                    crate::streaming::AiRunStreamEventKind::Failed,
                     None,
                     Some(read_stream_buffer(&stream_buffer)),
                     run.error_message.clone(),
@@ -1815,7 +1493,7 @@ impl AiManagementService {
                 publish_ai_run_stream_event(
                     session_id,
                     run_id,
-                    AiRunStreamEventKind::WaitingApproval,
+                    crate::streaming::AiRunStreamEventKind::WaitingApproval,
                     None,
                     Some(read_stream_buffer(&stream_buffer)),
                     None,
@@ -1828,1400 +1506,7 @@ impl AiManagementService {
             .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
         Ok(AiSendMessageResult {
             session: detail,
-            run: map_run_record(run),
+            run: map_run_record(run)?,
         })
-    }
-}
-
-struct InProcessMcpAdapter {
-    state: McpState,
-    access_context: McpAccessContext,
-    alloy: Option<AlloyMcpState<alloy::SeaOrmStorage>>,
-}
-
-impl InProcessMcpAdapter {
-    fn new(app_ctx: &AppContext, access_context: McpAccessContext) -> AiResult<Self> {
-        let registry = app_ctx
-            .shared_store
-            .get::<SharedAiModuleRegistry>()
-            .map(|shared| shared.0.clone())
-            .ok_or_else(|| AiError::Runtime("AI module registry is not initialized".to_string()))?;
-        let alloy = if app_ctx
-            .shared_store
-            .get::<alloy::SharedAlloyRuntime>()
-            .is_some()
-        {
-            let scoped = alloy::scoped_runtime(
-                app_ctx,
-                parse_uuid_str(
-                    access_context
-                        .identity
-                        .as_ref()
-                        .and_then(|identity| identity.tenant_id.as_deref()),
-                )?,
-            );
-            let mut state = AlloyMcpState::new(scoped.storage, scoped.engine, scoped.orchestrator);
-            state.staged_scaffolds = Arc::clone(&STAGED_SCAFFOLDS);
-            Some(state)
-        } else {
-            None
-        };
-        Ok(Self {
-            state: McpState { registry },
-            access_context,
-            alloy,
-        })
-    }
-
-    async fn call_alloy_tool(
-        &self,
-        tool_name: &str,
-        input: serde_json::Value,
-    ) -> AiResult<ToolExecutionResult> {
-        let Some(state) = &self.alloy else {
-            return Err(AiError::Mcp(format!("unknown tool: {tool_name}")));
-        };
-        let content = match tool_name {
-            TOOL_ALLOY_LIST_SCRIPTS => serde_json::to_value(
-                alloy_tools::alloy_list_scripts(
-                    state,
-                    serde_json::from_value::<ListScriptsRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_GET_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_get_script(
-                    state,
-                    serde_json::from_value::<GetScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_CREATE_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_create_script(
-                    state,
-                    serde_json::from_value::<CreateScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_UPDATE_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_update_script(
-                    state,
-                    serde_json::from_value::<UpdateScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_DELETE_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_delete_script(
-                    state,
-                    serde_json::from_value::<DeleteScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_VALIDATE_SCRIPT => serde_json::to_value(alloy_tools::alloy_validate_script(
-                state,
-                serde_json::from_value::<ValidateScriptRequest>(input).map_err(json_err)?,
-            ))
-            .map_err(json_err)?,
-            TOOL_ALLOY_RUN_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_run_script(
-                    state,
-                    serde_json::from_value::<RunScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_SCAFFOLD_MODULE => serde_json::to_value(
-                alloy_tools::alloy_scaffold_module(
-                    state,
-                    None,
-                    serde_json::from_value::<rustok_mcp::ScaffoldModuleRequest>(input)
-                        .map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => serde_json::to_value(
-                alloy_tools::alloy_review_module_scaffold(
-                    state,
-                    None,
-                    serde_json::from_value::<ReviewModuleScaffoldRequest>(input)
-                        .map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => serde_json::to_value(
-                alloy_tools::alloy_apply_module_scaffold(
-                    state,
-                    None,
-                    serde_json::from_value::<ApplyModuleScaffoldRequest>(input)
-                        .map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_LIST_ENTITY_TYPES => {
-                serde_json::to_value(alloy_tools::alloy_list_entity_types()).map_err(json_err)?
-            }
-            TOOL_ALLOY_SCRIPT_HELPERS => {
-                serde_json::to_value(alloy_tools::alloy_script_helpers()).map_err(json_err)?
-            }
-            _ => return Err(AiError::Mcp(format!("unknown tool: {tool_name}"))),
-        };
-
-        Ok(ToolExecutionResult {
-            content: serde_json::to_string(&content).map_err(json_err)?,
-            raw_payload: content,
-        })
-    }
-}
-
-#[async_trait::async_trait]
-impl McpClientAdapter for InProcessMcpAdapter {
-    async fn list_tools(&self) -> AiResult<Vec<ToolDefinition>> {
-        let mut tools = vec![
-            tool_def(
-                TOOL_LIST_MODULES,
-                "List all registered RusToK modules with their metadata",
-                schema_for!(()),
-            ),
-            tool_def(
-                TOOL_QUERY_MODULES,
-                "List modules with filters and pagination",
-                schema_for!(ModuleQueryRequest),
-            ),
-            tool_def(
-                TOOL_MODULE_EXISTS,
-                "Check if a module exists by its slug",
-                schema_for!(ModuleLookupRequest),
-            ),
-            tool_def(
-                TOOL_MODULE_DETAILS,
-                "Fetch module metadata by slug",
-                schema_for!(ModuleLookupRequest),
-            ),
-            tool_def(
-                TOOL_CONTENT_MODULE,
-                "Fetch content module metadata",
-                schema_for!(()),
-            ),
-            tool_def(
-                TOOL_BLOG_MODULE,
-                "Fetch blog module metadata",
-                schema_for!(()),
-            ),
-            tool_def(
-                TOOL_FORUM_MODULE,
-                "Fetch forum module metadata",
-                schema_for!(()),
-            ),
-            tool_def(
-                TOOL_PAGES_MODULE,
-                "Fetch pages module metadata",
-                schema_for!(()),
-            ),
-            tool_def(
-                TOOL_MCP_HEALTH,
-                "MCP readiness and configuration status",
-                schema_for!(()),
-            ),
-            tool_def(
-                TOOL_MCP_WHOAMI,
-                "Inspect the current MCP identity, permissions, scopes, and tool policy",
-                schema_for!(()),
-            ),
-        ];
-
-        if self.alloy.is_some() {
-            tools.extend([
-                tool_def(
-                    TOOL_ALLOY_LIST_SCRIPTS,
-                    "List Alloy scripts with optional status filter",
-                    schema_for!(ListScriptsRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_GET_SCRIPT,
-                    "Get a single Alloy script by name or UUID",
-                    schema_for!(GetScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_CREATE_SCRIPT,
-                    "Create a new Alloy Rhai script",
-                    schema_for!(CreateScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_UPDATE_SCRIPT,
-                    "Update an existing Alloy script (code, description, status)",
-                    schema_for!(UpdateScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_DELETE_SCRIPT,
-                    "Delete an Alloy script by UUID",
-                    schema_for!(DeleteScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_VALIDATE_SCRIPT,
-                    "Validate Rhai script syntax without executing",
-                    schema_for!(ValidateScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_RUN_SCRIPT,
-                    "Execute an Alloy script manually with optional params and entity context",
-                    schema_for!(RunScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_SCAFFOLD_MODULE,
-                    "Stage a reviewed draft RusToK module crate scaffold without writing it into the workspace yet",
-                    schema_for!(rustok_mcp::ScaffoldModuleRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
-                    "Fetch a staged Alloy module scaffold draft for review before apply",
-                    schema_for!(ReviewModuleScaffoldRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-                    "Apply a reviewed Alloy module scaffold draft into the workspace with explicit confirmation",
-                    schema_for!(ApplyModuleScaffoldRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_LIST_ENTITY_TYPES,
-                    "List all known entity types in the platform",
-                    schema_for!(()),
-                ),
-                tool_def(
-                    TOOL_ALLOY_SCRIPT_HELPERS,
-                    "List available Rhai helper functions with signatures and descriptions",
-                    schema_for!(()),
-                ),
-            ]);
-        }
-
-        Ok(tools
-            .into_iter()
-            .filter(|tool| {
-                self.access_context
-                    .authorize_tool(&default_tool_requirement(&tool.name))
-                    .allowed
-            })
-            .collect())
-    }
-
-    async fn call_tool(
-        &self,
-        tool_name: &str,
-        input: serde_json::Value,
-    ) -> AiResult<ToolExecutionResult> {
-        let decision = self
-            .access_context
-            .authorize_tool(&default_tool_requirement(tool_name));
-        if !decision.allowed {
-            return Err(AiError::Mcp(
-                decision
-                    .message
-                    .unwrap_or_else(|| "tool access denied".to_string()),
-            ));
-        }
-
-        match tool_name {
-            TOOL_LIST_MODULES => serialize_result(McpToolResponse::success(
-                tools::list_modules(&self.state).await,
-            )),
-            TOOL_QUERY_MODULES => serialize_result(McpToolResponse::success(
-                tools::list_modules_filtered(
-                    &self.state,
-                    serde_json::from_value::<ModuleQueryRequest>(input).map_err(json_err)?,
-                )
-                .await,
-            )),
-            TOOL_MODULE_EXISTS => serialize_result(McpToolResponse::success(
-                tools::module_exists(
-                    &self.state,
-                    serde_json::from_value::<ModuleLookupRequest>(input).map_err(json_err)?,
-                )
-                .await,
-            )),
-            TOOL_MODULE_DETAILS => serialize_result(McpToolResponse::success(
-                tools::module_details(
-                    &self.state,
-                    serde_json::from_value::<ModuleLookupRequest>(input).map_err(json_err)?,
-                )
-                .await,
-            )),
-            TOOL_CONTENT_MODULE => serialize_result(McpToolResponse::success(
-                tools::module_details_by_slug(&self.state, rustok_mcp::MODULE_CONTENT),
-            )),
-            TOOL_BLOG_MODULE => serialize_result(McpToolResponse::success(
-                tools::module_details_by_slug(&self.state, rustok_mcp::MODULE_BLOG),
-            )),
-            TOOL_FORUM_MODULE => serialize_result(McpToolResponse::success(
-                tools::module_details_by_slug(&self.state, rustok_mcp::MODULE_FORUM),
-            )),
-            TOOL_PAGES_MODULE => serialize_result(McpToolResponse::success(
-                tools::module_details_by_slug(&self.state, rustok_mcp::MODULE_PAGES),
-            )),
-            TOOL_MCP_HEALTH => serialize_result(McpToolResponse::success(McpHealthResponse {
-                status: "ok".to_string(),
-                protocol_version: "in_process".to_string(),
-                tool_count: self.list_tools().await?.len(),
-                enabled_tools: None,
-                access_mode: "direct".to_string(),
-                identity: self.access_context.identity.clone(),
-            })),
-            TOOL_MCP_WHOAMI => {
-                serialize_result(McpToolResponse::success(self.access_context.whoami()))
-            }
-            _ => self.call_alloy_tool(tool_name, input).await,
-        }
-    }
-}
-
-fn tool_def(name: &str, description: &str, schema: schemars::Schema) -> ToolDefinition {
-    let input_schema = serde_json::to_value(schema)
-        .ok()
-        .and_then(|value| value.as_object().cloned())
-        .map(serde_json::Value::Object)
-        .unwrap_or_else(|| json!({}));
-    ToolDefinition {
-        name: name.to_string(),
-        description: description.to_string(),
-        input_schema,
-        sensitive: false,
-    }
-}
-
-fn serialize_result<T: Serialize>(payload: T) -> AiResult<ToolExecutionResult> {
-    let raw_payload = serde_json::to_value(payload).map_err(json_err)?;
-    Ok(ToolExecutionResult {
-        content: serde_json::to_string(&raw_payload).map_err(json_err)?,
-        raw_payload,
-    })
-}
-
-fn access_context_for_operator(operator: &AiOperatorContext) -> McpAccessContext {
-    McpAccessContext {
-        identity: Some(McpIdentity {
-            actor_id: operator.user_id.to_string(),
-            actor_type: McpActorType::HumanUser,
-            tenant_id: Some(operator.tenant_id.to_string()),
-            delegated_user_id: None,
-            display_name: Some("RusToK AI Operator".to_string()),
-            scopes: Vec::new(),
-        }),
-        granted_permissions: operator
-            .permissions
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-        policy: McpAccessPolicy {
-            allowed_tools: None,
-            denied_tools: Vec::new(),
-        },
-    }
-}
-
-fn provider_kind_slug(kind: ProviderKind) -> &'static str {
-    match kind {
-        ProviderKind::OpenAiCompatible => "openai_compatible",
-        ProviderKind::Anthropic => "anthropic",
-        ProviderKind::Gemini => "gemini",
-    }
-}
-
-fn provider_kind_from_slug(value: &str) -> ProviderKind {
-    match value {
-        "openai_compatible" => ProviderKind::OpenAiCompatible,
-        "anthropic" => ProviderKind::Anthropic,
-        "gemini" => ProviderKind::Gemini,
-        _ => ProviderKind::OpenAiCompatible,
-    }
-}
-
-fn capability_from_slug(value: &str) -> ProviderCapability {
-    match value {
-        "structured_generation" => ProviderCapability::StructuredGeneration,
-        "image_generation" => ProviderCapability::ImageGeneration,
-        "multimodal_understanding" => ProviderCapability::MultimodalUnderstanding,
-        "code_generation" => ProviderCapability::CodeGeneration,
-        "alloy_assist" => ProviderCapability::AlloyAssist,
-        _ => ProviderCapability::TextGeneration,
-    }
-}
-
-fn execution_mode_from_slug(value: &str) -> ExecutionMode {
-    match value {
-        "direct" => ExecutionMode::Direct,
-        "mcp_tooling" => ExecutionMode::McpTooling,
-        _ => ExecutionMode::Auto,
-    }
-}
-
-fn provider_config(model: &ai_provider_profiles::Model) -> AiResult<AiProviderConfig> {
-    Ok(AiProviderConfig {
-        provider_kind: provider_kind_from_slug(&model.provider_kind),
-        base_url: model.base_url.clone(),
-        api_key: model.api_key_secret.clone(),
-        model: model.model.clone(),
-        temperature: model.temperature,
-        max_tokens: model.max_tokens.map(|value| value.max(0) as u32),
-        capabilities: capability_list(&model.capabilities),
-        usage_policy: ProviderUsagePolicy {
-            allowed_task_profiles: string_list(&model.allowed_task_profiles),
-            denied_task_profiles: string_list(&model.denied_task_profiles),
-            restricted_role_slugs: string_list(&model.restricted_role_slugs),
-        },
-    })
-}
-
-fn policy_from_model(model: Option<&ai_tool_profiles::Model>) -> ToolExecutionPolicy {
-    match model {
-        Some(model) => ToolExecutionPolicy::new(
-            match string_list(&model.allowed_tools) {
-                values if values.is_empty() => None,
-                values => Some(values),
-            },
-            string_list(&model.denied_tools),
-            string_list(&model.sensitive_tools),
-        ),
-        None => ToolExecutionPolicy::default(),
-    }
-}
-
-fn map_provider_profile(model: ai_provider_profiles::Model) -> AiProviderProfileRecord {
-    AiProviderProfileRecord {
-        id: model.id,
-        slug: model.slug,
-        display_name: model.display_name,
-        provider_kind: provider_kind_from_slug(&model.provider_kind),
-        base_url: model.base_url,
-        model: model.model,
-        temperature: model.temperature,
-        max_tokens: model.max_tokens,
-        is_active: model.is_active,
-        has_secret: model
-            .api_key_secret
-            .as_ref()
-            .map(|value| !value.trim().is_empty())
-            .unwrap_or(false),
-        capabilities: capability_list(&model.capabilities),
-        usage_policy: ProviderUsagePolicy {
-            allowed_task_profiles: string_list(&model.allowed_task_profiles),
-            denied_task_profiles: string_list(&model.denied_task_profiles),
-            restricted_role_slugs: string_list(&model.restricted_role_slugs),
-        },
-        metadata: model.metadata,
-        created_at: to_utc(model.created_at),
-        updated_at: to_utc(model.updated_at),
-    }
-}
-
-fn map_task_profile(model: ai_task_profiles::Model) -> AiResult<AiTaskProfileRecord> {
-    Ok(AiTaskProfileRecord {
-        id: model.id,
-        slug: model.slug,
-        display_name: model.display_name,
-        description: model.description,
-        target_capability: capability_from_slug(&model.target_capability),
-        system_prompt: model.system_prompt,
-        allowed_provider_profile_ids: uuid_list(&model.allowed_provider_profile_ids),
-        preferred_provider_profile_ids: uuid_list(&model.preferred_provider_profile_ids),
-        fallback_strategy: model.fallback_strategy,
-        tool_profile_id: model.tool_profile_id,
-        approval_policy: model.approval_policy,
-        default_execution_mode: execution_mode_from_slug(&model.default_execution_mode),
-        is_active: model.is_active,
-        metadata: model.metadata,
-        created_at: to_utc(model.created_at),
-        updated_at: to_utc(model.updated_at),
-    })
-}
-
-fn task_profile_runtime(record: &AiTaskProfileRecord) -> TaskProfile {
-    TaskProfile {
-        id: record.id,
-        slug: record.slug.clone(),
-        display_name: record.display_name.clone(),
-        description: record.description.clone(),
-        target_capability: record.target_capability,
-        system_prompt: record.system_prompt.clone(),
-        allowed_provider_profile_ids: record.allowed_provider_profile_ids.clone(),
-        preferred_provider_profile_ids: record.preferred_provider_profile_ids.clone(),
-        fallback_strategy: record.fallback_strategy.clone(),
-        tool_profile_id: record.tool_profile_id,
-        approval_policy: record.approval_policy.clone(),
-        default_execution_mode: record.default_execution_mode,
-        is_active: record.is_active,
-        metadata: record.metadata.clone(),
-    }
-}
-
-fn map_tool_profile(model: ai_tool_profiles::Model) -> AiToolProfileRecord {
-    AiToolProfileRecord {
-        id: model.id,
-        slug: model.slug,
-        display_name: model.display_name,
-        description: model.description,
-        allowed_tools: string_list(&model.allowed_tools),
-        denied_tools: string_list(&model.denied_tools),
-        sensitive_tools: string_list(&model.sensitive_tools),
-        is_active: model.is_active,
-        metadata: model.metadata,
-        created_at: to_utc(model.created_at),
-        updated_at: to_utc(model.updated_at),
-    }
-}
-
-fn map_message_record(model: ai_chat_messages::Model) -> AiResult<AiChatMessageRecord> {
-    Ok(AiChatMessageRecord {
-        id: model.id,
-        session_id: model.session_id,
-        run_id: model.run_id,
-        role: map_role(&model.role)?,
-        content: model.content,
-        name: model.name,
-        tool_call_id: model.tool_call_id,
-        tool_calls: serde_json::from_value(model.tool_calls).map_err(json_err)?,
-        metadata: model.metadata,
-        created_at: to_utc(model.created_at),
-    })
-}
-
-fn map_run_record(model: ai_chat_runs::Model) -> AiChatRunRecord {
-    AiChatRunRecord {
-        id: model.id,
-        session_id: model.session_id,
-        provider_profile_id: model.provider_profile_id,
-        task_profile_id: model.task_profile_id,
-        tool_profile_id: model.tool_profile_id,
-        status: model.status,
-        model: model.model,
-        execution_mode: execution_mode_from_slug(&model.execution_mode),
-        execution_path: execution_mode_from_slug(&model.execution_path),
-        requested_locale: model.requested_locale,
-        resolved_locale: model.resolved_locale,
-        temperature: model.temperature,
-        max_tokens: model.max_tokens,
-        error_message: model.error_message,
-        pending_approval_id: model.pending_approval_id,
-        decision_trace: serde_json::from_value(model.decision_trace).unwrap_or_default(),
-        metadata: model.metadata,
-        created_at: to_utc(model.created_at),
-        started_at: to_utc(model.started_at),
-        completed_at: model.completed_at.map(to_utc),
-        updated_at: to_utc(model.updated_at),
-    }
-}
-
-fn map_recent_run_record(
-    model: ai_chat_runs::Model,
-    sessions: &HashMap<Uuid, ai_chat_sessions::Model>,
-    providers: &HashMap<Uuid, ai_provider_profiles::Model>,
-    tasks: &HashMap<Uuid, ai_task_profiles::Model>,
-) -> AiRecentRunRecord {
-    let session_title = sessions
-        .get(&model.session_id)
-        .map(|session| session.title.clone())
-        .unwrap_or_else(|| model.session_id.to_string());
-    let provider = providers.get(&model.provider_profile_id);
-    let task = model
-        .task_profile_id
-        .and_then(|task_id| tasks.get(&task_id));
-    let completed_at = model.completed_at.map(to_utc);
-    let started_at = to_utc(model.started_at);
-    let updated_at = to_utc(model.updated_at);
-    let duration_ms = completed_at
-        .unwrap_or(updated_at)
-        .signed_duration_since(started_at)
-        .num_milliseconds()
-        .max(0);
-    let decision_trace: AiRunDecisionTrace =
-        serde_json::from_value(model.decision_trace).unwrap_or_default();
-
-    AiRecentRunRecord {
-        id: model.id,
-        session_id: model.session_id,
-        session_title,
-        provider_profile_id: model.provider_profile_id,
-        provider_display_name: provider
-            .map(|value| value.display_name.clone())
-            .unwrap_or_else(|| model.provider_profile_id.to_string()),
-        provider_kind: provider
-            .map(|value| provider_kind_from_slug(&value.provider_kind))
-            .unwrap_or(ProviderKind::OpenAiCompatible),
-        task_profile_id: model.task_profile_id,
-        task_profile_slug: task.map(|value| value.slug.clone()),
-        status: model.status,
-        model: model.model,
-        execution_mode: execution_mode_from_slug(&model.execution_mode),
-        execution_path: execution_mode_from_slug(&model.execution_path),
-        execution_target: decision_trace.execution_target,
-        requested_locale: model.requested_locale,
-        resolved_locale: model.resolved_locale,
-        error_message: model.error_message,
-        started_at,
-        completed_at,
-        updated_at,
-        duration_ms,
-    }
-}
-
-fn map_approval_record(model: ai_approval_requests::Model) -> AiApprovalRequestRecord {
-    AiApprovalRequestRecord {
-        id: model.id,
-        session_id: model.session_id,
-        run_id: model.run_id,
-        tool_name: model.tool_name,
-        tool_call_id: model.tool_call_id,
-        tool_input: model.tool_input,
-        reason: model.reason,
-        status: model.status,
-        resolved_by: model.resolved_by,
-        resolved_at: model.resolved_at.map(to_utc),
-        metadata: model.metadata,
-        created_at: to_utc(model.created_at),
-        updated_at: to_utc(model.updated_at),
-    }
-}
-
-fn map_trace_record(model: ai_tool_traces::Model) -> ToolTrace {
-    ToolTrace {
-        tool_name: model.tool_name,
-        input_payload: model.input_payload,
-        output_payload: model.output_payload,
-        status: model.status,
-        duration_ms: model.duration_ms.unwrap_or_default(),
-        sensitive: model.sensitive,
-        error_message: model.error_message,
-        created_at: to_utc(model.created_at),
-    }
-}
-
-fn map_chat_message(model: ai_chat_messages::Model) -> AiResult<ChatMessage> {
-    Ok(ChatMessage {
-        role: map_role(&model.role)?,
-        content: model.content,
-        name: model.name,
-        tool_call_id: model.tool_call_id,
-        tool_calls: serde_json::from_value(model.tool_calls).map_err(json_err)?,
-        metadata: model.metadata,
-    })
-}
-
-fn map_role(value: &str) -> AiResult<ChatMessageRole> {
-    match value {
-        "system" => Ok(ChatMessageRole::System),
-        "user" => Ok(ChatMessageRole::User),
-        "assistant" => Ok(ChatMessageRole::Assistant),
-        "tool" => Ok(ChatMessageRole::Tool),
-        other => Err(AiError::Runtime(format!(
-            "unknown AI message role: {other}"
-        ))),
-    }
-}
-
-fn role_slug(role: ChatMessageRole) -> &'static str {
-    match role {
-        ChatMessageRole::System => "system",
-        ChatMessageRole::User => "user",
-        ChatMessageRole::Assistant => "assistant",
-        ChatMessageRole::Tool => "tool",
-    }
-}
-
-async fn insert_message<C>(
-    db: &C,
-    tenant_id: Uuid,
-    session_id: Uuid,
-    run_id: Option<Uuid>,
-    created_by: Option<Uuid>,
-    message: ChatMessage,
-) -> AiResult<ai_chat_messages::Model>
-where
-    C: sea_orm::ConnectionTrait,
-{
-    ai_chat_messages::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        tenant_id: Set(tenant_id),
-        session_id: Set(session_id),
-        run_id: Set(run_id),
-        role: Set(role_slug(message.role).to_string()),
-        content: Set(message.content),
-        name: Set(message.name),
-        tool_call_id: Set(message.tool_call_id),
-        tool_calls: Set(serde_json::to_value(message.tool_calls).map_err(json_err)?),
-        metadata: Set(message.metadata),
-        created_by: Set(created_by),
-        created_at: sea_orm::ActiveValue::NotSet,
-    }
-    .insert(db)
-    .await
-    .map_err(db_err)
-}
-
-async fn insert_tool_trace(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    session_id: Uuid,
-    run_id: Uuid,
-    trace: &ToolTrace,
-) -> AiResult<ai_tool_traces::Model> {
-    ai_tool_traces::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        tenant_id: Set(tenant_id),
-        session_id: Set(session_id),
-        run_id: Set(run_id),
-        tool_name: Set(trace.tool_name.clone()),
-        status: Set(trace.status.clone()),
-        input_payload: Set(trace.input_payload.clone()),
-        output_payload: Set(trace.output_payload.clone()),
-        error_message: Set(trace.error_message.clone()),
-        duration_ms: Set(Some(trace.duration_ms)),
-        sensitive: Set(trace.sensitive),
-        created_at: Set(trace.created_at.into()),
-        updated_at: Set(trace.created_at.into()),
-    }
-    .insert(db)
-    .await
-    .map_err(db_err)
-}
-
-async fn insert_approval_request(
-    db: &DatabaseConnection,
-    operator: &AiOperatorContext,
-    session_id: Uuid,
-    run_id: Uuid,
-    approval: &PendingApproval,
-) -> AiResult<ai_approval_requests::Model> {
-    ai_approval_requests::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        tenant_id: Set(operator.tenant_id),
-        session_id: Set(session_id),
-        run_id: Set(run_id),
-        tool_name: Set(approval.tool_name.clone()),
-        tool_call_id: Set(approval.tool_call_id.clone()),
-        tool_input: Set(approval.input_payload.clone()),
-        reason: Set(Some(approval.reason.clone())),
-        status: Set("pending".to_string()),
-        resolved_by: Set(None),
-        resolved_at: Set(None),
-        metadata: Set(json!({})),
-        created_at: sea_orm::ActiveValue::NotSet,
-        updated_at: sea_orm::ActiveValue::NotSet,
-    }
-    .insert(db)
-    .await
-    .map_err(db_err)
-}
-
-async fn persist_runtime_outputs(
-    db: &DatabaseConnection,
-    operator: &AiOperatorContext,
-    session_id: Uuid,
-    run_id: Uuid,
-    messages: Vec<ChatMessage>,
-    traces: Vec<ToolTrace>,
-) -> AiResult<()> {
-    for message in messages {
-        insert_message(
-            db,
-            operator.tenant_id,
-            session_id,
-            Some(run_id),
-            Some(operator.user_id),
-            message,
-        )
-        .await?;
-    }
-    for trace in traces {
-        insert_tool_trace(db, operator.tenant_id, session_id, run_id, &trace).await?;
-    }
-    let session = require_session(db, operator.tenant_id, session_id).await?;
-    let mut active: ai_chat_sessions::ActiveModel = session.into();
-    active.updated_at = Set(Utc::now().into());
-    active.update(db).await.map_err(db_err)?;
-    Ok(())
-}
-
-async fn session_has_user_messages(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    session_id: Uuid,
-) -> AiResult<bool> {
-    let count = ai_chat_messages::Entity::find()
-        .filter(
-            Condition::all()
-                .add(ai_chat_messages::Column::TenantId.eq(tenant_id))
-                .add(ai_chat_messages::Column::SessionId.eq(session_id))
-                .add(ai_chat_messages::Column::Role.eq("user")),
-        )
-        .count(db)
-        .await
-        .map_err(db_err)?;
-    Ok(count > 0)
-}
-
-async fn require_provider_profile(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> AiResult<ai_provider_profiles::Model> {
-    ai_provider_profiles::Entity::find_by_id(id)
-        .filter(ai_provider_profiles::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| AiError::NotFound("AI provider profile not found".to_string()))
-}
-
-async fn require_tool_profile(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> AiResult<ai_tool_profiles::Model> {
-    ai_tool_profiles::Entity::find_by_id(id)
-        .filter(ai_tool_profiles::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| AiError::NotFound("AI tool profile not found".to_string()))
-}
-
-async fn require_task_profile(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> AiResult<ai_task_profiles::Model> {
-    ai_task_profiles::Entity::find_by_id(id)
-        .filter(ai_task_profiles::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| AiError::NotFound("AI task profile not found".to_string()))
-}
-
-async fn require_session(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> AiResult<ai_chat_sessions::Model> {
-    ai_chat_sessions::Entity::find_by_id(id)
-        .filter(ai_chat_sessions::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| AiError::NotFound("AI chat session not found".to_string()))
-}
-
-async fn require_run(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    id: Uuid,
-) -> AiResult<ai_chat_runs::Model> {
-    ai_chat_runs::Entity::find_by_id(id)
-        .filter(ai_chat_runs::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| AiError::NotFound("AI chat run not found".to_string()))
-}
-
-fn string_list(value: &serde_json::Value) -> Vec<String> {
-    value
-        .as_array()
-        .into_iter()
-        .flat_map(|items| items.iter())
-        .filter_map(|item| item.as_str().map(|value| value.to_string()))
-        .collect()
-}
-
-fn uuid_list(value: &serde_json::Value) -> Vec<Uuid> {
-    string_list(value)
-        .into_iter()
-        .filter_map(|value| Uuid::parse_str(&value).ok())
-        .collect()
-}
-
-fn capability_list(value: &serde_json::Value) -> Vec<ProviderCapability> {
-    string_list(value)
-        .into_iter()
-        .map(|value| capability_from_slug(&value))
-        .collect()
-}
-
-fn to_json_array(values: Vec<String>) -> AiResult<serde_json::Value> {
-    serde_json::to_value(
-        values
-            .into_iter()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>(),
-    )
-    .map_err(json_err)
-}
-
-fn uuid_json_array(values: Vec<Uuid>) -> serde_json::Value {
-    serde_json::to_value(
-        values
-            .into_iter()
-            .map(|value| value.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .unwrap_or_else(|_| json!([]))
-}
-
-fn capability_json_array(values: Vec<ProviderCapability>) -> serde_json::Value {
-    serde_json::to_value(
-        values
-            .into_iter()
-            .map(|value| value.slug().to_string())
-            .collect::<Vec<_>>(),
-    )
-    .unwrap_or_else(|_| json!([]))
-}
-
-fn normalize_metadata(value: serde_json::Value) -> serde_json::Value {
-    if value.is_object() {
-        value
-    } else {
-        json!({})
-    }
-}
-
-fn normalize_base_url(value: &str) -> String {
-    value.trim().trim_end_matches('/').to_string()
-}
-
-fn normalize_nonempty(value: String, fallback: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        fallback.to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn merge_metadata(base: serde_json::Value, extension: serde_json::Value) -> serde_json::Value {
-    let mut merged = normalize_metadata(base);
-    if let (Some(target), Some(source)) = (merged.as_object_mut(), extension.as_object()) {
-        for (key, value) in source {
-            target.insert(key.clone(), value.clone());
-        }
-    }
-    merged
-}
-
-fn has_effective_permission(operator: &AiOperatorContext, permission: Permission) -> bool {
-    operator.permissions.contains(&permission)
-        || operator
-            .permissions
-            .contains(&Permission::new(permission.resource, Action::Manage))
-}
-
-fn ensure_permission(operator: &AiOperatorContext, permission: Permission) -> AiResult<()> {
-    if has_effective_permission(operator, permission) {
-        Ok(())
-    } else {
-        Err(AiError::Validation(format!(
-            "permission denied: {}",
-            permission
-        )))
-    }
-}
-
-fn enforce_task_permissions(
-    operator: &AiOperatorContext,
-    task_profile: Option<&ai_task_profiles::Model>,
-) -> AiResult<()> {
-    let Some(task_profile) = task_profile else {
-        return ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN);
-    };
-
-    match capability_from_slug(&task_profile.target_capability) {
-        ProviderCapability::TextGeneration | ProviderCapability::StructuredGeneration => {
-            ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN)?;
-        }
-        ProviderCapability::ImageGeneration => {
-            ensure_permission(operator, Permission::AI_TASKS_IMAGE_RUN)?;
-        }
-        ProviderCapability::MultimodalUnderstanding => {
-            ensure_permission(operator, Permission::AI_TASKS_MULTIMODAL_RUN)?;
-        }
-        ProviderCapability::CodeGeneration => {
-            ensure_permission(operator, Permission::AI_TASKS_CODE_RUN)?;
-        }
-        ProviderCapability::AlloyAssist => {
-            ensure_permission(operator, Permission::AI_TASKS_ALLOY_RUN)?;
-        }
-    }
-
-    if task_profile.slug == "alloy_code" {
-        ensure_permission(operator, Permission::AI_TASKS_CODE_RUN)?;
-        ensure_permission(operator, Permission::AI_TASKS_ALLOY_RUN)?;
-    }
-
-    if task_profile.slug == "product_copy" {
-        ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN)?;
-        ensure_permission(operator, Permission::PRODUCTS_UPDATE)?;
-    }
-
-    Ok(())
-}
-
-async fn resolve_task_locale(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    preferred_locale: Option<&str>,
-    requested_locale: Option<&str>,
-    task_slug: Option<&str>,
-) -> AiResult<String> {
-    let requested = normalize_locale_tag_opt(requested_locale)?;
-    let preferred = normalize_locale_tag_opt(preferred_locale)?;
-    let (tenant_default_locale, tenant_enabled_locales) =
-        load_tenant_locale_policy(db, tenant_id).await?;
-    let tenant_default_locale = tenant_default_locale.unwrap_or_else(|| "en".to_string());
-
-    if task_slug.is_some_and(task_allows_free_locale) {
-        return Ok(requested.or(preferred).unwrap_or(tenant_default_locale));
-    }
-
-    for candidate in [
-        requested.clone(),
-        preferred,
-        Some(tenant_default_locale.clone()),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        if tenant_enabled_locales.contains(&candidate) {
-            return Ok(candidate);
-        }
-    }
-
-    Ok(tenant_default_locale)
-}
-
-fn normalize_locale_tag_opt(locale: Option<&str>) -> AiResult<Option<String>> {
-    locale.map(normalize_locale_tag).transpose()
-}
-
-fn normalize_locale_tag(locale: &str) -> AiResult<String> {
-    normalize_core_locale_tag(locale)
-        .ok_or_else(|| AiError::Validation(format!("invalid locale `{locale}`")))
-}
-
-async fn load_tenant_locale_policy(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> AiResult<(Option<String>, Vec<String>)> {
-    let backend = db.get_database_backend();
-    let statement = match backend {
-        DbBackend::Sqlite => Statement::from_sql_and_values(
-            backend,
-            "SELECT default_locale, settings FROM tenants WHERE id = ?1",
-            vec![tenant_id.into()],
-        ),
-        _ => Statement::from_sql_and_values(
-            backend,
-            "SELECT default_locale, settings FROM tenants WHERE id = $1",
-            vec![tenant_id.into()],
-        ),
-    };
-
-    let Some(row) = db.query_one(statement).await.map_err(db_err)? else {
-        return Ok((Some("en".to_string()), vec!["en".to_string()]));
-    };
-
-    let default_locale = row
-        .try_get::<String>("", "default_locale")
-        .ok()
-        .and_then(|value| {
-            normalize_locale_tag_opt(Some(value.as_str()))
-                .ok()
-                .flatten()
-        });
-    let settings = row
-        .try_get::<serde_json::Value>("", "settings")
-        .unwrap_or_else(|_| json!({}));
-    let mut enabled_locales = locale_list_from_settings(&settings);
-    if let Some(default_locale) = default_locale.as_ref() {
-        if !enabled_locales.contains(default_locale) {
-            enabled_locales.push(default_locale.clone());
-        }
-    }
-    if enabled_locales.is_empty() {
-        enabled_locales.push(default_locale.clone().unwrap_or_else(|| "en".to_string()));
-    }
-
-    Ok((default_locale, enabled_locales))
-}
-
-fn locale_list_from_settings(settings: &serde_json::Value) -> Vec<String> {
-    let mut locales = Vec::new();
-    for key in ["enabled_locales", "supported_locales", "locales"] {
-        if let Some(values) = settings.get(key).and_then(|value| value.as_array()) {
-            for value in values {
-                if let Some(locale) = value.as_str() {
-                    if let Ok(locale) = normalize_locale_tag(locale) {
-                        if !locales.contains(&locale) {
-                            locales.push(locale);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    locales
-}
-
-fn task_allows_free_locale(task_slug: &str) -> bool {
-    matches!(
-        task_slug,
-        "operator_chat" | "alloy_code" | "summarization" | "translation"
-    )
-}
-
-fn runtime_execution_target(execution_mode: ExecutionMode) -> &'static str {
-    match execution_mode {
-        ExecutionMode::Auto => "runtime:auto",
-        ExecutionMode::Direct => "direct:runtime",
-        ExecutionMode::McpTooling => "mcp:rustok-mcp",
-    }
-}
-
-fn enrich_decision_trace(
-    mut trace: AiRunDecisionTrace,
-    execution_mode: ExecutionMode,
-    requested_locale: Option<String>,
-    resolved_locale: String,
-) -> AiRunDecisionTrace {
-    trace.execution_mode = Some(execution_mode);
-    trace.requested_locale = requested_locale;
-    trace.resolved_locale = Some(resolved_locale);
-    if trace.execution_target.is_none() {
-        trace.execution_target = Some(match execution_mode {
-            ExecutionMode::Direct => "direct".to_string(),
-            ExecutionMode::McpTooling => "mcp:rustok-mcp".to_string(),
-            ExecutionMode::Auto => "auto".to_string(),
-        });
-    }
-    trace
-}
-
-fn build_task_job_user_message(
-    task_slug: &str,
-    requested_locale: Option<&str>,
-    resolved_locale: &str,
-    task_input: &serde_json::Value,
-) -> ChatMessage {
-    let mut metadata = json!({
-        "task_job": true,
-        "task_slug": task_slug,
-        "resolved_locale": resolved_locale,
-        "task_input": task_input,
-    });
-    if let Some(requested_locale) = requested_locale {
-        metadata["requested_locale"] = json!(requested_locale);
-    }
-
-    let pretty_input =
-        serde_json::to_string_pretty(task_input).unwrap_or_else(|_| task_input.to_string());
-    ChatMessage {
-        role: ChatMessageRole::User,
-        content: Some(format!(
-            "Run AI task `{task_slug}` in locale `{resolved_locale}`.\n\n```json\n{pretty_input}\n```"
-        )),
-        name: None,
-        tool_call_id: None,
-        tool_calls: Vec::new(),
-        metadata,
-    }
-}
-
-fn publish_ai_run_stream_event(
-    session_id: Uuid,
-    run_id: Uuid,
-    event_kind: AiRunStreamEventKind,
-    content_delta: Option<String>,
-    accumulated_content: Option<String>,
-    error_message: Option<String>,
-) {
-    ai_run_stream_hub().publish(AiRunStreamEvent {
-        session_id,
-        run_id,
-        event_kind,
-        content_delta,
-        accumulated_content,
-        error_message,
-        created_at: Utc::now(),
-    });
-}
-
-fn read_stream_buffer(buffer: &Arc<Mutex<String>>) -> String {
-    buffer.lock().map(|value| value.clone()).unwrap_or_default()
-}
-
-async fn session_task_input(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    session_id: Uuid,
-) -> AiResult<Option<serde_json::Value>> {
-    let session = require_session(db, tenant_id, session_id).await?;
-    Ok(session.metadata.get("task_input").cloned())
-}
-
-async fn mark_run_failed(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    run_id: Uuid,
-    error_message: String,
-) -> AiResult<()> {
-    let run = require_run(db, tenant_id, run_id).await?;
-    let mut active: ai_chat_runs::ActiveModel = run.into();
-    active.status = Set("failed".to_string());
-    active.error_message = Set(Some(error_message));
-    active.completed_at = Set(Some(Utc::now().into()));
-    active.updated_at = Set(Utc::now().into());
-    active.update(db).await.map_err(db_err)?;
-    Ok(())
-}
-
-async fn list_router_provider_profiles(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> AiResult<Vec<RouterProviderProfile>> {
-    ai_provider_profiles::Entity::find()
-        .filter(ai_provider_profiles::Column::TenantId.eq(tenant_id))
-        .all(db)
-        .await
-        .map_err(db_err)?
-        .into_iter()
-        .map(|model| {
-            Ok(RouterProviderProfile {
-                id: model.id,
-                slug: model.slug,
-                provider_kind: provider_kind_from_slug(&model.provider_kind),
-                model: model.model,
-                capabilities: capability_list(&model.capabilities),
-                usage_policy: ProviderUsagePolicy {
-                    allowed_task_profiles: string_list(&model.allowed_task_profiles),
-                    denied_task_profiles: string_list(&model.denied_task_profiles),
-                    restricted_role_slugs: string_list(&model.restricted_role_slugs),
-                },
-                is_active: model.is_active,
-            })
-        })
-        .collect()
-}
-
-fn validate_slug(value: &str) -> AiResult<()> {
-    let slug = value.trim();
-    if slug.is_empty() {
-        return Err(AiError::Validation("slug is required".to_string()));
-    }
-    if slug.len() > 96 {
-        return Err(AiError::Validation("slug is too long".to_string()));
-    }
-    if !slug
-        .chars()
-        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
-    {
-        return Err(AiError::Validation(
-            "slug must contain only lowercase letters, digits, '-' or '_'".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn parse_uuid_str(value: Option<&str>) -> AiResult<Uuid> {
-    let value = value
-        .ok_or_else(|| AiError::Runtime("tenant id is missing in AI access context".to_string()))?;
-    Uuid::parse_str(value).map_err(|error| AiError::Runtime(format!("invalid uuid: {error}")))
-}
-
-fn json_err(error: impl std::fmt::Display) -> AiError {
-    AiError::Serialization(error.to_string())
-}
-
-fn db_err(error: impl std::fmt::Display) -> AiError {
-    AiError::Runtime(error.to_string())
-}
-
-fn to_utc(value: sea_orm::prelude::DateTimeWithTimeZone) -> DateTime<Utc> {
-    value.with_timezone(&Utc)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        build_task_job_user_message, enrich_decision_trace, normalize_locale_tag,
-        runtime_execution_target, task_allows_free_locale,
-    };
-    use crate::model::{AiRunDecisionTrace, ExecutionMode};
-
-    #[test]
-    fn normalize_locale_tag_normalizes_common_bcp47_forms() {
-        assert_eq!(normalize_locale_tag("pt_br").unwrap(), "pt-BR");
-        assert_eq!(normalize_locale_tag("zh-hant").unwrap(), "zh-Hant");
-        assert_eq!(normalize_locale_tag("es-419").unwrap(), "es-419");
-    }
-
-    #[test]
-    fn normalize_locale_tag_rejects_invalid_values() {
-        assert!(normalize_locale_tag("").is_err());
-        assert!(normalize_locale_tag("en-*").is_err());
-    }
-
-    #[test]
-    fn build_task_job_user_message_embeds_locale_metadata() {
-        let message = build_task_job_user_message(
-            "blog_draft",
-            Some("de"),
-            "de",
-            &serde_json::json!({ "title": "Hallo" }),
-        );
-        assert!(message
-            .content
-            .as_deref()
-            .is_some_and(|content| content.contains("blog_draft")));
-        assert_eq!(message.metadata["requested_locale"], "de");
-        assert_eq!(message.metadata["resolved_locale"], "de");
-    }
-
-    #[test]
-    fn enrich_decision_trace_sets_execution_target_from_mode() {
-        let trace = enrich_decision_trace(
-            AiRunDecisionTrace::default(),
-            ExecutionMode::McpTooling,
-            Some("fr".to_string()),
-            "fr".to_string(),
-        );
-        assert_eq!(trace.execution_target.as_deref(), Some("mcp:rustok-mcp"));
-        assert_eq!(trace.requested_locale.as_deref(), Some("fr"));
-        assert_eq!(trace.resolved_locale.as_deref(), Some("fr"));
-    }
-
-    #[test]
-    fn free_locale_tasks_stay_whitelisted() {
-        assert!(task_allows_free_locale("alloy_code"));
-        assert!(task_allows_free_locale("translation"));
-        assert!(!task_allows_free_locale("product_copy"));
-        assert_eq!(
-            runtime_execution_target(ExecutionMode::Direct),
-            "direct:runtime"
-        );
     }
 }

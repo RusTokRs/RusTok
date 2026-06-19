@@ -833,12 +833,10 @@ pub fn PagesAdmin() -> impl IntoView {
                                     type="button"
                                     class="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-card-foreground transition hover:bg-muted disabled:opacity-50"
                                     disabled=move || {
-                                        editing_page_id.get().is_none()
-                                            || busy_key
-                                                .get()
-                                                .as_deref()
-                                                .map(|key| core::busy_key_matches_action(Some(key), "publish"))
-                                                .unwrap_or(false)
+                                        core::is_publish_action_disabled(
+                                            editing_page_id.get().as_deref(),
+                                            busy_key.get().as_deref(),
+                                        )
                                     }
                                     on:click=move |_| {
                                         if let Some(page_id) = editing_page_id.get() {
@@ -998,23 +996,10 @@ pub fn PagesAdmin() -> impl IntoView {
                             <button
                                 type="submit"
                                 class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                                disabled=move || {
-                                    busy_key.get().as_deref() == Some("create")
-                                        || busy_key
-                                            .get()
-                                            .as_deref()
-                                            .map(|key| core::busy_key_matches_action(Some(key), "save"))
-                                            .unwrap_or(false)
-                                }
+                                disabled=move || core::is_save_action_busy(busy_key.get().as_deref())
                             >
                                 {move || {
-                                    if busy_key.get().as_deref() == Some("create")
-                                        || busy_key
-                                            .get()
-                                            .as_deref()
-                                            .map(|key| core::busy_key_matches_action(Some(key), "save"))
-                                            .unwrap_or(false)
-                                    {
+                                    if core::is_save_action_busy(busy_key.get().as_deref()) {
                                         t(locale.get().as_str().into(), "pages.form.saving", "Saving...")
                                     } else if editing_page_id.get().is_some() {
                                         t(locale.get().as_str().into(), "pages.form.update", "Update page")

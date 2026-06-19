@@ -46,6 +46,10 @@ mod direct_domain_commerce;
 mod direct_domain_content;
 #[path = "direct_domain_orders.rs"]
 mod direct_domain_orders;
+#[path = "direct_domain_media.rs"]
+mod direct_domain_media;
+#[path = "direct_domain_alloy.rs"]
+mod direct_domain_alloy;
 #[path = "direct_order_generation.rs"]
 mod direct_order_generation;
 #[path = "direct_order_tasks.rs"]
@@ -55,6 +59,8 @@ mod direct_product_attributes;
 use direct_domain_commerce::register_commerce_direct_handlers;
 use direct_domain_content::register_content_direct_handlers;
 use direct_domain_orders::register_order_direct_handlers;
+use direct_domain_media::register_media_direct_handlers;
+use direct_domain_alloy::register_alloy_direct_handlers;
 pub(crate) use direct_order_generation::{generate_order_analytics, generate_order_ops_assistant};
 
 pub struct DirectExecutionRequest {
@@ -95,8 +101,8 @@ pub struct DirectExecutionRegistry {
 impl DirectExecutionRegistry {
     pub fn with_core_defaults() -> Self {
         let mut registry = Self::default();
-        registry.register(Arc::new(AlloyScriptAssistHandler));
-        registry.register(Arc::new(MediaImageAssetHandler));
+        register_alloy_direct_handlers(&mut registry);
+        register_media_direct_handlers(&mut registry);
         registry
     }
 
@@ -122,7 +128,7 @@ pub struct AlloyScriptAssistHandler;
 #[async_trait]
 impl DirectTaskHandler for AlloyScriptAssistHandler {
     fn task_slug(&self) -> &'static str {
-        "alloy_code"
+        rustok_ai_alloy::ALLOY_CODE_TASK_SLUG
     }
 
     async fn execute(
@@ -133,6 +139,8 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
     ) -> AiResult<DirectExecutionResult> {
         let input: AiAlloyTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
+        rustok_ai_alloy::validate_runtime_payload(input.runtime_payload_json.as_deref())
+            .map_err(AiError::Validation)?;
         let scoped = alloy::scoped_runtime(app_ctx, operator.tenant_id);
         let started = std::time::Instant::now();
 
@@ -353,7 +361,7 @@ pub struct BlogDraftHandler;
 #[async_trait]
 impl DirectTaskHandler for MediaImageAssetHandler {
     fn task_slug(&self) -> &'static str {
-        "image_asset"
+        rustok_ai_media::IMAGE_ASSET_TASK_SLUG
     }
 
     async fn execute(
@@ -380,7 +388,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
                     model: request.provider_config.model.clone(),
                     prompt: prompt.clone(),
                     negative_prompt: input.negative_prompt.clone(),
-                    size: normalize_image_size(input.size.clone())?,
+                    size: rustok_ai_media::normalize_image_size(input.size.clone()).map_err(AiError::Validation)?,
                     locale: Some(request.resolved_locale.clone()),
                 },
             )
@@ -441,7 +449,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
             "image_generation": {
                 "provider_kind": request.provider_config.provider_kind.slug(),
                 "model": request.provider_config.model,
-                "size": normalize_image_size(input.size)?.unwrap_or_else(|| "1024x1024".to_string()),
+                "size": rustok_ai_media::normalize_image_size(input.size.clone()).map_err(AiError::Validation)?.unwrap_or_else(|| "1024x1024".to_string()),
                 "revised_prompt": provider_image.revised_prompt,
             }
         });
@@ -1395,32 +1403,6 @@ fn storage_from_app_ctx(app_ctx: &AppContext) -> AiResult<StorageService> {
     app_ctx.shared_store.get::<StorageService>().ok_or_else(|| {
         AiError::Runtime("StorageService is not registered in AppContext".to_string())
     })
-}
-
-fn normalize_image_size(size: Option<String>) -> AiResult<Option<String>> {
-    let Some(size) = size
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(None);
-    };
-    let (width, height) = size.split_once('x').ok_or_else(|| {
-        AiError::Validation("image size must be formatted as WIDTHxHEIGHT".to_string())
-    })?;
-    let width = width
-        .trim()
-        .parse::<u32>()
-        .map_err(|_| AiError::Validation("image width must be numeric".to_string()))?;
-    let height = height
-        .trim()
-        .parse::<u32>()
-        .map_err(|_| AiError::Validation("image height must be numeric".to_string()))?;
-    if width == 0 || height == 0 || width > 4096 || height > 4096 {
-        return Err(AiError::Validation(
-            "image size must stay within 1..=4096 for both dimensions".to_string(),
-        ));
-    }
-    Ok(Some(format!("{width}x{height}")))
 }
 
 fn build_generated_file_name(

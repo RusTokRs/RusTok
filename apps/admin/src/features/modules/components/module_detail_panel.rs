@@ -12,49 +12,39 @@ use leptos::task::spawn_local;
 use std::collections::HashMap;
 
 use crate::entities::module::model::{
-    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryGovernanceEventLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
-    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryReleaseLifecycle,
 };
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
 use crate::features::modules::api::{self, RegistryMutationResult, RegistryPublishStatusContract};
 use crate::shared::ui::{Button, Input};
 use crate::{use_i18n, Locale};
 
-#[derive(Clone)]
-struct MetadataChecklistItem {
-    label: &'static str,
-    state: &'static str,
-    priority: &'static str,
-    summary: &'static str,
-    detail: String,
-}
-
-#[derive(Clone)]
-struct RegistryLiveApiActionHint {
-    endpoint: String,
-    authority: String,
-    note: Option<String>,
-    body_hint: Option<String>,
-    header_hint: Option<String>,
-    xtask_hint: Option<String>,
-    write_path: bool,
-}
-
-#[derive(Clone)]
-struct RegistryAutomatedCheckItem {
-    key: String,
-    status: String,
-    detail: String,
-}
-
-const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
-    "manual_review_complete",
-    "trusted_first_party",
-    "expedited_release",
-    "governance_override",
-    "other",
-];
+use super::detail::{
+    humanize_setting_key, humanize_token,
+    governance::{
+        RegistryAutomatedCheckItem,
+        registry_governance_hint, registry_request_status_badge_classes,
+        governance_action_available, merge_governance_actions,
+        governance_action_reason_required, governance_action_reason_code_required,
+        governance_action_reason_code_validation_message,
+        governance_reason_code_placeholder, governance_reason_placeholder, governance_action_requirement_hint,
+        approval_override_warning_lines,
+        registry_mutation_result_summary, destructive_governance_action_label, destructive_governance_confirmation_message,
+        curl_snippet_for_live_api_action, lifecycle_detail_lines, latest_validation_event,
+        latest_validation_job_event,
+        automated_check_label, validation_job_event_context_lines,
+        registry_request_is_review_ready, registry_validation_outcome_summary,
+        registry_review_policy_lines,
+        moderation_history_context_lines, registry_live_api_action_lines, registry_operator_command_lines,
+        governance_event_summary, governance_event_title, moderation_history_badge_status,
+        follow_up_gate_label, moderation_history_badge_label,
+        validation_feedback_badge_classes, validation_stage_recent_history,
+        follow_up_gate_status_summary, validation_stage_status_summary, status_eq,
+        registry_next_action_lines, moderation_history_events,
+    },
+    json_editor::{ComplexSettingEditor, setting_option_label, setting_option_draft_value},
+    metadata::{marketplace_metadata_checklist, metadata_status_badge_classes, metadata_status_panel_classes},
+};
 
 fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
@@ -76,2423 +66,33 @@ fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&Marketp
     module.versions.iter().find(|version| !version.yanked)
 }
 
-fn registry_governance_hint(module: &MarketplaceModule, locale: Locale) -> String {
-    match (
-        module.ownership.as_str(),
-        module
-            .registry_lifecycle
-            .as_ref()
-            .and_then(|lifecycle| lifecycle.latest_request.as_ref()),
-        module
-            .registry_lifecycle
-            .as_ref()
-            .and_then(|lifecycle| lifecycle.latest_release.as_ref()),
-    ) {
-        ("first_party", Some(request), _) if status_eq(&request.status, "rejected") => tr(
-            locale,
-            "Request needs operator follow-up before this module can be published again.",
-            "Запросу требуется доработка оператором, прежде чем модуль можно будет снова публиковать.",
-        )
-        .to_string(),
-        ("first_party", Some(_), Some(release)) if status_eq(&release.status, "yanked") => tr(
-            locale,
-            "Latest published release is yanked; future publish/yank actions should preserve the audit trail.",
-            "Последний опубликованный релиз отозван; дальнейшие publish/yank-действия должны сохранять аудит-след.",
-        )
-        .to_string(),
-        ("first_party", Some(_), _) => tr(
-            locale,
-            "First-party module is already tracked by the V2 publish lifecycle.",
-            "First-party модуль уже находится под управлением V2 publish lifecycle.",
-        )
-        .to_string(),
-        ("first_party", None, _) => tr(
-            locale,
-            "First-party modules can create V2 publish requests from a full host or through cargo xtask.",
-            "First-party модули могут создавать V2 publish-запросы с full host или через cargo xtask.",
-        )
-        .to_string(),
-        _ => tr(
-            locale,
-            "Third-party ownership still needs richer governance/moderation flow before live publish should be treated as production-ready.",
-            "Для third-party ownership всё ещё нужен более полный governance/moderation flow, прежде чем live publish можно будет считать production-ready.",
-        )
-        .to_string(),
-    }
-}
-
-fn registry_request_status_badge_classes(status: &str) -> &'static str {
-    if status_eq(status, "published") || status_eq(status, "active") {
-        "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
-    } else if status_eq(status, "rejected") || status_eq(status, "yanked") {
-        "inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700"
-    } else {
-        "inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
-    }
-}
-
-fn validation_feedback_badge_classes(status: &str) -> &'static str {
-    if status_eq(status, "passed") || status_eq(status, "succeeded") {
-        "inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground"
-    } else if status_eq(status, "failed")
-        || status_eq(status, "blocked")
-        || status_eq(status, "rejected")
-    {
-        "inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700"
-    } else {
-        "inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
-    }
-}
-
-fn status_eq(value: &str, expected: &str) -> bool {
-    value.eq_ignore_ascii_case(expected)
-}
-
-fn governance_action_available(actions: &[RegistryGovernanceActionLifecycle], key: &str) -> bool {
-    actions
-        .iter()
-        .any(|action| action.key.eq_ignore_ascii_case(key))
-}
-
-fn governance_action_contract<'a>(
-    actions: &'a [RegistryGovernanceActionLifecycle],
-    key: &str,
-) -> Option<&'a RegistryGovernanceActionLifecycle> {
-    actions
-        .iter()
-        .find(|action| action.key.eq_ignore_ascii_case(key))
-}
-
-fn merge_governance_actions(
-    primary: &[RegistryGovernanceActionLifecycle],
-    secondary: &[RegistryGovernanceActionLifecycle],
-) -> Vec<RegistryGovernanceActionLifecycle> {
-    let mut merged = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
-    for action in primary.iter().chain(secondary.iter()) {
-        if seen.insert(action.key.to_ascii_lowercase()) {
-            merged.push(action.clone());
-        }
-    }
-
-    merged
-}
-
-fn governance_action_reason_required(
-    actions: &[RegistryGovernanceActionLifecycle],
-    key: &str,
-) -> bool {
-    governance_action_contract(actions, key).is_some_and(|action| action.reason_required)
-}
-
-fn governance_action_reason_code_required(
-    actions: &[RegistryGovernanceActionLifecycle],
-    key: &str,
-) -> bool {
-    governance_action_contract(actions, key).is_some_and(|action| action.reason_code_required)
-}
-
-fn governance_action_reason_codes(
-    actions: &[RegistryGovernanceActionLifecycle],
-    key: &str,
-) -> Vec<String> {
-    governance_action_contract(actions, key)
-        .map(|action| action.reason_codes.clone())
-        .unwrap_or_default()
-}
-
-fn governance_action_reason_code_validation_message(
-    actions: &[RegistryGovernanceActionLifecycle],
-    key: &str,
-    reason_code: &str,
-    locale: Locale,
-) -> Option<String> {
-    let reason_code = reason_code.trim();
-    if reason_code.is_empty() {
-        return None;
-    }
-
-    let allowed_codes = governance_action_reason_codes(actions, key);
-    if allowed_codes.is_empty()
-        || allowed_codes
-            .iter()
-            .any(|allowed| allowed.eq_ignore_ascii_case(reason_code))
-    {
-        return None;
-    }
-
-    Some(format!(
-        "{} {}: {}.",
-        governance_action_label(key, locale),
-        tr(
-            locale,
-            "expects one of the advertised reason codes",
-            "ожидает один из объявленных reason code"
-        ),
-        allowed_codes.join(", ")
-    ))
-}
-
-fn governance_action_label(action_key: &str, locale: Locale) -> &'static str {
-    match action_key {
-        "validate" => tr(locale, "Validate", "Validate"),
-        "approve" => tr(locale, "Approve", "Approve"),
-        "request_changes" => tr(locale, "Request changes", "Запросить изменения"),
-        "hold" => tr(locale, "Hold", "Поставить на hold"),
-        "resume" => tr(locale, "Resume", "Возобновить"),
-        "reject" => tr(locale, "Reject", "Reject"),
-        "owner_transfer" => tr(locale, "Owner transfer", "Owner transfer"),
-        "yank" => tr(locale, "Yank", "Yank"),
-        other => {
-            if other.is_empty() {
-                tr(locale, "governance action", "governance-действие")
-            } else {
-                tr(locale, "governance action", "governance-действие")
-            }
-        }
-    }
-}
-
-fn governance_reason_code_placeholder(
-    selected_action: Option<&str>,
-    actions: &[RegistryGovernanceActionLifecycle],
-    locale: Locale,
-) -> String {
-    let Some(action_key) = selected_action else {
-        return tr(
-            locale,
-            "Select an action to see the allowed reason codes.",
-            "Выберите действие, чтобы увидеть допустимые reason code.",
-        )
-        .to_string();
-    };
-
-    let reason_codes = governance_action_reason_codes(actions, action_key);
-    if reason_codes.is_empty() {
-        return tr(
-            locale,
-            "This action does not currently advertise reason codes.",
-            "Для этого действия reason code сейчас не объявлены.",
-        )
-        .to_string();
-    }
-
-    reason_codes.join(" / ")
-}
-
-fn governance_reason_placeholder(
-    selected_action: Option<&str>,
-    actions: &[RegistryGovernanceActionLifecycle],
-    locale: Locale,
-) -> String {
-    let Some(action_key) = selected_action else {
-        return tr(
-            locale,
-            "Select an action to see whether a governance reason is required.",
-            "Выберите действие, чтобы понять, нужен ли governance reason.",
-        )
-        .to_string();
-    };
-
-    if governance_action_reason_required(actions, action_key) {
-        format!(
-            "{} {}.",
-            governance_action_label(action_key, locale),
-            tr(
-                locale,
-                "requires a governance reason in live mode",
-                "требует governance reason в live-режиме"
-            )
-        )
-    } else {
-        format!(
-            "{} {}.",
-            governance_action_label(action_key, locale),
-            tr(
-                locale,
-                "does not require a governance reason unless the server asks for an override",
-                "не требует governance reason, если только сервер отдельно не запросит override"
-            )
-        )
-    }
-}
-
-fn governance_action_requirement_hint(
-    selected_action: Option<&str>,
-    actions: &[RegistryGovernanceActionLifecycle],
-    locale: Locale,
-) -> Option<String> {
-    let action_key = selected_action?;
-    let reason_required = governance_action_reason_required(actions, action_key);
-    let reason_code_required = governance_action_reason_code_required(actions, action_key);
-    let reason_codes = governance_action_reason_codes(actions, action_key);
-    let requirement = match (reason_required, reason_code_required) {
-        (true, true) => tr(
-            locale,
-            "Live mode requires both Reason and Reason code.",
-            "В live-режиме нужны и Reason, и Reason code.",
-        ),
-        (true, false) => tr(
-            locale,
-            "Live mode requires Reason.",
-            "В live-режиме нужен Reason.",
-        ),
-        (false, true) => tr(
-            locale,
-            "Live mode requires Reason code.",
-            "В live-режиме нужен Reason code.",
-        ),
-        (false, false) => tr(
-            locale,
-            "The server currently marks this action as optional for Reason/Reason code.",
-            "Сейчас сервер считает Reason/Reason code для этого действия необязательными.",
-        ),
-    };
-    let reason_code_hint = if reason_codes.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " {}: {}.",
-            tr(locale, "Allowed codes", "Допустимые коды"),
-            reason_codes.join(", ")
-        )
-    };
-
-    Some(format!(
-        "{} {}{}",
-        governance_action_label(action_key, locale),
-        requirement,
-        reason_code_hint
-    ))
-}
-
-fn validation_stage_requires_approval_override(status: &str) -> bool {
-    !status_eq(status, "passed")
-}
-
-fn approval_override_required(validation_stages: &[RegistryValidationStageLifecycle]) -> bool {
-    validation_stages
-        .iter()
-        .any(|stage| validation_stage_requires_approval_override(&stage.status))
-}
-
-fn approval_override_stage_labels(
-    validation_stages: &[RegistryValidationStageLifecycle],
-    locale: Locale,
-) -> Vec<String> {
-    validation_stages
-        .iter()
-        .filter(|stage| validation_stage_requires_approval_override(&stage.status))
-        .map(|stage| {
-            format!(
-                "{} ({})",
-                follow_up_gate_label(&stage.key, locale),
-                humanize_token(&stage.status)
-            )
-        })
-        .collect()
-}
-
-fn approval_override_warning_lines(
-    validation_stages: &[RegistryValidationStageLifecycle],
-    locale: Locale,
-) -> Vec<String> {
-    let pending_stage_labels = approval_override_stage_labels(validation_stages, locale);
-    if pending_stage_labels.is_empty() {
-        return Vec::new();
-    }
-
-    vec![
-        format!(
-            "{}: {}.",
-            tr(
-                locale,
-                "Live approve now requires an explicit override because these follow-up stages are not passed",
-                "Для live approve теперь нужен явный override, потому что эти follow-up stages ещё не пройдены"
-            ),
-            pending_stage_labels.join(", ")
-        ),
-        format!(
-            "{}: {}.",
-            tr(
-                locale,
-                "Fill both Reason and Reason code before approving, or mark the remaining stages as passed first",
-                "Перед approve заполните и Reason, и Reason code, либо сначала переведите оставшиеся stages в passed"
-            ),
-            REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
-        ),
-    ]
-}
-
-fn validation_stage_has_local_xtask_runner(stage_key: &str) -> bool {
-    matches!(
-        stage_key,
-        "compile_smoke" | "targeted_tests" | "security_policy_review"
-    )
-}
-
-fn validation_stage_runner_xtask_hint(
-    module_slug: &str,
-    request_id: &str,
-    stage_key: &str,
-) -> String {
-    if stage_key.eq_ignore_ascii_case("security_policy_review") {
-        format!(
-            "cargo xtask module stage-run {} {} {} --confirm-manual-review --detail \"Manual security/policy review completed.\" --registry-url <registry-url> --auth-token <token>",
-            module_slug, request_id, stage_key
-        )
-    } else {
-        format!(
-            "cargo xtask module stage-run {} {} {} --registry-url <registry-url> --auth-token <token>",
-            module_slug, request_id, stage_key
-        )
-    }
-}
-
-fn registry_mutation_result_summary(result: &RegistryMutationResult, locale: Locale) -> String {
-    match result.status.as_deref() {
-        Some(status) => format!(
-            "{}: {}",
-            tr(locale, "Action result", "Результат действия"),
-            humanize_token(status)
-        ),
-        None => format!(
-            "{}: {}",
-            tr(locale, "Action result", "Результат действия"),
-            humanize_token(&result.action)
-        ),
-    }
-}
-
-fn destructive_governance_action_label(action: &str, locale: Locale) -> &'static str {
-    match action {
-        "reject" => tr(locale, "Reject", "Отклонить"),
-        "owner-transfer" => tr(locale, "Owner transfer", "Передать владение"),
-        "yank" => tr(locale, "Yank", "Отозвать"),
-        _ => tr(locale, "Confirm action", "Подтвердить действие"),
-    }
-}
-
-fn destructive_governance_confirmation_message(
-    action: &str,
-    module_slug: &str,
-    release_version: Option<&str>,
-    new_owner_user_id: Option<&str>,
-    locale: Locale,
-) -> String {
-    match action {
-        "reject" => format!(
-            "{} `{}`. {}",
-            tr(
-                locale,
-                "Reject the current publish request for module",
-                "Отклонить текущий publish-запрос для модуля"
-            ),
-            module_slug,
-            tr(
-                locale,
-                "This is a live governance decision and it will be written to the audit trail.",
-                "Это live governance-решение, оно будет записано в аудит-след."
-            )
-        ),
-        "owner-transfer" => format!(
-            "{} `{}` {} `{}`. {}",
-            tr(
-                locale,
-                "Transfer ownership for module",
-                "Передать владение для модуля"
-            ),
-            module_slug,
-            tr(locale, "to", "к"),
-            new_owner_user_id.unwrap_or("<new-owner-user-id>"),
-            tr(
-                locale,
-                "This rebinding is live and affects future publish and review authority.",
-                "Эта привязка выполняется в live-режиме и влияет на будущие publish- и review-права."
-            )
-        ),
-        "yank" => format!(
-            "{} `{}`{} . {}",
-            tr(locale, "Yank release for module", "Отозвать релиз модуля"),
-            module_slug,
-            release_version
-                .map(|version| format!(" v{version}"))
-                .unwrap_or_default(),
-            tr(
-                locale,
-                "The release will leave the active catalog trail and remain only in history.",
-                "Релиз уйдёт из активного каталога и останется только в истории."
-            )
-        ),
-        _ => tr(
-            locale,
-            "Confirm the live governance action.",
-            "Подтвердите live governance-действие."
-        )
-        .to_string(),
-    }
-}
-
-fn copy_text_to_clipboard(_value: &str) {
-    #[cfg(target_arch = "wasm32")]
-    {
-        if let Some(window) = web_sys::window() {
-            let _ = window.navigator().clipboard().write_text(_value);
-        }
-    }
-}
-
-fn curl_snippet_for_live_api_action(item: &RegistryLiveApiActionHint) -> Option<String> {
-    let (method, path) = item.endpoint.split_once(' ')?;
-    let mut lines = vec![format!(
-        "curl.exe -X {} \"<registry-base-url>{}\"",
-        method, path
-    )];
-
-    if let Some(header_hint) = &item.header_hint {
-        for header in header_hint
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-        {
-            lines.push(format!("  -H \"{}\"", header));
-        }
-    }
-
-    if let Some(body_hint) = &item.body_hint {
-        lines.push("  -H \"Content-Type: application/json\"".to_string());
-        lines.push(format!("  --data-raw '{}'", body_hint));
-    }
-
-    Some(lines.join(" \\\n"))
-}
-
-fn lifecycle_detail_lines(
-    request: Option<&RegistryPublishRequestLifecycle>,
-    locale: Locale,
-) -> Vec<String> {
-    let Some(request) = request else {
-        return Vec::new();
-    };
-
-    let mut lines = Vec::new();
-    if !request.warnings.is_empty() {
-        lines.push(format!(
-            "{}: {}",
-            tr(locale, "Warnings", "Предупреждения"),
-            request.warnings.join("; ")
-        ));
-    }
-    if !request.errors.is_empty() {
-        lines.push(format!(
-            "{}: {}",
-            tr(locale, "Errors", "Ошибки"),
-            request.errors.join("; ")
-        ));
-    }
-    if let Some(reason) = request
-        .rejection_reason
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        lines.push(format!(
-            "{}: {reason}",
-            tr(locale, "Rejection reason", "Причина отклонения")
-        ));
-    }
-    lines
-}
-
-fn is_validation_event_type(event_type: &str) -> bool {
-    matches!(
-        event_type,
-        "validation_queued" | "validation_passed" | "validation_failed"
-    )
-}
-
-fn latest_validation_event(
-    events: &[RegistryGovernanceEventLifecycle],
-) -> Option<&RegistryGovernanceEventLifecycle> {
-    events
-        .iter()
-        .find(|event| is_validation_event_type(&event.event_type))
-}
-
-fn is_validation_job_event_type(event_type: &str) -> bool {
-    matches!(
-        event_type,
-        "validation_job_queued"
-            | "validation_job_started"
-            | "validation_job_succeeded"
-            | "validation_job_failed"
-    )
-}
-
-fn latest_validation_job_event(
-    events: &[RegistryGovernanceEventLifecycle],
-) -> Option<&RegistryGovernanceEventLifecycle> {
-    events
-        .iter()
-        .find(|event| is_validation_job_event_type(&event.event_type))
-}
-
-#[allow(dead_code)]
-fn governance_detail_automated_checks(
-    details: &serde_json::Value,
-) -> Vec<RegistryAutomatedCheckItem> {
-    details
-        .get("automated_checks")
-        .and_then(|value| value.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|item| {
-            let key = item.get("key")?.as_str()?.trim();
-            let status = item.get("status")?.as_str()?.trim();
-            let detail = item.get("detail")?.as_str()?.trim();
-            if key.is_empty() || status.is_empty() || detail.is_empty() {
-                return None;
-            }
-            Some(RegistryAutomatedCheckItem {
-                key: key.to_string(),
-                status: status.to_string(),
-                detail: detail.to_string(),
-            })
-        })
-        .collect()
-}
-
-fn automated_check_label(key: &str, locale: Locale) -> String {
-    match key {
-        "artifact_bundle_contract" => tr(
-            locale,
-            "Artifact bundle contract",
-            "Artifact bundle contract",
-        )
-        .to_string(),
-        _ => humanize_token(key),
-    }
-}
-
-fn validation_job_event_context_lines(
-    event: &RegistryGovernanceEventLifecycle,
-    locale: Locale,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-    if let Some(attempt_number) = governance_detail_i64(&event.payload, "attempt_number") {
-        lines.push(format!(
-            "{}: {}",
-            tr(locale, "Attempt", "Attempt"),
-            attempt_number
-        ));
-    }
-    if let Some(detail) = governance_detail_string(&event.payload, "detail") {
-        lines.push(format!("{}: {}", tr(locale, "Detail", "Detail"), detail));
-    }
-    if !event.payload.errors.is_empty() {
-        lines.push(format!(
-            "{}: {}",
-            tr(locale, "Error", "Error"),
-            event.payload.errors.join("; ")
-        ));
-    }
-    lines
-}
-
-fn latest_governance_event_of_types<'a>(
-    events: &'a [RegistryGovernanceEventLifecycle],
-    event_types: &[&str],
-) -> Option<&'a RegistryGovernanceEventLifecycle> {
-    events.iter().find(|event| {
-        event_types
-            .iter()
-            .any(|event_type| event.event_type.eq_ignore_ascii_case(event_type))
-    })
-}
-
-fn registry_request_is_review_ready(request: &RegistryPublishRequestLifecycle) -> bool {
-    status_eq(&request.status, "approved")
-}
-
-fn registry_validation_outcome_summary(
-    request: &RegistryPublishRequestLifecycle,
-    events: &[RegistryGovernanceEventLifecycle],
-    locale: Locale,
-) -> Option<String> {
-    let outcome = if status_eq(&request.status, "draft") {
-        tr(
-            locale,
-            "Waiting for artifact upload",
-            "Ожидается загрузка артефакта",
-        )
-        .to_string()
-    } else if status_eq(&request.status, "artifact_uploaded")
-        || status_eq(&request.status, "submitted")
-    {
-        tr(
-            locale,
-            "Artifact uploaded, waiting for validation",
-            "Артефакт загружен, ожидается валидация",
-        )
-        .to_string()
-    } else if status_eq(&request.status, "validating") {
-        tr(locale, "Validation is running", "Валидация выполняется").to_string()
-    } else if status_eq(&request.status, "approved") {
-        tr(
-            locale,
-            "Validation passed; request is ready for governance review",
-            "Валидация пройдена; запрос готов к governance-review",
-        )
-        .to_string()
-    } else if status_eq(&request.status, "published") {
-        tr(
-            locale,
-            "Validation passed and the release is already published",
-            "Валидация пройдена, релиз уже опубликован",
-        )
-        .to_string()
-    } else if status_eq(&request.status, "rejected") {
-        if latest_governance_event_of_types(events, &["validation_failed"]).is_some() {
-            tr(
-                locale,
-                "Validation failed before governance approval",
-                "Валидация завершилась ошибкой до governance-approval",
-            )
-            .to_string()
-        } else if latest_governance_event_of_types(events, &["request_rejected"]).is_some()
-            || request.rejected_by.is_some()
-        {
-            tr(
-                locale,
-                "Request was manually rejected by governance review",
-                "Запрос был вручную отклонён на governance-review",
-            )
-            .to_string()
-        } else {
-            tr(locale, "Request is rejected", "Запрос отклонён").to_string()
-        }
-    } else {
-        return None;
-    };
-
-    Some(outcome)
-}
-
-fn follow_up_gate_label(key: &str, locale: Locale) -> String {
-    match key {
-        "compile_smoke" => tr(locale, "Compile smoke", "Compile smoke").to_string(),
-        "targeted_tests" => tr(locale, "Targeted tests", "Targeted tests").to_string(),
-        "security_policy_review" => {
-            tr(locale, "Security/policy review", "Security/policy review").to_string()
-        }
-        _ => humanize_token(key),
-    }
-}
-
-fn registry_review_authority_label(
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    locale: Locale,
-) -> String {
-    let operators = tr(
-        locale,
-        "operators with MODULES_MANAGE",
-        "операторы с MODULES_MANAGE",
-    );
-    owner_binding
-        .map(|owner| format!("{} / {}", owner.owner, operators,))
-        .unwrap_or_else(|| operators.to_string())
-}
-
-fn registry_manage_publish_authority_label(
-    request: &RegistryPublishRequestLifecycle,
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    locale: Locale,
-) -> String {
-    let operators = tr(
-        locale,
-        "operators with MODULES_MANAGE",
-        "операторы с MODULES_MANAGE",
-    );
-    if let Some(owner) = owner_binding {
-        return format!("{} / {}", owner.owner, operators,);
-    }
-
-    let mut actors = vec![request.requested_by.clone()];
-    actors.push(operators.to_string());
-    actors.join(" / ")
-}
-
-fn registry_owner_transfer_authority_label(
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    locale: Locale,
-) -> String {
-    let operators = tr(
-        locale,
-        "operators with MODULES_MANAGE",
-        "операторы с MODULES_MANAGE",
-    );
-    owner_binding
-        .map(|owner| format!("{} / {}", owner.owner, operators))
-        .unwrap_or_else(|| operators.to_string())
-}
-
-fn registry_yank_authority_label(
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    release: Option<&RegistryReleaseLifecycle>,
-    request: Option<&RegistryPublishRequestLifecycle>,
-    locale: Locale,
-) -> String {
-    let mut actors = Vec::new();
-    let operators = tr(
-        locale,
-        "operators with MODULES_MANAGE",
-        "операторы с MODULES_MANAGE",
-    );
-    if let Some(owner) = owner_binding {
-        actors.push(owner.owner.clone());
-    }
-    if let Some(release) = release {
-        if !actors.iter().any(|actor| actor == &release.publisher) {
-            actors.push(release.publisher.clone());
-        }
-    } else if let Some(request) = request.and_then(|request| request.publisher.clone()) {
-        if !actors.iter().any(|actor| actor == &request) {
-            actors.push(request);
-        }
-    }
-    actors.push(operators.to_string());
-    actors.join(" / ")
-}
-
-fn follow_up_gate_status_summary(
-    gates: &[RegistryFollowUpGateLifecycle],
-    locale: Locale,
-) -> Option<String> {
-    if gates.is_empty() {
-        return None;
-    }
-
-    let pending = gates
-        .iter()
-        .filter(|gate| status_eq(&gate.status, "pending"))
-        .count();
-    let running = gates
-        .iter()
-        .filter(|gate| status_eq(&gate.status, "running"))
-        .count();
-    let passed = gates
-        .iter()
-        .filter(|gate| status_eq(&gate.status, "passed"))
-        .count();
-    let failed = gates
-        .iter()
-        .filter(|gate| status_eq(&gate.status, "failed"))
-        .count();
-    let blocked = gates
-        .iter()
-        .filter(|gate| status_eq(&gate.status, "blocked"))
-        .count();
-    let summary = format!(
-        "{}: {} | {}: {} | {}: {} | {}: {} | {}: {}",
-        tr(locale, "Pending", "В ожидании"),
-        pending,
-        tr(locale, "Running", "В работе"),
-        running,
-        tr(locale, "Passed", "Пройдено"),
-        passed,
-        tr(locale, "Failed", "Провалено"),
-        failed,
-        tr(locale, "Blocked", "Заблокировано"),
-        blocked
-    );
-    return Some(summary);
-
-    /* Some(format!(
-        "{}: {} · {}: {} · {}: {}",
-        tr(locale, "Pending", "В ожидании"),
-        pending,
-        tr(locale, "Passed", "Пройдено"),
-        passed,
-        tr(locale, "Failed", "Провалено"),
-        failed
-    )) */
-}
-
-fn validation_stage_status_summary(
-    stages: &[RegistryValidationStageLifecycle],
-    locale: Locale,
-) -> Option<String> {
-    if stages.is_empty() {
-        return None;
-    }
-
-    let queued = stages
-        .iter()
-        .filter(|stage| status_eq(&stage.status, "queued"))
-        .count();
-    let running = stages
-        .iter()
-        .filter(|stage| status_eq(&stage.status, "running"))
-        .count();
-    let passed = stages
-        .iter()
-        .filter(|stage| status_eq(&stage.status, "passed"))
-        .count();
-    let failed = stages
-        .iter()
-        .filter(|stage| status_eq(&stage.status, "failed"))
-        .count();
-    let blocked = stages
-        .iter()
-        .filter(|stage| status_eq(&stage.status, "blocked"))
-        .count();
-
-    Some(format!(
-        "{}: {} | {}: {} | {}: {} | {}: {} | {}: {}",
-        tr(locale, "Queued", "В очереди"),
-        queued,
-        tr(locale, "Running", "В работе"),
-        running,
-        tr(locale, "Passed", "Пройдено"),
-        passed,
-        tr(locale, "Failed", "Провалено"),
-        failed,
-        tr(locale, "Blocked", "Заблокировано"),
-        blocked
-    ))
-}
-
-fn registry_review_policy_lines(
-    request: Option<&RegistryPublishRequestLifecycle>,
-    release: Option<&RegistryReleaseLifecycle>,
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    locale: Locale,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    lines.push(format!(
-        "{}: {}",
-        tr(locale, "Review authority", "Кто ревьюит"),
-        registry_review_authority_label(owner_binding, locale)
-    ));
-
-    if owner_binding.is_none() {
-        lines.push(
-            tr(
-                locale,
-                "No persisted owner binding yet; the first publish is still controlled by the authenticated requester or an operator with MODULES_MANAGE.",
-                "Сохранённой привязки владельца пока нет; первый publish всё ещё требует governance/bootstrap-обработки, прежде чем review станет owner-driven.",
-            )
-            .to_string(),
-        );
-    }
-
-    lines.push(format!(
-        "{}: {}",
-        tr(locale, "Owner transfer authority", "Кто меняет владельца"),
-        registry_owner_transfer_authority_label(owner_binding, locale)
-    ));
-    lines.push(format!(
-        "{}: {}",
-        tr(locale, "Yank authority", "Кто отзывает релиз"),
-        registry_yank_authority_label(owner_binding, release, request, locale)
-    ));
-
-    if let Some(request) = request {
-        match request.status.as_str() {
-            status if status_eq(status, "validating") => lines.push(
-                tr(
-                    locale,
-                    "Validation is running asynchronously; wait for APPROVED or REJECTED before any review action.",
-                    "Валидация идёт асинхронно; дождитесь APPROVED или REJECTED, прежде чем делать review-действия.",
-                )
-                .to_string(),
-            ),
-            status if status_eq(status, "approved") => lines.push(
-                tr(
-                    locale,
-                    "Request is ready for owner or MODULES_MANAGE review; requester and recorded publisher do not grant review access by themselves.",
-                    "Запрос готов к review у владельца или операторов с MODULES_MANAGE; requester и записанный publisher больше не означают право на self-review.",
-                )
-                .to_string(),
-            ),
-            status if status_eq(status, "changes_requested") => lines.push(
-                tr(
-                    locale,
-                    "Changes were requested; upload a fresh artifact revision before validation and review can continue.",
-                    "Запрошены изменения; загрузите новый artifact revision, прежде чем продолжать validation и review.",
-                )
-                .to_string(),
-            ),
-            status if status_eq(status, "on_hold") => lines.push(
-                tr(
-                    locale,
-                    "The request is explicitly on hold; validate/approve/reject should stay paused until a resume decision restores the previous lifecycle state.",
-                    "Запрос явно поставлен на hold; validate/approve/reject должны оставаться на паузе, пока resume не вернёт предыдущее lifecycle-состояние.",
-                )
-                .to_string(),
-            ),
-            status if status_eq(status, "rejected") => lines.push(
-                tr(
-                    locale,
-                    "Rejected requests should be fixed and recreated; moderation stays with the persisted owner or registry review actors.",
-                    "Отклонённые запросы нужно исправлять и создавать заново; moderation остаётся у сохранённого владельца или операторов с MODULES_MANAGE.",
-                )
-                .to_string(),
-            ),
-            status if status_eq(status, "published") => lines.push(
-                tr(
-                    locale,
-                    "Future review actions for this slug now follow the persisted owner binding, not the original publish requester.",
-                    "Дальнейшие review-действия для этого slug теперь идут по сохранённой привязке владельца, а не по исходному publish requester.",
-                )
-                .to_string(),
-            ),
-            _ => {}
-        }
-
-        if owner_binding.is_some()
-            && request.publisher.is_some()
-            && request.publisher.as_ref() != owner_binding.map(|owner| &owner.owner)
-        {
-            lines.push(
-                tr(
-                    locale,
-                    "Requested publisher differs from the persisted owner; use owner transfer before treating the new publisher as canonical.",
-                    "Запрошенный publisher отличается от сохранённого владельца; сначала выполните owner transfer, прежде чем считать нового publisher каноническим.",
-                )
-                .to_string(),
-            );
-        }
-    }
-
-    lines
-}
-
-fn registry_next_action_lines(
-    module: &MarketplaceModule,
-    request: Option<&RegistryPublishRequestLifecycle>,
-    release: Option<&RegistryReleaseLifecycle>,
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    validation_stages: &[RegistryValidationStageLifecycle],
-    locale: Locale,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    if module.ownership != "first_party" {
-        lines.push(
-            tr(
-                locale,
-                "Live publish is still first-party-oriented; keep third-party modules on governance/manual review until the broader moderation flow is finished.",
-                "Live publish пока ориентирован на first-party; держите third-party модули на governance/manual review, пока более широкий moderation flow не завершён.",
-            )
-            .to_string(),
-        );
-        return lines;
-    }
-
-    let xtask_prefix = format!("cargo xtask module");
-
-    match request.map(|request| request.status.as_str()) {
-        None => lines.push(format!(
-            "{}: {} publish {} --dry-run {}",
-            tr(locale, "Start with", "Начните с"),
-            xtask_prefix,
-            module.slug,
-            tr(
-                locale,
-                "to inspect the publish payload before using a live registry URL.",
-                "чтобы проверить publish payload перед live registry URL."
-            )
-        )),
-        Some(status) if status_eq(status, "draft") => lines.push(
-            tr(
-                locale,
-                "Upload the artifact bundle next; review and publish cannot start before artifact upload finishes.",
-                "Следующий шаг — загрузка artifact bundle; review и publish не начнутся, пока загрузка не завершится.",
-            )
-            .to_string(),
-        ),
-        Some(status) if status_eq(status, "artifact_uploaded") || status_eq(status, "submitted") => lines.push(
-            tr(
-                locale,
-                "Trigger validation next; the request is waiting for the explicit validate step.",
-                "Следующий шаг — запуск validation; запрос ждёт явного validate step.",
-            )
-            .to_string(),
-        ),
-        Some(status) if status_eq(status, "validating") => lines.push(
-            tr(
-                locale,
-                "Wait for validation to finish and refresh the request status; approve/reject is blocked while the async validator is still running.",
-                "Дождитесь завершения validation и обновите статус запроса; approve/reject заблокированы, пока асинхронный validator ещё работает.",
-            )
-            .to_string(),
-        ),
-        Some(status) if status_eq(status, "approved") => {
-            if approval_override_required(validation_stages) {
-                lines.push(format!(
-                    "{}: {}.",
-                    tr(
-                        locale,
-                        "Before live approve, either close the remaining follow-up stages or send an explicit approval override",
-                        "Перед live approve либо закройте оставшиеся follow-up stages, либо отправьте явный approval override"
-                    ),
-                    approval_override_stage_labels(validation_stages, locale).join(", ")
-                ));
-                lines.push(format!(
-                    "{}: {}.",
-                    tr(
-                        locale,
-                        "Supported approval override reason codes",
-                        "Допустимые reason code для approval override"
-                    ),
-                    REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
-                ));
-            }
-            if let Some(owner) = owner_binding {
-                lines.push(format!(
-                    "{}: {}.",
-                    tr(locale, "Review can now be finalized by", "Review теперь может завершить"),
-                    owner.owner
-                ));
-            } else {
-                lines.push(
-                    tr(
-                        locale,
-                        "The request is approved, but there is still no persisted owner binding; approval by operators with MODULES_MANAGE remains the safe path.",
-                        "Запрос approved, но сохранённой привязки владельца ещё нет; approval через операторов с MODULES_MANAGE остаётся безопасным путём.",
-                    )
-                    .to_string(),
-                );
-            }
-        }
-        Some(status) if status_eq(status, "changes_requested") => lines.push(
-            tr(
-                locale,
-                "Upload a fresh artifact revision next; request-changes keeps the same publish request alive, but review stays blocked until the new artifact is validated again.",
-                "Следующий шаг — загрузить новый artifact revision; request-changes сохраняет тот же publish request, но review остаётся заблокированным, пока новый артефакт снова не пройдёт validation.",
-            )
-            .to_string(),
-        ),
-        Some(status) if status_eq(status, "on_hold") => lines.push(
-            tr(
-                locale,
-                "The request is on hold; resume it explicitly when the blocking condition is cleared.",
-                "Запрос находится на hold; явно возобновите его, когда блокирующее условие будет снято.",
-            )
-            .to_string(),
-        ),
-        Some(status) if status_eq(status, "rejected") => lines.push(format!(
-            "{}: {} publish {} --dry-run {}",
-            tr(locale, "Next step", "Следующий шаг"),
-            xtask_prefix,
-            module.slug,
-            tr(
-                locale,
-                "after fixing the surfaced errors and rejection reason.",
-                "после исправления surfaced errors и причины отклонения."
-            )
-        )),
-        Some(status) if status_eq(status, "published") => lines.push(
-            tr(
-                locale,
-                "The active release is already published; only owner transfer or yank/new version publish should be needed from here.",
-                "Активный релиз уже опубликован; дальше обычно нужны только owner transfer или yank/публикация новой версии.",
-            )
-            .to_string(),
-        ),
-        Some(_) => {}
-    }
-
-    if owner_binding.is_some()
-        && request
-            .and_then(|request| request.publisher.as_ref())
-            .zip(owner_binding.map(|owner| owner.owner.as_str()))
-            .is_some_and(|(publisher, owner)| publisher != owner)
-    {
-        lines.push(format!(
-            "{}: {} owner-transfer {} <new-owner-user-id> --dry-run {}",
-            tr(
-                locale,
-                "If ownership should move",
-                "Если владение должно перейти"
-            ),
-            xtask_prefix,
-            module.slug,
-            tr(
-                locale,
-                "before treating the requested publisher as canonical.",
-                "прежде чем считать requested publisher каноническим."
-            )
-        ));
-    }
-
-    if release.is_some_and(|release| status_eq(&release.status, "yanked")) {
-        lines.push(
-            tr(
-                locale,
-                "Latest release is yanked; publish a fresh active version instead of expecting the catalog to recover automatically.",
-                "Последний релиз отозван; публикуйте новую active-версию, а не ждите, что каталог восстановится автоматически.",
-            )
-            .to_string(),
-        );
-    }
-
-    lines
-}
-
-fn registry_operator_command_lines(
-    module: &MarketplaceModule,
-    request: Option<&RegistryPublishRequestLifecycle>,
-    release: Option<&RegistryReleaseLifecycle>,
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    validation_stages: &[RegistryValidationStageLifecycle],
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    if module.ownership != "first_party" {
-        return lines;
-    }
-
-    let publish_dry_run = format!("cargo xtask module publish {} --dry-run", module.slug);
-    let publish_live = format!(
-        "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
-        module.slug
-    );
-
-    match request.map(|request| request.status.as_str()) {
-        None => lines.push(publish_dry_run.clone()),
-        Some(status) if status_eq(status, "draft") => lines.push(publish_live),
-        Some(status) if status_eq(status, "changes_requested") => lines.push(publish_live),
-        Some(status) if status_eq(status, "rejected") => lines.push(publish_dry_run.clone()),
-        Some(status) if status_eq(status, "published") => {
-            let version = release
-                .map(|release| release.version.clone())
-                .unwrap_or_else(|| module.latest_version.clone());
-            lines.push(format!(
-                "cargo xtask module yank {} {} --dry-run",
-                module.slug, version
-            ));
-        }
-        _ => {}
-    }
-
-    if owner_binding.is_some()
-        && request
-            .and_then(|request| request.publisher.as_ref())
-            .zip(owner_binding.map(|owner| owner.owner.as_str()))
-            .is_some_and(|(publisher, owner)| publisher != owner)
-    {
-        lines.push(format!(
-            "cargo xtask module owner-transfer {} <new-owner-user-id> --dry-run",
-            module.slug
-        ));
-    }
-
-    if release.is_some_and(|release| status_eq(&release.status, "yanked")) {
-        lines.push(publish_dry_run);
-    }
-
-    if let Some(request) = request {
-        if !validation_stages.is_empty()
-            && (status_eq(&request.status, "approved") || status_eq(&request.status, "published"))
-        {
-            for stage in validation_stages {
-                if validation_stage_has_local_xtask_runner(&stage.key) {
-                    let mut command =
-                        validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key);
-                    command.push_str(" --dry-run");
-                    lines.push(command);
-                } else {
-                    lines.push(format!(
-                        "cargo xtask module stage {} {} <queued|running|passed|failed|blocked> --dry-run",
-                        request.id, stage.key
-                    ));
-                }
-            }
-        }
-    }
-
-    lines.sort();
-    lines.dedup();
-    lines
-}
-
-fn registry_live_api_action_lines(
-    module: &MarketplaceModule,
-    request: Option<&RegistryPublishRequestLifecycle>,
-    release: Option<&RegistryReleaseLifecycle>,
-    owner_binding: Option<&RegistryOwnerLifecycle>,
-    validation_stages: &[RegistryValidationStageLifecycle],
-    locale: Locale,
-) -> Vec<RegistryLiveApiActionHint> {
-    let Some(request) = request else {
-        return Vec::new();
-    };
-
-    let manage_publish_authority =
-        registry_manage_publish_authority_label(request, owner_binding, locale);
-    let bearer_header_hint = || "Authorization: Bearer <session-user-jwt>".to_string();
-
-    let mut lines = vec![RegistryLiveApiActionHint {
-        endpoint: format!("GET /v2/catalog/publish/{}", request.id),
-        authority: tr(
-            locale,
-            "Any operator with registry access",
-            "Любой оператор с доступом к registry",
-        )
-        .to_string(),
-        note: Some(
-            tr(
-                locale,
-                "Read-only status lookup for the current publish request.",
-                "Read-only просмотр статуса для текущего publish request.",
-            )
-            .to_string(),
-        ),
-        body_hint: None,
-        header_hint: None,
-        xtask_hint: None,
-        write_path: false,
-    }];
-
-    if status_eq(&request.status, "artifact_uploaded") || status_eq(&request.status, "submitted") {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/validate", request.id),
-            authority: manage_publish_authority.clone(),
-            note: Some(
-                tr(
-                    locale,
-                    "Validation starts the async review gate after artifact upload.",
-                    "Validation запускает асинхронный review gate после загрузки артефакта.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"dry_run\": false }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
-                module.slug
-            )),
-            write_path: true,
-        });
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
-            authority: registry_review_authority_label(owner_binding, locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Pause the request without rejecting it; live hold requires both a governance reason and a structured reason_code.",
-                    "Поставить запрос на паузу без reject; live hold требует и governance reason, и structured reason_code.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: None,
-            write_path: true,
-        });
-    }
-
-    if status_eq(&request.status, "approved") {
-        let review_authority = registry_review_authority_label(owner_binding, locale);
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/approve", request.id),
-            authority: review_authority.clone(),
-            note: Some(
-                tr(
-                    locale,
-                    "Finalize a validated request into a published release. If follow-up validation stages are not all passed yet, include an explicit override reason and reason_code.",
-                    "Финализирует провалидированный запрос в опубликованный релиз.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<override-reason-when-follow-up-stages-are-not-passed>\", \"reason_code\": \"manual_review_complete\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<override-reason-when-follow-up-stages-are-not-passed>\", \"reason_code\": \"manual_review_complete\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
-                module.slug
-            )),
-            write_path: true,
-        });
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/reject", request.id),
-            authority: review_authority,
-            note: Some(
-                tr(
-                    locale,
-                    "Reject requires both a governance reason and a structured reason_code in the request body.",
-                    "Reject требует governance reason в теле запроса.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\", \"reason_code\": \"policy_mismatch\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\", \"reason_code\": \"policy_mismatch\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: None,
-            write_path: true,
-        });
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/request-changes", request.id),
-            authority: registry_review_authority_label(owner_binding, locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Request a fresh artifact revision without terminating the publish request; live request-changes requires both a governance reason and a structured reason_code.",
-                    "Запросить новый artifact revision без завершения publish request; live request-changes требует и governance reason, и structured reason_code.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<change-request-reason>\", \"reason_code\": \"quality_gap\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<change-request-reason>\", \"reason_code\": \"quality_gap\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: None,
-            write_path: true,
-        });
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
-            authority: registry_review_authority_label(owner_binding, locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Pause the request without rejecting it; live hold requires both a governance reason and a structured reason_code.",
-                    "Поставить запрос на паузу без reject; live hold требует и governance reason, и structured reason_code.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: None,
-            write_path: true,
-        });
-        for stage in validation_stages {
-            lines.push(RegistryLiveApiActionHint {
-                endpoint: format!("POST /v2/catalog/publish/{}/stages", request.id),
-                authority: registry_review_authority_label(owner_binding, locale),
-                note: Some(
-                    tr(
-                        locale,
-                        "Persist external follow-up validation stage state without changing publish approval semantics.",
-                        "Сохранить состояние внешнего follow-up validation stage без изменения publish approval semantics.",
-                    )
-                    .to_string(),
-                ),
-                body_hint: Some(format!(
-                    "{{ \"schema_version\": 1, \"dry_run\": false, \"stage\": \"{}\", \"status\": \"passed\", \"detail\": \"External validation recorded by operator.\", \"reason_code\": \"{}\", \"requeue\": false }}",
-                    stage.key,
-                    if stage.key.eq_ignore_ascii_case("security_policy_review") {
-                        "manual_review_complete"
-                    } else {
-                        "local_runner_passed"
-                    }
-                )),
-                header_hint: Some(bearer_header_hint()),
-                xtask_hint: Some(if validation_stage_has_local_xtask_runner(&stage.key) {
-                    validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key)
-                } else {
-                    format!(
-                        "cargo xtask module stage {} {} passed --detail \"External validation recorded by operator.\" --registry-url <registry-url> --auth-token <token>",
-                        request.id, stage.key
-                    )
-                }),
-                write_path: true,
-            });
-        }
-    } else if status_eq(&request.status, "validating") {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("GET /v2/catalog/publish/{}", request.id),
-            authority: tr(
-                locale,
-                "Any operator with registry access",
-                "Любой оператор с доступом к registry",
-            )
-            .to_string(),
-            note: Some(
-                tr(
-                    locale,
-                    "Poll until validation leaves the validating state.",
-                    "Проверяйте статус, пока validation не выйдет из validating.",
-                )
-                .to_string(),
-            ),
-            body_hint: None,
-            header_hint: None,
-            xtask_hint: None,
-            write_path: false,
-        });
-    } else if status_eq(&request.status, "changes_requested") {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("PUT /v2/catalog/publish/{}/artifact", request.id),
-            authority: manage_publish_authority.clone(),
-            note: Some(
-                tr(
-                    locale,
-                    "Upload a fresh artifact revision to continue the same publish request after request-changes.",
-                    "Загрузите новый artifact revision, чтобы продолжить тот же publish request после request-changes.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "<binary publish artifact body>",
-                    "<binary publish artifact body>",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
-                module.slug
-            )),
-            write_path: true,
-        });
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/hold", request.id),
-            authority: registry_review_authority_label(owner_binding, locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Pause the request without rejecting it; live hold requires both a governance reason and a structured reason_code.",
-                    "Поставить запрос на паузу без reject; live hold требует и governance reason, и structured reason_code.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<hold-reason>\", \"reason_code\": \"release_window\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: None,
-            write_path: true,
-        });
-    } else if status_eq(&request.status, "on_hold") {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: format!("POST /v2/catalog/publish/{}/resume", request.id),
-            authority: registry_review_authority_label(owner_binding, locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Resume the held request back into its previous lifecycle status; live resume requires both a governance reason and a structured reason_code.",
-                    "Вернуть held request в предыдущее lifecycle-состояние; live resume требует и governance reason, и structured reason_code.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<resume-reason>\", \"reason_code\": \"review_complete\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<resume-reason>\", \"reason_code\": \"review_complete\" }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: None,
-            write_path: true,
-        });
-    } else if status_eq(&request.status, "published") {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: "POST /v2/catalog/yank".to_string(),
-            authority: registry_yank_authority_label(owner_binding, release, Some(request), locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Yank acts on the published release trail, not on the request.",
-                    "Yank работает по опубликованному release trail, а не по самому request.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"version\": \"<version>\", \"reason\": \"<yank-reason>\", \"reason_code\": \"rollback\", \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"version\": \"<version>\", \"reason\": \"<yank-reason>\", \"reason_code\": \"rollback\", \"dry_run\": false }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module yank {} {} --reason <yank-reason> --reason-code <security|legal|malware|critical_regression|rollback|other> --registry-url <registry-url> --auth-token <token>",
-                module.slug,
-                release
-                    .map(|value| value.version.as_str())
-                    .unwrap_or(module.latest_version.as_str())
-            )),
-            write_path: true,
-        });
-    } else if status_eq(&request.status, "rejected") {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: "POST /v2/catalog/publish".to_string(),
-            authority: manage_publish_authority.clone(),
-            note: Some(
-                tr(
-                    locale,
-                    "Rejected requests are recreated, not reopened in place.",
-                    "Rejected requests создаются заново, а не переоткрываются на месте.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"module\": { ... } }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"module\": { ... } }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
-                module.slug
-            )),
-            write_path: true,
-        });
-    }
-
-    if owner_binding.is_some()
-        && request
-            .publisher
-            .as_ref()
-            .zip(owner_binding.map(|owner| owner.owner.as_str()))
-            .is_some_and(|(publisher, owner)| publisher != owner)
-    {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: "POST /v2/catalog/owner-transfer".to_string(),
-            authority: registry_owner_transfer_authority_label(owner_binding, locale),
-            note: Some(
-                tr(
-                    locale,
-                    "Use this before treating a new requested publisher as the canonical owner; live owner transfer also requires a structured reason_code.",
-                    "Используйте это до того, как считать нового requested publisher каноническим владельцем.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_user_id\": \"<uuid>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_user_id\": \"<uuid>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module owner-transfer {} <new-owner-user-id> --reason <transfer-reason> --reason-code <maintenance_handoff|team_restructure|publisher_rotation|security_emergency|governance_override|other> --registry-url <registry-url> --auth-token <token>",
-                module.slug
-            )),
-            write_path: true,
-        });
-    }
-
-    if release.is_some_and(|release| status_eq(&release.status, "yanked")) {
-        lines.push(RegistryLiveApiActionHint {
-            endpoint: "POST /v2/catalog/publish".to_string(),
-            authority: manage_publish_authority,
-            note: Some(
-                tr(
-                    locale,
-                    "A yanked release recovers through a fresh publish request.",
-                    "Yanked release восстанавливается через новый publish request.",
-                )
-                .to_string(),
-            ),
-            body_hint: Some(
-                tr(
-                    locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"module\": { ... } }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"module\": { ... } }",
-                )
-                .to_string(),
-            ),
-            header_hint: Some(bearer_header_hint()),
-            xtask_hint: Some(format!(
-                "cargo xtask module publish {} --registry-url <registry-url> --auth-token <token>",
-                module.slug
-            )),
-            write_path: true,
-        });
-    }
-
-    lines.sort_by(|left, right| left.endpoint.cmp(&right.endpoint));
-    lines.dedup_by(|left, right| left.endpoint == right.endpoint);
-    lines
-}
-
-fn governance_detail_string(
-    payload: &crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle,
-    key: &str,
-) -> Option<String> {
-    let value = match key {
-        "reason" => payload.reason.as_deref(),
-        "reason_code" => payload.reason_code.as_deref(),
-        "detail" => payload.detail.as_deref(),
-        "version" => payload.version.as_deref(),
-        "stage_key" => payload.stage_key.as_deref(),
-        "mode" => payload.mode.as_deref(),
-        "previous_owner" => payload
-            .owner_transition
-            .as_ref()
-            .and_then(|value| value.previous_owner.as_deref()),
-        "new_owner" => payload
-            .owner_transition
-            .as_ref()
-            .and_then(|value| value.new_owner.as_deref()),
-        "bound_by" => payload
-            .owner_transition
-            .as_ref()
-            .and_then(|value| value.bound_by.as_deref()),
-        _ => None,
-    }?;
-
-    let value = value.trim();
-    (!value.is_empty()).then(|| value.to_string())
-}
-
-fn governance_detail_string_list(
-    payload: &crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle,
-    key: &str,
-) -> Vec<String> {
-    let values = match key {
-        "warnings" => payload.warnings.clone(),
-        "errors" => payload.errors.clone(),
-        _ => Vec::new(),
-    };
-
-    values
-        .into_iter()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect()
-}
-
-fn governance_detail_i64(
-    payload: &crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle,
-    key: &str,
-) -> Option<i64> {
-    match key {
-        "attempt_number" => payload.attempt_number.map(i64::from),
-        _ => None,
-    }
-}
-
-fn governance_event_stage_key(event: &RegistryGovernanceEventLifecycle) -> Option<String> {
-    governance_detail_string(&event.payload, "stage_key")
-}
-
-fn validation_stage_recent_history(
-    events: &[RegistryGovernanceEventLifecycle],
-    stage_key: &str,
-    limit: usize,
-) -> Vec<RegistryGovernanceEventLifecycle> {
-    events
-        .iter()
-        .filter(|event| {
-            matches!(
-                event.event_type.as_str(),
-                "validation_stage_queued"
-                    | "validation_stage_running"
-                    | "validation_stage_started"
-                    | "validation_stage_passed"
-                    | "validation_stage_failed"
-                    | "validation_stage_blocked"
-                    | "follow_up_gate_queued"
-                    | "follow_up_gate_passed"
-                    | "follow_up_gate_failed"
-            ) && governance_event_stage_key(event)
-                .as_deref()
-                .is_some_and(|value| value == stage_key)
-        })
-        .take(limit)
-        .cloned()
-        .collect()
-}
-
-fn is_moderation_history_event_type(event_type: &str) -> bool {
-    matches!(
-        event_type,
-        "release_published"
-            | "publish_approval_override"
-            | "request_rejected"
-            | "changes_requested"
-            | "request_held"
-            | "request_resumed"
-            | "owner_transferred"
-            | "release_yanked"
-            | "validation_stage_running"
-            | "validation_stage_started"
-            | "validation_stage_passed"
-            | "validation_stage_failed"
-            | "validation_stage_blocked"
-    )
-}
-
-fn moderation_history_events(
-    events: &[RegistryGovernanceEventLifecycle],
-    limit: usize,
-) -> Vec<RegistryGovernanceEventLifecycle> {
-    events
-        .iter()
-        .filter(|event| is_moderation_history_event_type(&event.event_type))
-        .take(limit)
-        .cloned()
-        .collect()
-}
-
-fn moderation_history_badge_label(event_type: &str, locale: Locale) -> String {
-    let event_type = match event_type {
-        "validation_stage_started" => "validation_stage_running",
-        other => other,
-    };
-    match event_type {
-        "release_published" => tr(locale, "Approved", "Approved"),
-        "publish_approval_override" => tr(locale, "Approval override", "Approval override"),
-        "request_rejected" => tr(locale, "Rejected", "Rejected"),
-        "changes_requested" => tr(locale, "Changes requested", "Запрошены изменения"),
-        "request_held" => tr(locale, "On hold", "На hold"),
-        "request_resumed" => tr(locale, "Resumed", "Возобновлён"),
-        "owner_transferred" => tr(locale, "Owner transfer", "Owner transfer"),
-        "release_yanked" => tr(locale, "Yanked", "Yanked"),
-        "validation_stage_running" => tr(locale, "Stage running", "Stage running"),
-        "validation_stage_passed" => tr(locale, "Stage passed", "Stage passed"),
-        "validation_stage_failed" => tr(locale, "Stage failed", "Stage failed"),
-        "validation_stage_blocked" => tr(locale, "Stage blocked", "Stage blocked"),
-        _ => tr(locale, "Decision", "Decision"),
-    }
-    .to_string()
-}
-
-fn moderation_history_badge_status(event_type: &str) -> &'static str {
-    match event_type {
-        "release_published" => "published",
-        "publish_approval_override" => "info",
-        "request_rejected" => "rejected",
-        "changes_requested" => "info",
-        "request_held" => "blocked",
-        "request_resumed" => "running",
-        "release_yanked" => "yanked",
-        "validation_stage_failed" => "failed",
-        "validation_stage_blocked" => "blocked",
-        "validation_stage_running" | "validation_stage_started" => "running",
-        _ => "info",
-    }
-}
-
-fn moderation_history_context_lines(
-    event: &RegistryGovernanceEventLifecycle,
-    locale: Locale,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-    let reason = governance_detail_string(&event.payload, "reason");
-    let reason_code = governance_detail_string(&event.payload, "reason_code");
-    let detail = governance_detail_string(&event.payload, "detail");
-    let version = governance_detail_string(&event.payload, "version");
-    let stage_key = governance_event_stage_key(event);
-    let attempt_number = governance_detail_i64(&event.payload, "attempt_number");
-    let previous_owner = governance_detail_string(&event.payload, "previous_owner");
-    let new_owner = governance_detail_string(&event.payload, "new_owner");
-
-    if let Some(version) = version {
-        lines.push(format!(
-            "{}: v{}",
-            tr(locale, "Version", "Version"),
-            version
-        ));
-    }
-
-    if let Some(stage_key) = stage_key {
-        let mut line = format!(
-            "{}: {}",
-            tr(locale, "Stage", "Stage"),
-            follow_up_gate_label(&stage_key, locale)
-        );
-        if let Some(attempt_number) = attempt_number {
-            line.push_str(&format!(
-                " · {} {}",
-                tr(locale, "attempt", "attempt"),
-                attempt_number
-            ));
-        }
-        lines.push(line);
-    }
-
-    if let (Some(previous_owner), Some(new_owner)) = (previous_owner, new_owner) {
-        lines.push(format!(
-            "{}: {} -> {}",
-            tr(locale, "Ownership", "Ownership"),
-            previous_owner,
-            new_owner
-        ));
-    }
-
-    if let Some(reason) = reason {
-        lines.push(format!("{}: {}", tr(locale, "Reason", "Reason"), reason));
-    }
-
-    if let Some(reason_code) = reason_code {
-        lines.push(format!(
-            "{}: {}",
-            tr(locale, "Reason code", "Reason code"),
-            humanize_token(&reason_code)
-        ));
-    }
-
-    if let Some(detail) = detail {
-        if !lines.iter().any(|line| line.ends_with(&detail)) {
-            lines.push(format!("{}: {}", tr(locale, "Detail", "Detail"), detail));
-        }
-    }
-
-    lines
-}
-
-fn governance_event_title(event_type: &str, locale: Locale) -> String {
-    let event_type = match event_type {
-        "validation_stage_started" => "validation_stage_running",
-        other => other,
-    };
-    match event_type {
-        "request_created" => tr(
-            locale,
-            "Publish request created",
-            "Создан запрос на публикацию",
-        ),
-        "artifact_uploaded" => tr(locale, "Artifact uploaded", "Артефакт загружен"),
-        "validation_queued" => tr(
-            locale,
-            "Validation queued",
-            "Валидация поставлена в очередь",
-        ),
-        "validation_passed" => tr(locale, "Validation passed", "Валидация пройдена"),
-        "validation_failed" => tr(locale, "Validation failed", "Валидация провалена"),
-        "release_published" => tr(locale, "Release published", "Релиз опубликован"),
-        "request_rejected" => tr(locale, "Request rejected", "Запрос отклонён"),
-        "changes_requested" => tr(locale, "Changes requested", "Запрошены изменения"),
-        "request_held" => tr(locale, "Request placed on hold", "Запрос поставлен на hold"),
-        "request_resumed" => tr(locale, "Request resumed", "Запрос возобновлён"),
-        "release_yanked" => tr(locale, "Release yanked", "Релиз отозван"),
-        "owner_bound" => tr(
-            locale,
-            "Owner binding updated",
-            "Связка владельца обновлена",
-        ),
-        "owner_transferred" => tr(locale, "Owner transferred", "Владелец передан"),
-        "validation_stage_queued" => tr(
-            locale,
-            "Validation stage queued",
-            "Этап валидации поставлен в очередь",
-        ),
-        "validation_stage_running" | "validation_stage_started" => tr(
-            locale,
-            "Validation stage running",
-            "Этап валидации выполняется",
-        ),
-        "validation_stage_passed" => {
-            tr(locale, "Validation stage passed", "Этап валидации пройден")
-        }
-        "validation_stage_failed" => {
-            tr(locale, "Validation stage failed", "Этап валидации провален")
-        }
-        "validation_stage_blocked" => tr(
-            locale,
-            "Validation stage blocked",
-            "Этап валидации заблокирован",
-        ),
-        "follow_up_gate_queued" => tr(
-            locale,
-            "Follow-up gate queued",
-            "Внешний gate поставлен в очередь",
-        ),
-        "follow_up_gate_passed" => tr(locale, "Follow-up gate passed", "Внешний gate пройден"),
-        "follow_up_gate_failed" => tr(locale, "Follow-up gate failed", "Внешний gate провален"),
-        "validation_job_queued" => tr(locale, "Validation job queued", "Validation job queued"),
-        "validation_job_started" => tr(locale, "Validation job running", "Validation job running"),
-        "validation_job_succeeded" => tr(
-            locale,
-            "Validation job succeeded",
-            "Validation job succeeded",
-        ),
-        "validation_job_failed" => tr(locale, "Validation job failed", "Validation job failed"),
-        _ => return humanize_token(event_type),
-    }
-    .to_string()
-}
-
-fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Locale) -> String {
-    let event_type = match event.event_type.as_str() {
-        "validation_stage_started" => "validation_stage_running",
-        other => other,
-    };
-    let version = governance_detail_string(&event.payload, "version");
-    let reason = governance_detail_string(&event.payload, "reason");
-    let reason_code = governance_detail_string(&event.payload, "reason_code");
-    let publisher = event.publisher.clone();
-    let owner_principal = governance_detail_string(&event.payload, "new_owner");
-    let mode = governance_detail_string(&event.payload, "mode");
-    let warnings = governance_detail_string_list(&event.payload, "warnings");
-    let errors = governance_detail_string_list(&event.payload, "errors");
-    let stage_key = governance_event_stage_key(event);
-    let stage_label = stage_key
-        .as_deref()
-        .map(|value| follow_up_gate_label(value, locale))
-        .unwrap_or_else(|| tr(locale, "Validation stage", "Этап валидации").to_string());
-    let stage_attempt = governance_detail_i64(&event.payload, "attempt_number");
-    let stage_detail = governance_detail_string(&event.payload, "detail");
-
-    match event_type {
-        "request_created" => version
-            .map(|value| {
-                format!(
-                    "{} v{}",
-                    tr(
-                        locale,
-                        "Version queued for publish",
-                        "Версия поставлена в очередь на публикацию"
-                    ),
-                    value
-                )
-            })
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Publish request was created.",
-                    "Запрос на публикацию создан.",
-                )
-                .to_string()
-            }),
-        "artifact_uploaded" => version
-            .map(|value| {
-                format!(
-                    "{} v{}",
-                    tr(
-                        locale,
-                        "Artifact stored for version",
-                        "Артефакт сохранён для версии"
-                    ),
-                    value
-                )
-            })
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Artifact stored and ready for validation.",
-                    "Артефакт сохранён и готов к валидации.",
-                )
-                .to_string()
-            }),
-        "validation_queued" => tr(
-            locale,
-            "Validation job was queued; poll the request status for completion.",
-            "Задача валидации поставлена в очередь; следите за статусом запроса.",
-        )
-        .to_string(),
-        "validation_stage_queued"
-        | "validation_stage_running"
-        | "validation_stage_started"
-        | "validation_stage_passed"
-        | "validation_stage_failed"
-        | "validation_stage_blocked" => {
-            let status = match event_type {
-                "validation_stage_queued" => tr(
-                    locale,
-                    "queued for operator follow-up",
-                    "поставлен в очередь для оператора",
-                ),
-                "validation_stage_running" => tr(locale, "is running", "выполняется"),
-                "validation_stage_passed" => tr(locale, "passed", "пройден"),
-                "validation_stage_failed" => tr(locale, "failed", "провален"),
-                "validation_stage_blocked" => tr(locale, "is blocked", "заблокирован"),
-                _ => unreachable!(),
-            };
-
-            let mut parts = vec![format!("{stage_label} {status}")];
-            if let Some(attempt) = stage_attempt {
-                parts.push(format!("{} {}", tr(locale, "attempt", "попытка"), attempt));
-            }
-            if let Some(detail) = stage_detail {
-                parts.push(detail);
-            }
-            parts.join(" · ")
-        }
-        "follow_up_gate_queued" | "follow_up_gate_passed" | "follow_up_gate_failed" => {
-            let status = match event_type {
-                "follow_up_gate_queued" => tr(
-                    locale,
-                    "queued for external follow-up",
-                    "поставлен в очередь для внешнего gate",
-                ),
-                "follow_up_gate_passed" => tr(locale, "passed", "пройден"),
-                "follow_up_gate_failed" => tr(locale, "failed", "провален"),
-                _ => unreachable!(),
-            };
-
-            let mut parts = vec![format!("{stage_label} {status}")];
-            if let Some(detail) = stage_detail {
-                parts.push(detail);
-            }
-            parts.join(" · ")
-        }
-        "validation_passed" => {
-            if warnings.is_empty() {
-                tr(
-                    locale,
-                    "Validation completed without blocking errors.",
-                    "Валидация завершилась без блокирующих ошибок.",
-                )
-                .to_string()
-            } else {
-                format!(
-                    "{}: {}",
-                    tr(
-                        locale,
-                        "Validation passed with warnings",
-                        "Валидация пройдена с предупреждениями"
-                    ),
-                    warnings.join("; ")
-                )
-            }
-        }
-        "validation_failed" => reason
-            .map(|value| {
-                format!(
-                    "{}: {}",
-                    tr(locale, "Validation failed", "Валидация провалена"),
-                    value
-                )
-            })
-            .or_else(|| {
-                (!errors.is_empty()).then(|| {
-                    format!(
-                        "{}: {}",
-                        tr(locale, "Validation errors", "Ошибки валидации"),
-                        errors.join("; ")
-                    )
-                })
-            })
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Validation failed and requires follow-up.",
-                    "Валидация провалена и требует доработки.",
-                )
-                .to_string()
-            }),
-        "validation_job_queued"
-        | "validation_job_started"
-        | "validation_job_succeeded"
-        | "validation_job_failed" => {
-            let status = match event_type {
-                "validation_job_queued" => tr(locale, "queued", "queued"),
-                "validation_job_started" => tr(locale, "is running", "is running"),
-                "validation_job_succeeded" => tr(locale, "succeeded", "succeeded"),
-                "validation_job_failed" => tr(locale, "failed", "failed"),
-                _ => unreachable!(),
-            };
-
-            let mut parts = vec![format!(
-                "{} {status}",
-                tr(locale, "Validation job", "Validation job")
-            )];
-            if let Some(attempt) = governance_detail_i64(&event.payload, "attempt_number") {
-                parts.push(format!("{} {}", tr(locale, "attempt", "attempt"), attempt));
-            }
-            if let Some(detail) = governance_detail_string(&event.payload, "detail") {
-                parts.push(detail);
-            }
-            if !event.payload.errors.is_empty() {
-                parts.push(event.payload.errors.join("; "));
-            }
-            parts.join(" · ")
-        }
-        "release_published" => {
-            let version_part = version
-                .map(|value| format!("v{value}"))
-                .unwrap_or_else(|| tr(locale, "new version", "новая версия").to_string());
-            match publisher {
-                Some(publisher) => format!(
-                    "{} {} ({})",
-                    tr(locale, "Published", "Опубликован"),
-                    version_part,
-                    publisher
-                ),
-                None => format!(
-                    "{} {}",
-                    tr(locale, "Published", "Опубликован"),
-                    version_part
-                ),
-            }
-        }
-        "request_rejected" => reason
-            .map(|value| format!("{}: {}", tr(locale, "Rejected", "Отклонён"), value))
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Request was rejected by governance policy.",
-                    "Запрос отклонён по governance policy.",
-                )
-                .to_string()
-            }),
-        "changes_requested" => reason
-            .map(|value| {
-                let prefix = reason_code
-                    .as_deref()
-                    .map(|code| {
-                        format!(
-                            "{} ({})",
-                            tr(locale, "Changes requested", "Запрошены изменения"),
-                            humanize_token(code)
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        tr(locale, "Changes requested", "Запрошены изменения").to_string()
-                    });
-                format!("{prefix}: {value}")
-            })
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Review requested a fresh artifact revision.",
-                    "Review запросил новый artifact revision.",
-                )
-                .to_string()
-            }),
-        "request_held" => reason
-            .map(|value| {
-                let prefix = reason_code
-                    .as_deref()
-                    .map(|code| {
-                        format!(
-                            "{} ({})",
-                            tr(locale, "On hold", "На hold"),
-                            humanize_token(code)
-                        )
-                    })
-                    .unwrap_or_else(|| tr(locale, "On hold", "На hold").to_string());
-                format!("{prefix}: {value}")
-            })
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "The request was placed on hold.",
-                    "Запрос был поставлен на hold.",
-                )
-                .to_string()
-            }),
-        "request_resumed" => {
-            let resumed_to_status = governance_event_stage_key(event).unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "previous lifecycle state",
-                    "предыдущее lifecycle-состояние",
-                )
-                .to_string()
-            });
-            match reason {
-                Some(reason) => format!(
-                    "{}: {} ({})",
-                    tr(locale, "Resumed to", "Возобновлён до"),
-                    humanize_token(&resumed_to_status),
-                    reason
-                ),
-                None => format!(
-                    "{}: {}",
-                    tr(locale, "Resumed to", "Возобновлён до"),
-                    humanize_token(&resumed_to_status)
-                ),
-            }
-        }
-        "release_yanked" => reason
-            .map(|value| format!("{}: {}", tr(locale, "Yanked", "Отозван"), value))
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Release was yanked from the active catalog.",
-                    "Релиз отозван из активного каталога.",
-                )
-                .to_string()
-            }),
-        "publish_approval_override" => reason
-            .map(|value| {
-                let prefix = reason_code
-                    .as_deref()
-                    .map(|code| {
-                        format!(
-                            "{} ({})",
-                            tr(locale, "Approval override", "Approval override"),
-                            humanize_token(code)
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        tr(locale, "Approval override", "Approval override").to_string()
-                    });
-                format!("{prefix}: {value}")
-            })
-            .unwrap_or_else(|| {
-                tr(
-                    locale,
-                    "Publish approval used an explicit follow-up gate override.",
-                    "Publish approval used an explicit follow-up gate override.",
-                )
-                .to_string()
-            }),
-        "owner_bound" => {
-            let label = match mode.as_deref() {
-                Some("rebind") => tr(locale, "Owner rebound", "Владелец перевязан"),
-                _ => tr(locale, "Owner bound", "Владелец привязан"),
-            };
-            owner_principal
-                .map(|owner_principal| format!("{label}: {owner_principal}"))
-                .unwrap_or_else(|| label.to_string())
-        }
-        "owner_transferred" => {
-            let previous_owner = governance_detail_string(&event.payload, "previous_owner");
-            let new_owner =
-                governance_detail_string(&event.payload, "new_owner").or(owner_principal);
-            match (previous_owner, new_owner, reason) {
-                (Some(previous_owner), Some(new_owner), Some(reason)) => format!(
-                    "{}: {} -> {} ({})",
-                    tr(locale, "Ownership transferred", "Владение передано"),
-                    previous_owner,
-                    new_owner,
-                    reason
-                ),
-                (Some(previous_owner), Some(new_owner), None) => format!(
-                    "{}: {} -> {}",
-                    tr(locale, "Ownership transferred", "Владение передано"),
-                    previous_owner,
-                    new_owner
-                ),
-                (_, Some(new_owner), Some(reason)) => format!(
-                    "{}: {} ({})",
-                    tr(locale, "New owner", "Новый владелец"),
-                    new_owner,
-                    reason
-                ),
-                (_, Some(new_owner), None) => format!(
-                    "{}: {}",
-                    tr(locale, "New owner", "Новый владелец"),
-                    new_owner
-                ),
-                _ => tr(
-                    locale,
-                    "Persisted owner binding was transferred to a new actor.",
-                    "Сохранённая привязка владельца передана новому актору.",
-                )
-                .to_string(),
-            }
-        }
-        _ => humanize_token(&event.event_type),
-    }
-}
-
-fn humanize_token(value: &str) -> String {
-    value
-        .split(['-', '_'])
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn humanize_setting_key(value: &str) -> String {
-    let mut rendered = String::new();
-    let mut previous_was_lowercase = false;
-
-    for ch in value.chars() {
-        if (ch == '_' || ch == '-') && !rendered.ends_with(' ') {
-            rendered.push(' ');
-            previous_was_lowercase = false;
-            continue;
-        }
-
-        if ch.is_ascii_uppercase() && previous_was_lowercase && !rendered.ends_with(' ') {
-            rendered.push(' ');
-        }
-
-        rendered.push(ch);
-        previous_was_lowercase = ch.is_ascii_lowercase() || ch.is_ascii_digit();
-    }
-
-    humanize_token(rendered.trim())
-}
-
 fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<String> {
     let mut parts = Vec::new();
     if field.required {
-        parts.push(tr(locale, "Required", "Обязательно").to_string());
+        parts.push(tr(locale, "Required", "РћР±СЏР·Р°С‚РµР»СЊРЅРѕ").to_string());
     }
     if let Some(default) = &field.default_value {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Default", "По умолчанию"),
+            tr(locale, "Default", "РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ"),
             default
         ));
     }
     match (field.min, field.max) {
         (Some(min), Some(max)) => parts.push(format!(
             "{}: {}..{}",
-            tr(locale, "Range", "Диапазон"),
+            tr(locale, "Range", "Р”РёР°РїР°Р·РѕРЅ"),
             min,
             max
         )),
-        (Some(min), None) => parts.push(format!("{}: {}", tr(locale, "Min", "Минимум"), min)),
-        (None, Some(max)) => parts.push(format!("{}: {}", tr(locale, "Max", "Максимум"), max)),
+        (Some(min), None) => parts.push(format!("{}: {}", tr(locale, "Min", "РњРёРЅРёРјСѓРј"), min)),
+        (None, Some(max)) => parts.push(format!("{}: {}", tr(locale, "Max", "РњР°РєСЃРёРјСѓРј"), max)),
         (None, None) => {}
     }
     if !field.options.is_empty() {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Options", "Опции"),
+            tr(locale, "Options", "РћРїС†РёРё"),
             field
                 .options
                 .iter()
@@ -2504,7 +104,7 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
     if !field.object_keys.is_empty() {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Object keys", "Ключи объекта"),
+            tr(locale, "Object keys", "РљР»СЋС‡Рё РѕР±СЉРµРєС‚Р°"),
             field
                 .object_keys
                 .iter()
@@ -2516,12 +116,12 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
     if let Some(item_type) = field.item_type.as_deref() {
         parts.push(format!(
             "{}: {}",
-            tr(locale, "Array items", "Элементы массива"),
+            tr(locale, "Array items", "Р­Р»РµРјРµРЅС‚С‹ РјР°СЃСЃРёРІР°"),
             humanize_token(item_type)
         ));
     }
 
-    (!parts.is_empty()).then(|| parts.join(" · "))
+    (!parts.is_empty()).then(|| parts.join(" В· "))
 }
 
 fn setting_field_placeholder(field: &ModuleSettingField) -> Option<&'static str> {
@@ -2530,2181 +130,6 @@ fn setting_field_placeholder(field: &ModuleSettingField) -> Option<&'static str>
         "array" => Some("[\n  \"item\"\n]"),
         "json" | "any" => Some("{\n  \"any\": true\n}"),
         _ => None,
-    }
-}
-
-fn setting_option_draft_value(value_type: &str, value: &serde_json::Value) -> String {
-    match value_type {
-        "string" => value.as_str().unwrap_or_default().to_string(),
-        "integer" => value
-            .as_i64()
-            .map(|number| number.to_string())
-            .or_else(|| value.as_u64().map(|number| number.to_string()))
-            .unwrap_or_else(|| value.to_string()),
-        "number" => value
-            .as_f64()
-            .map(|number| {
-                let mut rendered = number.to_string();
-                if rendered.ends_with(".0") {
-                    rendered.truncate(rendered.len() - 2);
-                }
-                rendered
-            })
-            .unwrap_or_else(|| value.to_string()),
-        "boolean" => value
-            .as_bool()
-            .map(|flag| flag.to_string())
-            .unwrap_or_else(|| value.to_string()),
-        _ => value.to_string(),
-    }
-}
-
-fn setting_option_label(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(value) => value.clone(),
-        serde_json::Value::Null => "null".to_string(),
-        _ => value.to_string(),
-    }
-}
-
-fn setting_shape_properties(shape: Option<&serde_json::Value>) -> Vec<(String, serde_json::Value)> {
-    let Some(shape) = shape else {
-        return Vec::new();
-    };
-    let Some(properties) = shape.get("properties").and_then(|value| value.as_object()) else {
-        return Vec::new();
-    };
-
-    let mut entries = properties
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect::<Vec<_>>();
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
-    entries
-}
-
-fn setting_shape_items(shape: Option<&serde_json::Value>) -> Option<serde_json::Value> {
-    shape.and_then(|shape| shape.get("items")).cloned()
-}
-
-fn setting_shape_property(
-    shape: Option<&serde_json::Value>,
-    key: &str,
-) -> Option<serde_json::Value> {
-    shape
-        .and_then(|shape| shape.get("properties"))
-        .and_then(|value| value.as_object())
-        .and_then(|properties| properties.get(key))
-        .cloned()
-}
-
-fn setting_shape_type(shape: Option<&serde_json::Value>) -> Option<String> {
-    shape
-        .and_then(|shape| shape.get("type"))
-        .and_then(|value| value.as_str())
-        .map(|value| value.to_string())
-}
-
-fn setting_shape_options(shape: Option<&serde_json::Value>) -> Vec<serde_json::Value> {
-    shape
-        .and_then(|shape| shape.get("options"))
-        .and_then(|value| value.as_array())
-        .cloned()
-        .unwrap_or_default()
-}
-
-fn setting_shape_numeric_bound(shape: Option<&serde_json::Value>, key: &str) -> Option<String> {
-    let value = shape.and_then(|shape| shape.get(key))?;
-
-    value
-        .as_i64()
-        .map(|number| number.to_string())
-        .or_else(|| value.as_u64().map(|number| number.to_string()))
-        .or_else(|| {
-            value.as_f64().map(|number| {
-                let mut rendered = number.to_string();
-                if rendered.ends_with(".0") {
-                    rendered.truncate(rendered.len() - 2);
-                }
-                rendered
-            })
-        })
-}
-
-fn parse_scalar_input_value(raw: &str, value_type: &str) -> Option<serde_json::Value> {
-    match value_type {
-        "string" => Some(serde_json::Value::String(raw.to_string())),
-        "boolean" => raw.parse::<bool>().ok().map(serde_json::Value::Bool),
-        "integer" => raw
-            .parse::<i64>()
-            .ok()
-            .map(|number| serde_json::Value::Number(number.into()))
-            .or_else(|| {
-                raw.parse::<u64>()
-                    .ok()
-                    .map(|number| serde_json::Value::Number(number.into()))
-            }),
-        "number" => raw
-            .parse::<f64>()
-            .ok()
-            .and_then(serde_json::Number::from_f64)
-            .map(serde_json::Value::Number),
-        _ => None,
-    }
-}
-
-fn render_scalar_value_editor(
-    current_value: serde_json::Value,
-    shape: Option<serde_json::Value>,
-    locale: Locale,
-    #[allow(unused_variables)] disabled: Signal<bool>,
-    on_input: Callback<serde_json::Value>,
-) -> AnyView {
-    let value_type = setting_shape_type(shape.as_ref())
-        .unwrap_or_else(|| json_value_kind(&current_value).to_string());
-    let options = setting_shape_options(shape.as_ref());
-    let current_raw = setting_option_draft_value(&value_type, &current_value);
-    let min = setting_shape_numeric_bound(shape.as_ref(), "min");
-    let max = setting_shape_numeric_bound(shape.as_ref(), "max");
-
-    match value_type.as_str() {
-        "boolean" if options.is_empty() => {
-            let checked = current_value.as_bool().unwrap_or(false);
-            view! {
-                <label class="inline-flex items-center gap-3 text-sm text-card-foreground">
-                    <input
-                        type="checkbox"
-                        class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20"
-                        checked=checked
-                        disabled=move || disabled.get()
-                        on:change=move |event| {
-                            on_input.run(serde_json::Value::Bool(event_target_checked(&event)))
-                        }
-                    />
-                    <span>{tr(locale, "Enabled", "Включено")}</span>
-                </label>
-            }
-            .into_any()
-        }
-        "string" | "integer" | "number" | "boolean" if !options.is_empty() => {
-            let options_for_select = options.clone();
-            let value_type_for_select = value_type.clone();
-            view! {
-                <select
-                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                    prop:value=current_raw.clone()
-                    disabled=move || disabled.get()
-                    on:change=move |event| {
-                        if let Some(next_value) = parse_scalar_input_value(
-                            &event_target_value(&event),
-                            &value_type_for_select,
-                        ) {
-                            on_input.run(next_value);
-                        }
-                    }
-                >
-                    {options_for_select.into_iter().map(|option| {
-                        let option_value = setting_option_draft_value(&value_type, &option);
-                        let option_label = setting_option_label(&option);
-                        view! {
-                            <option value=option_value>{option_label}</option>
-                        }
-                    }).collect_view()}
-                </select>
-            }
-            .into_any()
-        }
-        "integer" | "number" => {
-            let step = if value_type == "integer" { "1" } else { "any" };
-            let value_type_for_input = value_type.clone();
-            view! {
-                <input
-                    type="number"
-                    step=step
-                    min=min
-                    max=max
-                    class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                    value=current_raw
-                    disabled=move || disabled.get()
-                    on:input=move |event| {
-                        if let Some(next_value) = parse_scalar_input_value(
-                            &event_target_value(&event),
-                            &value_type_for_input,
-                        ) {
-                            on_input.run(next_value);
-                        }
-                    }
-                />
-            }
-            .into_any()
-        }
-        _ => view! {
-            <input
-                type="text"
-                class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                value=current_raw
-                disabled=move || disabled.get()
-                on:input=move |event| {
-                    on_input.run(serde_json::Value::String(event_target_value(&event)))
-                }
-            />
-        }
-        .into_any(),
-    }
-}
-
-fn default_value_for_schema_shape(shape: Option<&serde_json::Value>) -> serde_json::Value {
-    let Some(shape) = shape else {
-        return serde_json::Value::Null;
-    };
-
-    if let Some(default) = shape.get("default") {
-        return default.clone();
-    }
-
-    match setting_shape_type(Some(shape)).as_deref() {
-        Some("object") => {
-            let object = setting_shape_properties(Some(shape))
-                .into_iter()
-                .map(|(key, property_shape)| {
-                    (key, default_value_for_schema_shape(Some(&property_shape)))
-                })
-                .collect::<serde_json::Map<String, serde_json::Value>>();
-            serde_json::Value::Object(object)
-        }
-        Some("array") => serde_json::json!([]),
-        Some(value_type) => default_value_for_setting_type(value_type),
-        None => serde_json::Value::Null,
-    }
-}
-
-fn schema_action_label(shape: Option<&serde_json::Value>, locale: Locale) -> String {
-    match setting_shape_type(shape).as_deref() {
-        Some(value_type) => add_item_button_label(value_type, locale),
-        None => tr(locale, "Add item", "Добавить элемент").to_string(),
-    }
-}
-
-fn pretty_json_value(value: &serde_json::Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
-}
-
-fn parse_json_editor_value(
-    raw: &str,
-    expected_type: &str,
-    locale: Locale,
-) -> Result<Option<serde_json::Value>, String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-
-    let value = serde_json::from_str::<serde_json::Value>(trimmed)
-        .map_err(|err| format!("{}: {err}", tr(locale, "Invalid JSON", "Некорректный JSON")))?;
-
-    match expected_type {
-        "object" if !value.is_object() => {
-            Err(tr(locale, "Expected a JSON object", "Ожидался JSON-объект").to_string())
-        }
-        "array" if !value.is_array() => {
-            Err(tr(locale, "Expected a JSON array", "Ожидался JSON-массив").to_string())
-        }
-        _ => Ok(Some(value)),
-    }
-}
-
-fn reset_json_editor_value(field_type: &str) -> String {
-    let value = match field_type {
-        "object" => serde_json::json!({}),
-        "array" => serde_json::json!([]),
-        "json" | "any" => serde_json::Value::Null,
-        _ => serde_json::Value::Null,
-    };
-    pretty_json_value(&value)
-}
-
-fn append_object_property(raw: &str) -> Result<String, String> {
-    let mut object = match parse_json_editor_value(raw, "object", Locale::en)? {
-        Some(serde_json::Value::Object(object)) => object,
-        Some(_) => return Err("Expected a JSON object".to_string()),
-        None => serde_json::Map::new(),
-    };
-
-    let mut next_index = 1;
-    let key = loop {
-        let candidate = if next_index == 1 {
-            "newKey".to_string()
-        } else {
-            format!("newKey{}", next_index)
-        };
-        if !object.contains_key(&candidate) {
-            break candidate;
-        }
-        next_index += 1;
-    };
-    object.insert(key, serde_json::Value::String(String::new()));
-    Ok(pretty_json_value(&serde_json::Value::Object(object)))
-}
-
-fn append_array_item(raw: &str) -> Result<String, String> {
-    let mut array = match parse_json_editor_value(raw, "array", Locale::en)? {
-        Some(serde_json::Value::Array(array)) => array,
-        Some(_) => return Err("Expected a JSON array".to_string()),
-        None => Vec::new(),
-    };
-    array.push(serde_json::Value::Null);
-    Ok(pretty_json_value(&serde_json::Value::Array(array)))
-}
-
-fn json_editor_summary(field_type: &str, raw: &str, locale: Locale) -> (bool, String, Vec<String>) {
-    match parse_json_editor_value(raw, field_type, locale) {
-        Ok(Some(serde_json::Value::Object(object))) => {
-            let preview = object.keys().take(4).cloned().collect::<Vec<_>>();
-            (
-                true,
-                format!("{} {}", object.len(), tr(locale, "keys", "ключей")),
-                preview,
-            )
-        }
-        Ok(Some(serde_json::Value::Array(array))) => {
-            let preview = array
-                .iter()
-                .take(4)
-                .map(|item| match item {
-                    serde_json::Value::Null => "null".to_string(),
-                    serde_json::Value::Bool(_) => "bool".to_string(),
-                    serde_json::Value::Number(_) => "number".to_string(),
-                    serde_json::Value::String(_) => "string".to_string(),
-                    serde_json::Value::Array(_) => "array".to_string(),
-                    serde_json::Value::Object(_) => "object".to_string(),
-                })
-                .collect::<Vec<_>>();
-            (
-                true,
-                format!("{} {}", array.len(), tr(locale, "items", "элементов")),
-                preview,
-            )
-        }
-        Ok(Some(value)) => (
-            true,
-            format!("{} {}", value, tr(locale, "value ready", "значение готово")),
-            Vec::new(),
-        ),
-        Ok(None) => (
-            true,
-            tr(
-                locale,
-                "Empty value; server defaults apply if declared.",
-                "Пустое значение; серверные значения по умолчанию применятся, если они объявлены.",
-            )
-            .to_string(),
-            Vec::new(),
-        ),
-        Err(message) => (false, message, Vec::new()),
-    }
-}
-
-fn json_value_kind(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null => "null",
-        serde_json::Value::Bool(_) => "boolean",
-        serde_json::Value::Number(number) if number.is_i64() || number.is_u64() => "integer",
-        serde_json::Value::Number(_) => "number",
-        serde_json::Value::String(_) => "string",
-        serde_json::Value::Array(_) => "array",
-        serde_json::Value::Object(_) => "object",
-    }
-}
-
-fn metadata_status_badge_classes(state: &str) -> &'static str {
-    match state {
-        "ready" => {
-            "inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700"
-        }
-        "warn" => {
-            "inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700"
-        }
-        _ => {
-            "inline-flex items-center rounded-full border border-border px-2 py-0.5 font-medium text-muted-foreground"
-        }
-    }
-}
-
-fn metadata_status_panel_classes(state: &str) -> &'static str {
-    match state {
-        "ready" => "border-emerald-500/30 bg-emerald-500/5",
-        "warn" => "border-amber-500/30 bg-amber-500/5",
-        _ => "border-border bg-background",
-    }
-}
-
-fn looks_like_absolute_http_url(value: &str) -> bool {
-    let value = value.trim();
-    value.starts_with("https://") || value.starts_with("http://")
-}
-
-fn asset_path_without_query(value: &str) -> &str {
-    value.split(['?', '#']).next().unwrap_or(value)
-}
-
-fn looks_like_svg_url(value: &str) -> bool {
-    looks_like_absolute_http_url(value) && asset_path_without_query(value).ends_with(".svg")
-}
-
-fn looks_like_image_url(value: &str) -> bool {
-    if !looks_like_absolute_http_url(value) {
-        return false;
-    }
-
-    let lower = asset_path_without_query(value).to_ascii_lowercase();
-    [".png", ".jpg", ".jpeg", ".webp", ".svg"]
-        .iter()
-        .any(|suffix| lower.ends_with(suffix))
-}
-
-fn marketplace_metadata_checklist(
-    module: &MarketplaceModule,
-    locale: Locale,
-) -> Vec<MetadataChecklistItem> {
-    let description_length = module.description.trim().chars().count();
-    let icon_url = module
-        .icon_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let banner_url = module
-        .banner_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let screenshots_count = module
-        .screenshots
-        .iter()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .count();
-    let publisher = module
-        .publisher
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let latest_release = latest_active_registry_version(module).cloned();
-    let latest_release_version = latest_release
-        .as_ref()
-        .map(|version| version.version.as_str());
-    let latest_release_date = latest_release
-        .as_ref()
-        .and_then(|version| version.published_at.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let has_yanked_only_versions = !module.versions.is_empty() && latest_release.is_none();
-    let has_registry_publish_signal = module.checksum_sha256.is_some() || latest_release.is_some();
-
-    vec![
-        if description_length >= 20 {
-            MetadataChecklistItem {
-                label: tr(locale, "Description", "Описание"),
-                state: "ready",
-                priority: "required",
-                summary: tr(locale, "Ready", "Готово"),
-                detail: format!(
-                    "{} {}",
-                    description_length,
-                    tr(
-                        locale,
-                        "characters available for catalog detail.",
-                        "символов доступно для карточки каталога.",
-                    )
-                ),
-            }
-        } else {
-            MetadataChecklistItem {
-                label: tr(locale, "Description", "Описание"),
-                state: "warn",
-                priority: "required",
-                summary: tr(locale, "Required", "Обязательно"),
-                detail: tr(
-                    locale,
-                    "Needs at least 20 characters to satisfy local manifest validation.",
-                    "Нужно минимум 20 символов, чтобы пройти локальную валидацию manifest.",
-                )
-                .to_string(),
-            }
-        },
-        match icon_url {
-            Some(value) if looks_like_svg_url(value) => MetadataChecklistItem {
-                label: tr(locale, "Icon asset", "Иконка"),
-                state: "ready",
-                priority: "recommended",
-                summary: tr(locale, "Ready", "Готово"),
-                detail: tr(
-                    locale,
-                    "Absolute SVG icon is present for registry cards and detail previews.",
-                    "Абсолютный SVG-URL иконки задан для карточек registry и detail preview.",
-                )
-                .to_string(),
-            },
-            Some(_) => MetadataChecklistItem {
-                label: tr(locale, "Icon asset", "Иконка"),
-                state: "warn",
-                priority: "required",
-                summary: tr(locale, "Required", "Обязательно"),
-                detail: tr(
-                    locale,
-                    "Icon URL should be an absolute http(s) SVG asset.",
-                    "URL иконки должен быть абсолютным http(s) SVG-ресурсом.",
-                )
-                .to_string(),
-            },
-            None => MetadataChecklistItem {
-                label: tr(locale, "Icon asset", "Иконка"),
-                state: "warn",
-                priority: "recommended",
-                summary: tr(locale, "Recommended", "Рекомендуется"),
-                detail: tr(
-                    locale,
-                    "Add an SVG icon URL so registry lists and cards have a visual identity.",
-                    "Добавьте SVG-URL иконки, чтобы у карточек и списков registry была визуальная идентичность.",
-                )
-                .to_string(),
-            },
-        },
-        match banner_url {
-            Some(value) if looks_like_image_url(value) => MetadataChecklistItem {
-                label: tr(locale, "Banner asset", "Баннер"),
-                state: "ready",
-                priority: "recommended",
-                summary: tr(locale, "Ready", "Готово"),
-                detail: tr(
-                    locale,
-                    "Banner image is present for richer marketplace detail layouts.",
-                    "Изображение баннера доступно для более богатого detail layout в marketplace.",
-                )
-                .to_string(),
-            },
-            Some(_) => MetadataChecklistItem {
-                label: tr(locale, "Banner asset", "Баннер"),
-                state: "warn",
-                priority: "required",
-                summary: tr(locale, "Required", "Обязательно"),
-                detail: tr(
-                    locale,
-                    "Banner URL should be an absolute http(s) image asset.",
-                    "URL баннера должен быть абсолютным http(s) image-ресурсом.",
-                )
-                .to_string(),
-            },
-            None => MetadataChecklistItem {
-                label: tr(locale, "Banner asset", "Баннер"),
-                state: "warn",
-                priority: "recommended",
-                summary: tr(locale, "Recommended", "Рекомендуется"),
-                detail:
-                    tr(
-                        locale,
-                        "Optional for local validation, but useful for richer registry presentation.",
-                        "Для локальной валидации необязательно, но полезно для richer presentation в registry.",
-                    )
-                    .to_string(),
-            },
-        },
-        if screenshots_count > 0 {
-            MetadataChecklistItem {
-                label: tr(locale, "Screenshots", "Скриншоты"),
-                state: "ready",
-                priority: "recommended",
-                summary: tr(locale, "Ready", "Готово"),
-                detail: format!(
-                    "{} {}",
-                    screenshots_count,
-                    tr(locale, "screenshot(s) available for discovery UX.", "скриншотов доступно для discovery UX.")
-                ),
-            }
-        } else {
-            MetadataChecklistItem {
-                label: tr(locale, "Screenshots", "Скриншоты"),
-                state: "warn",
-                priority: "recommended",
-                summary: tr(locale, "Recommended", "Рекомендуется"),
-                detail:
-                    tr(
-                        locale,
-                        "Add one or more screenshots to make module capabilities easier to evaluate.",
-                        "Добавьте один или несколько скриншотов, чтобы возможности модуля было проще оценивать.",
-                    )
-                    .to_string(),
-            }
-        },
-        if let Some(publisher) = publisher {
-            MetadataChecklistItem {
-                label: tr(locale, "Publisher identity", "Идентичность издателя"),
-                state: "ready",
-                priority: "info",
-                summary: tr(locale, "Known", "Известен"),
-                detail: format!(
-                    "{} {publisher}.",
-                    tr(locale, "Publisher is exposed as", "Издатель указан как")
-                ),
-            }
-        } else {
-            MetadataChecklistItem {
-                label: tr(locale, "Publisher identity", "Идентичность издателя"),
-                state: "info",
-                priority: "info",
-                summary: tr(locale, "Local only", "Только локально"),
-                detail: tr(
-                    locale,
-                    "Workspace modules can stay unpublished; external registry entries should declare a publisher.",
-                    "Workspace-модули могут оставаться неопубликованными; внешние записи registry должны указывать publisher.",
-                )
-                .to_string(),
-            }
-        },
-        if has_registry_publish_signal {
-            MetadataChecklistItem {
-                label: tr(locale, "Release trail", "История релизов"),
-                state: "ready",
-                priority: "info",
-                summary: tr(locale, "Present", "Есть"),
-                detail: match (latest_release_version, latest_release_date) {
-                    (Some(version), Some(date)) => {
-                        format!(
-                            "{} v{version} {} {date}.",
-                            tr(locale, "Latest non-yanked release is", "Последний неотозванный релиз"),
-                            tr(locale, "published at", "опубликован")
-                        )
-                    }
-                    (Some(version), None) => {
-                        format!(
-                            "{} v{version}, {}.",
-                            tr(locale, "Latest non-yanked release is", "Последний неотозванный релиз"),
-                            tr(locale, "but publish date is missing", "но дата публикации отсутствует")
-                        )
-                    }
-                    (None, _) => {
-                        tr(
-                            locale,
-                            "Checksum is present even though no active version entry is visible.",
-                            "Контрольная сумма есть, хотя активная запись версии не видна.",
-                        )
-                        .to_string()
-                    }
-                },
-            }
-        } else if has_yanked_only_versions {
-            MetadataChecklistItem {
-                label: tr(locale, "Release trail", "История релизов"),
-                state: "warn",
-                priority: "info",
-                summary: tr(locale, "Only yanked", "Только отозванные"),
-                detail:
-                    tr(
-                        locale,
-                        "Version history exists, but every visible release is yanked, so there is no active publish trail.",
-                        "История версий существует, но все видимые релизы отозваны, поэтому активной publish-цепочки нет.",
-                    )
-                    .to_string(),
-            }
-        } else {
-            MetadataChecklistItem {
-                label: tr(locale, "Release trail", "История релизов"),
-                state: "info",
-                priority: "info",
-                summary: tr(locale, "Not published", "Не опубликован"),
-                detail:
-                    tr(
-                        locale,
-                        "No checksum or active version history is visible yet, which is expected for workspace-only modules.",
-                        "Контрольная сумма и активная история версий пока не видны, что нормально для workspace-only модулей.",
-                    )
-                    .to_string(),
-            }
-        },
-    ]
-}
-
-fn json_value_preview(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => "null".to_string(),
-        serde_json::Value::Bool(value) => value.to_string(),
-        serde_json::Value::Number(value) => value.to_string(),
-        serde_json::Value::String(value) => value.clone(),
-        serde_json::Value::Array(value) => format!("{} items", value.len()),
-        serde_json::Value::Object(value) => format!("{} keys", value.len()),
-    }
-}
-
-fn parse_object_root(raw: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
-    match parse_json_editor_value(raw, "object", Locale::en)? {
-        Some(serde_json::Value::Object(object)) => Ok(object),
-        Some(_) => Err("Expected a JSON object".to_string()),
-        None => Ok(serde_json::Map::new()),
-    }
-}
-
-fn parse_array_root(raw: &str) -> Result<Vec<serde_json::Value>, String> {
-    match parse_json_editor_value(raw, "array", Locale::en)? {
-        Some(serde_json::Value::Array(array)) => Ok(array),
-        Some(_) => Err("Expected a JSON array".to_string()),
-        None => Ok(Vec::new()),
-    }
-}
-
-fn unique_object_key(
-    object: &serde_json::Map<String, serde_json::Value>,
-    preferred: &str,
-) -> String {
-    if !object.contains_key(preferred) {
-        return preferred.to_string();
-    }
-
-    let mut index = 2;
-    loop {
-        let candidate = format!("{preferred}{index}");
-        if !object.contains_key(&candidate) {
-            return candidate;
-        }
-        index += 1;
-    }
-}
-
-fn object_with_new_property(
-    raw: &str,
-    preferred_key: &str,
-    value: serde_json::Value,
-) -> Result<String, String> {
-    let mut object = parse_object_root(raw)?;
-    let key = unique_object_key(&object, preferred_key);
-    object.insert(key, value);
-    Ok(pretty_json_value(&serde_json::Value::Object(object)))
-}
-
-fn object_with_updated_property(
-    raw: &str,
-    key: &str,
-    value: serde_json::Value,
-) -> Result<String, String> {
-    let mut object = parse_object_root(raw)?;
-    object.insert(key.to_string(), value);
-    Ok(pretty_json_value(&serde_json::Value::Object(object)))
-}
-
-fn object_without_property(raw: &str, key: &str) -> Result<String, String> {
-    let mut object = parse_object_root(raw)?;
-    object.remove(key);
-    Ok(pretty_json_value(&serde_json::Value::Object(object)))
-}
-
-fn object_with_renamed_property(raw: &str, old_key: &str, new_key: &str) -> Result<String, String> {
-    let mut object = parse_object_root(raw)?;
-    let new_key = new_key.trim();
-    if new_key.is_empty() {
-        return Err("Property name must not be empty".to_string());
-    }
-    if old_key == new_key {
-        return Ok(pretty_json_value(&serde_json::Value::Object(object)));
-    }
-    if object.contains_key(new_key) {
-        return Err(format!("Property `{new_key}` already exists"));
-    }
-    let Some(value) = object.remove(old_key) else {
-        return Err("Property key is out of bounds".to_string());
-    };
-    object.insert(new_key.to_string(), value);
-    Ok(pretty_json_value(&serde_json::Value::Object(object)))
-}
-
-fn array_with_appended_item(raw: &str, value: serde_json::Value) -> Result<String, String> {
-    let mut array = parse_array_root(raw)?;
-    array.push(value);
-    Ok(pretty_json_value(&serde_json::Value::Array(array)))
-}
-
-fn array_with_updated_item(
-    raw: &str,
-    index: usize,
-    value: serde_json::Value,
-) -> Result<String, String> {
-    let mut array = parse_array_root(raw)?;
-    let Some(item) = array.get_mut(index) else {
-        return Err("Array item is out of bounds".to_string());
-    };
-    *item = value;
-    Ok(pretty_json_value(&serde_json::Value::Array(array)))
-}
-
-fn array_without_item(raw: &str, index: usize) -> Result<String, String> {
-    let mut array = parse_array_root(raw)?;
-    if index >= array.len() {
-        return Err("Array item is out of bounds".to_string());
-    }
-    array.remove(index);
-    Ok(pretty_json_value(&serde_json::Value::Array(array)))
-}
-
-fn array_item_moved(raw: &str, index: usize, delta: isize) -> Result<String, String> {
-    let mut array = parse_array_root(raw)?;
-    if index >= array.len() {
-        return Err("Array item is out of bounds".to_string());
-    }
-    let next_index = index as isize + delta;
-    if next_index < 0 || next_index >= array.len() as isize {
-        return Ok(pretty_json_value(&serde_json::Value::Array(array)));
-    }
-    array.swap(index, next_index as usize);
-    Ok(pretty_json_value(&serde_json::Value::Array(array)))
-}
-
-#[derive(Clone, Debug)]
-enum JsonPathSegment {
-    Key(String),
-    Index(usize),
-}
-
-fn default_json_root(root_type: &str) -> serde_json::Value {
-    match root_type {
-        "object" => serde_json::json!({}),
-        "array" => serde_json::json!([]),
-        _ => serde_json::Value::Null,
-    }
-}
-
-fn default_value_for_setting_type(value_type: &str) -> serde_json::Value {
-    match value_type {
-        "string" => serde_json::Value::String(String::new()),
-        "integer" | "number" => serde_json::json!(0),
-        "boolean" => serde_json::Value::Bool(false),
-        "object" => serde_json::json!({}),
-        "array" => serde_json::json!([]),
-        "json" | "any" => serde_json::Value::Null,
-        _ => serde_json::Value::Null,
-    }
-}
-
-fn add_item_button_label(value_type: &str, locale: Locale) -> String {
-    match value_type {
-        "string" => tr(locale, "Add text", "Добавить текст").to_string(),
-        "boolean" => tr(locale, "Add flag", "Добавить флаг").to_string(),
-        "integer" | "number" => tr(locale, "Add number", "Добавить число").to_string(),
-        "object" => tr(locale, "Add object", "Добавить объект").to_string(),
-        "array" => tr(locale, "Add array", "Добавить массив").to_string(),
-        "json" | "any" => tr(locale, "Add item", "Добавить элемент").to_string(),
-        _ => format!(
-            "{} {}",
-            tr(locale, "Add", "Добавить"),
-            humanize_token(value_type)
-        ),
-    }
-}
-
-fn parse_json_root(raw: &str, root_type: &str) -> Result<serde_json::Value, String> {
-    Ok(parse_json_editor_value(raw, root_type, Locale::en)?
-        .unwrap_or_else(|| default_json_root(root_type)))
-}
-
-fn value_at_path_mut<'a>(
-    value: &'a mut serde_json::Value,
-    path: &[JsonPathSegment],
-) -> Option<&'a mut serde_json::Value> {
-    let mut current = value;
-    for segment in path {
-        match segment {
-            JsonPathSegment::Key(key) => current = current.as_object_mut()?.get_mut(key)?,
-            JsonPathSegment::Index(index) => current = current.as_array_mut()?.get_mut(*index)?,
-        }
-    }
-    Some(current)
-}
-
-fn with_updated_json_root(
-    raw: &str,
-    root_type: &str,
-    updater: impl FnOnce(&mut serde_json::Value) -> Result<(), String>,
-) -> Result<String, String> {
-    let mut root = parse_json_root(raw, root_type)?;
-    updater(&mut root)?;
-    Ok(pretty_json_value(&root))
-}
-
-fn nested_value_updated(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-    next_value: serde_json::Value,
-) -> Result<String, String> {
-    with_updated_json_root(raw, root_type, |root| {
-        let Some(target) = value_at_path_mut(root, path) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        *target = next_value;
-        Ok(())
-    })
-}
-
-fn nested_value_removed(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-) -> Result<String, String> {
-    if path.is_empty() {
-        return Ok(pretty_json_value(&default_json_root(root_type)));
-    }
-
-    let parent_path = &path[..path.len() - 1];
-    let last_segment = path.last().expect("checked non-empty path");
-    with_updated_json_root(raw, root_type, |root| {
-        let Some(parent) = value_at_path_mut(root, parent_path) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        match (parent, last_segment) {
-            (serde_json::Value::Object(object), JsonPathSegment::Key(key)) => {
-                object.remove(key);
-                Ok(())
-            }
-            (serde_json::Value::Array(array), JsonPathSegment::Index(index)) => {
-                if *index >= array.len() {
-                    return Err("Array item is out of bounds".to_string());
-                }
-                array.remove(*index);
-                Ok(())
-            }
-            _ => Err("JSON path does not match the current structure".to_string()),
-        }
-    })
-}
-
-fn nested_object_key_renamed(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-    new_key: &str,
-) -> Result<String, String> {
-    if path.is_empty() {
-        return Err("JSON path is out of bounds".to_string());
-    }
-    let new_key = new_key.trim();
-    if new_key.is_empty() {
-        return Err("Property name must not be empty".to_string());
-    }
-    let parent_path = &path[..path.len() - 1];
-    let JsonPathSegment::Key(old_key) = path.last().expect("checked non-empty path") else {
-        return Err("JSON path does not point to an object property".to_string());
-    };
-    with_updated_json_root(raw, root_type, |root| {
-        let Some(parent) = value_at_path_mut(root, parent_path) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        let Some(object) = parent.as_object_mut() else {
-            return Err("Expected a JSON object".to_string());
-        };
-        if old_key == new_key {
-            return Ok(());
-        }
-        if object.contains_key(new_key) {
-            return Err(format!("Property `{new_key}` already exists"));
-        }
-        let Some(value) = object.remove(old_key) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        object.insert(new_key.to_string(), value);
-        Ok(())
-    })
-}
-
-fn nested_array_item_moved(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-    delta: isize,
-) -> Result<String, String> {
-    if path.is_empty() {
-        return Err("JSON path is out of bounds".to_string());
-    }
-    let parent_path = &path[..path.len() - 1];
-    let JsonPathSegment::Index(index) = path.last().expect("checked non-empty path") else {
-        return Err("JSON path does not point to an array item".to_string());
-    };
-    with_updated_json_root(raw, root_type, |root| {
-        let Some(parent) = value_at_path_mut(root, parent_path) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        let Some(array) = parent.as_array_mut() else {
-            return Err("Expected a JSON array".to_string());
-        };
-        if *index >= array.len() {
-            return Err("Array item is out of bounds".to_string());
-        }
-        let next_index = *index as isize + delta;
-        if next_index < 0 || next_index >= array.len() as isize {
-            return Ok(());
-        }
-        array.swap(*index, next_index as usize);
-        Ok(())
-    })
-}
-
-fn nested_object_child_added(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-    preferred_key: &str,
-    value: serde_json::Value,
-) -> Result<String, String> {
-    with_updated_json_root(raw, root_type, |root| {
-        let Some(target) = value_at_path_mut(root, path) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        let Some(object) = target.as_object_mut() else {
-            return Err("Expected a JSON object".to_string());
-        };
-        let key = unique_object_key(object, preferred_key);
-        object.insert(key, value);
-        Ok(())
-    })
-}
-
-fn nested_array_child_added(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-    value: serde_json::Value,
-) -> Result<String, String> {
-    with_updated_json_root(raw, root_type, |root| {
-        let Some(target) = value_at_path_mut(root, path) else {
-            return Err("JSON path is out of bounds".to_string());
-        };
-        let Some(array) = target.as_array_mut() else {
-            return Err("Expected a JSON array".to_string());
-        };
-        array.push(value);
-        Ok(())
-    })
-}
-
-fn nested_object_contains_key(
-    raw: &str,
-    root_type: &str,
-    path: &[JsonPathSegment],
-    key: &str,
-) -> bool {
-    let Ok(mut root) = parse_json_root(raw, root_type) else {
-        return false;
-    };
-
-    value_at_path_mut(&mut root, path)
-        .and_then(|target| target.as_object().map(|object| object.contains_key(key)))
-        .unwrap_or(false)
-}
-
-fn render_nested_json_children(
-    root_type: String,
-    root_value: Signal<String>,
-    path: Vec<JsonPathSegment>,
-    current: serde_json::Value,
-    current_shape: Option<serde_json::Value>,
-    locale: Locale,
-    disabled: Signal<bool>,
-    on_input: Callback<String>,
-) -> AnyView {
-    match current {
-        serde_json::Value::Object(object) => {
-            let declared_properties = setting_shape_properties(current_shape.as_ref());
-            let schema_locks_keys = !declared_properties.is_empty();
-            view! {
-            <div class="space-y-3">
-                <div class="flex flex-wrap gap-2">
-                    {if declared_properties.is_empty() {
-                        view! {
-                            <>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newText", serde_json::Value::String(String::new())) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add text", "Добавить текст")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newFlag", serde_json::Value::Bool(false)) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add flag", "Добавить флаг")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newNumber", serde_json::json!(0)) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add number", "Добавить число")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newObject", serde_json::json!({})) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add object", "Добавить объект")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_object_child_added(&root_value.get(), &root_type, &path, "newArray", serde_json::json!([])) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add array", "Добавить массив")}</button>
-                            </>
-                        }.into_any()
-                    } else {
-                        declared_properties.clone().into_iter().map(|(property_key, property_shape)| {
-                            let button_label = format!("Add {}", humanize_setting_key(&property_key));
-                            view! {
-                                <button
-                                    type="button"
-                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                    disabled={
-                                        let root_type = root_type.clone();
-                                        let root_value = root_value;
-                                        let path = path.clone();
-                                        let property_key = property_key.clone();
-                                        move || {
-                                            disabled.get()
-                                                || nested_object_contains_key(
-                                                    &root_value.get(),
-                                                    &root_type,
-                                                    &path,
-                                                    &property_key,
-                                                )
-                                        }
-                                    }
-                                    on:click={
-                                        let root_type = root_type.clone();
-                                        let root_value = root_value;
-                                        let path = path.clone();
-                                        let property_key = property_key.clone();
-                                        let property_shape = property_shape.clone();
-                                        move |_| {
-                                            if let Ok(next) = nested_object_child_added(
-                                                &root_value.get(),
-                                                &root_type,
-                                                &path,
-                                                &property_key,
-                                                default_value_for_schema_shape(Some(&property_shape)),
-                                            ) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    }
-                                >
-                                    {button_label}
-                                </button>
-                            }
-                        }).collect_view().into_any()
-                    }}
-                </div>
-                {object.into_iter().map(|(key, item_value)| {
-                    let kind = json_value_kind(&item_value).to_string();
-                    let preview = json_value_preview(&item_value);
-                    let property_shape = setting_shape_property(current_shape.as_ref(), &key);
-                    let mut item_path = path.clone();
-                    item_path.push(JsonPathSegment::Key(key.clone()));
-                    match item_value.clone() {
-                        scalar_value @ (serde_json::Value::String(_) | serde_json::Value::Bool(_) | serde_json::Value::Number(_)) => {
-                            let item_path_for_input = item_path.clone();
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_rename = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |event| {
-                                                    if let Ok(next) = nested_object_key_renamed(&root_value.get(), &root_type, &item_path_for_rename, &event_target_value(&event)) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            } />
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                            let root_type = root_type.clone();
-                                            let root_value = root_value;
-                                            move |_| {
-                                                if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }>{tr(locale, "Remove", "Удалить")}</button>
-                                    </div>
-                                    {render_scalar_value_editor(
-                                        scalar_value,
-                                        property_shape.clone(),
-                                        locale,
-                                        disabled,
-                                        Callback::new({
-                                            let root_type = root_type.clone();
-                                            let root_value = root_value;
-                                            move |next_value| {
-                                                if let Ok(next) = nested_value_updated(
-                                                    &root_value.get(),
-                                                    &root_type,
-                                                    &item_path_for_input,
-                                                    next_value,
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }),
-                                    )}
-                                </div>
-                            }.into_any()
-                        }
-                        _ => {
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_rename = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |event| {
-                                                    if let Ok(next) = nested_object_key_renamed(&root_value.get(), &root_type, &item_path_for_rename, &event_target_value(&event)) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            } />
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                            let root_type = root_type.clone();
-                                            let root_value = root_value;
-                                            move |_| {
-                                                if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }>{tr(locale, "Remove", "Удалить")}</button>
-                                    </div>
-                                    <p class="text-sm text-muted-foreground">{preview}</p>
-                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, property_shape.clone(), locale, disabled, on_input)}
-                                </div>
-                            }.into_any()
-                        }
-                    }
-                }).collect_view()}
-            </div>
-        }.into_any()
-        }
-        serde_json::Value::Array(items) => {
-            let item_shape = setting_shape_items(current_shape.as_ref());
-            view! {
-            <div class="space-y-3">
-                <div class="flex flex-wrap gap-2">
-                    {if let Some(item_shape) = item_shape.clone() {
-                        let button_label = schema_action_label(Some(&item_shape), locale);
-                        view! {
-                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                let root_type = root_type.clone();
-                                let root_value = root_value;
-                                let path = path.clone();
-                                let item_shape = item_shape.clone();
-                                move |_| {
-                                    if let Ok(next) = nested_array_child_added(
-                                        &root_value.get(),
-                                        &root_type,
-                                        &path,
-                                        default_value_for_schema_shape(Some(&item_shape)),
-                                    ) {
-                                        on_input.run(next);
-                                    }
-                                }
-                            }>{button_label}</button>
-                        }.into_any()
-                    } else {
-                        view! {
-                            <>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::String(String::new())) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add text", "Добавить текст")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::Value::Bool(false)) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add flag", "Добавить флаг")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!(0)) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add number", "Добавить число")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!({})) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add object", "Добавить объект")}</button>
-                                <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                    let root_type = root_type.clone();
-                                    let root_value = root_value;
-                                    let path = path.clone();
-                                    move |_| {
-                                        if let Ok(next) = nested_array_child_added(&root_value.get(), &root_type, &path, serde_json::json!([])) {
-                                            on_input.run(next);
-                                        }
-                                    }
-                                }>{tr(locale, "Add array", "Добавить массив")}</button>
-                            </>
-                        }.into_any()
-                    }}
-                </div>
-                {items.into_iter().enumerate().map(|(index, item_value)| {
-                    let kind = json_value_kind(&item_value).to_string();
-                    let preview = json_value_preview(&item_value);
-                    let mut item_path = path.clone();
-                    item_path.push(JsonPathSegment::Index(index));
-                    match item_value.clone() {
-                        scalar_value @ (serde_json::Value::String(_)
-                        | serde_json::Value::Bool(_)
-                        | serde_json::Value::Number(_)) => {
-                            let item_path_for_input = item_path.clone();
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_move_up = item_path.clone();
-                            let item_path_for_move_down = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span class="text-sm font-medium text-card-foreground">{format!("{} {}", tr(locale, "Item", "Элемент"), index + 1)}</span>
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_up, -1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>{tr(locale, "Up", "Вверх")}</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_down, 1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>{tr(locale, "Down", "Вниз")}</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>{tr(locale, "Remove", "Удалить")}</button>
-                                        </div>
-                                    </div>
-                                    {render_scalar_value_editor(
-                                        scalar_value,
-                                        item_shape.clone(),
-                                        locale,
-                                        disabled,
-                                        Callback::new({
-                                            let root_type = root_type.clone();
-                                            let root_value = root_value;
-                                            move |next_value| {
-                                                if let Ok(next) = nested_value_updated(
-                                                    &root_value.get(),
-                                                    &root_type,
-                                                    &item_path_for_input,
-                                                    next_value,
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }),
-                                    )}
-                                </div>
-                            }.into_any()
-                        }
-                        _ => {
-                            let item_path_for_remove = item_path.clone();
-                            let item_path_for_move_up = item_path.clone();
-                            let item_path_for_move_down = item_path.clone();
-                            view! {
-                                <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span class="text-sm font-medium text-card-foreground">{format!("{} {}", tr(locale, "Item", "Элемент"), index + 1)}</span>
-                                            <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{kind.clone()}</span>
-                                        </div>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_up, -1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>{tr(locale, "Up", "Вверх")}</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_array_item_moved(&root_value.get(), &root_type, &item_path_for_move_down, 1) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>{tr(locale, "Down", "Вниз")}</button>
-                                            <button type="button" class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50" disabled=move || disabled.get() on:click={
-                                                let root_type = root_type.clone();
-                                                let root_value = root_value;
-                                                move |_| {
-                                                    if let Ok(next) = nested_value_removed(&root_value.get(), &root_type, &item_path_for_remove) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }>{tr(locale, "Remove", "Удалить")}</button>
-                                        </div>
-                                    </div>
-                                    <p class="text-sm text-muted-foreground">{preview}</p>
-                                    {render_nested_json_children(root_type.clone(), root_value, item_path.clone(), item_value, item_shape.clone(), locale, disabled, on_input)}
-                                </div>
-                            }.into_any()
-                        }
-                    }
-                }).collect_view()}
-            </div>
-        }.into_any()
-        }
-        _ => ().into_any(),
-    }
-}
-
-#[component]
-fn StructuredObjectEditor(
-    #[prop(into)] value: Signal<String>,
-    #[prop(into)] disabled: Signal<bool>,
-    object_shape: Option<serde_json::Value>,
-    on_input: Callback<String>,
-) -> impl IntoView {
-    let locale = use_i18n().get_locale();
-    let object_entries = Signal::derive(move || parse_object_root(&value.get()));
-    let declared_properties = setting_shape_properties(object_shape.as_ref());
-    let object_shape_for_items = StoredValue::new(object_shape.clone());
-    let schema_locks_keys = !declared_properties.is_empty();
-
-    view! {
-        <Show when=move || object_entries.get().is_ok()>
-            <div class="rounded-lg border border-dashed border-border bg-muted/30 p-3">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {tr(locale, "Structured object editor", "Структурный редактор объекта")}
-                    </p>
-                    <div class="flex flex-wrap gap-2">
-                        {if declared_properties.is_empty() {
-                            view! {
-                                <>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                        disabled=move || disabled.get()
-                                        on:click={
-                                            let value = value;
-                                            move |_| {
-                                                if let Ok(next) = object_with_new_property(
-                                                    &value.get(),
-                                                    "newText",
-                                                    serde_json::Value::String(String::new()),
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }
-                                    >
-                                        {tr(locale, "Add text", "Добавить текст")}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                        disabled=move || disabled.get()
-                                        on:click={
-                                            let value = value;
-                                            move |_| {
-                                                if let Ok(next) = object_with_new_property(
-                                                    &value.get(),
-                                                    "newFlag",
-                                                    serde_json::Value::Bool(false),
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }
-                                    >
-                                        {tr(locale, "Add flag", "Добавить флаг")}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                        disabled=move || disabled.get()
-                                        on:click={
-                                            let value = value;
-                                            move |_| {
-                                                if let Ok(next) = object_with_new_property(
-                                                    &value.get(),
-                                                    "newNumber",
-                                                    serde_json::json!(0),
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }
-                                    >
-                                        {tr(locale, "Add number", "Добавить число")}
-                                    </button>
-                                </>
-                            }.into_any()
-                        } else {
-                            declared_properties
-                                .clone()
-                                .into_iter()
-                                .map(|(property_key, property_shape)| {
-                                    let button_label = format!(
-                                        "{} {}",
-                                        tr(locale, "Add", "Добавить"),
-                                        humanize_setting_key(&property_key)
-                                    );
-                                    view! {
-                                        <button
-                                            type="button"
-                                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                            disabled={
-                                                let value = value;
-                                                let property_key = property_key.clone();
-                                                move || {
-                                                    disabled.get()
-                                                        || parse_object_root(&value.get())
-                                                            .map(|object| object.contains_key(&property_key))
-                                                            .unwrap_or(false)
-                                                }
-                                            }
-                                            on:click={
-                                                let value = value;
-                                                let property_key = property_key.clone();
-                                                let property_shape = property_shape.clone();
-                                                move |_| {
-                                                    if let Ok(next) = object_with_updated_property(
-                                                        &value.get(),
-                                                        &property_key,
-                                                        default_value_for_schema_shape(Some(&property_shape)),
-                                                    ) {
-                                                        on_input.run(next);
-                                                    }
-                                                }
-                                            }
-                                        >
-                                            {button_label}
-                                        </button>
-                                    }
-                                })
-                                .collect_view()
-                                .into_any()
-                        }}
-                    </div>
-                </div>
-                <div class="mt-3 space-y-3">
-                    {move || {
-                        let object_shape_for_items = object_shape_for_items.get_value();
-                        match object_entries.get() {
-                        Ok(object) if object.is_empty() => view! {
-                            <p class="text-sm text-muted-foreground">
-                                {tr(locale, "Object is empty. Use the quick actions to add top-level properties.", "Объект пуст. Используйте быстрые действия, чтобы добавить поля верхнего уровня.")}
-                            </p>
-                        }.into_any(),
-                        Ok(object) => object
-                            .into_iter()
-                            .map(|(key, item_value)| {
-                                let kind = json_value_kind(&item_value).to_string();
-                                let preview = json_value_preview(&item_value);
-                                let property_shape = setting_shape_property(object_shape_for_items.as_ref(), &key);
-                                let key_for_remove = key.clone();
-                                let key_for_rename = key.clone();
-                                let mut item_path = Vec::new();
-                                item_path.push(JsonPathSegment::Key(key.clone()));
-                                view! {
-                                    <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <input type="text" class="rounded-md border border-border bg-background px-2 py-1 text-sm font-medium text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70" value=key.clone() disabled=move || disabled.get() || schema_locks_keys on:change={
-                                                    let value = value;
-                                                    move |event| {
-                                                        if let Ok(next) = object_with_renamed_property(&value.get(), &key_for_rename, &event_target_value(&event)) {
-                                                            on_input.run(next);
-                                                        }
-                                                    }
-                                                } />
-                                                <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                                                    {kind.clone()}
-                                                </span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                                disabled=move || disabled.get()
-                                                on:click={
-                                                    let value = value;
-                                                    move |_| {
-                                                        if let Ok(next) = object_without_property(&value.get(), &key_for_remove) {
-                                                            on_input.run(next);
-                                                        }
-                                                    }
-                                                }
-                                            >
-                                                {tr(locale, "Remove", "Удалить")}
-                                            </button>
-                                        </div>
-                                        {match item_value {
-                                            scalar_value @ (serde_json::Value::String(_)
-                                            | serde_json::Value::Bool(_)
-                                            | serde_json::Value::Number(_)) => {
-                                                let key_for_input = key.clone();
-                                                view! {
-                                                    {render_scalar_value_editor(
-                                                        scalar_value,
-                                                        property_shape.clone(),
-                                                        locale,
-                                                        disabled,
-                                                        Callback::new({
-                                                            let value = value;
-                                                            move |next_value| {
-                                                                if let Ok(next) = object_with_updated_property(
-                                                                    &value.get(),
-                                                                    &key_for_input,
-                                                                    next_value,
-                                                                ) {
-                                                                    on_input.run(next);
-                                                                }
-                                                            }
-                                                        }),
-                                                    )}
-                                                }.into_any()
-                                            }
-                                            nested_value => {
-                                                let nested_path = item_path.clone();
-                                                let nested_shape = property_shape.clone();
-                                                view! {
-                                                    <>
-                                                        <p class="text-sm text-muted-foreground">
-                                                            {format!(
-                                                                "{} {}: {}.",
-                                                                tr(locale, "Nested", "Вложенный"),
-                                                                kind,
-                                                                preview
-                                                            )}
-                                                        </p>
-                                                        {render_nested_json_children(
-                                                            "object".to_string(),
-                                                            value,
-                                                            nested_path,
-                                                            nested_value,
-                                                            nested_shape,
-                                                            locale,
-                                                            disabled,
-                                                            on_input,
-                                                        )}
-                                                    </>
-                                                }.into_any()
-                                            }
-                                        }}
-                                    </div>
-                                }
-                            })
-                            .collect_view()
-                            .into_any(),
-                        Err(_) => ().into_any(),
-                    }}}
-                </div>
-            </div>
-        </Show>
-    }
-}
-
-#[component]
-fn StructuredArrayEditor(
-    #[prop(into)] value: Signal<String>,
-    #[prop(into)] disabled: Signal<bool>,
-    array_item_type: Option<String>,
-    array_item_shape: Option<serde_json::Value>,
-    on_input: Callback<String>,
-) -> impl IntoView {
-    let locale = use_i18n().get_locale();
-    let array_entries = Signal::derive(move || parse_array_root(&value.get()));
-    let array_item_shape_for_items = StoredValue::new(array_item_shape.clone());
-
-    view! {
-        <Show when=move || array_entries.get().is_ok()>
-            <div class="rounded-lg border border-dashed border-border bg-muted/30 p-3">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {tr(locale, "Structured array editor", "Структурный редактор массива")}
-                    </p>
-                    <div class="flex flex-wrap gap-2">
-                        {if let Some(item_shape) = array_item_shape.clone() {
-                            let button_label = schema_action_label(Some(&item_shape), locale);
-                            view! {
-                                <button
-                                    type="button"
-                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                    disabled=move || disabled.get()
-                                    on:click={
-                                        let value = value;
-                                        let item_shape = item_shape.clone();
-                                        move |_| {
-                                            if let Ok(next) = array_with_appended_item(
-                                                &value.get(),
-                                                default_value_for_schema_shape(Some(&item_shape)),
-                                            ) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    }
-                                >
-                                    {button_label}
-                                </button>
-                            }.into_any()
-                        } else if let Some(item_type) = array_item_type
-                            .clone()
-                            .map(|value| value.trim().to_string())
-                            .filter(|value| !value.is_empty())
-                        {
-                            let button_label = add_item_button_label(&item_type, locale);
-                            view! {
-                                <button
-                                    type="button"
-                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                    disabled=move || disabled.get()
-                                    on:click={
-                                        let value = value;
-                                        let item_type = item_type.clone();
-                                        move |_| {
-                                            if let Ok(next) = array_with_appended_item(
-                                                &value.get(),
-                                                default_value_for_setting_type(&item_type),
-                                            ) {
-                                                on_input.run(next);
-                                            }
-                                        }
-                                    }
-                                >
-                                    {button_label}
-                                </button>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                        disabled=move || disabled.get()
-                                        on:click={
-                                            let value = value;
-                                            move |_| {
-                                                if let Ok(next) = array_with_appended_item(
-                                                    &value.get(),
-                                                    serde_json::Value::String(String::new()),
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }
-                                    >
-                                        {tr(locale, "Add text", "Добавить текст")}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                        disabled=move || disabled.get()
-                                        on:click={
-                                            let value = value;
-                                            move |_| {
-                                                if let Ok(next) = array_with_appended_item(
-                                                    &value.get(),
-                                                    serde_json::Value::Bool(false),
-                                                ) {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }
-                                    >
-                                        {tr(locale, "Add flag", "Добавить флаг")}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                        disabled=move || disabled.get()
-                                        on:click={
-                                            let value = value;
-                                            move |_| {
-                                                if let Ok(next) =
-                                                    array_with_appended_item(&value.get(), serde_json::json!(0))
-                                                {
-                                                    on_input.run(next);
-                                                }
-                                            }
-                                        }
-                                    >
-                                        {tr(locale, "Add number", "Добавить число")}
-                                    </button>
-                                </>
-                            }.into_any()
-                        }}
-                    </div>
-                </div>
-                <div class="mt-3 space-y-3">
-                    {move || {
-                        let array_item_shape_for_items = array_item_shape_for_items.get_value();
-                        match array_entries.get() {
-                        Ok(items) if items.is_empty() => view! {
-                            <p class="text-sm text-muted-foreground">
-                                {tr(locale, "Array is empty. Use the quick actions to add top-level items.", "Массив пуст. Используйте быстрые действия, чтобы добавить элементы верхнего уровня.")}
-                            </p>
-                        }.into_any(),
-                        Ok(items) => items
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, item_value)| {
-                                let kind = json_value_kind(&item_value).to_string();
-                                let preview = json_value_preview(&item_value);
-                                let mut item_path = Vec::new();
-                                item_path.push(JsonPathSegment::Index(index));
-                                view! {
-                                    <div class="space-y-2 rounded-md border border-border bg-background px-3 py-3">
-                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <span class="text-sm font-medium text-card-foreground">{format!("{} {}", tr(locale, "Item", "Элемент"), index + 1)}</span>
-                                                <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                                                    {kind.clone()}
-                                                </span>
-                                            </div>
-                                            <div class="flex flex-wrap gap-2">
-                                                <button
-                                                    type="button"
-                                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                                    disabled=move || disabled.get()
-                                                    on:click={
-                                                        let value = value;
-                                                        move |_| {
-                                                            if let Ok(next) = array_item_moved(&value.get(), index, -1) {
-                                                                on_input.run(next);
-                                                            }
-                                                        }
-                                                    }
-                                                >
-                                                    {tr(locale, "Up", "Вверх")}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                                    disabled=move || disabled.get()
-                                                    on:click={
-                                                        let value = value;
-                                                        move |_| {
-                                                            if let Ok(next) = array_item_moved(&value.get(), index, 1) {
-                                                                on_input.run(next);
-                                                            }
-                                                        }
-                                                    }
-                                                >
-                                                    {tr(locale, "Down", "Вниз")}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                                                    disabled=move || disabled.get()
-                                                    on:click={
-                                                        let value = value;
-                                                        move |_| {
-                                                            if let Ok(next) = array_without_item(&value.get(), index) {
-                                                                on_input.run(next);
-                                                            }
-                                                        }
-                                                    }
-                                                >
-                                                    {tr(locale, "Remove", "Удалить")}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        {match item_value {
-                                            scalar_value @ (serde_json::Value::String(_)
-                                            | serde_json::Value::Bool(_)
-                                            | serde_json::Value::Number(_)) => {
-                                                view! {
-                                                    {render_scalar_value_editor(
-                                                        scalar_value,
-                                                        array_item_shape_for_items.clone(),
-                                                        locale,
-                                                        disabled,
-                                                        Callback::new({
-                                                            let value = value;
-                                                            move |next_value| {
-                                                                if let Ok(next) = array_with_updated_item(
-                                                                    &value.get(),
-                                                                    index,
-                                                                    next_value,
-                                                                ) {
-                                                                    on_input.run(next);
-                                                                }
-                                                            }
-                                                        }),
-                                                    )}
-                                                }.into_any()
-                                            }
-                                            nested_value => {
-                                                let nested_path = item_path.clone();
-                                                let nested_shape = array_item_shape_for_items.clone();
-                                                view! {
-                                                    <>
-                                                        <p class="text-sm text-muted-foreground">
-                                                            {format!(
-                                                                "{} {}: {}.",
-                                                                tr(locale, "Nested", "Вложенный"),
-                                                                kind,
-                                                                preview
-                                                            )}
-                                                        </p>
-                                                    {render_nested_json_children(
-                                                        "array".to_string(),
-                                                        value,
-                                                        nested_path,
-                                                        nested_value,
-                                                        nested_shape.or_else(|| array_item_shape_for_items.clone()),
-                                                        locale,
-                                                        disabled,
-                                                        on_input,
-                                                    )}
-                                                    </>
-                                                }.into_any()
-                                            }
-                                        }}
-                                    </div>
-                                }
-                            })
-                            .collect_view()
-                            .into_any(),
-                        Err(_) => ().into_any(),
-                    }}}
-                </div>
-            </div>
-        </Show>
-    }
-}
-
-#[component]
-fn ComplexSettingEditor(
-    field_type: String,
-    placeholder: &'static str,
-    array_item_type: Option<String>,
-    schema_shape: Option<serde_json::Value>,
-    #[prop(into)] value: Signal<String>,
-    #[prop(into)] disabled: Signal<bool>,
-    on_input: Callback<String>,
-) -> impl IntoView {
-    let locale = use_i18n().get_locale();
-    let status = Signal::derive({
-        let value = value;
-        let field_type = field_type.clone();
-        move || json_editor_summary(&field_type, &value.get(), locale)
-    });
-    let nested_root = Signal::derive({
-        let value = value;
-        let field_type = field_type.clone();
-        move || parse_json_root(&value.get(), &field_type).ok()
-    });
-
-    let show_add_button = matches!(field_type.as_str(), "object" | "array");
-    let add_button_label = if field_type == "object" {
-        tr(locale, "Add property", "Добавить поле")
-    } else {
-        tr(locale, "Add item", "Добавить элемент")
-    };
-
-    view! {
-        <div class="space-y-3">
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-                <span class=move || {
-                    if status.get().0 {
-                        "inline-flex items-center rounded-full border border-border px-2 py-0.5 font-medium text-muted-foreground"
-                    } else {
-                        "inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive"
-                    }
-                }>
-                    {move || status.get().1}
-                </span>
-                <Show when=move || !status.get().2.is_empty()>
-                    <div class="flex flex-wrap gap-1">
-                        {move || status.get().2.into_iter().map(|item| {
-                            view! {
-                                <span class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                                    {item}
-                                </span>
-                            }
-                        }).collect_view()}
-                    </div>
-                </Show>
-            </div>
-            {if field_type == "object" {
-                view! { <StructuredObjectEditor value=value disabled=disabled object_shape=schema_shape.clone() on_input=on_input /> }.into_any()
-            } else if field_type == "array" {
-                view! {
-                    <StructuredArrayEditor
-                        value=value
-                        disabled=disabled
-                        array_item_type=array_item_type.clone()
-                        array_item_shape=setting_shape_items(schema_shape.as_ref())
-                        on_input=on_input
-                    />
-                }.into_any()
-            } else {
-                ().into_any()
-            }}
-            {if matches!(field_type.as_str(), "json" | "any") {
-                {
-                    let field_type_for_nested = field_type.clone();
-                    move || {
-                    nested_root
-                        .get()
-                        .filter(|value| matches!(value, serde_json::Value::Object(_) | serde_json::Value::Array(_)))
-                        .map(|root| {
-                            view! {
-                                <div class="space-y-2 rounded-lg border border-border/60 bg-background/60 p-3">
-                                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                        {tr(locale, "Nested editor", "Вложенный редактор")}
-                                    </p>
-                                    {render_nested_json_children(
-                                        field_type_for_nested.clone(),
-                                        value,
-                                        Vec::new(),
-                                        root,
-                                        schema_shape.clone(),
-                                        locale,
-                                        disabled,
-                                        on_input,
-                                    )}
-                                </div>
-                            }
-                        })
-                    }
-                }.into_any()
-            } else {
-                ().into_any()
-            }}
-            <div class="flex flex-wrap items-center gap-2">
-                <button
-                    type="button"
-                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                    disabled=move || disabled.get()
-                    on:click={
-                        let value = value;
-                        let field_type = field_type.clone();
-                        move |_| {
-                            match parse_json_editor_value(&value.get(), &field_type, locale) {
-                                Ok(Some(parsed)) => on_input.run(pretty_json_value(&parsed)),
-                                Ok(None) => on_input.run(reset_json_editor_value(&field_type)),
-                                Err(_) => {}
-                            }
-                        }
-                    }
-                >
-                    {tr(locale, "Format JSON", "Форматировать JSON")}
-                </button>
-                <button
-                    type="button"
-                    class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                    disabled=move || disabled.get()
-                    on:click={
-                        let field_type = field_type.clone();
-                        move |_| on_input.run(reset_json_editor_value(&field_type))
-                    }
-                >
-                    {tr(locale, "Reset", "Сбросить")}
-                </button>
-                {if show_add_button {
-                    view! {
-                        <button
-                            type="button"
-                            class="inline-flex items-center justify-center rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                            disabled=move || disabled.get()
-                            on:click={
-                                let value = value;
-                                let field_type = field_type.clone();
-                                move |_| {
-                                    let next = match field_type.as_str() {
-                                        "object" => append_object_property(&value.get()),
-                                        "array" => append_array_item(&value.get()),
-                                        _ => Ok(value.get()),
-                                    };
-                                    if let Ok(next) = next {
-                                        on_input.run(next);
-                                    }
-                                }
-                            }
-                        >
-                            {add_button_label}
-                        </button>
-                    }.into_any()
-                } else {
-                    ().into_any()
-                }}
-            </div>
-            <textarea
-                class="min-h-32 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm text-card-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-70"
-                prop:value=move || value.get()
-                prop:placeholder=placeholder
-                disabled=move || disabled.get()
-                on:input=move |event| on_input.run(event_target_value(&event))
-            ></textarea>
-        </div>
     }
 }
 
@@ -4813,7 +238,7 @@ pub fn ModuleDetailPanel(
             <div class="flex items-start justify-between gap-3">
                 <div class="space-y-1">
                     <h3 class="text-base font-semibold text-card-foreground">
-                        {tr(locale, "Module detail", "Детали модуля")}
+                        {tr(locale, "Module detail", "Р”РµС‚Р°Р»Рё РјРѕРґСѓР»СЏ")}
                     </h3>
                     <p class="text-sm text-muted-foreground">
                         {match detail.as_ref() {
@@ -4824,17 +249,17 @@ pub fn ModuleDetailPanel(
                                 tr(
                                     locale,
                                     "metadata from the internal marketplace catalog.",
-                                    "— метаданные из внутреннего marketplace-каталога.",
+                                    "вЂ” РјРµС‚Р°РґР°РЅРЅС‹Рµ РёР· РІРЅСѓС‚СЂРµРЅРЅРµРіРѕ marketplace-РєР°С‚Р°Р»РѕРіР°.",
                                 )
                             ),
                             None if loading.get() => format!(
                                 "{} {}",
-                                tr(locale, "Loading", "Загрузка"),
+                                tr(locale, "Loading", "Р—Р°РіСЂСѓР·РєР°"),
                                 selected_slug
                             ),
                             None => format!(
                                 "{} {}.",
-                                tr(locale, "No catalog entry resolved for", "Не удалось найти запись каталога для"),
+                                tr(locale, "No catalog entry resolved for", "РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°Р№С‚Рё Р·Р°РїРёСЃСЊ РєР°С‚Р°Р»РѕРіР° РґР»СЏ"),
                                 selected_slug
                             ),
                         }}
@@ -4845,7 +270,7 @@ pub fn ModuleDetailPanel(
                     class="inline-flex items-center justify-center rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                     on:click=move |_| on_close.run(())
                 >
-                    {tr(locale, "Close", "Закрыть")}
+                    {tr(locale, "Close", "Р—Р°РєСЂС‹С‚СЊ")}
                 </button>
             </div>
 
@@ -4856,7 +281,7 @@ pub fn ModuleDetailPanel(
                         {tr(
                             locale,
                             "The selected module is not available in the current catalog snapshot.",
-                            "Выбранный модуль недоступен в текущем снимке каталога.",
+                            "Р’С‹Р±СЂР°РЅРЅС‹Р№ РјРѕРґСѓР»СЊ РЅРµРґРѕСЃС‚СѓРїРµРЅ РІ С‚РµРєСѓС‰РµРј СЃРЅРёРјРєРµ РєР°С‚Р°Р»РѕРіР°.",
                         )}
                     </p>
                 }
@@ -5105,7 +530,7 @@ pub fn ModuleDetailPanel(
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5151,7 +576,7 @@ pub fn ModuleDetailPanel(
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5174,7 +599,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5187,7 +612,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5241,7 +666,7 @@ pub fn ModuleDetailPanel(
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5260,7 +685,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5273,7 +698,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5329,7 +754,7 @@ pub fn ModuleDetailPanel(
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5348,7 +773,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5361,7 +786,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5417,7 +842,7 @@ pub fn ModuleDetailPanel(
                                 set_governance_confirmation_action.set(None);
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5436,7 +861,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5449,7 +874,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5505,7 +930,7 @@ pub fn ModuleDetailPanel(
                                 set_governance_intent_action.set(Some("reject".to_string()));
                                 let Some(request_id) = request_id.clone() else {
                                     set_governance_error.set(Some(
-                                        tr(locale, "No publish request available.", "Нет доступного publish-запроса.")
+                                        tr(locale, "No publish request available.", "РќРµС‚ РґРѕСЃС‚СѓРїРЅРѕРіРѕ publish-Р·Р°РїСЂРѕСЃР°.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5524,7 +949,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5537,7 +962,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5626,7 +1051,7 @@ pub fn ModuleDetailPanel(
                                         tr(
                                             locale,
                                             "New owner user id is required.",
-                                            "Нужно указать user id нового владельца."
+                                            "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ user id РЅРѕРІРѕРіРѕ РІР»Р°РґРµР»СЊС†Р°."
                                         )
                                         .to_string(),
                                     ));
@@ -5640,7 +1065,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5653,7 +1078,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5743,7 +1168,7 @@ pub fn ModuleDetailPanel(
                                     && reason.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                        tr(locale, "Reason is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РїСЂРёС‡РёРЅСѓ.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5756,7 +1181,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5852,21 +1277,21 @@ pub fn ModuleDetailPanel(
                                         </span>
                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                                             {if module.compatible {
-                                                tr(locale, "Compatible", "Совместим")
+                                                tr(locale, "Compatible", "РЎРѕРІРјРµСЃС‚РёРј")
                                             } else {
-                                                tr(locale, "Compatibility risk", "Риск совместимости")
+                                                tr(locale, "Compatibility risk", "Р РёСЃРє СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё")
                                             }}
                                         </span>
                                         {module.signature_present.then(|| view! {
                                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                                {tr(locale, "Signed", "Подписан")}
+                                                {tr(locale, "Signed", "РџРѕРґРїРёСЃР°РЅ")}
                                             </span>
                                         })}
                                         {module.installed.then(|| view! {
                                             <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
                                                 {format!(
                                                     "{}{}",
-                                                    tr(locale, "Installed", "Установлен"),
+                                                    tr(locale, "Installed", "РЈСЃС‚Р°РЅРѕРІР»РµРЅ"),
                                                     module
                                                         .installed_version
                                                         .as_ref()
@@ -5877,7 +1302,7 @@ pub fn ModuleDetailPanel(
                                         })}
                                         {module.update_available.then(|| view! {
                                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                                {tr(locale, "Update available", "Доступно обновление")}
+                                                {tr(locale, "Update available", "Р”РѕСЃС‚СѓРїРЅРѕ РѕР±РЅРѕРІР»РµРЅРёРµ")}
                                             </span>
                                         })}
                                     </div>
@@ -5904,11 +1329,11 @@ pub fn ModuleDetailPanel(
                                     </span>
                                     <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                         {if primary_here {
-                                            tr(locale, "Primary for this admin", "Primary для этой admin-поверхности")
+                                            tr(locale, "Primary for this admin", "Primary РґР»СЏ СЌС‚РѕР№ admin-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё")
                                         } else if showcase_here {
-                                            tr(locale, "Showcase for this admin", "Showcase для этой admin-поверхности")
+                                            tr(locale, "Showcase for this admin", "Showcase РґР»СЏ СЌС‚РѕР№ admin-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё")
                                         } else {
-                                            tr(locale, "No dedicated UI for this admin", "Для этой admin-поверхности нет выделенного UI")
+                                            tr(locale, "No dedicated UI for this admin", "Р”Р»СЏ СЌС‚РѕР№ admin-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё РЅРµС‚ РІС‹РґРµР»РµРЅРЅРѕРіРѕ UI")
                                         }}
                                     </span>
                                 </div>
@@ -5916,7 +1341,7 @@ pub fn ModuleDetailPanel(
                                 <div class="grid gap-4 lg:grid-cols-2">
                                     <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Package metadata", "Метаданные пакета")}
+                                            {tr(locale, "Package metadata", "РњРµС‚Р°РґР°РЅРЅС‹Рµ РїР°РєРµС‚Р°")}
                                         </p>
                                         <dl class="mt-3 space-y-2">
                                             <div class="flex items-start justify-between gap-3">
@@ -5928,11 +1353,11 @@ pub fn ModuleDetailPanel(
                                                 <dd class="font-mono text-right">{module.crate_name.clone()}</dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "Publisher", "Издатель")}</dt>
-                                                <dd class="text-right">{module.publisher.clone().unwrap_or_else(|| tr(locale, "Workspace / unknown", "Workspace / неизвестно").to_string())}</dd>
+                                                <dt class="text-muted-foreground">{tr(locale, "Publisher", "РР·РґР°С‚РµР»СЊ")}</dt>
+                                                <dd class="text-right">{module.publisher.clone().unwrap_or_else(|| tr(locale, "Workspace / unknown", "Workspace / РЅРµРёР·РІРµСЃС‚РЅРѕ").to_string())}</dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "RusTok range", "Диапазон RusTok")}</dt>
+                                                <dt class="text-muted-foreground">{tr(locale, "RusTok range", "Р”РёР°РїР°Р·РѕРЅ RusTok")}</dt>
                                                 <dd class="text-right">
                                                     {format!(
                                                         "{}{}",
@@ -5940,21 +1365,21 @@ pub fn ModuleDetailPanel(
                                                             .rustok_min_version
                                                             .as_ref()
                                                             .map(|value| format!(">= {}", value))
-                                                            .unwrap_or_else(|| tr(locale, "no min", "без min").to_string()),
+                                                            .unwrap_or_else(|| tr(locale, "no min", "Р±РµР· min").to_string()),
                                                         module
                                                             .rustok_max_version
                                                             .as_ref()
                                                             .map(|value| format!(", <= {}", value))
-                                                            .unwrap_or_else(|| format!(", {}", tr(locale, "no max", "без max")))
+                                                            .unwrap_or_else(|| format!(", {}", tr(locale, "no max", "Р±РµР· max")))
                                                     )}
                                                 </dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "Checksum", "Контрольная сумма")}</dt>
-                                                <dd class="font-mono text-right">{checksum.unwrap_or_else(|| tr(locale, "Not published", "Не опубликован").to_string())}</dd>
+                                                <dt class="text-muted-foreground">{tr(locale, "Checksum", "РљРѕРЅС‚СЂРѕР»СЊРЅР°СЏ СЃСѓРјРјР°")}</dt>
+                                                <dd class="font-mono text-right">{checksum.unwrap_or_else(|| tr(locale, "Not published", "РќРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅ").to_string())}</dd>
                                             </div>
                                             <div class="flex items-start justify-between gap-3">
-                                                <dt class="text-muted-foreground">{tr(locale, "Latest published", "Последняя публикация")}</dt>
+                                                <dt class="text-muted-foreground">{tr(locale, "Latest published", "РџРѕСЃР»РµРґРЅСЏСЏ РїСѓР±Р»РёРєР°С†РёСЏ")}</dt>
                                                 <dd class="text-right">
                                                     {latest_release
                                                         .as_ref()
@@ -5964,10 +1389,10 @@ pub fn ModuleDetailPanel(
                                                             version
                                                                 .published_at
                                                                 .as_ref()
-                                                                .map(|value| format!(" · {}", value))
+                                                                .map(|value| format!(" В· {}", value))
                                                                 .unwrap_or_default()
                                                         ))
-                                                        .unwrap_or_else(|| tr(locale, "No active release", "Нет активного релиза").to_string())}
+                                                        .unwrap_or_else(|| tr(locale, "No active release", "РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ СЂРµР»РёР·Р°").to_string())}
                                                 </dd>
                                             </div>
                                         </dl>
@@ -5975,14 +1400,14 @@ pub fn ModuleDetailPanel(
 
                                     <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Surface policy", "Политика поверхностей")}
+                                            {tr(locale, "Surface policy", "РџРѕР»РёС‚РёРєР° РїРѕРІРµСЂС…РЅРѕСЃС‚РµР№")}
                                         </p>
                                         <div class="mt-3 space-y-3">
                                             <div class="flex flex-wrap gap-2">
                                                 {if module.recommended_admin_surfaces.is_empty() {
                                                     view! {
                                                         <span class="text-xs text-muted-foreground">
-                                                            {tr(locale, "No primary admin surface declared.", "Primary admin-поверхность не объявлена.")}
+                                                            {tr(locale, "No primary admin surface declared.", "Primary admin-РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РЅРµ РѕР±СЉСЏРІР»РµРЅР°.")}
                                                         </span>
                                                     }
                                                         .into_any()
@@ -6006,7 +1431,7 @@ pub fn ModuleDetailPanel(
                                                 {if module.showcase_admin_surfaces.is_empty() {
                                                     view! {
                                                         <span class="text-xs text-muted-foreground">
-                                                            {tr(locale, "No showcase admin surface declared.", "Showcase admin-поверхность не объявлена.")}
+                                                            {tr(locale, "No showcase admin surface declared.", "Showcase admin-РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РЅРµ РѕР±СЉСЏРІР»РµРЅР°.")}
                                                         </span>
                                                     }
                                                         .into_any()
@@ -6028,9 +1453,9 @@ pub fn ModuleDetailPanel(
                                             </div>
                                             <div class="text-xs text-muted-foreground">
                                                 {if module.dependencies.is_empty() {
-                                                    tr(locale, "No module dependencies declared.", "Зависимости модуля не объявлены.").to_string()
+                                                    tr(locale, "No module dependencies declared.", "Р—Р°РІРёСЃРёРјРѕСЃС‚Рё РјРѕРґСѓР»СЏ РЅРµ РѕР±СЉСЏРІР»РµРЅС‹.").to_string()
                                                 } else {
-                                                    format!("{}: {}", tr(locale, "Depends on", "Зависит от"), module.dependencies.join(", "))
+                                                    format!("{}: {}", tr(locale, "Depends on", "Р—Р°РІРёСЃРёС‚ РѕС‚"), module.dependencies.join(", "))
                                                 }}
                                             </div>
                                         </div>
@@ -6040,26 +1465,26 @@ pub fn ModuleDetailPanel(
                                 <div class="rounded-lg border border-border bg-background/70 p-4 text-sm">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Publish lifecycle", "Жизненный цикл публикации")}
+                                            {tr(locale, "Publish lifecycle", "Р–РёР·РЅРµРЅРЅС‹Р№ С†РёРєР» РїСѓР±Р»РёРєР°С†РёРё")}
                                         </p>
                                         {latest_registry_request.as_ref().map(|request| {
                                             view! {
                                                 <span class=registry_request_status_badge_classes(&request.status)>
-                                                    {format!("{}: {}", tr(locale, "Request", "Запрос"), humanize_token(&request.status))}
+                                                    {format!("{}: {}", tr(locale, "Request", "Р—Р°РїСЂРѕСЃ"), humanize_token(&request.status))}
                                                 </span>
                                             }
                                         })}
                                         {latest_registry_release.as_ref().map(|release| {
                                             view! {
                                                 <span class=registry_request_status_badge_classes(&release.status)>
-                                                    {format!("{}: {}", tr(locale, "Release", "Релиз"), humanize_token(&release.status))}
+                                                    {format!("{}: {}", tr(locale, "Release", "Р РµР»РёР·"), humanize_token(&release.status))}
                                                 </span>
                                             }
                                         })}
                                         {if latest_registry_request.is_none() && latest_registry_release.is_none() {
                                             view! {
                                                 <span class=registry_request_status_badge_classes("info")>
-                                                    {tr(locale, "No V2 activity yet", "Активности V2 пока нет")}
+                                                    {tr(locale, "No V2 activity yet", "РђРєС‚РёРІРЅРѕСЃС‚Рё V2 РїРѕРєР° РЅРµС‚")}
                                                 </span>
                                             }.into_any()
                                         } else {
@@ -6068,88 +1493,88 @@ pub fn ModuleDetailPanel(
                                     </div>
                                     <dl class="mt-3 space-y-2">
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Owner binding", "Связка владельца")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Owner binding", "РЎРІСЏР·РєР° РІР»Р°РґРµР»СЊС†Р°")}</dt>
                                             <dd class="text-right">
                                                 {registry_owner_binding
                                                     .as_ref()
                                                     .map(|owner| owner.owner.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No persisted owner binding", "Нет сохранённой связки владельца").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No persisted owner binding", "РќРµС‚ СЃРѕС…СЂР°РЅС‘РЅРЅРѕР№ СЃРІСЏР·РєРё РІР»Р°РґРµР»СЊС†Р°").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Owner bound by", "Кем привязан владелец")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Owner bound by", "РљРµРј РїСЂРёРІСЏР·Р°РЅ РІР»Р°РґРµР»РµС†")}</dt>
                                             <dd class="text-right">
                                                 {registry_owner_binding
                                                     .as_ref()
                                                     .map(|owner| owner.bound_by.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No owner transfer history", "Истории привязки владельца нет").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No owner transfer history", "РСЃС‚РѕСЂРёРё РїСЂРёРІСЏР·РєРё РІР»Р°РґРµР»СЊС†Р° РЅРµС‚").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Owner updated", "Владелец обновлён")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Owner updated", "Р’Р»Р°РґРµР»РµС† РѕР±РЅРѕРІР»С‘РЅ")}</dt>
                                             <dd class="text-right">
                                                 {registry_owner_binding
                                                     .as_ref()
                                                     .map(|owner| owner.updated_at.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No owner activity", "Активности по владельцу нет").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No owner activity", "РђРєС‚РёРІРЅРѕСЃС‚Рё РїРѕ РІР»Р°РґРµР»СЊС†Сѓ РЅРµС‚").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Latest request", "Последний запрос")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Latest request", "РџРѕСЃР»РµРґРЅРёР№ Р·Р°РїСЂРѕСЃ")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
-                                                    .map(|request| format!("{} · {}", request.id, humanize_token(&request.status)))
-                                                    .unwrap_or_else(|| tr(locale, "No publish request recorded", "Запросов на публикацию пока нет").to_string())}
+                                                    .map(|request| format!("{} В· {}", request.id, humanize_token(&request.status)))
+                                                    .unwrap_or_else(|| tr(locale, "No publish request recorded", "Р—Р°РїСЂРѕСЃРѕРІ РЅР° РїСѓР±Р»РёРєР°С†РёСЋ РїРѕРєР° РЅРµС‚").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Request principal", "Принципал запроса")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Request principal", "РџСЂРёРЅС†РёРїР°Р» Р·Р°РїСЂРѕСЃР°")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
                                                     .map(|request| request.requested_by.clone())
-                                                    .unwrap_or_else(|| tr(locale, "Unknown", "Неизвестно").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "Unknown", "РќРµРёР·РІРµСЃС‚РЅРѕ").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Request publisher", "Издатель запроса")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Request publisher", "РР·РґР°С‚РµР»СЊ Р·Р°РїСЂРѕСЃР°")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
                                                     .and_then(|request| request.publisher.clone())
-                                                    .unwrap_or_else(|| tr(locale, "Not persisted", "Не сохранён").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "Not persisted", "РќРµ СЃРѕС…СЂР°РЅС‘РЅ").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Request updated", "Запрос обновлён")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Request updated", "Р—Р°РїСЂРѕСЃ РѕР±РЅРѕРІР»С‘РЅ")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_request
                                                     .as_ref()
                                                     .map(|request| request.updated_at.clone())
-                                                    .unwrap_or_else(|| tr(locale, "No request activity", "Активности по запросу нет").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No request activity", "РђРєС‚РёРІРЅРѕСЃС‚Рё РїРѕ Р·Р°РїСЂРѕСЃСѓ РЅРµС‚").to_string())}
                                             </dd>
                                         </div>
                                         <div class="flex items-start justify-between gap-3">
-                                            <dt class="text-muted-foreground">{tr(locale, "Latest release state", "Состояние последнего релиза")}</dt>
+                                            <dt class="text-muted-foreground">{tr(locale, "Latest release state", "РЎРѕСЃС‚РѕСЏРЅРёРµ РїРѕСЃР»РµРґРЅРµРіРѕ СЂРµР»РёР·Р°")}</dt>
                                             <dd class="text-right">
                                                 {latest_registry_release
                                                     .as_ref()
                                                     .map(|release: &RegistryReleaseLifecycle| format!(
-                                                        "v{} · {}{}",
+                                                        "v{} В· {}{}",
                                                         release.version,
                                                         humanize_token(&release.status),
                                                         if status_eq(&release.status, "yanked") {
                                                             release
                                                                 .yanked_at
                                                                 .as_ref()
-                                                                .map(|value| format!(" · {}", value))
+                                                                .map(|value| format!(" В· {}", value))
                                                                 .unwrap_or_default()
                                                         } else {
-                                                            format!(" · {}", release.published_at)
+                                                            format!(" В· {}", release.published_at)
                                                         }
                                                     ))
-                                                    .unwrap_or_else(|| tr(locale, "No persisted release state", "Сохранённого состояния релиза нет").to_string())}
+                                                    .unwrap_or_else(|| tr(locale, "No persisted release state", "РЎРѕС…СЂР°РЅС‘РЅРЅРѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ СЂРµР»РёР·Р° РЅРµС‚").to_string())}
                                             </dd>
                                         </div>
                                     </dl>
@@ -6157,31 +1582,31 @@ pub fn ModuleDetailPanel(
                                     <Show when=move || show_validation_summary>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Validation summary", "Сводка валидации")}
+                                                {tr(locale, "Validation summary", "РЎРІРѕРґРєР° РІР°Р»РёРґР°С†РёРё")}
                                             </p>
                                             <div class="flex flex-wrap gap-2 text-xs">
                                                 {validation_outcome_summary.as_ref().map(|outcome| {
                                                     view! {
                                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Outcome", "Итог"), outcome)}
+                                                            {format!("{}: {}", tr(locale, "Outcome", "РС‚РѕРі"), outcome)}
                                                         </span>
                                                     }
                                                 })}
                                                 <Show when=move || review_ready>
                                                     <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                                        {tr(locale, "Ready for review", "Готов к review")}
+                                                        {tr(locale, "Ready for review", "Р“РѕС‚РѕРІ Рє review")}
                                                     </span>
                                                 </Show>
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                    {format!("{}: {}", tr(locale, "Warnings", "Предупреждения"), validation_warning_items.len())}
+                                                    {format!("{}: {}", tr(locale, "Warnings", "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ"), validation_warning_items.len())}
                                                 </span>
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                    {format!("{}: {}", tr(locale, "Errors", "Ошибки"), validation_error_items.len())}
+                                                    {format!("{}: {}", tr(locale, "Errors", "РћС€РёР±РєРё"), validation_error_items.len())}
                                                 </span>
                                                 {latest_validation_event_summary.as_ref().map(|(title, _, created_at, _)| {
                                                     view! {
                                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                            {format!("{}: {} · {}", tr(locale, "Last event", "Последнее событие"), title, created_at)}
+                                                            {format!("{}: {} В· {}", tr(locale, "Last event", "РџРѕСЃР»РµРґРЅРµРµ СЃРѕР±С‹С‚РёРµ"), title, created_at)}
                                                         </span>
                                                     }
                                                 })}
@@ -6192,7 +1617,7 @@ pub fn ModuleDetailPanel(
                                                         <p class="font-medium text-card-foreground">{title.clone()}</p>
                                                         <p class="mt-1">{summary.clone()}</p>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {} · {}", tr(locale, "Principal", "Принципал"), actor, created_at)}
+                                                            {format!("{}: {} В· {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor, created_at)}
                                                         </p>
                                                     </div>
                                                 }
@@ -6232,7 +1657,7 @@ pub fn ModuleDetailPanel(
                                                             </div>
                                                         </Show>
                                                         <p class="mt-2 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Principal", "Принципал"), actor)}
+                                                            {format!("{}: {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor)}
                                                         </p>
                                                     </div>
                                                 }
@@ -6263,7 +1688,7 @@ pub fn ModuleDetailPanel(
                                             </Show>
                                             <Show when=move || has_validation_warnings>
                                                 <div class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                                    <p class="font-medium">{tr(locale, "Warnings", "Предупреждения")}</p>
+                                                    <p class="font-medium">{tr(locale, "Warnings", "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ")}</p>
                                                     <div class="mt-2 space-y-1">
                                                         {validation_warning_items_for_show.get_value().into_iter().map(|warning| {
                                                             view! { <p>{warning}</p> }
@@ -6273,7 +1698,7 @@ pub fn ModuleDetailPanel(
                                             </Show>
                                             <Show when=move || has_validation_errors>
                                                 <div class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                                                    <p class="font-medium">{tr(locale, "Errors", "Ошибки")}</p>
+                                                    <p class="font-medium">{tr(locale, "Errors", "РћС€РёР±РєРё")}</p>
                                                     <div class="mt-2 space-y-1">
                                                         {validation_error_items_for_show.get_value().into_iter().map(|error| {
                                                             view! { <p>{error}</p> }
@@ -6284,7 +1709,7 @@ pub fn ModuleDetailPanel(
                                             {validation_rejection_reason.as_ref().map(|reason| {
                                                 view! {
                                                     <div class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                                                        <p class="font-medium">{tr(locale, "Rejection reason", "Причина отклонения")}</p>
+                                                        <p class="font-medium">{tr(locale, "Rejection reason", "РџСЂРёС‡РёРЅР° РѕС‚РєР»РѕРЅРµРЅРёСЏ")}</p>
                                                         <p class="mt-2">{reason.clone()}</p>
                                                     </div>
                                                 }
@@ -6326,29 +1751,29 @@ pub fn ModuleDetailPanel(
                                                         </div>
                                                         <p class="mt-1">{stage.detail.clone()}</p>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Attempt", "Попытка"), stage.attempt_number)}
+                                                            {format!("{}: {}", tr(locale, "Attempt", "РџРѕРїС‹С‚РєР°"), stage.attempt_number)}
                                                         </p>
                                                         {stage.started_at.as_ref().map(|started_at| {
                                                             view! {
                                                                 <p class="mt-1 text-[11px] text-muted-foreground">
-                                                                    {format!("{}: {}", tr(locale, "Started", "Начато"), started_at)}
+                                                                    {format!("{}: {}", tr(locale, "Started", "РќР°С‡Р°С‚Рѕ"), started_at)}
                                                                 </p>
                                                             }
                                                         })}
                                                         {stage.finished_at.as_ref().map(|finished_at| {
                                                             view! {
                                                                 <p class="mt-1 text-[11px] text-muted-foreground">
-                                                                    {format!("{}: {}", tr(locale, "Finished", "Завершено"), finished_at)}
+                                                                    {format!("{}: {}", tr(locale, "Finished", "Р—Р°РІРµСЂС€РµРЅРѕ"), finished_at)}
                                                                 </p>
                                                             }
                                                         })}
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Updated", "Обновлено"), stage.updated_at)}
+                                                            {format!("{}: {}", tr(locale, "Updated", "РћР±РЅРѕРІР»РµРЅРѕ"), stage.updated_at)}
                                                         </p>
                                                         <Show when=move || has_stage_history>
                                                             <div class="mt-2 space-y-2 border-t border-border/70 pt-2">
                                                                 <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                    {tr(locale, "Recent stage history", "Недавняя история этапа")}
+                                                                    {tr(locale, "Recent stage history", "РќРµРґР°РІРЅСЏСЏ РёСЃС‚РѕСЂРёСЏ СЌС‚Р°РїР°")}
                                                                 </p>
                                                                 {stage_history_for_show.get_value().into_iter().map(|event| {
                                                                     let title = governance_event_title(&event.event_type, locale);
@@ -6358,7 +1783,7 @@ pub fn ModuleDetailPanel(
                                                                             <p class="font-medium text-card-foreground">{title}</p>
                                                                             <p class="mt-1">{summary}</p>
                                                                             <p class="mt-1 text-[10px] text-muted-foreground">
-                                                                                {format!("{} · {}", event.actor, event.created_at)}
+                                                                                {format!("{} В· {}", event.actor, event.created_at)}
                                                                             </p>
                                                                         </div>
                                                                     }
@@ -6396,7 +1821,7 @@ pub fn ModuleDetailPanel(
                                                         </div>
                                                         <p class="mt-1">{gate.detail}</p>
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Updated", "Обновлено"), gate.updated_at)}
+                                                            {format!("{}: {}", tr(locale, "Updated", "РћР±РЅРѕРІР»РµРЅРѕ"), gate.updated_at)}
                                                         </p>
                                                     </div>
                                                 }
@@ -6406,7 +1831,7 @@ pub fn ModuleDetailPanel(
                                     <Show when=move || !review_policy_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Moderation policy", "Политика модерации")}
+                                                {tr(locale, "Moderation policy", "РџРѕР»РёС‚РёРєР° РјРѕРґРµСЂР°С†РёРё")}
                                             </p>
                                             {review_policy_lines.clone().into_iter().map(|line| {
                                                 view! {
@@ -6420,7 +1845,7 @@ pub fn ModuleDetailPanel(
                                     <Show when=move || !next_action_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Next actions", "Следующие действия")}
+                                                {tr(locale, "Next actions", "РЎР»РµРґСѓСЋС‰РёРµ РґРµР№СЃС‚РІРёСЏ")}
                                             </p>
                                             {next_action_lines.clone().into_iter().map(|line| {
                                                 view! {
@@ -6434,10 +1859,10 @@ pub fn ModuleDetailPanel(
                                     <Show when=move || !operator_command_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Operator commands", "Команды оператора")}
+                                                {tr(locale, "Operator commands", "РљРѕРјР°РЅРґС‹ РѕРїРµСЂР°С‚РѕСЂР°")}
                                             </p>
                                             {operator_command_lines.clone().into_iter().map(|line| {
-                                                let copy_label = tr(locale, "Copy", "Копировать");
+                                                let copy_label = tr(locale, "Copy", "РљРѕРїРёСЂРѕРІР°С‚СЊ");
                                                 let line_for_copy = line.clone();
                                                 view! {
                                                     <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 text-xs text-card-foreground">
@@ -6456,19 +1881,19 @@ pub fn ModuleDetailPanel(
                                     <Show when=move || !live_api_action_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Live API actions", "Live API-действия")}
+                                                {tr(locale, "Live API actions", "Live API-РґРµР№СЃС‚РІРёСЏ")}
                                             </p>
                                             {live_api_action_lines.clone().into_iter().map(|item| {
-                                                let copy_label = tr(locale, "Copy", "Копировать");
-                                                let copy_curl_label = tr(locale, "Copy cURL", "Копировать cURL");
-                                                let copy_xtask_label = tr(locale, "Copy xtask", "Копировать xtask");
+                                                let copy_label = tr(locale, "Copy", "РљРѕРїРёСЂРѕРІР°С‚СЊ");
+                                                let copy_curl_label = tr(locale, "Copy cURL", "РљРѕРїРёСЂРѕРІР°С‚СЊ cURL");
+                                                let copy_xtask_label = tr(locale, "Copy xtask", "РљРѕРїРёСЂРѕРІР°С‚СЊ xtask");
                                                 let line_for_copy = item.endpoint.clone();
                                                 let curl_snippet = curl_snippet_for_live_api_action(&item);
                                                 let curl_for_copy = curl_snippet.clone();
                                                 let xtask_for_copy = item.xtask_hint.clone();
-                                                let authority_label = tr(locale, "Allowed actor", "Кто может вызывать");
-                                                let body_label = tr(locale, "Request body", "Тело запроса");
-                                                let headers_label = tr(locale, "Headers", "Заголовки");
+                                                let authority_label = tr(locale, "Allowed actor", "РљС‚Рѕ РјРѕР¶РµС‚ РІС‹Р·С‹РІР°С‚СЊ");
+                                                let body_label = tr(locale, "Request body", "РўРµР»Рѕ Р·Р°РїСЂРѕСЃР°");
+                                                let headers_label = tr(locale, "Headers", "Р—Р°РіРѕР»РѕРІРєРё");
                                                 let curl_label = tr(locale, "cURL", "cURL");
                                                 let xtask_label = tr(locale, "xtask", "xtask");
                                                 let action_kind_label = if item.write_path {
@@ -6575,7 +2000,7 @@ pub fn ModuleDetailPanel(
                                         <div class="mt-3 space-y-3 rounded-lg border border-border bg-background p-3">
                                             <div class="flex flex-wrap items-center justify-between gap-3">
                                                 <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                    {tr(locale, "Interactive actions", "Интерактивные действия")}
+                                                    {tr(locale, "Interactive actions", "РРЅС‚РµСЂР°РєС‚РёРІРЅС‹Рµ РґРµР№СЃС‚РІРёСЏ")}
                                                 </p>
                                                 <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
                                                     <input
@@ -6596,7 +2021,7 @@ pub fn ModuleDetailPanel(
                                             <Show when=move || governance_status_contract.get().is_some_and(|status| status.approval_override_required)>
                                                 <div class="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-900">
                                                     <p class="font-medium">
-                                                        {tr(locale, "Approval override required", "Нужен approval override")}
+                                                        {tr(locale, "Approval override required", "РќСѓР¶РµРЅ approval override")}
                                                     </p>
                                                     <ul class="list-disc space-y-1 pl-4">
                                                         {move || governance_status_contract
@@ -6617,7 +2042,7 @@ pub fn ModuleDetailPanel(
                                                             return tr(
                                                                 locale,
                                                                 "Refreshing authenticated request status contract...",
-                                                                "Обновляется аутентифицированный контракт статуса запроса...",
+                                                                "РћР±РЅРѕРІР»СЏРµС‚СЃСЏ Р°СѓС‚РµРЅС‚РёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ РєРѕРЅС‚СЂР°РєС‚ СЃС‚Р°С‚СѓСЃР° Р·Р°РїСЂРѕСЃР°...",
                                                             )
                                                             .to_string();
                                                         }
@@ -6627,7 +2052,7 @@ pub fn ModuleDetailPanel(
                                                                 tr(
                                                                     locale,
                                                                     "Authenticated request status is unavailable; request-level actions stay disabled until the fetch succeeds.",
-                                                                    "Аутентифицированный статус запроса недоступен; request-level действия останутся выключенными, пока fetch не пройдет.",
+                                                                    "РђСѓС‚РµРЅС‚РёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ СЃС‚Р°С‚СѓСЃ Р·Р°РїСЂРѕСЃР° РЅРµРґРѕСЃС‚СѓРїРµРЅ; request-level РґРµР№СЃС‚РІРёСЏ РѕСЃС‚Р°РЅСѓС‚СЃСЏ РІС‹РєР»СЋС‡РµРЅРЅС‹РјРё, РїРѕРєР° fetch РЅРµ РїСЂРѕР№РґРµС‚.",
                                                                 ),
                                                                 error
                                                             );
@@ -6635,19 +2060,19 @@ pub fn ModuleDetailPanel(
                                                         if let Some(status) = governance_status_contract.get() {
                                                             return format!(
                                                                 "{}: {}{}",
-                                                                tr(locale, "Authenticated request contract", "Аутентифицированный контракт запроса"),
+                                                                tr(locale, "Authenticated request contract", "РђСѓС‚РµРЅС‚РёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ РєРѕРЅС‚СЂР°РєС‚ Р·Р°РїСЂРѕСЃР°"),
                                                                 humanize_token(&status.status),
                                                                 status
                                                                     .next_step
                                                                     .as_ref()
-                                                                    .map(|next_step| format!(" · {}", next_step))
+                                                                    .map(|next_step| format!(" В· {}", next_step))
                                                                     .unwrap_or_default()
                                                             );
                                                         }
                                                         tr(
                                                             locale,
                                                             "Sign in with a session-backed user token to load the authoritative request-level governance contract. Until then, request-level actions stay read-only.",
-                                                            "Войдите с session-backed user token, чтобы загрузить authoritative request-level governance contract. До этого request-level действия остаются read-only.",
+                                                            "Р’РѕР№РґРёС‚Рµ СЃ session-backed user token, С‡С‚РѕР±С‹ Р·Р°РіСЂСѓР·РёС‚СЊ authoritative request-level governance contract. Р”Рѕ СЌС‚РѕРіРѕ request-level РґРµР№СЃС‚РІРёСЏ РѕСЃС‚Р°СЋС‚СЃСЏ read-only.",
                                                         )
                                                         .to_string()
                                                     }}
@@ -6658,7 +2083,7 @@ pub fn ModuleDetailPanel(
                                                     value=Signal::derive(move || governance_new_owner_user_id.get())
                                                     set_value=set_governance_new_owner_user_id
                                                     placeholder=tr(locale, "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000")
-                                                    label=tr(locale, "New owner user id", "User id нового владельца")
+                                                    label=tr(locale, "New owner user id", "User id РЅРѕРІРѕРіРѕ РІР»Р°РґРµР»СЊС†Р°")
                                                 />
                                                 <Input
                                                     value=Signal::derive(move || governance_reason_code.get())
@@ -6672,7 +2097,7 @@ pub fn ModuleDetailPanel(
                                                 />
                                                 <div class="flex flex-col gap-2">
                                                     <label class="text-sm font-medium leading-none">
-                                                        {tr(locale, "Reason", "Причина")}
+                                                        {tr(locale, "Reason", "РџСЂРёС‡РёРЅР°")}
                                                     </label>
                                                     <textarea
                                                         class="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
@@ -6724,21 +2149,21 @@ pub fn ModuleDetailPanel(
                                                     disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "request_changes"))
                                                     on_click=on_request_changes_request
                                                 >
-                                                    {tr(locale, "Request changes", "Запросить изменения")}
+                                                    {tr(locale, "Request changes", "Р—Р°РїСЂРѕСЃРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ")}
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
                                                     disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "hold"))
                                                     on_click=on_hold_request
                                                 >
-                                                    {tr(locale, "Hold", "Поставить на hold")}
+                                                    {tr(locale, "Hold", "РџРѕСЃС‚Р°РІРёС‚СЊ РЅР° hold")}
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
                                                     disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "resume"))
                                                     on_click=on_resume_request
                                                 >
-                                                    {tr(locale, "Resume", "Возобновить")}
+                                                    {tr(locale, "Resume", "Р’РѕР·РѕР±РЅРѕРІРёС‚СЊ")}
                                                 </Button>
                                                 <Button
                                                     class="h-8 px-3 py-1 text-xs"
@@ -6750,7 +2175,7 @@ pub fn ModuleDetailPanel(
                                                             && governance_confirmation_action.get().as_deref()
                                                                 == Some("reject")
                                                         {
-                                                            tr(locale, "Confirm reject", "Подтвердить отклонение")
+                                                            tr(locale, "Confirm reject", "РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕС‚РєР»РѕРЅРµРЅРёРµ")
                                                         } else {
                                                             tr(locale, "Reject", "Reject")
                                                         }
@@ -6766,7 +2191,7 @@ pub fn ModuleDetailPanel(
                                                             && governance_confirmation_action.get().as_deref()
                                                                 == Some("owner-transfer")
                                                         {
-                                                            tr(locale, "Confirm owner transfer", "Подтвердить передачу")
+                                                            tr(locale, "Confirm owner transfer", "РџРѕРґС‚РІРµСЂРґРёС‚СЊ РїРµСЂРµРґР°С‡Сѓ")
                                                         } else {
                                                             tr(locale, "Owner transfer", "Owner transfer")
                                                         }
@@ -6782,7 +2207,7 @@ pub fn ModuleDetailPanel(
                                                             && governance_confirmation_action.get().as_deref()
                                                                 == Some("yank")
                                                         {
-                                                            tr(locale, "Confirm yank", "Подтвердить отзыв")
+                                                            tr(locale, "Confirm yank", "РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕС‚Р·С‹РІ")
                                                         } else {
                                                             tr(locale, "Yank", "Yank")
                                                         }
@@ -6799,7 +2224,7 @@ pub fn ModuleDetailPanel(
                                                         on_refresh_detail.run(())
                                                     })
                                                 >
-                                                    {tr(locale, "Refresh", "Обновить")}
+                                                    {tr(locale, "Refresh", "РћР±РЅРѕРІРёС‚СЊ")}
                                                 </Button>
                                             </div>
                                             <Show when=move || governance_confirmation_action.get().is_some() && !governance_dry_run.get()>
@@ -6833,14 +2258,14 @@ pub fn ModuleDetailPanel(
                                                                 set_governance_feedback.set(None);
                                                             })
                                                         >
-                                                            {tr(locale, "Cancel", "Отмена")}
+                                                            {tr(locale, "Cancel", "РћС‚РјРµРЅР°")}
                                                         </Button>
                                                     </div>
                                                 </div>
                                             </Show>
                                             <Show when=move || governance_submitting.get()>
                                                 <div class="rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                                                    {tr(locale, "Submitting registry governance action...", "Отправка registry governance-действия...")}
+                                                    {tr(locale, "Submitting registry governance action...", "РћС‚РїСЂР°РІРєР° registry governance-РґРµР№СЃС‚РІРёСЏ...")}
                                                 </div>
                                             </Show>
                                             <Show when=move || governance_feedback.get().is_some()>
@@ -6866,7 +2291,7 @@ pub fn ModuleDetailPanel(
                                                     <Show when=move || governance_result.get().is_some_and(|result| !result.warnings.is_empty())>
                                                         <div class="space-y-1">
                                                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                {tr(locale, "Warnings", "Предупреждения")}
+                                                                {tr(locale, "Warnings", "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ")}
                                                             </p>
                                                             {move || governance_result
                                                                 .get()
@@ -6883,7 +2308,7 @@ pub fn ModuleDetailPanel(
                                                     <Show when=move || governance_result.get().is_some_and(|result| !result.errors.is_empty())>
                                                         <div class="space-y-1">
                                                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                {tr(locale, "Errors", "Ошибки")}
+                                                                {tr(locale, "Errors", "РћС€РёР±РєРё")}
                                                             </p>
                                                             {move || governance_result
                                                                 .get()
@@ -6900,7 +2325,7 @@ pub fn ModuleDetailPanel(
                                                     {move || governance_result.get().and_then(|result| result.next_step).map(|next_step| view! {
                                                         <div>
                                                             <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                {tr(locale, "Next step", "Следующий шаг")}
+                                                                {tr(locale, "Next step", "РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі")}
                                                             </p>
                                                             <p class="mt-1 text-[11px] text-muted-foreground">{next_step}</p>
                                                         </div>
@@ -6962,7 +2387,7 @@ pub fn ModuleDetailPanel(
                                                                 </div>
                                                             </Show>
                                                             <p class="mt-2 text-xs text-muted-foreground">
-                                                                {format!("{}: {}", tr(locale, "Principal", "Принципал"), actor)}
+                                                                {format!("{}: {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor)}
                                                             </p>
                                                         </div>
                                                     }
@@ -6971,7 +2396,7 @@ pub fn ModuleDetailPanel(
                                         </Show>
                                         <div class="mt-4 space-y-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Audit trail", "Аудит-след")}
+                                                {tr(locale, "Audit trail", "РђСѓРґРёС‚-СЃР»РµРґ")}
                                             </p>
                                             {recent_governance_events_for_show.get_value().into_iter().map(|event| {
                                                 let title = governance_event_title(&event.event_type, locale);
@@ -6987,10 +2412,10 @@ pub fn ModuleDetailPanel(
                                                         </div>
                                                         <p class="mt-2 text-sm text-muted-foreground">{summary}</p>
                                                         <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                                                            <span>{format!("{}: {}", tr(locale, "Principal", "Принципал"), actor)}</span>
+                                                            <span>{format!("{}: {}", tr(locale, "Principal", "РџСЂРёРЅС†РёРїР°Р»"), actor)}</span>
                                                             {publisher.map(|publisher| {
                                                                 view! {
-                                                                    <span>{format!("{}: {}", tr(locale, "Publisher", "Издатель"), publisher)}</span>
+                                                                    <span>{format!("{}: {}", tr(locale, "Publisher", "РР·РґР°С‚РµР»СЊ"), publisher)}</span>
                                                                 }
                                                             })}
                                                         </div>
@@ -7005,20 +2430,20 @@ pub fn ModuleDetailPanel(
                                     <div class="rounded-lg border border-border bg-background/70 p-4">
                                         <div class="flex flex-wrap items-center gap-2">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Registry readiness", "Готовность к registry")}
+                                                {tr(locale, "Registry readiness", "Р“РѕС‚РѕРІРЅРѕСЃС‚СЊ Рє registry")}
                                             </p>
                                             <span class=metadata_status_badge_classes(if metadata_required_issues > 0 { "warn" } else { "ready" })>
                                                 {if metadata_required_issues > 0 {
                                                     format!("{} required issue(s)", metadata_required_issues)
                                                 } else {
-                                                    tr(locale, "No required metadata gaps", "Обязательных пробелов в метаданных нет").to_string()
+                                                    tr(locale, "No required metadata gaps", "РћР±СЏР·Р°С‚РµР»СЊРЅС‹С… РїСЂРѕР±РµР»РѕРІ РІ РјРµС‚Р°РґР°РЅРЅС‹С… РЅРµС‚").to_string()
                                                 }}
                                             </span>
                                             <span class=metadata_status_badge_classes(if metadata_recommended_gaps > 0 { "warn" } else { "ready" })>
                                                 {if metadata_recommended_gaps > 0 {
                                                     format!("{} recommended gap(s)", metadata_recommended_gaps)
                                                 } else {
-                                                    tr(locale, "Recommended visuals look complete", "Рекомендуемые визуальные материалы заполнены").to_string()
+                                                    tr(locale, "Recommended visuals look complete", "Р РµРєРѕРјРµРЅРґСѓРµРјС‹Рµ РІРёР·СѓР°Р»СЊРЅС‹Рµ РјР°С‚РµСЂРёР°Р»С‹ Р·Р°РїРѕР»РЅРµРЅС‹").to_string()
                                                 }}
                                             </span>
                                             <span class=metadata_status_badge_classes("info")>
@@ -7045,9 +2470,9 @@ pub fn ModuleDetailPanel(
                                         </div>
                                         <p class="mt-3 text-xs text-muted-foreground">
                                             {if module.source.eq_ignore_ascii_case("path") {
-                                                tr(locale, "Workspace path modules can stay unpublished; this checklist is meant to surface what is already registry-ready versus what still needs operator follow-up.", "Workspace path-модули могут оставаться неопубликованными; этот checklist показывает, что уже готово для registry, а что ещё требует внимания оператора.")
+                                                tr(locale, "Workspace path modules can stay unpublished; this checklist is meant to surface what is already registry-ready versus what still needs operator follow-up.", "Workspace path-РјРѕРґСѓР»Рё РјРѕРіСѓС‚ РѕСЃС‚Р°РІР°С‚СЊСЃСЏ РЅРµРѕРїСѓР±Р»РёРєРѕРІР°РЅРЅС‹РјРё; СЌС‚РѕС‚ checklist РїРѕРєР°Р·С‹РІР°РµС‚, С‡С‚Рѕ СѓР¶Рµ РіРѕС‚РѕРІРѕ РґР»СЏ registry, Р° С‡С‚Рѕ РµС‰С‘ С‚СЂРµР±СѓРµС‚ РІРЅРёРјР°РЅРёСЏ РѕРїРµСЂР°С‚РѕСЂР°.")
                                             } else {
-                                                tr(locale, "Registry-backed modules should ideally arrive here with the required metadata already satisfied.", "Registry-backed модули в идеале должны приходить сюда уже с заполненными обязательными метаданными.")
+                                                tr(locale, "Registry-backed modules should ideally arrive here with the required metadata already satisfied.", "Registry-backed РјРѕРґСѓР»Рё РІ РёРґРµР°Р»Рµ РґРѕР»Р¶РЅС‹ РїСЂРёС…РѕРґРёС‚СЊ СЃСЋРґР° СѓР¶Рµ СЃ Р·Р°РїРѕР»РЅРµРЅРЅС‹РјРё РѕР±СЏР·Р°С‚РµР»СЊРЅС‹РјРё РјРµС‚Р°РґР°РЅРЅС‹РјРё.")
                                             }}
                                         </p>
                                     </div>
@@ -7057,14 +2482,14 @@ pub fn ModuleDetailPanel(
                                     view! {
                                         <div class="rounded-lg border border-border bg-background/70 p-4">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Marketplace visuals", "Визуалы marketplace")}
+                                                {tr(locale, "Marketplace visuals", "Р’РёР·СѓР°Р»С‹ marketplace")}
                                             </p>
                                             <div class="mt-3 space-y-3">
                                                 {module_banner_url_for_body.clone().map(|banner_url| {
                                                     let module_name = module_name.clone();
                                                     view! {
                                                         <div class="space-y-2">
-                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Banner", "Баннер")}</p>
+                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Banner", "Р‘Р°РЅРЅРµСЂ")}</p>
                                                             <img
                                                                 class="max-h-48 w-full rounded-lg border border-border object-cover"
                                                                 src=banner_url
@@ -7076,7 +2501,7 @@ pub fn ModuleDetailPanel(
                                                 {if has_marketplace_screenshots {
                                                     view! {
                                                         <div class="space-y-2">
-                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Screenshots", "Скриншоты")}</p>
+                                                            <p class="text-xs text-muted-foreground">{tr(locale, "Screenshots", "РЎРєСЂРёРЅС€РѕС‚С‹")}</p>
                                                             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                                                                 {module_screenshots_for_body.clone().into_iter().map(|screenshot_url| {
                                                                     let module_name = module_name.clone();
@@ -7105,15 +2530,15 @@ pub fn ModuleDetailPanel(
                                     <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div class="space-y-1">
                                             <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Tenant settings", "Настройки tenant")}
+                                                {tr(locale, "Tenant settings", "РќР°СЃС‚СЂРѕР№РєРё tenant")}
                                             </p>
                                             <p class="text-sm text-muted-foreground">
                                                 {if settings_form_supported.get() {
-                                                    tr(locale, "This module exposes schema-driven tenant settings from rustok-module.toml.", "Этот модуль публикует schema-driven tenant-настройки из rustok-module.toml.")
+                                                    tr(locale, "This module exposes schema-driven tenant settings from rustok-module.toml.", "Р­С‚РѕС‚ РјРѕРґСѓР»СЊ РїСѓР±Р»РёРєСѓРµС‚ schema-driven tenant-РЅР°СЃС‚СЂРѕР№РєРё РёР· rustok-module.toml.")
                                                 } else if settings_editable.get() {
-                                                    tr(locale, "Persist raw JSON settings for the current tenant. The payload is stored in tenant_modules.settings.", "Сохраняйте raw JSON-настройки для текущего tenant. Payload хранится в tenant_modules.settings.")
+                                                    tr(locale, "Persist raw JSON settings for the current tenant. The payload is stored in tenant_modules.settings.", "РЎРѕС…СЂР°РЅСЏР№С‚Рµ raw JSON-РЅР°СЃС‚СЂРѕР№РєРё РґР»СЏ С‚РµРєСѓС‰РµРіРѕ tenant. Payload С…СЂР°РЅРёС‚СЃСЏ РІ tenant_modules.settings.")
                                                 } else {
-                                                    tr(locale, "Enable this module for the current tenant before saving settings.", "Включите этот модуль для текущего tenant перед сохранением настроек.")
+                                                    tr(locale, "Enable this module for the current tenant before saving settings.", "Р’РєР»СЋС‡РёС‚Рµ СЌС‚РѕС‚ РјРѕРґСѓР»СЊ РґР»СЏ С‚РµРєСѓС‰РµРіРѕ tenant РїРµСЂРµРґ СЃРѕС…СЂР°РЅРµРЅРёРµРј РЅР°СЃС‚СЂРѕРµРє.")
                                                 }}
                                             </p>
                                         </div>
@@ -7123,16 +2548,16 @@ pub fn ModuleDetailPanel(
                                             disabled=move || !settings_editable.get() || settings_saving.get()
                                             on:click=move |_| on_save_settings.run(())
                                         >
-                                            {move || if settings_saving.get() { tr(locale, "Saving...", "Сохранение...") } else { tr(locale, "Save settings", "Сохранить настройки") }}
+                                            {move || if settings_saving.get() { tr(locale, "Saving...", "РЎРѕС…СЂР°РЅРµРЅРёРµ...") } else { tr(locale, "Save settings", "РЎРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё") }}
                                         </button>
                                     </div>
                                     <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
                                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
                                             {move || match tenant_module_for_body.get_value().as_ref() {
-                                                Some(module) if module.enabled => tr(locale, "Tenant-enabled", "Включён для tenant").to_string(),
-                                                Some(_) => tr(locale, "Tenant-disabled", "Выключен для tenant").to_string(),
-                                                None if settings_editable.get() => tr(locale, "No tenant override yet", "Переопределения tenant пока нет").to_string(),
-                                                None => tr(locale, "Unavailable until enabled", "Недоступно до включения").to_string(),
+                                                Some(module) if module.enabled => tr(locale, "Tenant-enabled", "Р’РєР»СЋС‡С‘РЅ РґР»СЏ tenant").to_string(),
+                                                Some(_) => tr(locale, "Tenant-disabled", "Р’С‹РєР»СЋС‡РµРЅ РґР»СЏ tenant").to_string(),
+                                                None if settings_editable.get() => tr(locale, "No tenant override yet", "РџРµСЂРµРѕРїСЂРµРґРµР»РµРЅРёСЏ tenant РїРѕРєР° РЅРµС‚").to_string(),
+                                                None => tr(locale, "Unavailable until enabled", "РќРµРґРѕСЃС‚СѓРїРЅРѕ РґРѕ РІРєР»СЋС‡РµРЅРёСЏ").to_string(),
                                             }}
                                         </span>
                                         <Show when=move || settings_form_supported.get() && !settings_schema_for_body.get_value().is_empty()>
@@ -7140,7 +2565,7 @@ pub fn ModuleDetailPanel(
                                                 {format!(
                                                     "{} {}",
                                                     settings_schema_for_body.get_value().len(),
-                                                    tr(locale, "fields", "полей")
+                                                    tr(locale, "fields", "РїРѕР»РµР№")
                                                 )}
                                             </span>
                                         </Show>
@@ -7248,7 +2673,7 @@ pub fn ModuleDetailPanel(
                                                                                             ))
                                                                                         }
                                                                                     />
-                                                                                    <span>{tr(locale, "Enabled", "Включено")}</span>
+                                                                                    <span>{tr(locale, "Enabled", "Р’РєР»СЋС‡РµРЅРѕ")}</span>
                                                                                 </label>
                                                                             }.into_any()
                                                                         }
@@ -7376,14 +2801,14 @@ pub fn ModuleDetailPanel(
                                             if settings_form_supported.get() && !settings_schema_for_body.get_value().is_empty() {
                                                 format!(
                                                     "{} `{}`. {}",
-                                                    tr(locale, "Editing schema-driven settings for", "Редактирование schema-driven настроек для"),
+                                                    tr(locale, "Editing schema-driven settings for", "Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ schema-driven РЅР°СЃС‚СЂРѕРµРє РґР»СЏ"),
                                                     selected_slug_for_body.get_value(),
-                                                    tr(locale, "Complex fields accept JSON per field.", "Сложные поля принимают JSON по каждому полю.")
+                                                    tr(locale, "Complex fields accept JSON per field.", "РЎР»РѕР¶РЅС‹Рµ РїРѕР»СЏ РїСЂРёРЅРёРјР°СЋС‚ JSON РїРѕ РєР°Р¶РґРѕРјСѓ РїРѕР»СЋ.")
                                                 )
                                             } else {
                                                 format!(
                                                     "{} `{}`.",
-                                                    tr(locale, "Editing raw JSON settings for", "Редактирование raw JSON-настроек для"),
+                                                    tr(locale, "Editing raw JSON settings for", "Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ raw JSON-РЅР°СЃС‚СЂРѕРµРє РґР»СЏ"),
                                                     selected_slug_for_body.get_value()
                                                 )
                                             }
@@ -7394,18 +2819,18 @@ pub fn ModuleDetailPanel(
                                 <div class="rounded-lg border border-border bg-background/70 p-4">
                                     <div class="flex items-center gap-2">
                                         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Version history", "История версий")}
+                                            {tr(locale, "Version history", "РСЃС‚РѕСЂРёСЏ РІРµСЂСЃРёР№")}
                                         </p>
                                         <Show when=move || loading.get()>
                                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                                {tr(locale, "Refreshing", "Обновление")}
+                                                {tr(locale, "Refreshing", "РћР±РЅРѕРІР»РµРЅРёРµ")}
                                             </span>
                                         </Show>
                                     </div>
                                     {if version_trail.is_empty() {
                                         view! {
                                             <p class="mt-3 text-sm text-muted-foreground">
-                                                {tr(locale, "No version history has been published for this module yet.", "Для этого модуля история версий пока не опубликована.")}
+                                                {tr(locale, "No version history has been published for this module yet.", "Р”Р»СЏ СЌС‚РѕРіРѕ РјРѕРґСѓР»СЏ РёСЃС‚РѕСЂРёСЏ РІРµСЂСЃРёР№ РїРѕРєР° РЅРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅР°.")}
                                             </p>
                                         }
                                             .into_any()
@@ -7422,16 +2847,16 @@ pub fn ModuleDetailPanel(
                                                                 </span>
                                                                 {version.yanked.then(|| view! {
                                                                     <span class="inline-flex items-center rounded-full bg-destructive px-2.5 py-0.5 text-xs font-semibold text-destructive-foreground">
-                                                                        {tr(locale, "Yanked", "Отозван")}
+                                                                        {tr(locale, "Yanked", "РћС‚РѕР·РІР°РЅ")}
                                                                     </span>
                                                                 })}
                                                                 {version.signature_present.then(|| view! {
                                                                     <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                                                        {tr(locale, "Signed", "Подписан")}
+                                                                        {tr(locale, "Signed", "РџРѕРґРїРёСЃР°РЅ")}
                                                                     </span>
                                                                 })}
                                                                 <span class="text-xs text-muted-foreground">
-                    {version.published_at.unwrap_or_else(|| tr(locale, "Unknown", "Неизвестно").to_string())}
+                    {version.published_at.unwrap_or_else(|| tr(locale, "Unknown", "РќРµРёР·РІРµСЃС‚РЅРѕ").to_string())}
                                                                 </span>
                                                             </div>
                                                             {version.changelog.map(|changelog| view! {
@@ -7456,275 +2881,5 @@ pub fn ModuleDetailPanel(
                 }}
             </Show>
         </div>
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn sample_owner(owner: &str) -> RegistryOwnerLifecycle {
-        RegistryOwnerLifecycle {
-            owner: owner.to_string(),
-            bound_by: "user:00000000-0000-0000-0000-000000000001".to_string(),
-            bound_at: "2026-04-05T10:00:00Z".to_string(),
-            updated_at: "2026-04-05T10:00:00Z".to_string(),
-        }
-    }
-
-    fn sample_request(status: &str, publisher: Option<&str>) -> RegistryPublishRequestLifecycle {
-        RegistryPublishRequestLifecycle {
-            id: "req_123".to_string(),
-            status: status.to_string(),
-            requested_by: "user:requester".to_string(),
-            publisher: publisher.map(str::to_string),
-            approved_by: None,
-            rejected_by: None,
-            rejection_reason: None,
-            changes_requested_by: None,
-            changes_requested_reason: None,
-            changes_requested_reason_code: None,
-            changes_requested_at: None,
-            held_by: None,
-            held_reason: None,
-            held_reason_code: None,
-            held_at: None,
-            held_from_status: None,
-            warnings: Vec::new(),
-            errors: Vec::new(),
-            created_at: "2026-04-05T10:00:00Z".to_string(),
-            updated_at: "2026-04-05T10:00:00Z".to_string(),
-            published_at: None,
-        }
-    }
-
-    fn sample_module() -> MarketplaceModule {
-        MarketplaceModule {
-            slug: "example-module".to_string(),
-            name: "Example Module".to_string(),
-            latest_version: "1.2.3".to_string(),
-            description: "Example description".to_string(),
-            source: "registry".to_string(),
-            kind: "feature".to_string(),
-            category: "catalog".to_string(),
-            tags: Vec::new(),
-            icon_url: None,
-            banner_url: None,
-            screenshots: Vec::new(),
-            crate_name: "rustok-example".to_string(),
-            dependencies: Vec::new(),
-            ownership: "first_party".to_string(),
-            trust_level: "verified".to_string(),
-            rustok_min_version: None,
-            rustok_max_version: None,
-            publisher: Some("RusTok Labs".to_string()),
-            checksum_sha256: None,
-            signature_present: true,
-            versions: Vec::new(),
-            has_admin_ui: true,
-            has_storefront_ui: false,
-            ui_classification: "admin-only".to_string(),
-            registry_lifecycle: None,
-            compatible: true,
-            recommended_admin_surfaces: Vec::new(),
-            showcase_admin_surfaces: Vec::new(),
-            settings_schema: Vec::new(),
-            installed: false,
-            installed_version: None,
-            update_available: false,
-        }
-    }
-
-    fn sample_event(
-        event_type: &str,
-        details: serde_json::Value,
-    ) -> RegistryGovernanceEventLifecycle {
-        RegistryGovernanceEventLifecycle {
-            id: "evt_1".to_string(),
-            event_type: event_type.to_string(),
-            actor: "user:00000000-0000-0000-0000-000000000001".to_string(),
-            publisher: None,
-            payload:
-                crate::entities::module::model::RegistryGovernanceEventPayloadLifecycle::from_details(
-                    &details,
-                ),
-            created_at: "2026-04-05T10:00:00Z".to_string(),
-        }
-    }
-
-    #[test]
-    fn governance_detail_automated_checks_parses_only_valid_items() {
-        let checks = governance_detail_automated_checks(&json!({
-            "automated_checks": [
-                {
-                    "key": "artifact_bundle_contract",
-                    "status": "passed",
-                    "detail": "Bundle contract passed."
-                },
-                {
-                    "key": "artifact_bundle_contract",
-                    "status": "",
-                    "detail": "Should be ignored."
-                }
-            ]
-        }));
-
-        assert_eq!(checks.len(), 1);
-        assert_eq!(checks[0].key, "artifact_bundle_contract");
-        assert_eq!(checks[0].status, "passed");
-        assert_eq!(checks[0].detail, "Bundle contract passed.");
-    }
-
-    #[test]
-    fn validation_job_event_context_lines_include_trace_fields() {
-        let event = sample_event(
-            "validation_job_failed",
-            json!({
-                "job_id": "rvj_123",
-                "attempt_number": 2,
-                "queue_reason": "validation_resumed",
-                "request_status": "rejected",
-                "error": "checksum mismatch"
-            }),
-        );
-
-        let lines = validation_job_event_context_lines(&event, Locale::en);
-
-        assert!(lines.iter().any(|line| line == "Attempt: 2"));
-        assert!(!lines.is_empty());
-    }
-
-    #[test]
-    fn moderation_history_context_lines_include_reason_code() {
-        let event = sample_event(
-            "request_rejected",
-            json!({
-                "version": "1.2.3",
-                "reason": "Ownership evidence is incomplete.",
-                "reason_code": "ownership_mismatch"
-            }),
-        );
-
-        let lines = moderation_history_context_lines(&event, Locale::en);
-
-        assert!(lines.iter().any(|line| line == "Version: v1.2.3"));
-        assert!(lines
-            .iter()
-            .any(|line| line == "Reason: Ownership evidence is incomplete."));
-        assert!(lines
-            .iter()
-            .any(|line| line == "Reason code: Ownership Mismatch"));
-    }
-
-    #[test]
-    fn registry_review_policy_lines_drop_legacy_override_copy() {
-        let owner = sample_owner("owner:module");
-        let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::en);
-
-        assert_eq!(
-            lines.first().map(String::as_str),
-            Some("Review authority: owner:module / operators with MODULES_MANAGE")
-        );
-        assert!(!lines
-            .iter()
-            .any(|line| line.contains("operators with MODULES_MANAGE may override")));
-    }
-
-    #[test]
-    fn owner_transfer_confirmation_uses_new_owner_user_id_contract() {
-        let message = destructive_governance_confirmation_message(
-            "owner-transfer",
-            "example-module",
-            None,
-            Some("9a6b5c9e-0d3e-4b62-9f2f-c11d1aa6f12f"),
-            Locale::en,
-        );
-
-        assert!(message.contains("example-module"));
-        assert!(message.contains("9a6b5c9e-0d3e-4b62-9f2f-c11d1aa6f12f"));
-        assert!(!message.contains("new-owner-actor"));
-    }
-
-    #[test]
-    fn validation_stage_runner_hint_requires_auth_token() {
-        let hint = validation_stage_runner_xtask_hint("example-module", "req_123", "compile_smoke");
-
-        assert!(hint.contains("--registry-url <registry-url>"));
-        assert!(hint.contains("--auth-token <token>"));
-    }
-
-    #[test]
-    fn live_api_action_hints_use_bearer_auth_instead_of_legacy_actor_headers() {
-        let module = sample_module();
-        let request = sample_request(
-            "approved",
-            Some("user:00000000-0000-0000-0000-000000000002"),
-        );
-        let owner = sample_owner("user:owner");
-
-        let hints = registry_live_api_action_lines(
-            &module,
-            Some(&request),
-            None,
-            Some(&owner),
-            &[],
-            Locale::en,
-        );
-
-        let approve_hint = hints
-            .iter()
-            .find(|hint| hint.endpoint.ends_with("/approve"))
-            .expect("approve hint");
-
-        assert_eq!(
-            approve_hint.header_hint.as_deref(),
-            Some("Authorization: Bearer <session-user-jwt>")
-        );
-    }
-
-    #[test]
-    fn owner_transfer_hints_use_new_owner_user_id_contract() {
-        let module = sample_module();
-        let request = sample_request(
-            "published",
-            Some("user:00000000-0000-0000-0000-000000000002"),
-        );
-        let owner = sample_owner("user:owner");
-
-        let api_hints = registry_live_api_action_lines(
-            &module,
-            Some(&request),
-            None,
-            Some(&owner),
-            &[],
-            Locale::en,
-        );
-        let owner_transfer_api_hint = api_hints
-            .iter()
-            .find(|hint| hint.endpoint == "POST /v2/catalog/owner-transfer")
-            .expect("owner transfer api hint");
-        let owner_transfer_cli_hint = owner_transfer_api_hint
-            .xtask_hint
-            .as_deref()
-            .expect("owner transfer cli hint");
-
-        assert!(owner_transfer_api_hint
-            .body_hint
-            .as_deref()
-            .unwrap_or_default()
-            .contains("\"new_owner_user_id\""));
-        assert!(owner_transfer_cli_hint.contains("<new-owner-user-id>"));
-        assert!(owner_transfer_cli_hint.contains("--auth-token <token>"));
-        assert!(!owner_transfer_cli_hint.contains("<new-owner-actor>"));
-
-        let operator_hints =
-            registry_operator_command_lines(&module, Some(&request), None, Some(&owner), &[]);
-        let owner_transfer_operator_hint = operator_hints
-            .iter()
-            .find(|hint| hint.contains("owner-transfer"))
-            .expect("owner transfer operator hint");
-        assert!(owner_transfer_operator_hint.contains("<new-owner-user-id>"));
-        assert!(!owner_transfer_operator_hint.contains("<new-owner-actor>"));
     }
 }

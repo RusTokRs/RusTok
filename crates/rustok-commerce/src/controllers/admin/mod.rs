@@ -6,6 +6,14 @@ pub mod products;
 pub mod returns;
 pub mod shipping;
 
+pub use changes::*;
+pub use fulfillments::*;
+pub use orders::*;
+pub use payments::*;
+pub use products::*;
+pub use returns::*;
+pub use shipping::*;
+
 #[cfg(test)]
 mod tests;
 

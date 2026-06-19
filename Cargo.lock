@@ -9629,7 +9629,9 @@ dependencies = [
  "once_cell",
  "reqwest 0.13.2",
  "rhai",
+ "rustok-ai-alloy",
  "rustok-ai-content",
+ "rustok-ai-media",
  "rustok-ai-order",
  "rustok-ai-product",
  "rustok-api",
@@ -9673,6 +9675,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-ai-alloy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-ai-content"
 version = "0.1.0"
 dependencies = [
@@ -9682,6 +9692,13 @@ dependencies = [
 [[package]]
 name = "rustok-ai-content-admin"
 version = "0.1.0"
+
+[[package]]
+name = "rustok-ai-media"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "rustok-ai-order"
@@ -9856,6 +9873,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "rust_decimal",
+ "rustok-api",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-fulfillment",
@@ -9939,6 +9957,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-content",
  "rustok-core",
  "rustok-telemetry",
@@ -11245,6 +11264,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "rust_decimal",
+ "rustok-api",
  "rustok-core",
  "sea-orm-migration",
  "serde",

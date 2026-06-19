@@ -4,8 +4,8 @@ use crate::core::{
     build_product_detail_header_view_model, build_product_list_item_view_model,
     build_resolution_context, build_variant_card_view_model, clear_price_list_rule_draft,
     empty_price_draft, format_adjustment_preview, format_channel_option_label,
-    format_channel_scope_text, format_effective_context,
-    format_price_list_option_label, format_price_scope, normalize_channel_value,
+    format_channel_scope_text, format_effective_context, format_price_list_option_label,
+    format_price_scope, legacy_channel_option_label, normalize_channel_value,
     normalized_currency_code, normalized_price_list_id, normalized_quantity, normalized_region_id,
     price_draft_from_price, pricing_product_list_item_class, selected_channel_key,
     summarize_pricing, text_or_none, GLOBAL_CHANNEL_KEY, LEGACY_CHANNEL_KEY,
@@ -974,25 +974,10 @@ fn VariantDiscountEditor(
     let locale_for_apply_button = locale.clone();
     let locale_for_legacy_label = locale.clone();
     let legacy_option_label = Memo::new(move |_| {
-        format!(
-            "{}: {}",
-            t(
-                locale_for_legacy_label.as_deref(),
-                "pricing.channel.legacy",
-                "Legacy scope",
-            ),
-            format_channel_scope_text(
-                None,
-                normalize_channel_value(channel_id.get().as_str()).as_deref(),
-                normalize_channel_value(channel_slug.get().as_str()).as_deref(),
-            )
-            .unwrap_or_else(|| {
-                t(
-                    locale_for_legacy_label.as_deref(),
-                    "pricing.common.notSet",
-                    "not set",
-                )
-            })
+        legacy_channel_option_label(
+            locale_for_legacy_label.as_deref(),
+            channel_id.get().as_str(),
+            channel_slug.get().as_str(),
         )
     });
     let preview_selected_price_list_id = selected_price_list_id.clone();
@@ -1189,25 +1174,10 @@ fn PriceListRuleEditor(
     let available_channels_for_legacy = available_channels.clone();
     let locale_for_legacy_label = locale.clone();
     let legacy_option_label = Memo::new(move |_| {
-        format!(
-            "{}: {}",
-            t(
-                locale_for_legacy_label.as_deref(),
-                "pricing.channel.legacy",
-                "Legacy scope",
-            ),
-            format_channel_scope_text(
-                None,
-                normalize_channel_value(channel_id.get().as_str()).as_deref(),
-                normalize_channel_value(channel_slug.get().as_str()).as_deref(),
-            )
-            .unwrap_or_else(|| {
-                t(
-                    locale_for_legacy_label.as_deref(),
-                    "pricing.common.notSet",
-                    "not set",
-                )
-            })
+        legacy_channel_option_label(
+            locale_for_legacy_label.as_deref(),
+            channel_id.get().as_str(),
+            channel_slug.get().as_str(),
         )
     });
     let save_price_list_id = price_list.id.clone();
@@ -1403,25 +1373,10 @@ fn VariantPriceEditor(
     let available_channels_for_legacy = available_channels.clone();
     let locale_for_legacy_label = locale.clone();
     let legacy_option_label = Memo::new(move |_| {
-        format!(
-            "{}: {}",
-            t(
-                locale_for_legacy_label.as_deref(),
-                "pricing.channel.legacy",
-                "Legacy scope",
-            ),
-            format_channel_scope_text(
-                None,
-                normalize_channel_value(channel_id.get().as_str()).as_deref(),
-                normalize_channel_value(channel_slug.get().as_str()).as_deref(),
-            )
-            .unwrap_or_else(|| {
-                t(
-                    locale_for_legacy_label.as_deref(),
-                    "pricing.common.notSet",
-                    "not set",
-                )
-            })
+        legacy_channel_option_label(
+            locale_for_legacy_label.as_deref(),
+            channel_id.get().as_str(),
+            channel_slug.get().as_str(),
         )
     });
 

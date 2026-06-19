@@ -6,7 +6,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 ## Execution checkpoint
 
 - Current phase: storefront_action_request_boundary
-- Last checkpoint: Provider SPI static contract evidence added for authorize/capture/cancel/refund error/idempotency boundaries plus payment webhook replay requirements; `npm run verify:ecommerce:fba` now verifies the provider SPI evidence packet alongside FBA registries and port contract evidence without moving persistence out of `PaymentService`.
+- Last checkpoint: Aggregate storefront payment collection transport handoff hardened the compatibility window: commerce still hosts the async native/GraphQL adapter, but the owner `PaymentCollectionCreateRequest` alias is preserved and compatibility fallback is now MissingServer-only instead of retrying validation/domain failures through GraphQL. `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` locks this until the adapter moves behind `rustok-payment/storefront`.
 - Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration, then replace static provider SPI evidence with runtime contract execution.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
@@ -40,7 +40,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - `payment_collections`, `payments`, `PaymentModule` и `PaymentService` уже выделены;
 - модуль не владеет cart/order/customer, а только ссылается на них по identifiers;
 - базовый manual/default payment flow уже зафиксирован;
-- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation и create/reuse command normalization уже принадлежат `rustok-payment/storefront`.
+- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation и create/reuse command normalization уже принадлежат `rustok-payment/storefront`; compatibility fallback is now MissingServer-only while the temporary commerce adapter remains.
 
 ## Этапы
 

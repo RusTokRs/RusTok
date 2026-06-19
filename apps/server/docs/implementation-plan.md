@@ -17,7 +17,7 @@
 - Финализировать единый контракт ошибок для REST и GraphQL (коды, machine-readable fields, correlation id).
 - Стабилизировать контракты tenant-aware headers и auth claims для всех frontend-клиентов.
 - Расширить версионирование публичных API-изменений через changelog/contract notes.
-- Довести MCP management surface (`/api/mcp/*`, GraphQL `mcp*`) до platform-grade уровня: persisted clients/tokens/policies/audit, session-start runtime binding, live binding Alloy scaffold tools к persisted draft store и persisted Alloy scaffold drafts уже есть; следующий шаг — server-owned remote MCP transport bootstrap и admin UI.
+- Довести MCP management surface (`/api/mcp/*`, GraphQL `mcp*`) до platform-grade уровня: persisted clients/tokens/policies/audit, session-start runtime binding, live binding Alloy scaffold tools к persisted draft store и persisted Alloy scaffold drafts уже есть; server-owned remote MCP transport bootstrap (`POST /api/mcp/runtime/bootstrap`) добавлен как первичный token-to-runtime-binding handshake; следующий шаг — полноценный remote stream transport и admin UI.
 
 ### Observability
 

@@ -1,21 +1,20 @@
+pub mod types;
+pub mod helpers;
+
+pub use types::{StorefrontProductList, StorefrontProductListItem, ProductTagState};
+
 use chrono::Utc;
-use flex::{
-    delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
-    prepare_attached_values_update, resolve_attached_payload,
-};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
-use rustok_core::{generate_id, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_core::{generate_id, PLATFORM_FALLBACK_LOCALE};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
@@ -26,54 +25,9 @@ use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
 use crate::entities::product_tag;
 
+use helpers::*;
+
 const PRODUCT_SCOPE_VALUE: &str = "product";
-
-fn map_flex_cleanup_error(error: rustok_core::field_schema::FlexError) -> CommerceError {
-    match error {
-        rustok_core::field_schema::FlexError::Database(message) => {
-            CommerceError::Database(sea_orm::DbErr::Custom(message))
-        }
-        other => CommerceError::Validation(other.to_string()),
-    }
-}
-
-fn normalize_seller_id(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_owned())
-}
-
-mod product_field_definitions_storage {
-    rustok_core::define_field_definitions_entity!("product_field_definitions");
-}
-
-struct ProductTagState {
-    tags: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorefrontProductList {
-    pub items: Vec<StorefrontProductListItem>,
-    pub total: u64,
-    pub page: u64,
-    pub per_page: u64,
-    pub has_next: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorefrontProductListItem {
-    pub id: Uuid,
-    pub status: entities::product::ProductStatus,
-    pub title: String,
-    pub handle: String,
-    pub seller_id: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub tags: Vec<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
-}
 
 pub struct CatalogService {
     db: DatabaseConnection,
@@ -120,19 +74,19 @@ impl CatalogService {
         debug!(product_id = %product_id, "Generated product ID");
 
         let preferred_locale =
-            Self::preferred_product_locale_from_translations(&input.translations);
-        let prepared_custom_fields = self
-            .prepare_product_custom_fields_for_create(
-                tenant_id,
-                preferred_locale.as_str(),
-                input.metadata.clone(),
-            )
-            .await?;
+            preferred_product_locale_from_translations(&input.translations);
+        let prepared_custom_fields = prepare_product_custom_fields_for_create(
+            &self.db,
+            tenant_id,
+            preferred_locale.as_str(),
+            input.metadata.clone(),
+        )
+        .await?;
         let product_metadata = prepared_custom_fields
             .metadata
             .clone()
             .unwrap_or_else(|| serde_json::json!({}));
-        let (normalized_metadata, normalized_tags) = Self::normalize_create_product_metadata(
+        let (normalized_metadata, normalized_tags) = normalize_create_product_metadata(
             input.tags.clone(),
             input.shipping_profile_slug.clone(),
             product_metadata,
@@ -154,7 +108,7 @@ impl CatalogService {
             shipping_profile_slug: Set(input
                 .shipping_profile_slug
                 .as_deref()
-                .and_then(Self::normalize_shipping_profile_slug)),
+                .and_then(normalize_shipping_profile_slug)),
             metadata: Set(normalized_metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -171,19 +125,19 @@ impl CatalogService {
             prepared_custom_fields.locale.as_deref(),
             prepared_custom_fields.localized_values.as_ref(),
         ) {
-            persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
+            flex::persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
                 .await
                 .map_err(|error| CommerceError::Validation(error.to_string()))?;
         }
 
-        let translation_locales = Self::collect_translation_locales(&input.translations);
+        let translation_locales = collect_translation_locales(&input.translations);
 
         let mut seen = HashSet::new();
         for trans_input in &input.translations {
             let handle = trans_input
                 .handle
                 .clone()
-                .unwrap_or_else(|| Self::slugify(&trans_input.title));
+                .unwrap_or_else(|| slugify(&trans_input.title));
 
             let key = format!("{}::{}", trans_input.locale, handle.clone());
             if !seen.insert(key) {
@@ -225,8 +179,8 @@ impl CatalogService {
 
         for (position, opt_input) in input.options.iter().enumerate() {
             let option_id = generate_id();
-            let option_translations = Self::normalize_option_translations(&opt_input.translations)?;
-            let option_translations = Self::expand_option_translations_for_product_locales(
+            let option_translations = normalize_option_translations(&opt_input.translations)?;
+            let option_translations = expand_option_translations_for_product_locales(
                 option_translations,
                 &translation_locales,
             );
@@ -234,7 +188,7 @@ impl CatalogService {
                 .first()
                 .map(|item| item.values.clone())
                 .unwrap_or_default();
-            Self::ensure_option_values_consistent(&option_translations, &base_values)?;
+            ensure_option_values_consistent(&option_translations, &base_values)?;
             let option = entities::product_option::ActiveModel {
                 id: Set(option_id),
                 product_id: Set(product_id),
@@ -316,7 +270,7 @@ impl CatalogService {
                 shipping_profile_slug: Set(var_input
                     .shipping_profile_slug
                     .as_deref()
-                    .and_then(Self::normalize_shipping_profile_slug)),
+                    .and_then(normalize_shipping_profile_slug)),
                 ean: Set(None),
                 upc: Set(None),
                 inventory_policy: Set(var_input.inventory_policy.clone()),
@@ -342,7 +296,7 @@ impl CatalogService {
             )
             .await?;
 
-            let variant_title = Self::generate_variant_title_from_inputs(
+            let variant_title = generate_variant_title_from_inputs(
                 var_input.option1.as_deref(),
                 var_input.option2.as_deref(),
                 var_input.option3.as_deref(),
@@ -371,10 +325,10 @@ impl CatalogService {
                     region_id: Set(None),
                     amount: Set(price_input.amount),
                     compare_at_amount: Set(price_input.compare_at_amount),
-                    legacy_amount: Set(Self::decimal_to_cents(price_input.amount)),
+                    legacy_amount: Set(decimal_to_cents(price_input.amount)),
                     legacy_compare_at_amount: Set(price_input
                         .compare_at_amount
-                        .and_then(Self::decimal_to_cents)),
+                        .and_then(decimal_to_cents)),
                     min_quantity: Set(None),
                     max_quantity: Set(None),
                 };
@@ -594,7 +548,7 @@ impl CatalogService {
                     })
                     .collect();
 
-                let title = Self::generate_variant_title(&variant);
+                let title = generate_variant_title(&variant);
                 let available_inventory = available_inventory_by_variant
                     .get(&variant.id)
                     .copied()
@@ -666,15 +620,15 @@ impl CatalogService {
                 &product.metadata,
             )
             .await?;
-        let resolved_metadata = self
-            .resolve_product_metadata(
-                tenant_id,
-                product_id,
-                &product.metadata,
-                locale,
-                fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
-            )
-            .await?;
+        let resolved_metadata = resolve_product_metadata(
+            &self.db,
+            tenant_id,
+            product_id,
+            &product.metadata,
+            locale,
+            fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await?;
 
         let response = ProductResponse {
             id: product.id,
@@ -686,7 +640,7 @@ impl CatalogService {
             shipping_profile_slug: product
                 .shipping_profile_slug
                 .clone()
-                .or_else(|| Self::extract_shipping_profile_slug(&product.metadata)),
+                .or_else(|| extract_shipping_profile_slug(&product.metadata)),
             tags: product_tags.tags,
             metadata: resolved_metadata,
             created_at: product.created_at.into(),
@@ -707,7 +661,7 @@ impl CatalogService {
                 .into_iter()
                 .map(|option| {
                     let option_id = option.id;
-                    let translations = Self::build_option_translations(
+                    let translations = build_option_translations(
                         option_translations_by_option
                             .remove(&option_id)
                             .unwrap_or_default(),
@@ -718,7 +672,7 @@ impl CatalogService {
                     );
 
                     let (name, values) =
-                        Self::resolve_option_display(&translations, locale, fallback_locale);
+                        resolve_option_display(&translations, locale, fallback_locale);
 
                     ProductOptionResponse {
                         id: option_id,
@@ -798,6 +752,7 @@ impl CatalogService {
             .iter()
             .map(|product| product.id)
             .collect::<Vec<_>>();
+
         let translations = if product_ids.is_empty() {
             Vec::new()
         } else {
@@ -937,13 +892,13 @@ impl CatalogService {
         let preferred_locale = input
             .translations
             .as_deref()
-            .map(Self::preferred_product_locale_from_translations)
+            .map(preferred_product_locale_from_translations)
             .unwrap_or_else(|| {
-                Self::preferred_product_locale_from_metadata(&existing_product.metadata)
+                preferred_product_locale_from_metadata(&existing_product.metadata)
             });
         let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
             Some(
-                self.prepare_product_custom_fields_for_update(
+                prepare_product_custom_fields_for_update(
                     &txn,
                     tenant_id,
                     product_id,
@@ -956,7 +911,7 @@ impl CatalogService {
         } else {
             None
         };
-        let metadata_update = Self::normalize_update_product_metadata(
+        let metadata_update = normalize_update_product_metadata(
             input.tags.clone(),
             input.shipping_profile_slug.clone(),
             prepared_custom_fields
@@ -978,7 +933,7 @@ impl CatalogService {
         if shipping_profile_input.is_some() {
             product_active.shipping_profile_slug = Set(shipping_profile_input
                 .as_deref()
-                .and_then(Self::normalize_shipping_profile_slug));
+                .and_then(normalize_shipping_profile_slug));
         }
         if let Some((metadata, _)) = metadata_update.as_ref() {
             product_active.metadata = Set(metadata.clone());
@@ -994,7 +949,7 @@ impl CatalogService {
                 prepared_custom_fields.locale.as_deref(),
                 prepared_custom_fields.localized_values.as_ref(),
             ) {
-                persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
+                flex::persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
                     .await
                     .map_err(|error| CommerceError::Validation(error.to_string()))?;
             }
@@ -1013,7 +968,7 @@ impl CatalogService {
                 let handle = translation_input
                     .handle
                     .clone()
-                    .unwrap_or_else(|| Self::slugify(&translation_input.title));
+                    .unwrap_or_else(|| slugify(&translation_input.title));
 
                 let locale = translation_input.locale.clone();
                 let key = format!("{}::{}", locale, handle.clone());
@@ -1051,8 +1006,7 @@ impl CatalogService {
         }
 
         if let Some((_, Some(tags))) = metadata_update.as_ref() {
-            let locale = self
-                .resolve_tag_locale_for_update(&txn, product_id, input.translations.as_deref())
+            let locale = resolve_tag_locale_for_update(&txn, product_id, input.translations.as_deref())
                 .await?;
             self.sync_product_tags_in_tx(&txn, tenant_id, product_id, &locale, tags)
                 .await?;
@@ -1306,7 +1260,7 @@ impl CatalogService {
             .exec(&txn)
             .await?;
 
-        delete_attached_localized_values(&txn, tenant_id, "product", product_id)
+        flex::delete_attached_localized_values(&txn, tenant_id, "product", product_id)
             .await
             .map_err(map_flex_cleanup_error)?;
 
@@ -1323,347 +1277,6 @@ impl CatalogService {
         info!(product_id = %product_id, "Product deleted successfully");
 
         Ok(())
-    }
-
-    fn slugify(text: &str) -> String {
-        use unicode_normalization::UnicodeNormalization;
-
-        const MAX_LENGTH: usize = 255;
-        const RESERVED_NAMES: &[&str] =
-            &["admin", "api", "null", "undefined", "new", "edit", "delete"];
-
-        // 1. Unicode normalization (NFC) to prevent homograph attacks
-        let normalized: String = text.nfc().collect();
-
-        // 2. Convert to lowercase and filter valid characters
-        // Allow: a-z, 0-9, hyphen, space (will become hyphen)
-        let slug: String = normalized
-            .to_lowercase()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == ' ' || *c == '_')
-            .map(|c| if c == ' ' || c == '_' { '-' } else { c })
-            .collect();
-
-        // 3. Remove consecutive hyphens and trim
-        let slug = slug
-            .split('-')
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("-");
-
-        // 4. Limit length
-        let slug: String = slug.chars().take(MAX_LENGTH).collect();
-
-        // 5. Prevent reserved names by adding suffix
-        let slug = if RESERVED_NAMES.contains(&slug.as_str()) {
-            format!("{}-1", slug)
-        } else {
-            slug
-        };
-
-        // 6. Ensure non-empty
-        if slug.is_empty() {
-            "untitled".to_string()
-        } else {
-            slug
-        }
-    }
-
-    fn generate_variant_title(variant: &entities::product_variant::Model) -> String {
-        Self::generate_variant_title_from_inputs(
-            variant.option1.as_deref(),
-            variant.option2.as_deref(),
-            variant.option3.as_deref(),
-        )
-    }
-
-    fn generate_variant_title_from_inputs(
-        option1: Option<&str>,
-        option2: Option<&str>,
-        option3: Option<&str>,
-    ) -> String {
-        let options: Vec<&str> = [option1, option2, option3].into_iter().flatten().collect();
-
-        if options.is_empty() {
-            "Default".to_string()
-        } else {
-            options.join(" / ")
-        }
-    }
-
-    async fn prepare_product_custom_fields_for_create(
-        &self,
-        tenant_id: Uuid,
-        locale: &str,
-        payload: Value,
-    ) -> CommerceResult<flex::PreparedAttachedValuesWrite> {
-        let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
-        let (reserved_payload, flex_payload) = split_product_metadata_payload(&schema, &payload);
-        prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)
-            .map(|mut prepared| {
-                prepared.metadata = Some(merge_reserved_product_metadata(
-                    reserved_payload,
-                    prepared.metadata,
-                ));
-                prepared
-            })
-            .map_err(|error| CommerceError::Validation(error.to_string()))
-    }
-
-    async fn prepare_product_custom_fields_for_update<C>(
-        &self,
-        conn: &C,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        locale: &str,
-        existing_metadata: &Value,
-        payload: Value,
-    ) -> CommerceResult<flex::PreparedAttachedValuesWrite>
-    where
-        C: ConnectionTrait,
-    {
-        let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-        let (reserved_patch, flex_payload) = split_product_metadata_payload(&schema, &payload);
-        let (existing_reserved_metadata, existing_flex_metadata) =
-            split_product_metadata_payload(&schema, existing_metadata);
-        let reserved_payload =
-            merge_product_metadata_patch(existing_reserved_metadata, reserved_patch);
-        prepare_attached_values_update(
-            conn,
-            flex::AttachedEntityRef {
-                tenant_id,
-                entity_type: "product",
-                entity_id: product_id,
-            },
-            schema,
-            locale,
-            &Value::Object(existing_flex_metadata),
-            Some(Value::Object(flex_payload)),
-        )
-        .await
-        .map(|mut prepared| {
-            prepared.metadata = Some(merge_reserved_product_metadata(
-                reserved_payload,
-                prepared.metadata,
-            ));
-            prepared
-        })
-        .map_err(|error| CommerceError::Validation(error.to_string()))
-    }
-
-    async fn resolve_product_metadata(
-        &self,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        metadata: &Value,
-        locale: &str,
-        fallback_locale: &str,
-    ) -> CommerceResult<Value> {
-        let shared_metadata = Self::strip_metadata_tags(metadata.clone());
-        let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
-        resolve_attached_payload(
-            &self.db,
-            flex::AttachedEntityRef {
-                tenant_id,
-                entity_type: "product",
-                entity_id: product_id,
-            },
-            schema,
-            &shared_metadata,
-            locale,
-            fallback_locale,
-        )
-        .await
-        .map(|payload| payload.unwrap_or_else(|| serde_json::json!({})))
-        .map_err(|error| CommerceError::Validation(error.to_string()))
-    }
-
-    fn preferred_product_locale_from_translations(
-        translations: &[ProductTranslationInput],
-    ) -> String {
-        translations
-            .iter()
-            .find_map(|translation| {
-                let trimmed = translation.locale.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            })
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
-    }
-
-    fn preferred_product_locale_from_metadata(metadata: &Value) -> String {
-        metadata
-            .get("locale")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .map(|value| value.trim().to_string())
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
-    }
-
-    fn collect_translation_locales(translations: &[ProductTranslationInput]) -> Vec<String> {
-        let mut locales = Vec::new();
-        for translation in translations {
-            if !locales.iter().any(|locale| locale == &translation.locale) {
-                locales.push(translation.locale.clone());
-            }
-        }
-        locales
-    }
-
-    fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
-        let mut seen = HashSet::new();
-        let mut normalized = Vec::new();
-        for tag_name in tag_names {
-            let trimmed = tag_name.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let key = trimmed.to_ascii_lowercase();
-            if seen.insert(key) {
-                normalized.push(trimmed.to_string());
-            }
-        }
-        normalized
-    }
-
-    fn metadata_has_tags_field(metadata: &Value) -> bool {
-        metadata
-            .as_object()
-            .map(|object| object.contains_key("tags"))
-            .unwrap_or(false)
-    }
-
-    fn extract_metadata_tags(metadata: &Value) -> Vec<String> {
-        metadata
-            .get("tags")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    fn strip_metadata_tags(mut metadata: Value) -> Value {
-        if let Some(object) = metadata.as_object_mut() {
-            object.remove("tags");
-        }
-        metadata
-    }
-
-    fn normalize_metadata_tag_state(input_tags: &[String], metadata: &Value) -> Vec<String> {
-        let normalized_input_tags = Self::normalize_tag_names(input_tags);
-        if !normalized_input_tags.is_empty() || !Self::metadata_has_tags_field(metadata) {
-            return normalized_input_tags;
-        }
-
-        Self::normalize_tag_names(&Self::extract_metadata_tags(metadata))
-    }
-
-    fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
-        let normalized = value.trim().to_ascii_lowercase();
-        if normalized.is_empty() {
-            None
-        } else {
-            Some(normalized)
-        }
-    }
-
-    fn extract_shipping_profile_slug(metadata: &Value) -> Option<String> {
-        metadata
-            .get("shipping_profile")
-            .and_then(|profile| profile.get("slug"))
-            .and_then(Value::as_str)
-            .and_then(Self::normalize_shipping_profile_slug)
-            .or_else(|| {
-                metadata
-                    .get("shipping_profile_slug")
-                    .and_then(Value::as_str)
-                    .and_then(Self::normalize_shipping_profile_slug)
-            })
-    }
-
-    fn apply_shipping_profile_to_metadata(
-        mut metadata: Value,
-        shipping_profile_slug: Option<String>,
-    ) -> Value {
-        let Some(normalized_slug) =
-            shipping_profile_slug.and_then(|value| Self::normalize_shipping_profile_slug(&value))
-        else {
-            return metadata;
-        };
-        if !metadata.is_object() {
-            metadata = Value::Object(Default::default());
-        }
-
-        if let Some(object) = metadata.as_object_mut() {
-            object.remove("shipping_profile_slug");
-            object.insert(
-                "shipping_profile".to_string(),
-                serde_json::json!({ "slug": normalized_slug }),
-            );
-        }
-
-        metadata
-    }
-
-    fn normalize_create_product_metadata(
-        input_tags: Vec<String>,
-        shipping_profile_slug: Option<String>,
-        metadata: Value,
-    ) -> (Value, Option<Vec<String>>) {
-        let normalized_tags = Self::normalize_metadata_tag_state(&input_tags, &metadata);
-        let metadata = Self::apply_shipping_profile_to_metadata(
-            Self::strip_metadata_tags(metadata),
-            shipping_profile_slug,
-        );
-
-        (metadata, Some(normalized_tags))
-    }
-
-    fn normalize_update_product_metadata(
-        input_tags: Option<Vec<String>>,
-        shipping_profile_slug: Option<String>,
-        metadata: Option<Value>,
-        existing_metadata: Value,
-    ) -> Option<(Value, Option<Vec<String>>)> {
-        match (input_tags, shipping_profile_slug, metadata) {
-            (Some(tags), profile_slug, metadata) => {
-                let normalized_tags = Self::normalize_tag_names(&tags);
-                let metadata = metadata.unwrap_or(existing_metadata);
-                Some((
-                    Self::apply_shipping_profile_to_metadata(
-                        Self::strip_metadata_tags(metadata),
-                        profile_slug,
-                    ),
-                    Some(normalized_tags),
-                ))
-            }
-            (None, profile_slug, Some(metadata)) => {
-                let normalized_tags = Self::metadata_has_tags_field(&metadata)
-                    .then(|| Self::normalize_tag_names(&Self::extract_metadata_tags(&metadata)));
-                Some((
-                    Self::apply_shipping_profile_to_metadata(
-                        Self::strip_metadata_tags(metadata),
-                        profile_slug,
-                    ),
-                    normalized_tags,
-                ))
-            }
-            (None, Some(profile_slug), None) => Some((
-                Self::apply_shipping_profile_to_metadata(
-                    Self::strip_metadata_tags(existing_metadata),
-                    Some(profile_slug),
-                ),
-                None,
-            )),
-            (None, None, None) => None,
-        }
     }
 
     pub async fn load_product_tag_map(
@@ -1721,10 +1334,10 @@ impl CatalogService {
                 continue;
             }
 
-            if Self::metadata_has_tags_field(&product.metadata) {
+            if metadata_has_tags_field(&product.metadata) {
                 tags_by_product.insert(
                     product.id,
-                    Self::normalize_tag_names(&Self::extract_metadata_tags(&product.metadata)),
+                    normalize_tag_names(&extract_metadata_tags(&product.metadata)),
                 );
             }
         }
@@ -1747,9 +1360,9 @@ impl CatalogService {
             .await?;
 
         if relations.is_empty() {
-            if Self::metadata_has_tags_field(metadata) {
+            if metadata_has_tags_field(metadata) {
                 return Ok(ProductTagState {
-                    tags: Self::normalize_tag_names(&Self::extract_metadata_tags(metadata)),
+                    tags: normalize_tag_names(&extract_metadata_tags(metadata)),
                 });
             }
 
@@ -1783,7 +1396,7 @@ impl CatalogService {
         locale: &str,
         tag_names: &[String],
     ) -> CommerceResult<()> {
-        let normalized_tags = Self::normalize_tag_names(tag_names);
+        let normalized_tags = normalize_tag_names(tag_names);
 
         product_tag::Entity::delete_many()
             .filter(product_tag::Column::ProductId.eq(product_id))
@@ -1819,200 +1432,6 @@ impl CatalogService {
         }
 
         Ok(())
-    }
-
-    async fn resolve_tag_locale_for_update(
-        &self,
-        txn: &DatabaseTransaction,
-        product_id: Uuid,
-        translations: Option<&[ProductTranslationInput]>,
-    ) -> CommerceResult<String> {
-        if let Some(locale) = translations.and_then(|items| {
-            items.iter().find_map(|item| {
-                let trimmed = item.locale.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            })
-        }) {
-            return Ok(locale);
-        }
-
-        Ok(entities::product_translation::Entity::find()
-            .filter(entities::product_translation::Column::ProductId.eq(product_id))
-            .order_by_asc(entities::product_translation::Column::Locale)
-            .one(txn)
-            .await?
-            .map(|translation| translation.locale)
-            .unwrap_or_else(|| "en".to_string()))
-    }
-
-    fn build_option_translations(
-        translations: Vec<entities::product_option_translation::Model>,
-        option_values: Vec<entities::product_option_value::Model>,
-        option_value_translations_by_value: &HashMap<
-            Uuid,
-            Vec<entities::product_option_value_translation::Model>,
-        >,
-    ) -> Vec<ProductOptionTranslationResponse> {
-        translations
-            .into_iter()
-            .map(|translation| {
-                let values = option_values
-                    .iter()
-                    .map(|value| {
-                        option_value_translations_by_value
-                            .get(&value.id)
-                            .and_then(|items| {
-                                items
-                                    .iter()
-                                    .find(|item| {
-                                        locale_tags_match(&item.locale, &translation.locale)
-                                    })
-                                    .map(|item| item.value.clone())
-                            })
-                            .or_else(|| {
-                                option_value_translations_by_value
-                                    .get(&value.id)
-                                    .and_then(|items| items.first())
-                                    .map(|item| item.value.clone())
-                            })
-                            .unwrap_or_default()
-                    })
-                    .collect();
-
-                ProductOptionTranslationResponse {
-                    locale: translation.locale,
-                    name: translation.title,
-                    values,
-                }
-            })
-            .collect()
-    }
-
-    fn expand_option_translations_for_product_locales(
-        mut translations: Vec<ProductOptionTranslationInput>,
-        product_locales: &[String],
-    ) -> Vec<ProductOptionTranslationInput> {
-        let Some(fallback) = translations.first().cloned() else {
-            return translations;
-        };
-
-        for locale in product_locales {
-            if translations
-                .iter()
-                .any(|translation| locale_tags_match(&translation.locale, locale))
-            {
-                continue;
-            }
-
-            translations.push(ProductOptionTranslationInput {
-                locale: locale.clone(),
-                name: fallback.name.clone(),
-                values: fallback.values.clone(),
-            });
-        }
-
-        translations
-    }
-
-    #[allow(clippy::result_large_err)]
-    fn normalize_option_translations(
-        translations: &[ProductOptionTranslationInput],
-    ) -> CommerceResult<Vec<ProductOptionTranslationInput>> {
-        if translations.is_empty() {
-            return Err(CommerceError::Validation(
-                "At least one option translation is required".into(),
-            ));
-        }
-
-        let mut seen = HashSet::new();
-        let mut normalized = Vec::with_capacity(translations.len());
-        for translation in translations {
-            let locale = normalize_locale_tag(&translation.locale).ok_or_else(|| {
-                CommerceError::Validation("Invalid locale for option translation".into())
-            })?;
-            if !seen.insert(locale.clone()) {
-                return Err(CommerceError::Validation(
-                    "Duplicate locale in option translations".into(),
-                ));
-            }
-            let name = translation.name.trim();
-            if name.is_empty() {
-                return Err(CommerceError::Validation(
-                    "Option name cannot be empty".into(),
-                ));
-            }
-            if translation.values.is_empty() {
-                return Err(CommerceError::Validation(
-                    "Option values cannot be empty".into(),
-                ));
-            }
-            normalized.push(ProductOptionTranslationInput {
-                locale,
-                name: name.to_string(),
-                values: translation
-                    .values
-                    .iter()
-                    .map(|value| value.trim().to_string())
-                    .collect(),
-            });
-        }
-        Ok(normalized)
-    }
-
-    #[allow(clippy::result_large_err)]
-    fn ensure_option_values_consistent(
-        translations: &[ProductOptionTranslationInput],
-        base_values: &[String],
-    ) -> CommerceResult<()> {
-        for translation in translations {
-            if translation.values.len() != base_values.len() {
-                return Err(CommerceError::Validation(
-                    "Option value count must be consistent across translations".into(),
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    fn resolve_option_display(
-        translations: &[ProductOptionTranslationResponse],
-        requested_locale: &str,
-        fallback_locale: Option<&str>,
-    ) -> (String, Vec<String>) {
-        let requested = normalize_locale_tag(requested_locale);
-        let fallback = fallback_locale.and_then(normalize_locale_tag);
-
-        let resolved = requested
-            .as_deref()
-            .and_then(|locale| {
-                translations.iter().find(|translation| {
-                    normalize_locale_tag(&translation.locale).as_deref() == Some(locale)
-                })
-            })
-            .or_else(|| {
-                fallback.as_deref().and_then(|locale| {
-                    translations.iter().find(|translation| {
-                        normalize_locale_tag(&translation.locale).as_deref() == Some(locale)
-                    })
-                })
-            })
-            .or_else(|| translations.first());
-
-        resolved
-            .map(|translation| (translation.name.clone(), translation.values.clone()))
-            .unwrap_or_else(|| ("".to_string(), Vec::new()))
-    }
-
-    fn decimal_to_cents(amount: rust_decimal::Decimal) -> Option<i64> {
-        use rust_decimal::prelude::ToPrimitive;
-
-        (amount * rust_decimal::Decimal::from(100))
-            .round_dp(0)
-            .to_i64()
     }
 
     async fn ensure_default_stock_location<C>(
@@ -2146,492 +1565,4 @@ impl CatalogService {
 
         Ok(available_by_variant)
     }
-}
-
-async fn load_product_custom_fields_schema<C>(
-    db: &C,
-    tenant_id: Uuid,
-) -> CommerceResult<CustomFieldsSchema>
-where
-    C: ConnectionTrait,
-{
-    let rows = product_field_definitions_storage::Entity::find()
-        .filter(product_field_definitions_storage::Column::TenantId.eq(tenant_id))
-        .filter(product_field_definitions_storage::Column::IsActive.eq(true))
-        .order_by_asc(product_field_definitions_storage::Column::Position)
-        .all(db)
-        .await
-        .map_err(CommerceError::from)?;
-
-    let definitions = rows
-        .into_iter()
-        .filter_map(product_field_definition_from_row)
-        .collect();
-
-    Ok(CustomFieldsSchema::new(definitions))
-}
-
-fn product_field_definition_from_row(
-    row: product_field_definitions_storage::Model,
-) -> Option<FieldDefinition> {
-    let field_type: FieldType =
-        serde_json::from_value(serde_json::Value::String(row.field_type.clone())).ok()?;
-    let label = serde_json::from_value(row.label).unwrap_or_default();
-    let description = row
-        .description
-        .and_then(|value| serde_json::from_value(value).ok());
-    let validation: Option<ValidationRule> = row
-        .validation
-        .and_then(|value| serde_json::from_value(value).ok());
-
-    Some(FieldDefinition {
-        field_key: row.field_key,
-        field_type,
-        label,
-        description,
-        is_localized: row.is_localized,
-        is_required: row.is_required,
-        default_value: row.default_value,
-        validation,
-        position: row.position,
-        is_active: row.is_active,
-    })
-}
-
-fn split_product_metadata_payload(
-    schema: &CustomFieldsSchema,
-    metadata: &Value,
-) -> (
-    serde_json::Map<String, Value>,
-    serde_json::Map<String, Value>,
-) {
-    let known_keys = schema
-        .active_definitions()
-        .into_iter()
-        .map(|definition| definition.field_key.as_str())
-        .collect::<HashSet<_>>();
-    let mut reserved = serde_json::Map::new();
-    let mut custom_fields = serde_json::Map::new();
-
-    for (key, value) in metadata.as_object().cloned().unwrap_or_default() {
-        if known_keys.contains(key.as_str()) {
-            custom_fields.insert(key, value);
-        } else {
-            reserved.insert(key, value);
-        }
-    }
-
-    (reserved, custom_fields)
-}
-
-fn merge_product_metadata_patch(
-    mut existing: serde_json::Map<String, Value>,
-    patch: serde_json::Map<String, Value>,
-) -> serde_json::Map<String, Value> {
-    for (key, value) in patch {
-        existing.insert(key, value);
-    }
-
-    existing
-}
-
-fn merge_reserved_product_metadata(
-    mut reserved: serde_json::Map<String, Value>,
-    custom_fields: Option<Value>,
-) -> Value {
-    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
-        for (key, value) in custom_fields {
-            reserved.insert(key, value);
-        }
-    }
-
-    Value::Object(reserved)
-}
-
-fn pick_product_translation<'a>(
-    translations: &'a [entities::product_translation::Model],
-    locale: &str,
-    fallback_locale: &str,
-) -> Option<&'a entities::product_translation::Model> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(fallback_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
-            })?
-        })
-        .or_else(|| translations.first())
-}
-
-fn pick_response_translation<'a>(
-    translations: &'a [ProductTranslationResponse],
-    locale: &str,
-    fallback_locale: &str,
-) -> Option<&'a ProductTranslationResponse> {
-    translations
-        .iter()
-        .find(|translation| locale_tags_match(&translation.locale, locale))
-        .or_else(|| {
-            (!locale_tags_match(fallback_locale, locale)).then(|| {
-                translations
-                    .iter()
-                    .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
-            })?
-        })
-        .or_else(|| translations.first())
-}
-
-fn localize_product_response(
-    mut product: ProductResponse,
-    locale: &str,
-    fallback_locale: &str,
-) -> ProductResponse {
-    let selected_translation =
-        pick_response_translation(product.translations.as_slice(), locale, fallback_locale)
-            .cloned()
-            .into_iter()
-            .collect::<Vec<_>>();
-
-    if !selected_translation.is_empty() {
-        product.translations = selected_translation;
-    }
-
-    product
-}
-
-#[cfg(test)]
-mod product_metadata_tests {
-    use std::collections::HashMap;
-
-    use serde_json::json;
-
-    use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
-
-    use super::{
-        merge_product_metadata_patch, merge_reserved_product_metadata,
-        split_product_metadata_payload,
-    };
-
-    fn definition(field_key: &str) -> FieldDefinition {
-        FieldDefinition {
-            field_key: field_key.to_string(),
-            field_type: FieldType::Text,
-            label: HashMap::from([("en".to_string(), field_key.to_string())]),
-            description: None,
-            is_localized: false,
-            is_required: false,
-            default_value: None,
-            validation: None,
-            position: 0,
-            is_active: true,
-        }
-    }
-
-    #[test]
-    fn split_product_metadata_payload_routes_only_known_flex_keys() {
-        let schema = CustomFieldsSchema::new(vec![definition("fit"), definition("material")]);
-
-        let (reserved, flex) = split_product_metadata_payload(
-            &schema,
-            &json!({
-                "fit": "regular",
-                "material": "linen",
-                "source": "erp",
-                "shipping_profile": { "slug": "standard" }
-            }),
-        );
-
-        assert_eq!(reserved.get("source"), Some(&json!("erp")));
-        assert_eq!(
-            reserved.get("shipping_profile"),
-            Some(&json!({ "slug": "standard" }))
-        );
-        assert_eq!(flex.get("fit"), Some(&json!("regular")));
-        assert_eq!(flex.get("material"), Some(&json!("linen")));
-    }
-
-    #[test]
-    fn merge_product_metadata_patch_preserves_reserved_existing_keys() {
-        let existing = json!({
-            "source": "erp",
-            "shipping_profile": { "slug": "standard" }
-        })
-        .as_object()
-        .cloned()
-        .expect("existing object");
-        let patch = json!({ "source": "manual" })
-            .as_object()
-            .cloned()
-            .expect("patch object");
-
-        let merged = merge_product_metadata_patch(existing, patch);
-
-        assert_eq!(merged.get("source"), Some(&json!("manual")));
-        assert_eq!(
-            merged.get("shipping_profile"),
-            Some(&json!({ "slug": "standard" }))
-        );
-    }
-
-    #[test]
-    fn merge_reserved_product_metadata_keeps_reserved_and_writes_shared_flex_values() {
-        let reserved = json!({ "source": "erp" })
-            .as_object()
-            .cloned()
-            .expect("reserved object");
-
-        let merged = merge_reserved_product_metadata(
-            reserved,
-            Some(json!({ "fit": "regular", "material": "linen" })),
-        );
-
-        assert_eq!(
-            merged,
-            json!({
-                "source": "erp",
-                "fit": "regular",
-                "material": "linen"
-            })
-        );
-    }
-}
-
-fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
-    channel_slug
-        .map(str::trim)
-        .filter(|slug| !slug.is_empty())
-        .map(|slug| slug.to_ascii_lowercase())
-}
-
-fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
-    let Some(values) = metadata
-        .as_object()
-        .and_then(|object| object.get("channel_visibility"))
-        .and_then(|value| value.as_object())
-        .and_then(|object| object.get("allowed_channel_slugs"))
-        .and_then(|value| value.as_array())
-    else {
-        return Vec::new();
-    };
-
-    let mut normalized = BTreeSet::new();
-    for value in values {
-        if let Some(slug) = value
-            .as_str()
-            .and_then(|value| normalize_public_channel_slug(Some(value)))
-        {
-            normalized.insert(slug);
-        }
-    }
-
-    normalized.into_iter().collect()
-}
-
-fn is_allowlist_visible_for_public_channel(
-    allowed_channel_slugs: &[String],
-    public_channel_slug: Option<&str>,
-) -> bool {
-    if allowed_channel_slugs.is_empty() {
-        return true;
-    }
-
-    let Some(public_channel_slug) = normalize_public_channel_slug(public_channel_slug) else {
-        return false;
-    };
-
-    allowed_channel_slugs
-        .iter()
-        .any(|slug| slug == &public_channel_slug)
-}
-
-fn is_metadata_visible_for_public_channel(
-    metadata: &Value,
-    public_channel_slug: Option<&str>,
-) -> bool {
-    let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
-    is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
-}
-
-async fn load_available_inventory_by_variant_for_public_channel(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    variant_ids: &[Uuid],
-    public_channel_slug: Option<&str>,
-) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
-    if variant_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let inventory_items = entities::inventory_item::Entity::find()
-        .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-        .all(db)
-        .await?;
-    if inventory_items.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-        .iter()
-        .map(|item| (item.id, item.variant_id))
-        .collect();
-    let levels = entities::inventory_level::Entity::find()
-        .filter(
-            entities::inventory_level::Column::InventoryItemId
-                .is_in(item_to_variant.keys().copied()),
-        )
-        .all(db)
-        .await?;
-    if levels.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let locations = entities::stock_location::Entity::find()
-        .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-        .filter(entities::stock_location::Column::DeletedAt.is_null())
-        .filter(
-            entities::stock_location::Column::Id
-                .is_in(levels.iter().map(|level| level.location_id)),
-        )
-        .all(db)
-        .await?;
-    let visible_location_ids = locations
-        .into_iter()
-        .filter(|location| {
-            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
-        })
-        .map(|location| location.id)
-        .collect::<HashSet<_>>();
-
-    let mut available_by_variant = HashMap::new();
-    for level in levels {
-        if !visible_location_ids.contains(&level.location_id) {
-            continue;
-        }
-
-        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            *available_by_variant.entry(*variant_id).or_insert(0) +=
-                level.stocked_quantity - level.reserved_quantity;
-        }
-    }
-
-    Ok(available_by_variant)
-}
-
-async fn apply_public_channel_inventory_to_product(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    product: &mut ProductResponse,
-    public_channel_slug: Option<&str>,
-) -> Result<(), sea_orm::DbErr> {
-    let variant_ids = product
-        .variants
-        .iter()
-        .map(|variant| variant.id)
-        .collect::<Vec<_>>();
-    let available_by_variant = load_available_inventory_by_variant_for_public_channel(
-        db,
-        tenant_id,
-        &variant_ids,
-        public_channel_slug,
-    )
-    .await?;
-
-    for variant in &mut product.variants {
-        let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
-        variant.inventory_quantity = available_inventory;
-        variant.in_stock = available_inventory > 0 || variant.inventory_policy == "continue";
-    }
-
-    Ok(())
-}
-
-async fn find_published_product_id_by_handle(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    handle: &str,
-    locale: &str,
-    fallback_locale: &str,
-    public_channel_slug: Option<&str>,
-) -> CommerceResult<Option<Uuid>> {
-    if let Some(product_id) =
-        find_published_product_id_for_locale(db, tenant_id, handle, locale, public_channel_slug)
-            .await?
-    {
-        return Ok(Some(product_id));
-    }
-
-    if !locale_tags_match(fallback_locale, locale) {
-        if let Some(product_id) = find_published_product_id_for_locale(
-            db,
-            tenant_id,
-            handle,
-            fallback_locale,
-            public_channel_slug,
-        )
-        .await?
-        {
-            return Ok(Some(product_id));
-        }
-    }
-
-    find_published_product_id_any_locale(db, tenant_id, handle, public_channel_slug).await
-}
-
-async fn find_published_product_id_for_locale(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    handle: &str,
-    locale: &str,
-    public_channel_slug: Option<&str>,
-) -> CommerceResult<Option<Uuid>> {
-    let translations = entities::product_translation::Entity::find()
-        .filter(entities::product_translation::Column::Handle.eq(handle))
-        .all(db)
-        .await?
-        .into_iter()
-        .filter(|translation| locale_tags_match(&translation.locale, locale))
-        .collect();
-
-    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
-}
-
-async fn find_published_product_id_any_locale(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    handle: &str,
-    public_channel_slug: Option<&str>,
-) -> CommerceResult<Option<Uuid>> {
-    let translations = entities::product_translation::Entity::find()
-        .filter(entities::product_translation::Column::Handle.eq(handle))
-        .all(db)
-        .await?;
-
-    find_first_published_product(db, tenant_id, translations, public_channel_slug).await
-}
-
-async fn find_first_published_product(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    translations: Vec<entities::product_translation::Model>,
-    public_channel_slug: Option<&str>,
-) -> CommerceResult<Option<Uuid>> {
-    for translation in translations {
-        let product = entities::product::Entity::find_by_id(translation.product_id)
-            .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .filter(entities::product::Column::Status.eq(entities::product::ProductStatus::Active))
-            .filter(entities::product::Column::PublishedAt.is_not_null())
-            .one(db)
-            .await?;
-
-        if product.as_ref().is_some_and(|product| {
-            is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
-        }) {
-            return Ok(Some(translation.product_id));
-        }
-    }
-
-    Ok(None)
 }

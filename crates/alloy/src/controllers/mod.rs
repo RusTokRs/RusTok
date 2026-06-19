@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     api::{
-        CreateScriptRequest, EntityInput, ExecutionLogEntryResponse, ListExecutionLogQuery,
+        CreateScriptRequest, EntityInput, ExecutionLogResponse,
         ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
         RunScriptResponse, ScriptResponse, UpdateScriptRequest,
     },
@@ -204,34 +204,59 @@ pub async fn run_script_by_name(
     Ok(Json(run_response(result)))
 }
 
-pub async fn list_execution_log(
+pub async fn list_recent_executions(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    Query(query): Query<ListExecutionLogQuery>,
+    Query(query): Query<ListScriptsQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
-    let limit = query.normalized_limit();
+    let requested = query.offset() + query.limit();
+    let executions = runtime
+        .execution_log
+        .list_recent(requested)
+        .await
+        .map_err(script_error)?;
+    let total = executions.len();
+    let executions = executions
+        .into_iter()
+        .skip(query.offset() as usize)
+        .map(ExecutionLogResponse::from)
+        .collect();
 
-    let entries = match query.script_id {
-        Some(script_id) => runtime
-            .execution_log
-            .list_for_script_for_tenant(script_id, tenant.id, limit)
-            .await
-            .map_err(script_error)?,
-        None => runtime
-            .execution_log
-            .list_recent_for_tenant(tenant.id, limit)
-            .await
-            .map_err(script_error)?,
-    };
+    Ok(Json(ListExecutionLogResponse::new(
+        executions,
+        total,
+        query.page,
+        query.per_page,
+    )))
+}
 
-    Ok(Json(ListExecutionLogResponse {
-        executions: entries
-            .into_iter()
-            .map(ExecutionLogEntryResponse::from)
-            .collect(),
-        limit,
-    }))
+pub async fn list_script_executions(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    Path(id): Path<Uuid>,
+    Query(query): Query<ListScriptsQuery>,
+) -> Result<Json<ListExecutionLogResponse>> {
+    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let requested = query.offset() + query.limit();
+    let executions = runtime
+        .execution_log
+        .list_for_script(id, requested)
+        .await
+        .map_err(script_error)?;
+    let total = executions.len();
+    let executions = executions
+        .into_iter()
+        .skip(query.offset() as usize)
+        .map(ExecutionLogResponse::from)
+        .collect();
+
+    Ok(Json(ListExecutionLogResponse::new(
+        executions,
+        total,
+        query.page,
+        query.per_page,
+    )))
 }
 
 pub async fn validate_script(
@@ -326,13 +351,14 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/alloy")
         .add("/scripts", get(list_scripts).post(create_script))
+        .add("/executions", get(list_recent_executions))
         .add("/scripts/validate", post(validate_script))
-        .add("/executions", get(list_execution_log))
         .add(
             "/scripts/{id}",
             get(get_script).put(update_script).delete(delete_script),
         )
         .add("/scripts/{id}/run", post(run_script))
+        .add("/scripts/{id}/executions", get(list_script_executions))
         .add("/scripts/name/{name}/run", post(run_script_by_name))
         .add("/scripts/{id}/activate", post(activate_script))
         .add("/scripts/{id}/pause", post(pause_script))

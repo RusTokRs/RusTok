@@ -3,6 +3,11 @@ pub mod checkout;
 pub mod orders;
 pub mod products;
 
+pub use carts::*;
+pub use checkout::*;
+pub use orders::*;
+pub use products::*;
+
 #[cfg(test)]
 mod tests;
 

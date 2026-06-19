@@ -7,12 +7,12 @@ rule и scope write paths, а полный promotions engine и остально
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_product_list_item_presentation_slice
-- Last checkpoint: Admin pricing product-list item presentation вынесена из Leptos adapter в Leptos-free `admin/src/core/presentation.rs`: `PricingProductListItemViewModel` теперь собирает id/title, status label/badge, shipping-profile fallback, meta line и selected-row class policy с pure-core unit-test evidence.
-- Next step: Продолжать маленькие FFA-срезы только там, где они сокращают Leptos-owned presentation/state policy: следующий кандидат — editor action-state policy; transport/native-first + GraphQL fallback contract не менять.
+- Current phase: ffa_admin_editor_channel_label_policy_slice
+- Last checkpoint: Admin pricing editor legacy-channel option label policy вынесена из трёх Leptos editor adapters в Leptos-free `admin/src/core/routing.rs`: `legacy_channel_option_label` теперь централизует legacy scope/not-set fallback для variant price, discount и price-list rule editors с pure-core unit-test evidence.
+- Next step: Продолжать маленькие FFA-срезы только там, где они сокращают Leptos-owned presentation/state policy; transport/native-first + GraphQL fallback contract не менять.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-13T00:00:00Z
+- Last updated at (UTC): 2026-06-18T00:00:00Z
 
 ## FFA/FBA status
 
@@ -34,8 +34,8 @@ rule и scope write paths, а полный promotions engine и остально
   - admin pricing presentation/request policy продолжает FFA-декомпозицию в `admin/src/core/`: `presentation.rs` владеет summary/labels/formatters, `routing.rs` — channel scope/query helpers, `requests.rs` — resolution context normalization и write draft builders; targeted pure-core tests покрывают pricing summary, resolution context normalization, channel-key policy и DTO builders;
   - admin write request construction для variant price, percentage discount и price-list rule/scope остаётся в core-owned draft builders; Leptos adapter использует explicit core imports вместо wildcard и не конструирует covered write DTO inline;
   - admin GraphQL/native input sanitization для active price-list/product context (`currency_code`, UUID strings, channel slug, resolution quantity/context) перенесена из `admin/src/api.rs` в `core/requests.rs`; API layer сохраняет existing `ApiError`/`ServerFnError` envelope через adapter mapping;
-  - admin detail header presentation теперь собирается `PricingProductDetailHeaderViewModel` в `admin/src/core/presentation.rs`: translation fallback, status badge/label, meta/seller/shipping/timestamp строки больше не форматируются inline в Leptos render path, а pure-core unit test фиксирует fallback policy; latest admin variant-card slice добавил `PricingVariantCardViewModel`, который собирает health label/badge, identity/profile lines, effective price line и price table вне Leptos adapter; latest admin product-list slice добавил `PricingProductListItemViewModel`, который собирает row id/title, status label/badge, shipping-profile fallback, meta line и selected-row class policy вне Leptos adapter.
-- Last verified at (UTC): 2026-06-13T00:00:00Z
+  - admin detail header presentation теперь собирается `PricingProductDetailHeaderViewModel` в `admin/src/core/presentation.rs`: translation fallback, status badge/label, meta/seller/shipping/timestamp строки больше не форматируются inline в Leptos render path, а pure-core unit test фиксирует fallback policy; latest admin variant-card slice добавил `PricingVariantCardViewModel`, который собирает health label/badge, identity/profile lines, effective price line и price table вне Leptos adapter; latest admin product-list slice добавил `PricingProductListItemViewModel`, который собирает row id/title, status label/badge, shipping-profile fallback, meta line и selected-row class policy вне Leptos adapter; latest admin editor routing slice добавил `legacy_channel_option_label` в `admin/src/core/routing.rs`, чтобы legacy channel option label/not-set fallback больше не дублировался в Leptos variant price, discount и price-list rule editors.
+- Last verified at (UTC): 2026-06-18T00:00:00Z
 - Owner: `rustok-pricing` module team
 
 ## Область работ
@@ -67,7 +67,7 @@ rule и scope write paths, а полный promotions engine и остально
   base-row writes, active `price_list` overrides, typed percentage adjustments и
   `price_list` rule/scope editing, оставляя product GraphQL контракт как fallback
   для чтения; admin presentation/request policy для summary, status/price/channel
-  labels, route href, detail-header view-model, resolution context normalization и write draft builders вынесена в Leptos-free
+  labels, legacy channel option fallback, route href, detail-header view-model, resolution context normalization и write draft builders вынесена в Leptos-free
   `admin/src/core/` (`presentation`, `routing`, `requests`), поэтому `admin/src/ui/leptos.rs` остаётся render/bind adapter.
 
 ## Этапы

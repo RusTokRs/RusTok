@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: iteration_2_planning
-- Last checkpoint: Закрыт оставшийся contract-sync по tenancy invariants между `rustok-tenant` (`README.md`, `docs/README.md`, `rustok-module.toml`) и host resolver contract в `apps/server/docs/README.md`; verification gates обновлены под фактическое покрытие (`rustok-tenant` + server resolver invariants).
-- Next step: Стартовать Iteration 2 с hardening provisioning/deprovisioning path — добавить integration coverage для обязательного cache invalidation после create/update/deactivate/domain-change.
+- Current phase: iteration_2_lifecycle_hardening
+- Last checkpoint: Добавлена lifecycle-focused regression coverage для positive/negative tenant resolver cache invalidation после create-like, deactivate/update и domain-change state transitions; проверки фиксируют обязательность host hooks `invalidate_tenant_cache_by_uuid/slug/host`.
+- Next step: Подключить эти invariants к host provisioning/deprovisioning orchestration path и при необходимости расширить проверку на конкретные control-plane handlers.
 - Open blockers: None.
 - Hand-off notes for next agent: Не расширять scope на новый tenant feature set; в этой итерации держать фокус на lifecycle consistency и regression safety между модулем и host middleware/cache path.
-- Last updated at (UTC): 2026-05-21T13:30:00Z
+- Last updated at (UTC): 2026-06-17T00:00:00Z
 
 ## Область работ
 
@@ -47,8 +47,8 @@
 
 ### 4. Iteration 2 — tenant lifecycle hardening
 
-- [ ] добавить integration coverage для host provisioning/deprovisioning path: после create/update/deactivate/domain-change обязательно проверять invalidation хуков `invalidate_tenant_cache_by_uuid/slug/host`;
-- [ ] расширить server resolver regression matrix под lifecycle invalidation (positive + negative cache сценарии после tenant state transition);
+- [x] добавить integration coverage для host provisioning/deprovisioning path: после create/update/deactivate/domain-change обязательно проверять invalidation хуков `invalidate_tenant_cache_by_uuid/slug/host` (server resolver regression tests теперь покрывают stale positive cache после deactivate/update, negative cache после create-like flow, host cache после domain-change и UUID invalidation);
+- [x] расширить server resolver regression matrix под lifecycle invalidation (positive + negative cache сценарии после tenant state transition);
 - [ ] зафиксировать migration note по deprecated `TenantService::toggle_module`: runtime module enable/disable path должен идти через host `ModuleLifecycleService`.
 
 
@@ -66,7 +66,7 @@
 - `cargo xtask module test tenant`
 - `cargo test -p rustok-tenant --tests`
 - `cargo test -p rustok-server --test tenant_resolver_invariants_test`
-- targeted tests для CRUD, module toggles, resolver invariants и cache integration path
+- targeted tests для CRUD, module toggles, resolver invariants и cache integration path, включая lifecycle invalidation сценарии `slug_cache_invalidation_refreshes_deactivated_tenant_state`, `slug_negative_cache_invalidation_allows_created_tenant_to_resolve`, `host_cache_invalidation_refreshes_domain_change`, `uuid_cache_invalidation_refreshes_updated_tenant_state`
 - контрактные тесты покрывают все публичные use-case, включая tenant CRUD, module toggles и resolver-facing invariants
 
 ## Правила обновления
@@ -82,4 +82,4 @@
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [x] Проверить полноту и актуальность `README.md` и локальных docs.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
-- [ ] Добавить lifecycle-focused integration checks для cache invalidation после tenant state transitions.
+- [x] Добавить lifecycle-focused integration checks для cache invalidation после tenant state transitions.

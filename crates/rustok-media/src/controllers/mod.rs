@@ -33,6 +33,7 @@ fn media_error(error: MediaError) -> Error {
         }
         MediaError::Storage(error) => Error::Message(error.to_string()),
         MediaError::Db(error) => Error::Message(error.to_string()),
+        MediaError::InvalidLocale(locale) => Error::BadRequest(format!("Invalid locale: {locale}")),
     }
 }
 

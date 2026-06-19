@@ -1,0 +1,59 @@
+import fs from 'node:fs';
+
+function read(path) { return fs.readFileSync(path, 'utf8'); }
+function json(path) { return JSON.parse(read(path)); }
+function fail(message) { console.error(`[verify-comments-fba] ${message}`); process.exit(1); }
+function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
+
+const registryPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
+const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json';
+const registry = json(registryPath);
+const evidence = json(evidencePath);
+
+if (registry.schema_version !== 1) fail('registry schema_version drift');
+if (registry.module !== 'comments' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.contract_version !== 'comments.thread.v1') fail('contract_version drift');
+const port = registry.ports?.[0];
+if (!port || port.name !== 'CommentsThreadPort') fail('port name drift');
+hasAll(JSON.stringify(port), ['create_comment','get_comment','list_comments_for_target','update_comment','delete_comment'], 'port operations');
+if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
+
+const manifest = read('crates/rustok-comments/rustok-module.toml');
+hasAll(manifest, ['[fba.provider]', 'registry = "contracts/comments-fba-registry.json"', 'contract_version = "comments.thread.v1"'], 'manifest');
+
+const cargo = read('crates/rustok-comments/Cargo.toml');
+hasAll(cargo, ['"dep:rustok-api"', 'rustok-api = { workspace = true, optional = true }'], 'Cargo.toml');
+
+const lib = read('crates/rustok-comments/src/lib.rs');
+hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
+
+const ports = read('crates/rustok-comments/src/ports.rs');
+hasAll(ports, ['pub trait CommentsThreadPort', 'impl CommentsThreadPort for CommentsService', 'PortContext', 'PortError'], 'ports.rs');
+const implStart = ports.indexOf('impl CommentsThreadPort for CommentsService');
+if (implStart === -1) fail('ports.rs missing CommentsService impl');
+const implPorts = ports.slice(implStart);
+for (const op of port.write_operations) {
+  const idx = implPorts.indexOf(`async fn ${op}`);
+  if (idx === -1) fail(`ports.rs missing write operation ${op}`);
+  const body = implPorts.slice(idx, implPorts.indexOf('\n    async fn ', idx + 1) === -1 ? implPorts.length : implPorts.indexOf('\n    async fn ', idx + 1));
+  if (!body.includes('context.require_write_semantics()?')) fail(`${op} does not require write semantics`);
+}
+for (const op of port.read_operations) {
+  const idx = implPorts.indexOf(`async fn ${op}`);
+  if (idx === -1) fail(`ports.rs missing read operation ${op}`);
+  const body = implPorts.slice(idx, implPorts.indexOf('\n    async fn ', idx + 1) === -1 ? implPorts.length : implPorts.indexOf('\n    async fn ', idx + 1));
+  if (!body.includes('context.require_deadline_semantics()?')) fail(`${op} does not require deadline semantics`);
+  if (body.includes('context.require_write_semantics()?')) fail(`${op} unexpectedly requires write semantics`);
+}
+
+if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
+const registryCases = registry.contract_tests.cases.map(c => c.operation).sort().join('|');
+const evidenceCases = evidence.cases.map(c => c.operation).sort().join('|');
+if (registryCases !== evidenceCases) fail('evidence case matrix drift');
+
+const plan = read('crates/rustok-comments/docs/implementation-plan.md');
+hasAll(plan, ['- FBA status: `in_progress`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json'], 'local plan');
+const central = read('docs/modules/registry.md');
+hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
+
+console.log('[verify-comments-fba] comments FBA provider metadata, port semantics and static evidence are consistent');

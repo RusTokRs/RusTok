@@ -12,7 +12,7 @@
 
 ## Зона ответственности
 
-- `MediaService`, media entities/DTOs и контракт обновления переводов;
+- `MediaService`, media entities/DTOs и контракт обновления переводов с нормализацией locale/text на runtime boundary;
 - типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers);
 - GraphQL- и REST-адаптеры модуля;
 - валидацию загрузок по size/MIME policy и tenant isolation;
@@ -32,7 +32,7 @@
 
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
-- targeted tests для валидации загрузок, нормализации/обновления переводов, классификации cleanup-probe хранилища и admin-facing read/write contracts
+- targeted tests для валидации загрузок, нормализации переводов, очистки хранилища и admin-facing read/write contracts
 
 ## Связанные документы
 

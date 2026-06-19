@@ -20,6 +20,7 @@ RusToK использует гибридный transport layer:
 | GraphQL | `/api/graphql` | Единая точка для admin/storefront UI |
 | GraphQL WS | `/api/graphql/ws` | Subscriptions transport |
 | REST | `/api/v1/...` | Интеграции, webhooks, batch/ops scenarios |
+| MCP management/runtime | `/api/mcp/...` | Persisted MCP clients/tokens/policies/audit и remote runtime bootstrap |
 | Commerce REST | `/store/...`, `/admin/...` | Совместимые ecommerce HTTP flows |
 | OpenAPI | `/api/openapi.json`, `/api/openapi.yaml` | REST contract discovery |
 | Health | `/health`, `/health/live`, `/health/ready` | Health and readiness |
@@ -56,6 +57,8 @@ REST остаётся обязательным для сценариев, где
 - для post-order ecommerce surface первый OMS slice уже включает admin refund routes поверх `payment-collections` (`/admin/payment-collections/{id}/refunds`, `/admin/refunds/{id}/complete`, `/admin/refunds/{id}/cancel`)
 
 REST не должен использоваться как скрытая замена GraphQL для UI-only flows.
+
+MCP runtime bootstrap является platform-owned REST surface: `POST /api/mcp/runtime/bootstrap` принимает MCP Bearer token или `plaintext_token`, требует non-stdio transport, возвращает persisted runtime binding/effective access context и пишет audit event с correlation id.
 
 ## `#[server]`-поверхность
 

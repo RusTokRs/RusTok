@@ -304,6 +304,13 @@ impl ModelProvider for OpenAiCompatibleProvider {
                 let payload: Value = serde_json::from_str(data).map_err(|err| {
                     AiError::Provider(format!("invalid streaming payload from provider: {err}"))
                 })?;
+                if let Some(error) = payload.get("error") {
+                    let message = error
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("OpenAI compatible provider streaming error");
+                    return Err(AiError::Provider(message.to_string()));
+                }
                 let Some(choice) = payload
                     .get("choices")
                     .and_then(Value::as_array)
@@ -1224,6 +1231,7 @@ fn anthropic_message_payload(message: &ChatMessage) -> Value {
 fn gemini_message_payload(message: &ChatMessage) -> Value {
     let role = match message.role {
         ChatMessageRole::Assistant => "model",
+        ChatMessageRole::Tool => "function",
         _ => "user",
     };
     let parts = if message.role == ChatMessageRole::Tool {
