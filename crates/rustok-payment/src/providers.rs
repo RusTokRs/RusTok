@@ -72,6 +72,28 @@ pub struct PaymentProviderOperationResult {
     pub metadata: Value,
 }
 
+/// Transport-neutral webhook delivery passed to provider adapters before replay-safe
+/// lifecycle handling is delegated back to `PaymentService`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PaymentProviderWebhookRequest {
+    pub tenant_id: Uuid,
+    pub provider_id: String,
+    pub delivery_id: String,
+    pub idempotency_key: String,
+    pub signature: Option<String>,
+    pub raw_payload: Vec<u8>,
+}
+
+/// Normalized webhook facts. Adapters must not persist lifecycle state directly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PaymentProviderWebhookResult {
+    pub provider_id: String,
+    pub external_reference: Option<String>,
+    pub event_type: String,
+    pub replay_key: String,
+    pub metadata: Value,
+}
+
 /// SPI for concrete payment providers. Domain state transitions stay in `PaymentService`;
 /// adapters only execute provider-side effects and return normalized facts.
 #[async_trait]
@@ -97,6 +119,11 @@ pub trait PaymentProvider: Send + Sync {
         &self,
         request: PaymentProviderOperationRequest,
     ) -> PaymentResult<PaymentProviderOperationResult>;
+
+    async fn handle_webhook(
+        &self,
+        request: PaymentProviderWebhookRequest,
+    ) -> PaymentResult<PaymentProviderWebhookResult>;
 }
 
 /// Built-in manual provider used while external gateways are not connected.
@@ -160,5 +187,14 @@ impl PaymentProvider for ManualPaymentProvider {
             ));
         }
         Ok(Self::result(request, Decimal::ZERO, Decimal::ZERO))
+    }
+
+    async fn handle_webhook(
+        &self,
+        _request: PaymentProviderWebhookRequest,
+    ) -> PaymentResult<PaymentProviderWebhookResult> {
+        Err(PaymentError::Validation(
+            "manual payment provider does not accept webhook ingress".to_string(),
+        ))
     }
 }

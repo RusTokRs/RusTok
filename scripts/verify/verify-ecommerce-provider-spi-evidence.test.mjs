@@ -28,6 +28,14 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry } = {}) => {
       webhook_ingress: {
         idempotency_required: true,
         replay_required: true,
+        adapter_operation: 'handle_webhook',
+      },
+      external_adapter_registration: {
+        status: 'planned_contract_locked',
+        requires_descriptor_capability_match: true,
+        requires_health_status_mapping: true,
+        requires_degraded_mode_mapping: true,
+        disallows_persisted_lifecycle_state_in_adapter: true,
       },
     },
   };
@@ -61,6 +69,19 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry } = {}) => {
         'raw_payload_retained_for_audit',
         'lifecycle_transition_delegated_to_owner_service',
       ],
+      adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
+      raw_payload_audit_required: true,
+      owner_service_replay_guard_required: true,
+    },
+    external_adapter_registration: {
+      status: registry.provider_spi.external_adapter_registration.status,
+      assertions: [
+        'descriptor_capability_match_required',
+        'health_status_mapping_required',
+        'degraded_mode_mapping_required',
+        'adapter_does_not_persist_lifecycle_state',
+      ],
+      execution_status: 'static_locked_runtime_pending',
     },
     promotion_gate: 'does_not_raise_boundary_ready_without_runtime_execution',
   };
@@ -120,6 +141,23 @@ test('verifyEcommerceProviderSpiEvidence rejects disabled registry replay requir
     {
       name: EcommerceProviderSpiEvidenceError.name,
       message: 'payment registry webhook ingress must keep idempotency and replay required',
+    },
+  );
+});
+
+
+test('verifyEcommerceProviderSpiEvidence rejects external adapter registration assertion drift', () => {
+  const root = createFixtureRoot({
+    mutateEvidence(evidence) {
+      evidence.external_adapter_registration.assertions = ['descriptor_capability_match_required'];
+    },
+  });
+
+  assert.throws(
+    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceProviderSpiEvidenceError.name,
+      message: 'payment external adapter registration assertions drift',
     },
   );
 });
