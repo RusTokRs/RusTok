@@ -6,7 +6,7 @@
 ## Execution checkpoint
 
 - Current phase: FBA media asset read provider metadata
-- Last checkpoint: FBA asset-read provider slice added `MediaAssetReadPort` / `media.asset_read.v1`, machine-readable registry `crates/rustok-media/contracts/media-fba-registry.json`, static evidence `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, manifest provider metadata and fast guardrail `npm run verify:media:fba`.
+- Last checkpoint: FBA asset-read provider slice added `MediaAssetReadPort` / `media.asset_read.v1`, machine-readable registry `crates/rustok-media/contracts/media-fba-registry.json`, static evidence `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, manifest provider metadata and fast guardrail `npm run verify:media:fba`. Admin FFA boundary is pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
 - Next step: Закрыть runtime contract execution/fallback smoke для `MediaAssetReadPort`, особенно SEO image descriptor degraded modes, и затем добрать DB-backed integration tests для `cleanup_storage_orphans` без изменения transport parity.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
@@ -46,7 +46,7 @@
 - [x] зафиксировать upload/list/delete/translation runtime contract;
 - [x] удерживать tenant isolation и MIME/size validation внутри модуля;
 - [x] держать media storage metadata и physical storage boundary явными;
-- [~] удерживать sync между runtime contracts, admin UI и module metadata; текущий FFA admin slice вынес Leptos-free helpers в `admin/src/core.rs`, включая upload/detail/list-card/error state policy, transport facade в `admin/src/transport/` и явный render adapter в `admin/src/ui/leptos.rs`.
+- [~] удерживать sync между runtime contracts, admin UI и module metadata; текущий FFA admin slice вынес Leptos-free helpers в `admin/src/core.rs`, включая upload/detail/list-card/error state policy, transport facade в `admin/src/transport/`, явный render adapter в `admin/src/ui/leptos.rs` и fast boundary guardrail `scripts/verify/verify-media-admin-boundary.mjs`.
 
 ### 2. Runtime hardening
 
