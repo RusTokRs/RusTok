@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "module": "ai-media",
+  "crate": "rustok-ai-media",
+  "role": "consumer_support_adapter",
+  "status": "in_progress",
+  "consumer_profile": "ai_asset_descriptor",
+  "provider_dependencies": [
+    {
+      "module": "media",
+      "registry": "crates/rustok-media/contracts/media-fba-registry.json",
+      "contract_version": "media.asset_read.v1",
+      "port": "MediaAssetReadPort",
+      "operations": ["get_image_descriptor", "get_asset"],
+      "required_profiles": ["in_process", "remote_adapter_placeholder"],
+      "fallback_profiles": ["embedded_native"],
+      "degraded_modes": ["skip_asset_enrichment"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError"
+    }
+  ],
+  "support_adapter": {
+    "source": "crates/rustok-ai-media/src/lib.rs",
+    "task_slug": "image_asset",
+    "tool_name": "direct.media.generate_image",
+    "registration_api": "register_media_ai_vertical_handlers",
+    "validation_helper": "normalize_image_size"
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-ai-media/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-media-fba.mjs",
+    "static_matrix": "crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+    "runner": "scripts/verify/verify-ai-media-fba.mjs",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "provider": "media",
+        "operation": "get_image_descriptor",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "ai_descriptor_shape_preserved", "degraded_skip_asset_enrichment_on_unavailable"]
+      },
+      {
+        "provider": "media",
+        "operation": "get_asset",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "image_size_validation_preserved"]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["skip_asset_enrichment"]
+    }
+  }
+}

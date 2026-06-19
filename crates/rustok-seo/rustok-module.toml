@@ -48,3 +48,12 @@ allowed_canonical_hosts = { type = "array", item_type = "string", default = [] }
 x_default_locale = { type = "string", default = "" }
 template_defaults = { type = "object", default = {}, shape = { title = { type = "string" }, meta_description = { type = "string" }, canonical_url = { type = "string" }, keywords = { type = "string" }, robots = { type = "string" }, open_graph_title = { type = "string" }, open_graph_description = { type = "string" }, twitter_title = { type = "string" }, twitter_description = { type = "string" } } }
 template_overrides = { type = "object", default = {}, additional_properties = { type = "object", shape = { title = { type = "string" }, meta_description = { type = "string" }, canonical_url = { type = "string" }, keywords = { type = "string" }, robots = { type = "string" }, open_graph_title = { type = "string" }, open_graph_description = { type = "string" }, twitter_title = { type = "string" }, twitter_description = { type = "string" } } } }
+
+[fba.consumer]
+registry = "contracts/seo-fba-registry.json"
+profile = "seo_image_descriptor"
+provider_contracts = ["media.asset_read.v1"]
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["omit_image_metadata", "keep_existing_seo_image"]

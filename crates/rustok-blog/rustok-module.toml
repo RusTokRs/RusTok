@@ -64,3 +64,12 @@ next_package = "@rustok/blog-frontend"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
+
+[fba.consumer]
+registry = "contracts/blog-fba-registry.json"
+profile = "blog_post_comments"
+provider_contracts = ["comments.thread.v1"]
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["hide_comment_form", "show_cached_thread_snapshot"]
