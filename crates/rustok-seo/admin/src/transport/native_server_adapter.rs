@@ -1,6 +1,4 @@
 use leptos::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
 
 #[cfg(feature = "ssr")]
 use rustok_seo::SeoService;
@@ -26,161 +24,6 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "seo";
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ApiError {
-    ServerFn(String),
-}
-
-impl Display for ApiError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ServerFn(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for ApiError {}
-
-impl From<ServerFnError> for ApiError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
-
-pub async fn fetch_redirects() -> Result<Vec<SeoRedirectRecord>, ApiError> {
-    seo_redirects_native().await.map_err(Into::into)
-}
-
-pub async fn save_redirect(input: SeoRedirectInput) -> Result<SeoRedirectRecord, ApiError> {
-    seo_upsert_redirect_native(input).await.map_err(Into::into)
-}
-
-pub async fn fetch_sitemap_status() -> Result<SeoSitemapStatusRecord, ApiError> {
-    seo_sitemap_status_native().await.map_err(Into::into)
-}
-
-pub async fn generate_sitemaps() -> Result<SeoSitemapStatusRecord, ApiError> {
-    seo_generate_sitemaps_native().await.map_err(Into::into)
-}
-
-pub async fn fetch_settings() -> Result<SeoModuleSettings, ApiError> {
-    seo_settings_native().await.map_err(Into::into)
-}
-
-pub async fn save_settings(settings: SeoModuleSettings) -> Result<SeoModuleSettings, ApiError> {
-    seo_save_settings_native(settings).await.map_err(Into::into)
-}
-
-pub async fn fetch_robots_preview() -> Result<SeoRobotsPreviewRecord, ApiError> {
-    seo_robots_preview_native().await.map_err(Into::into)
-}
-
-pub async fn fetch_diagnostics(
-    locale: Option<String>,
-) -> Result<SeoDiagnosticsSummaryRecord, ApiError> {
-    seo_diagnostics_native(locale).await.map_err(Into::into)
-}
-
-pub async fn fetch_bulk_items(input: SeoBulkListInput) -> Result<SeoBulkPage, ApiError> {
-    seo_bulk_items_native(input).await.map_err(Into::into)
-}
-
-pub async fn fetch_bulk_targets() -> Result<Vec<SeoTargetRegistryEntry>, ApiError> {
-    seo_bulk_targets_native().await.map_err(Into::into)
-}
-
-pub async fn preview_bulk_selection(
-    input: SeoBulkSelectionInput,
-) -> Result<SeoBulkSelectionPreviewRecord, ApiError> {
-    seo_bulk_selection_preview_native(input)
-        .await
-        .map_err(Into::into)
-}
-
-pub async fn fetch_bulk_jobs(
-    limit: Option<i32>,
-    status: Option<SeoBulkJobStatus>,
-) -> Result<Vec<SeoBulkJobRecord>, ApiError> {
-    seo_bulk_jobs_native(limit, status)
-        .await
-        .map_err(Into::into)
-}
-
-#[allow(dead_code)]
-pub async fn fetch_bulk_job(job_id: String) -> Result<Option<SeoBulkJobRecord>, ApiError> {
-    seo_bulk_job_native(job_id).await.map_err(Into::into)
-}
-
-pub async fn fetch_index_delivery_status(
-    target_type: Option<String>,
-) -> Result<SeoIndexDeliveryStatusRecord, ApiError> {
-    let target_type = normalize_index_target_type(target_type).map_err(ApiError::ServerFn)?;
-    seo_index_tracking_native(target_type)
-        .await
-        .map_err(Into::into)
-}
-
-pub async fn run_index_repair_replay(
-    input: SeoIndexRepairReplayInput,
-) -> Result<SeoIndexRepairReplayResultRecord, ApiError> {
-    let input = normalize_index_repair_replay_input(input).map_err(ApiError::ServerFn)?;
-    seo_index_repair_replay_native(input)
-        .await
-        .map_err(Into::into)
-}
-
-pub async fn queue_bulk_apply(input: SeoBulkApplyInput) -> Result<SeoBulkJobRecord, ApiError> {
-    let input = normalize_preview_bulk_apply_input(input);
-    seo_queue_bulk_apply_native(input).await.map_err(Into::into)
-}
-
-fn normalize_preview_bulk_apply_input(mut input: SeoBulkApplyInput) -> SeoBulkApplyInput {
-    if input.apply_mode == SeoBulkApplyMode::PreviewOnly {
-        input.publish_after_write = false;
-    }
-    input
-}
-
-fn normalize_index_target_type(target_type: Option<String>) -> Result<Option<String>, String> {
-    let Some(value) = target_type else {
-        return Ok(None);
-    };
-
-    let normalized = value.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
-        return Ok(None);
-    }
-
-    match normalized.as_str() {
-        "content" | "product" => Ok(Some(normalized)),
-        _ => Err("Index target type must be `content` or `product`".to_string()),
-    }
-}
-
-fn normalize_index_repair_replay_input(
-    mut input: SeoIndexRepairReplayInput,
-) -> Result<SeoIndexRepairReplayInput, String> {
-    input.target_type = normalize_index_target_type(input.target_type)?;
-    input.limit = input.limit.clamp(1, 500);
-    Ok(input)
-}
-
-pub async fn queue_bulk_import(input: SeoBulkImportInput) -> Result<SeoBulkJobRecord, ApiError> {
-    seo_queue_bulk_import_native(input)
-        .await
-        .map_err(Into::into)
-}
-
-pub async fn queue_bulk_export(input: SeoBulkExportInput) -> Result<SeoBulkJobRecord, ApiError> {
-    seo_queue_bulk_export_native(input)
-        .await
-        .map_err(Into::into)
-}
-
-pub fn bulk_artifact_download_path(job_id: &str, artifact_id: &str) -> String {
-    format!("/api/seo/bulk/jobs/{job_id}/artifacts/{artifact_id}")
-}
 
 #[cfg(feature = "ssr")]
 fn require_permission(
@@ -232,7 +75,7 @@ async fn persist_seo_settings(
 }
 
 #[cfg(feature = "ssr")]
-async fn seo_service_from_context() -> Result<
+pub(super) async fn seo_service_from_context() -> Result<
     (
         SeoService,
         rustok_api::AuthContext,
@@ -271,7 +114,7 @@ async fn seo_service_from_context() -> Result<
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/redirects")]
-async fn seo_redirects_native() -> Result<Vec<SeoRedirectRecord>, ServerFnError> {
+pub(super) async fn seo_redirects_native() -> Result<Vec<SeoRedirectRecord>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -295,7 +138,7 @@ async fn seo_redirects_native() -> Result<Vec<SeoRedirectRecord>, ServerFnError>
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/upsert-redirect")]
-async fn seo_upsert_redirect_native(
+pub(super) async fn seo_upsert_redirect_native(
     input: SeoRedirectInput,
 ) -> Result<SeoRedirectRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -322,7 +165,7 @@ async fn seo_upsert_redirect_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/sitemap-status")]
-async fn seo_sitemap_status_native() -> Result<SeoSitemapStatusRecord, ServerFnError> {
+pub(super) async fn seo_sitemap_status_native() -> Result<SeoSitemapStatusRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -349,7 +192,8 @@ async fn seo_sitemap_status_native() -> Result<SeoSitemapStatusRecord, ServerFnE
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/generate-sitemaps")]
-async fn seo_generate_sitemaps_native() -> Result<SeoSitemapStatusRecord, ServerFnError> {
+pub(super) async fn seo_generate_sitemaps_native() -> Result<SeoSitemapStatusRecord, ServerFnError>
+{
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -373,7 +217,7 @@ async fn seo_generate_sitemaps_native() -> Result<SeoSitemapStatusRecord, Server
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/settings")]
-async fn seo_settings_native() -> Result<SeoModuleSettings, ServerFnError> {
+pub(super) async fn seo_settings_native() -> Result<SeoModuleSettings, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -397,7 +241,7 @@ async fn seo_settings_native() -> Result<SeoModuleSettings, ServerFnError> {
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/save-settings")]
-async fn seo_save_settings_native(
+pub(super) async fn seo_save_settings_native(
     input: SeoModuleSettings,
 ) -> Result<SeoModuleSettings, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -430,7 +274,7 @@ async fn seo_save_settings_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/robots-preview")]
-async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord, ServerFnError> {
+pub(super) async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -454,7 +298,7 @@ async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord, ServerFnE
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/diagnostics")]
-async fn seo_diagnostics_native(
+pub(super) async fn seo_diagnostics_native(
     locale: Option<String>,
 ) -> Result<SeoDiagnosticsSummaryRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -484,7 +328,9 @@ async fn seo_diagnostics_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/bulk-items")]
-async fn seo_bulk_items_native(input: SeoBulkListInput) -> Result<SeoBulkPage, ServerFnError> {
+pub(super) async fn seo_bulk_items_native(
+    input: SeoBulkListInput,
+) -> Result<SeoBulkPage, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -509,7 +355,8 @@ async fn seo_bulk_items_native(input: SeoBulkListInput) -> Result<SeoBulkPage, S
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/bulk-targets")]
-async fn seo_bulk_targets_native() -> Result<Vec<SeoTargetRegistryEntry>, ServerFnError> {
+pub(super) async fn seo_bulk_targets_native() -> Result<Vec<SeoTargetRegistryEntry>, ServerFnError>
+{
     #[cfg(feature = "ssr")]
     {
         let (service, auth, _tenant) = seo_service_from_context().await?;
@@ -530,7 +377,7 @@ async fn seo_bulk_targets_native() -> Result<Vec<SeoTargetRegistryEntry>, Server
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/bulk-selection-preview")]
-async fn seo_bulk_selection_preview_native(
+pub(super) async fn seo_bulk_selection_preview_native(
     input: SeoBulkSelectionInput,
 ) -> Result<SeoBulkSelectionPreviewRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -557,7 +404,7 @@ async fn seo_bulk_selection_preview_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/bulk-jobs")]
-async fn seo_bulk_jobs_native(
+pub(super) async fn seo_bulk_jobs_native(
     limit: Option<i32>,
     status: Option<SeoBulkJobStatus>,
 ) -> Result<Vec<SeoBulkJobRecord>, ServerFnError> {
@@ -589,7 +436,9 @@ async fn seo_bulk_jobs_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/bulk-job")]
-async fn seo_bulk_job_native(job_id: String) -> Result<Option<SeoBulkJobRecord>, ServerFnError> {
+pub(super) async fn seo_bulk_job_native(
+    job_id: String,
+) -> Result<Option<SeoBulkJobRecord>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (service, auth, tenant) = seo_service_from_context().await?;
@@ -641,7 +490,7 @@ fn require_bulk_write_permissions(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/queue-bulk-apply")]
-async fn seo_queue_bulk_apply_native(
+pub(super) async fn seo_queue_bulk_apply_native(
     input: SeoBulkApplyInput,
 ) -> Result<SeoBulkJobRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -672,7 +521,7 @@ async fn seo_queue_bulk_apply_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/queue-bulk-import")]
-async fn seo_queue_bulk_import_native(
+pub(super) async fn seo_queue_bulk_import_native(
     input: SeoBulkImportInput,
 ) -> Result<SeoBulkJobRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -695,7 +544,7 @@ async fn seo_queue_bulk_import_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/queue-bulk-export")]
-async fn seo_queue_bulk_export_native(
+pub(super) async fn seo_queue_bulk_export_native(
     input: SeoBulkExportInput,
 ) -> Result<SeoBulkJobRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -722,7 +571,7 @@ async fn seo_queue_bulk_export_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/index-tracking")]
-async fn seo_index_tracking_native(
+pub(super) async fn seo_index_tracking_native(
     target_type: Option<String>,
 ) -> Result<SeoIndexDeliveryStatusRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -749,7 +598,7 @@ async fn seo_index_tracking_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "seo/index-repair-replay")]
-async fn seo_index_repair_replay_native(
+pub(super) async fn seo_index_repair_replay_native(
     input: SeoIndexRepairReplayInput,
 ) -> Result<SeoIndexRepairReplayResultRecord, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -782,10 +631,7 @@ async fn seo_index_repair_replay_native(
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{
-        normalize_index_repair_replay_input, normalize_index_target_type, persist_seo_settings,
-        require_permission, MODULE_SLUG,
-    };
+    use super::{MODULE_SLUG, persist_seo_settings, require_permission};
     use rustok_api::AuthContext;
     use rustok_core::Permission;
     use rustok_seo::{SeoIndexRepairReplayInput, SeoModuleSettings};
@@ -991,29 +837,32 @@ mod tests {
     #[test]
     fn normalize_index_target_type_accepts_supported_values() {
         assert_eq!(
-            normalize_index_target_type(Some(" content ".to_string())).expect("content target"),
+            super::super::normalize_index_target_type(Some(" content ".to_string()))
+                .expect("content target"),
             Some("content".to_string())
         );
         assert_eq!(
-            normalize_index_target_type(Some("PRODUCT".to_string())).expect("product target"),
+            super::super::normalize_index_target_type(Some("PRODUCT".to_string()))
+                .expect("product target"),
             Some("product".to_string())
         );
         assert_eq!(
-            normalize_index_target_type(Some("   ".to_string())).expect("empty target"),
+            super::super::normalize_index_target_type(Some("   ".to_string()))
+                .expect("empty target"),
             None
         );
     }
 
     #[test]
     fn normalize_index_target_type_rejects_unknown_values() {
-        let err = normalize_index_target_type(Some("forum".to_string()))
+        let err = super::super::normalize_index_target_type(Some("forum".to_string()))
             .expect_err("unsupported target type must fail");
         assert_eq!(err, "Index target type must be `content` or `product`");
     }
 
     #[test]
     fn normalize_index_repair_input_clamps_limit_and_normalizes_target_type() {
-        let input = normalize_index_repair_replay_input(SeoIndexRepairReplayInput {
+        let input = super::super::normalize_index_repair_replay_input(SeoIndexRepairReplayInput {
             target_type: Some(" PRODUCT ".to_string()),
             limit: 700,
             replay_historical: true,

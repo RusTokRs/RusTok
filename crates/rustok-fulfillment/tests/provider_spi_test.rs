@@ -2,8 +2,10 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_fulfillment::error::{FulfillmentError, FulfillmentResult};
 use rustok_fulfillment::providers::{
-    FulfillmentProvider, FulfillmentProviderCapabilities, FulfillmentProviderDescriptor,
-    FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult, FulfillmentRateQuote,
+    ExternalFulfillmentProviderRegistration, FulfillmentProvider, FulfillmentProviderCapabilities,
+    FulfillmentProviderDegradedMode, FulfillmentProviderDescriptor, FulfillmentProviderHealth,
+    FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
+    FulfillmentProviderWebhookRequest, FulfillmentProviderWebhookResult, FulfillmentRateQuote,
     FulfillmentRateQuoteRequest, ManualFulfillmentProvider,
 };
 use serde_json::json;
@@ -64,6 +66,20 @@ impl FulfillmentProvider for MockFulfillmentProvider {
             external_reference: Some("mock-cancel-ref".to_string()),
             tracking_number: None,
             metadata: request.metadata,
+        })
+    }
+
+    async fn handle_tracking_webhook(
+        &self,
+        request: FulfillmentProviderWebhookRequest,
+    ) -> FulfillmentResult<FulfillmentProviderWebhookResult> {
+        Ok(FulfillmentProviderWebhookResult {
+            provider_id: self.descriptor.provider_id.clone(),
+            external_reference: None,
+            event_type: "fulfillment.updated".to_string(),
+            replay_key: request.idempotency_key,
+            tracking_number: None,
+            metadata: json!({}),
         })
     }
 }
@@ -162,7 +178,10 @@ async fn test_mock_fulfillment_provider_idempotency_and_error_mapping() {
         metadata: json!({}),
     };
 
-    let label_res = success_provider.create_label(op_request.clone()).await.unwrap();
+    let label_res = success_provider
+        .create_label(op_request.clone())
+        .await
+        .unwrap();
     assert_eq!(label_res.provider_id, "mock-carrier");
     assert_eq!(label_res.tracking_number, Some("TRK-MOCK-123".to_string()));
 
@@ -180,4 +199,30 @@ async fn test_mock_fulfillment_provider_idempotency_and_error_mapping() {
         }
         _ => panic!("Expected validation error from failing provider"),
     }
+}
+
+#[test]
+fn test_external_fulfillment_provider_registration_contract() {
+    let registration = ExternalFulfillmentProviderRegistration {
+        descriptor: FulfillmentProviderDescriptor {
+            provider_id: "mock-carrier".to_string(),
+            display_name: "Mock Carrier".to_string(),
+            capabilities: FulfillmentProviderCapabilities {
+                rate_quote: true,
+                create_label: true,
+                ship: true,
+                cancel: true,
+                tracking_webhook_ingress: true,
+            },
+            default_for_manual_options: false,
+        },
+        health: FulfillmentProviderHealth::Degraded,
+        degraded_mode: Some(FulfillmentProviderDegradedMode {
+            reason: "carrier_rate_limit".to_string(),
+            fallback_profile: "manual_shipping".to_string(),
+        }),
+    };
+
+    assert!(registration.validate("mock-carrier").is_ok());
+    assert!(registration.validate("other-carrier").is_err());
 }

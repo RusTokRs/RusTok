@@ -212,14 +212,16 @@ pub async fn list_recent_executions(
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
     let offset = query.offset();
     let limit = query.limit();
-    let mut executions = runtime
+    let executions = runtime
         .execution_log
-        .list_recent_for_tenant_paginated(tenant.id, offset, limit + 1)
+        .list_recent_for_tenant_paginated(tenant.id, offset, limit)
         .await
         .map_err(script_error)?;
-    let has_next = executions.len() > limit as usize;
-    executions.truncate(limit as usize);
-    let total = offset as usize + executions.len() + usize::from(has_next);
+    let total = runtime
+        .execution_log
+        .count_recent_for_tenant(tenant.id)
+        .await
+        .map_err(script_error)? as usize;
     let executions = executions
         .into_iter()
         .map(ExecutionLogResponse::from)
@@ -242,14 +244,16 @@ pub async fn list_script_executions(
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
     let offset = query.offset();
     let limit = query.limit();
-    let mut executions = runtime
+    let executions = runtime
         .execution_log
-        .list_for_script_for_tenant_paginated(id, tenant.id, offset, limit + 1)
+        .list_for_script_for_tenant_paginated(id, tenant.id, offset, limit)
         .await
         .map_err(script_error)?;
-    let has_next = executions.len() > limit as usize;
-    executions.truncate(limit as usize);
-    let total = offset as usize + executions.len() + usize::from(has_next);
+    let total = runtime
+        .execution_log
+        .count_for_script_for_tenant(id, tenant.id)
+        .await
+        .map_err(script_error)? as usize;
     let executions = executions
         .into_iter()
         .map(ExecutionLogResponse::from)

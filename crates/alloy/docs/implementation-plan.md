@@ -6,10 +6,10 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Added DB-level offset pagination for execution history and routed GraphQL/Loco history reads through tenant-scoped paginated accessors without running compilation per operator request.
+- Last checkpoint: Added canonical DB count helpers for execution history and wired GraphQL/HTTP history pagination metadata to exact scoped totals without running compilation per operator request.
 - Next step: Run the Alloy validation/test gates when compilation is allowed, then add end-to-end transport assertions for canonical field mapping.
-- Open blockers: None.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests.
+- Open blockers: Compilation/test gates intentionally skipped by operator request.
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. `cargo fmt --check` также упирается в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
 - Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## Область работ
@@ -37,7 +37,7 @@ contract приведены к единому формату.
 ### 2. Runtime hardening
 
 - [x] довести resource limits, timeout semantics и sandbox guarantees до стабильного production contract;
-- [x] удерживать audit log и execution history как каноническую операторскую поверхность;
+- [x] удерживать audit log и execution history как каноническую операторскую поверхность с DB-level pagination и exact scoped total metadata;
 - [x] расширять integration helpers только через явные phase-aware contracts.
 
 ### 3. Operability

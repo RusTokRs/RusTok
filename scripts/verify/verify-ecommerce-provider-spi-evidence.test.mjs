@@ -12,7 +12,7 @@ import {
 
 const moduleSlug = 'payment';
 
-const createFixtureRoot = ({ mutateEvidence, mutateRegistry } = {}) => {
+const createFixtureRoot = ({ mutateEvidence, mutateRegistry, providerSource } = {}) => {
   const rootPath = mkdtempSync(join(tmpdir(), 'rustok-provider-spi-evidence-'));
   const write = (relativePath, content) => {
     const fullPath = join(rootPath, ...relativePath.split('/'));
@@ -88,6 +88,11 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry } = {}) => {
   mutateEvidence?.(evidence);
   write('crates/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
+  write(
+    'crates/rustok-payment/src/providers.rs',
+    providerSource ??
+      `pub enum PaymentProviderHealth { Ready, Degraded, Unavailable }\nPaymentProviderHealth::Unavailable\npub struct PaymentProviderDegradedMode { reason: String }\npub struct ExternalPaymentProviderRegistration { descriptor: PaymentProviderDescriptor }\nimpl ExternalPaymentProviderRegistration { pub fn validate(&self, expected_provider_id: &str) { self.descriptor.provider_id; self.degraded_mode.is_none(); } }\n`,
+  );
   return pathToFileURL(`${rootPath}/`);
 };
 
@@ -158,6 +163,25 @@ test('verifyEcommerceProviderSpiEvidence rejects external adapter registration a
     {
       name: EcommerceProviderSpiEvidenceError.name,
       message: 'payment external adapter registration assertions drift',
+    },
+  );
+});
+
+
+test('verifyEcommerceProviderSpiEvidence rejects missing external registration source marker', () => {
+  const root = createFixtureRoot({
+    providerSource:
+      'pub enum PaymentProviderHealth { Ready, Degraded, Unavailable }\n' +
+      'PaymentProviderHealth::Unavailable\n' +
+      'pub struct PaymentProviderDegradedMode { reason: String }\n',
+  });
+
+  assert.throws(
+    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceProviderSpiEvidenceError.name,
+      message:
+        'payment provider SPI source lacks external registration marker ExternalPaymentProviderRegistration',
     },
   );
 });

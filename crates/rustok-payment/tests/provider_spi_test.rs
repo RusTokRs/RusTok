@@ -2,8 +2,10 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_payment::error::{PaymentError, PaymentResult};
 use rustok_payment::providers::{
-    ManualPaymentProvider, PaymentProvider, PaymentProviderCapabilities, PaymentProviderDescriptor,
-    PaymentProviderOperationRequest, PaymentProviderOperationResult,
+    ExternalPaymentProviderRegistration, ManualPaymentProvider, PaymentProvider,
+    PaymentProviderCapabilities, PaymentProviderDegradedMode, PaymentProviderDescriptor,
+    PaymentProviderHealth, PaymentProviderOperationRequest, PaymentProviderOperationResult,
+    PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -81,6 +83,19 @@ impl PaymentProvider for MockPaymentProvider {
             authorized_amount: Decimal::ZERO,
             captured_amount: Decimal::ZERO,
             metadata: request.metadata,
+        })
+    }
+
+    async fn handle_webhook(
+        &self,
+        request: PaymentProviderWebhookRequest,
+    ) -> PaymentResult<PaymentProviderWebhookResult> {
+        Ok(PaymentProviderWebhookResult {
+            provider_id: self.descriptor.provider_id.clone(),
+            external_reference: None,
+            event_type: "payment.updated".to_string(),
+            replay_key: request.idempotency_key,
+            metadata: json!({}),
         })
     }
 }
@@ -201,4 +216,30 @@ async fn test_mock_provider_idempotency_and_error_mapping() {
         }
         _ => panic!("Expected validation error from failing provider"),
     }
+}
+
+#[test]
+fn test_external_payment_provider_registration_contract() {
+    let registration = ExternalPaymentProviderRegistration {
+        descriptor: PaymentProviderDescriptor {
+            provider_id: "mock-gateway".to_string(),
+            display_name: "Mock Gateway".to_string(),
+            capabilities: PaymentProviderCapabilities {
+                authorize: true,
+                capture: true,
+                refund: true,
+                cancel: true,
+                webhook_ingress: true,
+            },
+            default_for_new_collections: false,
+        },
+        health: PaymentProviderHealth::Degraded,
+        degraded_mode: Some(PaymentProviderDegradedMode {
+            reason: "gateway_timeout".to_string(),
+            fallback_profile: "manual_review".to_string(),
+        }),
+    };
+
+    assert!(registration.validate("mock-gateway").is_ok());
+    assert!(registration.validate("other-gateway").is_err());
 }
