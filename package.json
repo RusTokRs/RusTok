@@ -69,7 +69,8 @@
     "test:verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.test.mjs",
     "test:verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.test.mjs",
     "verify:rbac:admin-boundary": "node scripts/verify/verify-rbac-admin-boundary.mjs",
-    "test:verify:rbac:admin-boundary": "node scripts/verify/verify-rbac-admin-boundary.test.mjs"
+    "test:verify:rbac:admin-boundary": "node scripts/verify/verify-rbac-admin-boundary.test.mjs",
+    "verify:content:orchestration": "node scripts/verify/verify-content-orchestration-contract.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
