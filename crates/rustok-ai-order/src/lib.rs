@@ -78,10 +78,26 @@ pub fn validate_order_ops_assistant_confidence(confidence: u8) -> Result<(), Str
     Ok(())
 }
 
+fn ensure_non_blank_values(task: &str, field: &str, values: &[String]) -> Result<(), String> {
+    if values.iter().any(|value| value.trim().is_empty()) {
+        return Err(format!(
+            "{task} {field} must contain only non-empty strings"
+        ));
+    }
+    Ok(())
+}
+
 pub fn validate_order_analytics_payload(payload: &GeneratedOrderAnalytics) -> Result<(), String> {
     if payload.summary.trim().is_empty() {
         return Err("order_analytics summary must not be empty".to_string());
     }
+    ensure_non_blank_values("order_analytics", "key_findings", &payload.key_findings)?;
+    ensure_non_blank_values("order_analytics", "risk_flags", &payload.risk_flags)?;
+    ensure_non_blank_values(
+        "order_analytics",
+        "recommended_actions",
+        &payload.recommended_actions,
+    )?;
     Ok(())
 }
 
@@ -93,6 +109,11 @@ pub fn validate_order_ops_assistant_payload(
     }
     if payload.rationale.trim().is_empty() {
         return Err("order_ops_assistant rationale must not be empty".to_string());
+    }
+    if payload.prefill.is_null() {
+        return Err(
+            "order_ops_assistant prefill must be an object or structured value".to_string(),
+        );
     }
     validate_order_ops_assistant_confidence(payload.confidence)
 }
@@ -154,6 +175,17 @@ mod tests {
     }
 
     #[test]
+    fn rejects_blank_order_analytics_array_items() {
+        let payload = GeneratedOrderAnalytics {
+            summary: "Ready".to_string(),
+            key_findings: vec![" ".to_string()],
+            risk_flags: vec![],
+            recommended_actions: vec![],
+        };
+        assert!(validate_order_analytics_payload(&payload).is_err());
+    }
+
+    #[test]
     fn validates_order_ops_assistant_payload() {
         let payload = GeneratedOrderOpsAssistant {
             recommended_action: "contact_customer".to_string(),
@@ -173,6 +205,18 @@ mod tests {
             prefill: serde_json::json!({}),
             requires_human: false,
             confidence: 50,
+        };
+        assert!(validate_order_ops_assistant_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn rejects_null_ops_prefill() {
+        let payload = GeneratedOrderOpsAssistant {
+            recommended_action: "contact_customer".to_string(),
+            rationale: "Address mismatch".to_string(),
+            prefill: serde_json::Value::Null,
+            requires_human: true,
+            confidence: 80,
         };
         assert!(validate_order_ops_assistant_payload(&payload).is_err());
     }

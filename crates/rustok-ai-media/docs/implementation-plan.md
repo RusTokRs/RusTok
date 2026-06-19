@@ -1,0 +1,27 @@
+# План реализации `rustok-ai-media`
+
+## Цель
+
+Сделать `rustok-ai-media` domain-owned adapter crate для media AI verticals, начиная с `image_asset` task/tool identity и pure validation contracts.
+
+## Этапы
+
+1. Scaffold crate + docs.
+2. Перенести `image_asset` task/tool identity из `rustok-ai` в media-owned descriptor API.
+3. Перенести validation helpers для generated/runtime payload contracts.
+4. Добавить targeted verification и синхронизировать central registry evidence.
+
+## Execution checkpoint
+
+- Создан support crate `rustok-ai-media` с local docs.
+- Перенесены `IMAGE_ASSET_TASK_SLUG`, `IMAGE_ASSET_TOOL_NAME`, descriptor registry и `register_media_ai_vertical_handlers` adapter API.
+- Перенесена canonical image-size normalization/validation (`WIDTHxHEIGHT`, numeric bounds `1..=4096`) в media-owned pure helper, consumed by `rustok-ai` direct media runtime.
+- Следующий шаг: расширить media-owned generated artifact contract и добавить targeted tests/evidence при разрешённых проверках.
+- Last updated at (UTC): 2026-06-19T06:15:00Z
+
+## FFA/FBA status
+
+- FFA status: `not_started`
+- FBA status: `in_progress`
+- Structural shape: `domain_support_adapter`
+- Evidence: crate owns media AI vertical task/tool identity, handler adapter API and pure image-size validation while executable provider/runtime composition remains in `rustok-ai`.
