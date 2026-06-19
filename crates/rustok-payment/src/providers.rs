@@ -51,6 +51,58 @@ impl PaymentProviderDescriptor {
     }
 }
 
+/// Health state reported by external adapter registration. Runtime orchestration
+/// maps non-ready states to degraded checkout modes before invoking providers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PaymentProviderHealth {
+    Ready,
+    Degraded,
+    Unavailable,
+}
+
+/// Registration-time degraded mode used by hosts to keep checkout policy explicit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PaymentProviderDegradedMode {
+    pub reason: String,
+    pub fallback_profile: String,
+}
+
+/// External provider registration contract. The adapter remains side-effect-only:
+/// lifecycle persistence and replay/idempotency decisions stay in `PaymentService`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalPaymentProviderRegistration {
+    pub descriptor: PaymentProviderDescriptor,
+    pub health: PaymentProviderHealth,
+    pub degraded_mode: Option<PaymentProviderDegradedMode>,
+}
+
+impl ExternalPaymentProviderRegistration {
+    pub fn validate(&self, expected_provider_id: &str) -> PaymentResult<()> {
+        if self.descriptor.provider_id != expected_provider_id {
+            return Err(PaymentError::Validation(format!(
+                "payment provider descriptor id `{}` does not match registration id `{}`",
+                self.descriptor.provider_id, expected_provider_id
+            )));
+        }
+
+        if self.descriptor.default_for_new_collections
+            && self.health == PaymentProviderHealth::Unavailable
+        {
+            return Err(PaymentError::Validation(
+                "unavailable payment provider cannot be default for new collections".to_string(),
+            ));
+        }
+
+        if self.health != PaymentProviderHealth::Ready && self.degraded_mode.is_none() {
+            return Err(PaymentError::Validation(
+                "non-ready payment provider registration must declare degraded mode".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 /// Transport-neutral request passed to provider adapters for payment operations.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PaymentProviderOperationRequest {

@@ -12,6 +12,7 @@ export class EcommerceProviderSpiEvidenceError extends Error {
 }
 
 const readJson = (root, path) => JSON.parse(readFileSync(new URL(path, root), 'utf8'));
+const readText = (root, path) => readFileSync(new URL(path, root), 'utf8');
 const fail = (message) => {
   throw new EcommerceProviderSpiEvidenceError(message);
 };
@@ -48,6 +49,7 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     const registry = readJson(root, registryPath);
     const evidence = readJson(root, evidencePath);
     const providerSpi = registry.provider_spi;
+    const providerSource = readText(root, `crates/rustok-${module}/src/providers.rs`);
 
     if (!providerSpi) fail(`${module} registry lacks provider_spi`);
     if (evidence.schema_version !== 1) fail(`${module} provider SPI evidence schema_version must be 1`);
@@ -120,6 +122,23 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     ]) {
       if (providerSpi.external_adapter_registration?.[flag] !== true) {
         fail(`${module} registry external adapter registration must keep ${flag}`);
+      }
+    }
+
+    const registrationType =
+      module === 'payment' ? 'ExternalPaymentProviderRegistration' : 'ExternalFulfillmentProviderRegistration';
+    const healthType = module === 'payment' ? 'PaymentProviderHealth' : 'FulfillmentProviderHealth';
+    const degradedType =
+      module === 'payment' ? 'PaymentProviderDegradedMode' : 'FulfillmentProviderDegradedMode';
+    for (const marker of [registrationType, healthType, degradedType, 'pub fn validate(&self, expected_provider_id: &str)']) {
+      if (!providerSource.includes(marker)) {
+        fail(`${module} provider SPI source lacks external registration marker ${marker}`);
+      }
+    }
+    for (const marker of ['descriptor.provider_id', 'degraded_mode.is_none()', 'PaymentProviderHealth::Unavailable', 'FulfillmentProviderHealth::Unavailable']) {
+      if (marker.includes(module === 'payment' ? 'Fulfillment' : 'Payment')) continue;
+      if (!providerSource.includes(marker)) {
+        fail(`${module} provider SPI source lacks registration guard ${marker}`);
       }
     }
   }
