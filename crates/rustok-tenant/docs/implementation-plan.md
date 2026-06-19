@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: iteration_2_lifecycle_hardening
-- Last checkpoint: Добавлена lifecycle-focused regression coverage для positive/negative tenant resolver cache invalidation после create-like, deactivate/update и domain-change state transitions; проверки фиксируют обязательность host hooks `invalidate_tenant_cache_by_uuid/slug/host`.
-- Next step: Подключить эти invariants к host provisioning/deprovisioning orchestration path и при необходимости расширить проверку на конкретные control-plane handlers.
+- Last checkpoint: FFA guardrail hardening добавил fixture-based regression suite для `verify-tenant-admin-boundary.mjs`; проверки закрывают canonical split, legacy `api.rs`, Leptos-specific core, raw adapter calls from UI и misplaced `#[server]` endpoints без долгой Rust-компиляции.
+- Next step: Подключить tenant lifecycle invariants к host provisioning/deprovisioning orchestration path; для FFA — не расширять UI split механически, а собирать parity/evidence hardening для native-only overview surface.
 - Open blockers: None.
 - Hand-off notes for next agent: Не расширять scope на новый tenant feature set; в этой итерации держать фокус на lifecycle consistency и regression safety между модулем и host middleware/cache path.
-- Last updated at (UTC): 2026-06-17T00:00:00Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## Область работ
 
@@ -57,7 +57,7 @@
 - FFA status: `in_progress`
 - FBA status: `not_started`
 - Structural shape: `core_transport_ui`
-- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter.
+- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement.
 - Temporary parity note: the current tenant admin overview remains a native-only single-adapter state because there is no legacy GraphQL/REST tenant bootstrap UI contract to preserve for this surface; the existing server GraphQL tenant/module read paths remain unchanged outside this UI package.
 
 ## Проверка
