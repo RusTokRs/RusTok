@@ -33,3 +33,12 @@ leptos_locales_path = "admin/locales"
 subpath = "templates"
 title = "Workflow Templates"
 nav_label = "Templates"
+
+[fba.provider]
+registry = "contracts/workflow-fba-registry.json"
+contract_version = "workflow.read_projection.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["workflow_admin_read_projection"]
+fallback_profiles = ["embedded_native", "graphql_compat"]
+degraded_modes = ["show_cached_workflow_list", "disable_workflow_detail_open"]

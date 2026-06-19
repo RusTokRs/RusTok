@@ -8,6 +8,7 @@ description.workspace = true
 [dependencies]
 async-trait.workspace = true
 casbin.workspace = true
+rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 sea-orm-migration.workspace = true

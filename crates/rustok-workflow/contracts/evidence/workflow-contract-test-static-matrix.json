@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "module": "workflow",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-workflow/contracts/workflow-fba-registry.json",
+  "runner": "scripts/verify/verify-workflow-fba.mjs",
+  "contract_version": "workflow.read_projection.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "list_workflows",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved"]
+    },
+    {
+      "operation": "get_workflow",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved"]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned_runtime_pending",
+    "profiles": ["embedded_native", "graphql_compat"],
+    "degraded_modes": ["show_cached_workflow_list", "disable_workflow_detail_open"]
+  }
+}
