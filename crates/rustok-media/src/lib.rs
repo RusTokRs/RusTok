@@ -11,13 +11,13 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    MediaImageDescriptor, MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
-    ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
+    ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE, MediaImageDescriptor, MediaItem, MediaTranslationItem,
+    UploadInput, UpsertTranslationInput,
 };
 pub use entities::*;
 pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};
-pub use service::MediaService;
+pub use service::{MediaService, MediaStorageCleanupDecision, MediaStorageCleanupReport};
 
 pub struct MediaModule;
 
