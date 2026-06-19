@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "role": "consumer",
+  "status": "in_progress",
+  "consumer_profile": "blog_post_comments",
+  "provider_dependencies": [
+    {
+      "module": "comments",
+      "registry": "crates/rustok-comments/contracts/comments-fba-registry.json",
+      "contract_version": "comments.thread.v1",
+      "port": "CommentsThreadPort",
+      "operations": [
+        "create_comment",
+        "get_comment",
+        "list_comments_for_target",
+        "update_comment",
+        "delete_comment"
+      ],
+      "required_profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "hide_comment_form",
+        "show_cached_thread_snapshot"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError"
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-blog-fba.mjs",
+    "static_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-blog/contracts/blog-fba-registry.json",
+    "runner": "scripts/verify/verify-blog-fba.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "provider": "comments",
+        "operation": "create_comment",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required",
+          "degraded_hide_comment_form_on_unavailable"
+        ]
+      },
+      {
+        "provider": "comments",
+        "operation": "list_comments_for_target",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "degraded_cached_thread_snapshot_on_unavailable"
+        ]
+      },
+      {
+        "provider": "comments",
+        "operation": "update_comment",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      },
+      {
+        "provider": "comments",
+        "operation": "delete_comment",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "hide_comment_form",
+        "show_cached_thread_snapshot"
+      ]
+    }
+  }
+}
