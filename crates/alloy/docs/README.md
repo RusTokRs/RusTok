@@ -76,9 +76,10 @@ availability из побочных эффектов регистрации.
    `recentScriptExecutions(pagination)`, HTTP/Loco
    `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` или
    generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
-   Все ответы основаны на `SeaOrmExecutionLog`, отсортированы newest-first и
-   возвращают canonical fields: execution id, script id/name, phase, outcome,
-   duration, error, user/tenant context и creation time.
+   Все ответы основаны на `SeaOrmExecutionLog`, используют DB-level offset/limit
+   pagination, применяют tenant filter до offset и сортируются newest-first.
+   Ответы возвращают canonical fields: execution id, script id/name, phase,
+   outcome, duration, error, user/tenant context и creation time.
 5. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.
