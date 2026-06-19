@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "module": "rbac",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-rbac/contracts/rbac-fba-registry.json",
+  "runner": "scripts/verify/verify-rbac-fba.mjs",
+  "contract_version": "rbac.permission_decision.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "check_permissions",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "claims_scope_preserved"]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned_runtime_pending",
+    "profiles": ["embedded_native"],
+    "degraded_modes": ["hide_restricted_actions", "show_permission_refresh_prompt"]
+  }
+}

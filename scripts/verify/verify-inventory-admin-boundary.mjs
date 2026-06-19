@@ -268,7 +268,7 @@ function assertCommercePublicChannelAvailabilityBoundary() {
   const callerPaths = [
     "crates/rustok-commerce/src/graphql/mutation.rs",
     "crates/rustok-commerce/src/services/checkout.rs",
-    "crates/rustok-commerce/src/controllers/store.rs",
+    "crates/rustok-commerce/src/controllers/store/mod.rs",
   ];
 
   for (const relativePath of callerPaths) {

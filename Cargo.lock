@@ -10871,6 +10871,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "casbin",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "sea-orm-migration",
