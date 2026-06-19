@@ -5,11 +5,11 @@
 ## Execution checkpoint
 
 - Current phase: FBA provider baseline for generic comment threads
-- Last checkpoint: Comments получил первый FBA provider slice: `CommentsThreadPort` закрепляет neutral create/read/list/update/delete boundary поверх owner `CommentsService`; `rustok-module.toml`, `contracts/comments-fba-registry.json` и static evidence packet публикуют comments thread provider metadata для blog/commentable-surface consumers без переноса comment moderation rules в blog transport.
-- Next step: Закрыть runtime contract execution/fallback smoke для `CommentsThreadPort` и подтвердить blog embedded/native compatibility snapshots перед повышением статуса выше `in_progress`.
+- Last checkpoint: FFA guardrail hardening добавил fixture-based regression suite для `verify-comments-admin-boundary.mjs`; проверки закрывают canonical split, legacy `api.rs`, Leptos-specific core, UI-owned route policy, raw adapter calls, package-local GraphQL fallback и misplaced `#[server]` endpoints без долгой Rust-компиляции.
+- Next step: Закрыть runtime contract execution/fallback smoke для `CommentsThreadPort` и подтвердить blog embedded/native compatibility snapshots; для FFA — не расширять native-only admin transport без нового legacy/headless contract, а поддерживать parity/evidence guardrails.
 - Open blockers: отсутствуют; native-only comments admin exception зафиксирован, потому что у модуля не было legacy GraphQL/REST admin surface.
 - Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## FFA/FBA status
 
@@ -21,7 +21,7 @@
   - covered admin UI больше не вызывает raw `api::*` напрямую из Leptos render layer, а идёт через module-owned transport facade;
   - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping и transport request/command DTO construction вынесены в Leptos-free core и покрыты unit tests;
   - selected-thread и locale route/query key ownership, normalization и host write intent теперь живут в Leptos-free core на shared `UiRouteQueryUpdate`, а Leptos adapter только применяет готовый `CommentsAdminRouteQueryWrite` через host writer;
-  - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` включён в aggregate `verify:ffa:ui:migration` и закрепляет native-only comments admin exception без package-local GraphQL fallback;
+  - fast boundary guardrail `scripts/verify/verify-comments-admin-boundary.mjs` включён в aggregate `verify:ffa:ui:migration` и закрепляет native-only comments admin exception без package-local GraphQL fallback; fixture suite `scripts/verify/verify-comments-admin-boundary.test.mjs` включён в aggregate `test:verify:ffa:ui:migration` и проверяет canonical split, legacy `api.rs`, Leptos-free core, route/query ownership, transport facade isolation, GraphQL-fallback prohibition и server-function adapter placement;
   - текущий admin transport остаётся native-only single-adapter server-function path, path зафиксирован typed `CommentsAdminTransportPath`/`ACTIVE_TRANSPORT_PATH`, а отдельный GraphQL/REST fallback не добавляется как module-documented exception без legacy admin transport surface;
   - FBA provider registry `crates/rustok-comments/contracts/comments-fba-registry.json`, neutral `CommentsThreadPort`/`comments.thread.v1` and static contract evidence `crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json` are locked for blog and future commentable-surface consumers; write operations require `PortContext::require_write_semantics`, read operations require deadline semantics, and typed `PortError` mapping remains owned by `rustok-comments`;
   - fast FBA guardrail `scripts/verify/verify-comments-fba.mjs` / `npm run verify:comments:fba` checks manifest metadata, port source markers, static evidence drift and central readiness-board sync; status remains below `boundary_ready` until runtime contract execution and fallback smoke evidence land;
