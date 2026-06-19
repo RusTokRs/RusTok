@@ -673,21 +673,6 @@ pub fn should_show_raw_body_warning(body_format: &str) -> bool {
     !is_markdown_format(body_format)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlogPostAdminBodyFormatWarningViewModel {
-    pub visible: bool,
-    pub message: String,
-}
-
-pub fn blog_post_admin_body_format_warning_view(
-    body_format: &str,
-    message: String,
-) -> BlogPostAdminBodyFormatWarningViewModel {
-    BlogPostAdminBodyFormatWarningViewModel {
-        visible: should_show_raw_body_warning(body_format),
-        message,
-    }
-}
 
 pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {
     match kind {
@@ -1309,17 +1294,6 @@ mod tests {
         assert_eq!(row.delete_label, "Delete");
     }
 
-    #[test]
-    fn body_format_warning_view_model_keeps_visibility_policy_in_core() {
-        let markdown =
-            blog_post_admin_body_format_warning_view("markdown", "Raw warning".to_string());
-        assert!(!markdown.visible);
-        assert_eq!(markdown.message, "Raw warning");
-
-        let raw = blog_post_admin_body_format_warning_view("rt_json_v1", "Raw warning".to_string());
-        assert!(raw.visible);
-        assert_eq!(raw.message, "Raw warning");
-    }
 
     #[test]
     fn slugify_normalizes_text() {
