@@ -51,6 +51,59 @@ impl FulfillmentProviderDescriptor {
     }
 }
 
+/// Health state reported by external carrier registration. Runtime orchestration
+/// maps non-ready states to degraded fulfillment modes before invoking providers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FulfillmentProviderHealth {
+    Ready,
+    Degraded,
+    Unavailable,
+}
+
+/// Registration-time degraded mode used by hosts to keep fulfillment policy explicit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FulfillmentProviderDegradedMode {
+    pub reason: String,
+    pub fallback_profile: String,
+}
+
+/// External carrier registration contract. The adapter remains side-effect-only:
+/// lifecycle persistence and replay/idempotency decisions stay in `FulfillmentService`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalFulfillmentProviderRegistration {
+    pub descriptor: FulfillmentProviderDescriptor,
+    pub health: FulfillmentProviderHealth,
+    pub degraded_mode: Option<FulfillmentProviderDegradedMode>,
+}
+
+impl ExternalFulfillmentProviderRegistration {
+    pub fn validate(&self, expected_provider_id: &str) -> FulfillmentResult<()> {
+        if self.descriptor.provider_id != expected_provider_id {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider descriptor id `{}` does not match registration id `{}`",
+                self.descriptor.provider_id, expected_provider_id
+            )));
+        }
+
+        if self.descriptor.default_for_manual_options
+            && self.health == FulfillmentProviderHealth::Unavailable
+        {
+            return Err(FulfillmentError::Validation(
+                "unavailable fulfillment provider cannot be default for manual options".to_string(),
+            ));
+        }
+
+        if self.health != FulfillmentProviderHealth::Ready && self.degraded_mode.is_none() {
+            return Err(FulfillmentError::Validation(
+                "non-ready fulfillment provider registration must declare degraded mode"
+                    .to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 /// Transport-neutral rate quote request for carrier/provider adapters.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FulfillmentRateQuoteRequest {
