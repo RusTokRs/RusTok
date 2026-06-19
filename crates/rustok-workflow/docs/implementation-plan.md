@@ -6,9 +6,9 @@ capability integrations без дрейфа и битой документаци
 
 ## Execution checkpoint
 
-- Current phase: phase_b_ready
-- Last checkpoint: Workflow admin FFA Phase B считается закрытой: module-owned admin UI остаётся внутри `rustok-workflow/admin`, имеет `core/transport/ui` split, Leptos adapter не вызывает raw transport adapters, а быстрый boundary guardrail закрепляет этот split без full-workspace compile.
-- Next step: Не продолжать механические FFA-переносы workflow admin UI; следующий work item — parity/evidence hardening для native + GraphQL paths или новый FFA-срез только при появлении реального workflow admin UX/transport функционала.
+- Current phase: phase_b_ready + fba_provider_static_evidence
+- Last checkpoint: Workflow admin FFA Phase B считается закрытой; FBA slice #1 добавил `WorkflowReadPort` / `workflow.read_projection.v1`, provider registry `crates/rustok-workflow/contracts/workflow-fba-registry.json`, static matrix `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json` и fast gate `npm run verify:workflow:fba` без long compilation.
+- Next step: Закрыть runtime contract execution/fallback smoke для workflow read projection и собрать native/GraphQL parity evidence; не повышать FBA выше `in_progress` до live evidence.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; избегать долгих full-workspace компиляций, использовать targeted checks/timeouts.
 - Last updated at (UTC): 2026-06-12T13:20:43Z
@@ -17,7 +17,7 @@ capability integrations без дрейфа и битой документаци
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
@@ -26,7 +26,8 @@ capability integrations без дрейфа и битой документаци
   - UI adapter slice: Leptos-only render code перенесён в `admin/src/ui/leptos.rs`, а crate root оставлен composition/re-export layer для дальнейшего добавления других host adapters;
   - fast boundary guardrail: `scripts/verify/verify-workflow-admin-boundary.mjs` и fixture tests закрепляют отсутствие legacy `api.rs`/flat `transport.rs`, Leptos-free `core/`, raw-adapter-free UI и split native/GraphQL transport adapters;
   - Phase B closure decision: workflow admin FFA больше не расширяется без нового workflow-owned UI/transport surface; дальнейшее повышение до `parity_verified` требует runtime parity evidence для native/server-function + GraphQL fallback и обновления local+central docs в том же change.
-- Last verified at (UTC): 2026-06-12T13:20:43Z
+  - FBA provider slice: `crates/rustok-workflow/src/ports.rs` declares `WorkflowReadPort` / `workflow.read_projection.v1` for workflow admin read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation and read deadline semantics; `crates/rustok-workflow/contracts/workflow-fba-registry.json` plus `crates/rustok-workflow/contracts/evidence/workflow-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:workflow:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`.
+- Last verified at (UTC): 2026-06-19T00:00:00Z
 - Owner: `rustok-workflow` module team
 
 ## Область работ
