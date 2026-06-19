@@ -184,6 +184,69 @@ assertStaticTokenMatrix(
   fixtures.hostRuntimeEntrypointMatrix,
   4,
 );
+assertStaticTokenMatrix(
+  "Semantic error parity static matrix",
+  fixtures.semanticErrorParityMatrix,
+  5,
+);
+
+const liveEvidenceTemplate = fixtures.liveEvidenceCaptureTemplate ?? {};
+assert(
+  liveEvidenceTemplate.status === "template_only_no_runtime_started",
+  "Live evidence capture template must remain marked as template-only for no-runtime iterations",
+);
+assert(
+  Array.isArray(liveEvidenceTemplate.commands) && liveEvidenceTemplate.commands.length >= 5,
+  "Live evidence capture template must list backend, pipeline, Next, Leptos and admin commands",
+);
+for (const row of liveEvidenceTemplate.commands) {
+  assert(row.surface, "Live evidence command misses surface");
+  assert(row.command, `Live evidence command misses command: ${row.surface}`);
+  assert(
+    Array.isArray(row.requiredArtifacts) && row.requiredArtifacts.length >= 2,
+    `Live evidence command misses artifact requirements: ${row.surface}`,
+  );
+}
+assert(
+  (liveEvidenceTemplate.redactionRules ?? []).some((rule) => rule.includes("auth tokens")),
+  "Live evidence template must include credential redaction guidance",
+);
+
+const incidentTemplates = fixtures.incidentEvidenceTemplates ?? [];
+assert(
+  incidentTemplates.length >= 3,
+  "Expected D9 incident evidence templates for backlog, indexing failures and replay/reindex",
+);
+for (const row of incidentTemplates) {
+  assert(row.scenario, "Incident evidence template misses scenario");
+  assert(row.runbook, `Incident evidence template misses runbook: ${row.scenario}`);
+  assert(existsSync(join(repoRoot, row.runbook)), `Incident runbook path does not exist: ${row.runbook}`);
+  assert(
+    Array.isArray(row.requiredEvidence) && row.requiredEvidence.length >= 3,
+    `Incident evidence template misses required evidence: ${row.scenario}`,
+  );
+  assert(
+    row.status === "pending_live_incident_or_drill",
+    `Incident template must stay pending until live evidence is attached: ${row.scenario}`,
+  );
+}
+
+const ownerCloseoutCriteria = fixtures.ownerCloseoutCriteria ?? [];
+assert(
+  ownerCloseoutCriteria.length >= 3,
+  "Expected owner closeout criteria for platform, frontend and domain owners",
+);
+for (const row of ownerCloseoutCriteria) {
+  assert(row.owner, "Owner closeout row misses owner");
+  assert(
+    Array.isArray(row.acceptance) && row.acceptance.length >= 3,
+    `Owner closeout row misses acceptance criteria: ${row.owner}`,
+  );
+  assert(
+    Array.isArray(row.blocksCloseoutIf) && row.blocksCloseoutIf.length >= 3,
+    `Owner closeout row misses blockers: ${row.owner}`,
+  );
+}
 
 console.log(
   `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, `
@@ -193,5 +256,9 @@ console.log(
     + `${staticAssertions.length} static assertions, `
     + `${fixtures.rbacModuleGatingMatrix.length} RBAC rows, `
     + `${fixtures.replayIndexInvariantMatrix.length} replay/index rows, `
-    + `${fixtures.hostRuntimeEntrypointMatrix.length} host entrypoint rows`,
+    + `${fixtures.hostRuntimeEntrypointMatrix.length} host entrypoint rows, `
+    + `${fixtures.semanticErrorParityMatrix.length} semantic-error rows, `
+    + `${fixtures.liveEvidenceCaptureTemplate.commands.length} live evidence commands, `
+    + `${fixtures.incidentEvidenceTemplates.length} incident templates, `
+    + `${fixtures.ownerCloseoutCriteria.length} owner closeout rows`,
 );

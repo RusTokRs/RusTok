@@ -88,6 +88,29 @@ pub struct FulfillmentProviderOperationResult {
     pub metadata: Value,
 }
 
+/// Transport-neutral carrier webhook delivery passed to provider adapters before
+/// replay-safe lifecycle handling is delegated back to `FulfillmentService`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FulfillmentProviderWebhookRequest {
+    pub tenant_id: Uuid,
+    pub provider_id: String,
+    pub delivery_id: String,
+    pub idempotency_key: String,
+    pub signature: Option<String>,
+    pub raw_payload: Vec<u8>,
+}
+
+/// Normalized carrier webhook facts. Adapters must not persist fulfillment state directly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FulfillmentProviderWebhookResult {
+    pub provider_id: String,
+    pub external_reference: Option<String>,
+    pub event_type: String,
+    pub replay_key: String,
+    pub tracking_number: Option<String>,
+    pub metadata: Value,
+}
+
 /// SPI for concrete fulfillment providers. Fulfillment lifecycle state remains owned by
 /// `FulfillmentService`; adapters only execute provider/carrier side effects.
 #[async_trait]
@@ -108,6 +131,11 @@ pub trait FulfillmentProvider: Send + Sync {
         &self,
         request: FulfillmentProviderOperationRequest,
     ) -> FulfillmentResult<FulfillmentProviderOperationResult>;
+
+    async fn handle_tracking_webhook(
+        &self,
+        request: FulfillmentProviderWebhookRequest,
+    ) -> FulfillmentResult<FulfillmentProviderWebhookResult>;
 }
 
 /// Built-in manual provider used while external carrier integrations are not connected.
@@ -152,5 +180,14 @@ impl FulfillmentProvider for ManualFulfillmentProvider {
         request: FulfillmentProviderOperationRequest,
     ) -> FulfillmentResult<FulfillmentProviderOperationResult> {
         Ok(Self::result(request))
+    }
+
+    async fn handle_tracking_webhook(
+        &self,
+        _request: FulfillmentProviderWebhookRequest,
+    ) -> FulfillmentResult<FulfillmentProviderWebhookResult> {
+        Err(FulfillmentError::Validation(
+            "manual fulfillment provider does not accept tracking webhook ingress".to_string(),
+        ))
     }
 }

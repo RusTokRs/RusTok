@@ -116,14 +116,13 @@ Readiness score считается производным от issue set. Summar
 - `D2-D3`: typed SEO events, outbox emission/idempotency, SEO->index consumer seam — закрыто.
 - `D4-D5`: GraphQL/REST parity completion и migrations/backfill/replay policy — закрыто (включая index tracking/replay endpoints `/api/seo/index/tracking`, `/api/seo/index/repair-replay`, GraphQL `seoIndexDeliveryStatus` + `runSeoIndexRepairReplay`).
 - `D6` закрыт: owner-side remediation widgets (`rustok-seo-admin-support`), shared widget state contract и host-locale wiring в `pages/product/blog/forum` + Next admin operator parity.
-- `A` (D7 foundation): в работе — runtime data plumbing в Next adapter, deterministic fallback policy, typed transport semantics.
-- `B` (D7 cutover): в работе — runtime-driven `robots.ts`/`sitemap.ts` и home metadata consume.
-- `C` (D7 guardrails), `D` (D8 verification matrix), `E` (D9 docs/runbooks/readiness): открыты.
+- `A-C` (D7): закрыты — runtime data plumbing, Next cutover, route ownership guardrails и cross-host fixture parity.
+- `D-E` (D8/D9): открыты только на live runtime/CI closeout; compile-free baseline расширен до semantic error parity, live evidence capture template, incident evidence template и owner closeout criteria.
 
 ## D8/D9 readiness evidence
 
 - Compile-free D8/D9 seed lives in `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` and is checked by `npm --prefix apps/next-frontend run verify:seo-runtime-fixtures`.
-- The fixture now covers fallback behavior, route ownership, non-home metadata smoke assertions, long-tail diff allowlist, docs sync matrix, owner sign-off checklist, live evidence closeout criteria, and static source assertions for Next runtime/metadata/transport, Rust renderer, Next Admin index transport, and Leptos storefront SEO runtime wiring.
+- The fixture now covers fallback behavior, route ownership, non-home metadata smoke assertions, long-tail diff allowlist, docs sync matrix, owner sign-off checklist, live evidence closeout criteria, semantic error parity, incident evidence templates, owner closeout criteria, and static source assertions for Next runtime/metadata/transport, Rust renderer, Next Admin index transport, and Leptos storefront SEO runtime wiring.
 - Live runtime evidence remains required before final D8/D9 closeout: backend GraphQL/REST parity, SEO index delivery counters, Next robots/sitemap/metadata runtime smoke and Leptos `storefront/seo-page-context` smoke.
 
 ## Проверка

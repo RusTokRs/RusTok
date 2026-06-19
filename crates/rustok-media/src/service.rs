@@ -6,12 +6,12 @@ use sea_orm::{
 use uuid::Uuid;
 
 use rustok_core::generate_id;
-use rustok_storage::StorageService;
+use rustok_storage::{StorageError, StorageService};
 
 use crate::{
     dto::{
-        MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
-        ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
+        ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE, MediaItem, MediaTranslationItem, UploadInput,
+        UpsertTranslationInput,
     },
     entities::{
         media::{self, ActiveModel as MediaActiveModel, Column as MediaCol, Entity as MediaEntity},
@@ -27,54 +27,140 @@ pub struct MediaService {
     storage: StorageService,
 }
 
-fn normalize_translation_input(input: UpsertTranslationInput) -> UpsertTranslationInput {
-    UpsertTranslationInput {
-        locale: normalize_locale(input.locale),
-        title: normalize_optional_text(input.title),
-        alt_text: normalize_optional_text(input.alt_text),
-        caption: normalize_optional_text(input.caption),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaStorageCleanupDecision {
+    KeepRecord,
+    DeleteRecord,
+    RetryLater,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MediaStorageCleanupReport {
+    pub inspected: u64,
+    pub deleted_records: u64,
+    pub kept_records: u64,
+    pub retry_later: u64,
+}
+
+fn classify_cleanup_probe(
+    result: &std::result::Result<bytes::Bytes, StorageError>,
+) -> MediaStorageCleanupDecision {
+    match result {
+        Ok(_) => MediaStorageCleanupDecision::KeepRecord,
+        Err(StorageError::NotFound(_)) | Err(StorageError::InvalidPath(_)) => {
+            MediaStorageCleanupDecision::DeleteRecord
+        }
+        Err(StorageError::Io(_)) | Err(StorageError::Backend(_)) => {
+            MediaStorageCleanupDecision::RetryLater
+        }
     }
 }
 
-fn normalize_locale(locale: String) -> String {
-    locale.trim().to_ascii_lowercase()
-}
+fn validate_upload_policy(input: &UploadInput) -> Result<u64> {
+    if !ALLOWED_MIME_PREFIXES
+        .iter()
+        .any(|prefix| input.content_type.starts_with(prefix))
+    {
+        return Err(MediaError::UnsupportedMimeType(input.content_type.clone()));
+    }
 
-fn normalize_optional_text(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+    let size = input.data.len() as u64;
+    if size > DEFAULT_MAX_SIZE {
+        return Err(MediaError::FileTooLarge {
+            size,
+            max: DEFAULT_MAX_SIZE,
+        });
+    }
+
+    Ok(size)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_locale, normalize_optional_text, normalize_translation_input};
-    use crate::dto::UpsertTranslationInput;
+    use std::io;
 
-    #[test]
-    fn normalize_translation_input_trims_locale_and_optional_text() {
-        let normalized = normalize_translation_input(UpsertTranslationInput {
-            locale: " RU ".to_string(),
-            title: Some("  Hero  ".to_string()),
-            alt_text: Some("   ".to_string()),
-            caption: Some(" Caption text ".to_string()),
-        });
+    use bytes::Bytes;
+    use uuid::Uuid;
 
-        assert_eq!(normalized.locale, "ru");
-        assert_eq!(normalized.title.as_deref(), Some("Hero"));
-        assert_eq!(normalized.alt_text, None);
-        assert_eq!(normalized.caption.as_deref(), Some("Caption text"));
+    use super::{MediaStorageCleanupDecision, classify_cleanup_probe, validate_upload_policy};
+    use crate::{
+        dto::{DEFAULT_MAX_SIZE, UploadInput},
+        error::MediaError,
+    };
+    use rustok_storage::StorageError;
+
+    fn upload_input(content_type: &str, data_len: usize) -> UploadInput {
+        UploadInput {
+            tenant_id: Uuid::new_v4(),
+            uploaded_by: None,
+            original_name: "asset.bin".to_string(),
+            content_type: content_type.to_string(),
+            data: Bytes::from(vec![0_u8; data_len]),
+        }
     }
 
     #[test]
-    fn normalize_locale_keeps_region_shape_but_canonicalizes_case() {
-        assert_eq!(normalize_locale(" En-US ".to_string()), "en-us");
+    fn validate_upload_policy_accepts_supported_mime_at_size_limit() {
+        let input = upload_input("image/webp", DEFAULT_MAX_SIZE as usize);
+
+        assert_eq!(
+            validate_upload_policy(&input).expect("supported image should pass"),
+            DEFAULT_MAX_SIZE
+        );
     }
 
     #[test]
-    fn normalize_optional_text_converts_blank_values_to_none() {
-        assert_eq!(normalize_optional_text(Some("\t\n ".to_string())), None);
-        assert_eq!(normalize_optional_text(None), None);
+    fn validate_upload_policy_rejects_unsupported_mime_before_storage() {
+        let input = upload_input("text/html", 16);
+
+        let error = validate_upload_policy(&input).expect_err("html upload must be rejected");
+        assert!(matches!(
+            error,
+            MediaError::UnsupportedMimeType(content_type) if content_type == "text/html"
+        ));
+    }
+
+    #[test]
+    fn validate_upload_policy_rejects_payloads_over_limit() {
+        let input = upload_input("application/pdf", DEFAULT_MAX_SIZE as usize + 1);
+
+        let error = validate_upload_policy(&input).expect_err("oversized upload must be rejected");
+        assert!(matches!(
+            error,
+            MediaError::FileTooLarge { size, max }
+                if size == DEFAULT_MAX_SIZE + 1 && max == DEFAULT_MAX_SIZE
+        ));
+    }
+
+    #[test]
+    fn classify_cleanup_probe_deletes_only_missing_or_invalid_paths() {
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::NotFound("missing".to_string()))),
+            MediaStorageCleanupDecision::DeleteRecord
+        );
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::InvalidPath("../bad".to_string()))),
+            MediaStorageCleanupDecision::DeleteRecord
+        );
+    }
+
+    #[test]
+    fn classify_cleanup_probe_keeps_readable_objects_and_retries_transient_errors() {
+        assert_eq!(
+            classify_cleanup_probe(&Ok(Bytes::from_static(b"object"))),
+            MediaStorageCleanupDecision::KeepRecord
+        );
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::Backend("timeout".to_string()))),
+            MediaStorageCleanupDecision::RetryLater
+        );
+        assert_eq!(
+            classify_cleanup_probe(&Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "timeout",
+            )))),
+            MediaStorageCleanupDecision::RetryLater
+        );
     }
 }
 
@@ -87,20 +173,7 @@ impl MediaService {
 
     /// Validate, store, and record a new media upload.
     pub async fn upload(&self, input: UploadInput) -> Result<MediaItem> {
-        // Validation
-        if !ALLOWED_MIME_PREFIXES
-            .iter()
-            .any(|p| input.content_type.starts_with(p))
-        {
-            return Err(MediaError::UnsupportedMimeType(input.content_type.clone()));
-        }
-        let size = input.data.len() as u64;
-        if size > DEFAULT_MAX_SIZE {
-            return Err(MediaError::FileTooLarge {
-                size,
-                max: DEFAULT_MAX_SIZE,
-            });
-        }
+        validate_upload_policy(&input)?;
 
         // Generate storage path and persist to backend
         let path = StorageService::generate_path(input.tenant_id, &input.original_name);
@@ -258,6 +331,53 @@ impl MediaService {
                 caption: m.caption,
             })
             .collect())
+    }
+
+    // ── Storage cleanup ───────────────────────────────────────────────────────
+
+    /// Probe persisted media records and remove DB rows whose storage objects are
+    /// definitively absent or invalid. Readable objects are never deleted, while
+    /// transient storage failures are counted for retry instead of changing DB state.
+    pub async fn cleanup_storage_orphans(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+    ) -> Result<MediaStorageCleanupReport> {
+        let rows = MediaEntity::find()
+            .filter(MediaCol::TenantId.eq(tenant_id))
+            .order_by_asc(MediaCol::CreatedAt)
+            .limit(limit)
+            .all(&self.db)
+            .await?;
+
+        let mut report = MediaStorageCleanupReport::default();
+
+        for row in rows {
+            report.inspected += 1;
+            let probe = self.storage.read(&row.storage_path).await;
+            match classify_cleanup_probe(&probe) {
+                MediaStorageCleanupDecision::KeepRecord => {
+                    report.kept_records += 1;
+                }
+                MediaStorageCleanupDecision::DeleteRecord => {
+                    MediaEntity::delete_by_id(row.id).exec(&self.db).await?;
+                    report.deleted_records += 1;
+                }
+                MediaStorageCleanupDecision::RetryLater => {
+                    report.retry_later += 1;
+                    if let Err(error) = probe {
+                        tracing::warn!(
+                            media_id = %row.id,
+                            path = %row.storage_path,
+                            error = %error,
+                            "Storage cleanup probe failed transiently; media record kept for retry"
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(report)
     }
 
     // ── Private ───────────────────────────────────────────────────────────────

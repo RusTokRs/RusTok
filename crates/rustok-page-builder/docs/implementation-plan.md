@@ -21,7 +21,7 @@
 - machine-readable FBA registry (`contracts/page-builder-fba-registry.json`) фиксирует provider version, `consumer_min_version`, consumer contract versions, fallback profile set, provider health states, degradation reasons и pilot SLO thresholds для anti-drift gate;
 - server feature wiring (`mod-page-builder`) подключён;
 - typed provider health/SLO evaluator добавлен в runtime baseline для Wave evidence;
-- transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`) и typed Wave health evidence (`ProviderHealthEvidence`) заведены как publish-ready contract markers;
+- transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`), typed provider error catalog (`PageBuilderErrorKind`, `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE`) и typed Wave health evidence (`ProviderHealthEvidence`) заведены как publish-ready contract markers;
 - capability handlers пока в статусе planned (Phase 1).
 
 
@@ -37,12 +37,13 @@
   - runtime health contract фиксирует `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds и typed SLO evaluation evidence в коде;
   - первый migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext` и enforce write semantics для `publish` без изменения DTO contract.
   - server-side handler seam добавил permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` с `pages:manage` override и registry/manifest anti-drift проверкой.
+  - provider runtime теперь exposes typed error catalog `validation/sanitize/runtime/feature-disabled` и стабильный degraded-mode code `FEATURE_DISABLED` для transport adapters.
 - Last verified at (UTC): 2026-06-14T00:00:00Z
 - Owner: `rustok-page-builder` module team
 
 ## Ближайшие шаги
 
-1. Подключить server-side handler seam к реальным transport adapters после выбора GraphQL/server-function entrypoints.
+1. Подключить server-side handler seam к реальным transport adapters после выбора GraphQL/server-function entrypoints, используя `PageBuilderServiceError::kind()` и `stable_code()` как canonical error bridge.
 2. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync и Wave evidence формы.
 3. Описать sunset path для legacy block-driven compatibility.
 

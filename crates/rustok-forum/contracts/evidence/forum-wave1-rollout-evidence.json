@@ -179,8 +179,8 @@
       "runtime_error_rate": "live_wave1_actual:0.000"
     },
     "traces": {
-      "builder_write_to_pages_publish": "trace-forum-wave1-live-20260615-all-on",
-      "pages_publish_to_storefront_read": "trace-forum-wave1-live-20260615-publish-off"
+      "builder_write_to_forum_publish": "trace-forum-wave1-live-20260615-all-on",
+      "forum_publish_to_storefront_read": "trace-forum-wave1-live-20260615-publish-off"
     },
     "trace_samples": [
       {

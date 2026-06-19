@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
 
-
 pub const IMAGE_ASSET_TASK_SLUG: &str = "image_asset";
 pub const IMAGE_ASSET_TOOL_NAME: &str = "direct.media.generate_image";
 
@@ -11,13 +10,11 @@ pub struct MediaAiVerticalDescriptor {
     pub sensitive: bool,
 }
 
-pub const MEDIA_AI_VERTICALS: &[MediaAiVerticalDescriptor] = &[
-    MediaAiVerticalDescriptor {
-        task_slug: IMAGE_ASSET_TASK_SLUG,
-        tool_name: IMAGE_ASSET_TOOL_NAME,
-        sensitive: false,
-    },
-];
+pub const MEDIA_AI_VERTICALS: &[MediaAiVerticalDescriptor] = &[MediaAiVerticalDescriptor {
+    task_slug: IMAGE_ASSET_TASK_SLUG,
+    tool_name: IMAGE_ASSET_TOOL_NAME,
+    sensitive: false,
+}];
 
 pub fn media_ai_verticals() -> &'static [MediaAiVerticalDescriptor] {
     MEDIA_AI_VERTICALS
@@ -42,9 +39,9 @@ pub fn normalize_image_size(size: Option<String>) -> Result<Option<String>, Stri
     else {
         return Ok(None);
     };
-    let (width, height) = size.split_once('x').ok_or_else(|| {
-        "image size must be formatted as WIDTHxHEIGHT".to_string()
-    })?;
+    let (width, height) = size
+        .split_once('x')
+        .ok_or_else(|| "image size must be formatted as WIDTHxHEIGHT".to_string())?;
     let width = width
         .trim()
         .parse::<u32>()
@@ -66,7 +63,10 @@ mod tests {
     #[test]
     fn test_normalize_image_size() {
         assert_eq!(normalize_image_size(None).unwrap(), None);
-        assert_eq!(normalize_image_size(Some("1024x1024".to_string())).unwrap(), Some("1024x1024".to_string()));
+        assert_eq!(
+            normalize_image_size(Some("1024x1024".to_string())).unwrap(),
+            Some("1024x1024".to_string())
+        );
         assert!(normalize_image_size(Some("0x1024".to_string())).is_err());
         assert!(normalize_image_size(Some("5000x1024".to_string())).is_err());
     }

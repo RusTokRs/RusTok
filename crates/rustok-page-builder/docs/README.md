@@ -22,7 +22,7 @@
 ## Точки входа
 
 - `src/lib.rs` — runtime metadata и permission surface;
-- `src/dto.rs` — transport-neutral DTO и `PageBuilderContractMetadata::BASELINE` для contract package без привязки к transport adapters;
+- `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` и typed error catalog (`validation/sanitize/runtime/feature-disabled`) для contract package без привязки к transport adapters;
 - `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, feature-flag guard и server-side handler seam с RBAC permission checks;
 - `src/health.rs` — типизированные provider health states, degradation reasons, `ProviderHealthEvidence` и evaluator pilot SLO thresholds для release-gate evidence;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
@@ -45,9 +45,13 @@ Machine-readable provider metadata включает health states `ready/degrade
 
 Правила health evaluation намеренно консервативны: breach preview p95 или runtime error-rate помечает provider как `provider_unhealthy`, breach sanitize threshold помечает `sanitize_backpressure`, breach publish p95 помечает `publish_backlog`, а runtime error-rate выше двойного pilot threshold переводит state в `unavailable`; иначе непустой набор degradation reasons даёт `degraded`.
 
-## Capability permission map
+## Типизированный каталог ошибок
 
-Server-side capability handlers enforce a stable page permission map before delegating to the provider service. `pages:manage` remains an effective override for every builder capability.
+Runtime provider-а exposes те же error-семантики, которые объявлены в `rustok-module.toml` и `contracts/page-builder-fba-registry.json`: `PageBuilderErrorKind::ALL` покрывает `validation`, `sanitize`, `runtime` и `feature-disabled`, а `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE` закрепляет стабильный degraded-mode code `FEATURE_DISABLED`. `PageBuilderServiceError::kind()` и `PageBuilderServiceError::stable_code()` являются transport-neutral bridge для GraphQL, Leptos server functions и future mobile codegen adapters, поэтому adapters должны маппить provider errors из этих typed markers вместо локальных имён ошибок.
+
+## Карта permission для capability
+
+Server-side capability handlers enforce стабильную page permission map перед делегированием в provider service. `pages:manage` остаётся effective override для всех builder capabilities.
 
 | Capability | Required permission | Notes |
 |---|---|---|

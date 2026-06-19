@@ -34,6 +34,13 @@ const requiredWebhookAssertions = [
   'lifecycle_transition_delegated_to_owner_service',
 ];
 
+const requiredExternalAdapterAssertions = [
+  'descriptor_capability_match_required',
+  'health_status_mapping_required',
+  'degraded_mode_mapping_required',
+  'adapter_does_not_persist_lifecycle_state',
+];
+
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
@@ -80,6 +87,40 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     if (!sameSet(webhook.assertions, requiredWebhookAssertions)) fail(`${module} webhook replay assertions drift`);
     if (providerSpi.webhook_ingress?.idempotency_required !== true || providerSpi.webhook_ingress?.replay_required !== true) {
       fail(`${module} registry webhook ingress must keep idempotency and replay required`);
+    }
+    if (!providerSpi.webhook_ingress?.adapter_operation) {
+      fail(`${module} registry webhook ingress must declare adapter operation`);
+    }
+    if (webhook.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
+      fail(`${module} webhook replay adapter operation drift`);
+    }
+    if (webhook.raw_payload_audit_required !== true || webhook.owner_service_replay_guard_required !== true) {
+      fail(`${module} webhook replay must lock raw payload audit and owner replay guard`);
+    }
+
+    const externalRegistration = evidence.external_adapter_registration;
+    if (!externalRegistration) fail(`${module} provider SPI evidence lacks external adapter registration contract`);
+    if (providerSpi.external_adapter_registration?.status !== 'planned_contract_locked') {
+      fail(`${module} registry external adapter registration status drift`);
+    }
+    if (externalRegistration.status !== providerSpi.external_adapter_registration.status) {
+      fail(`${module} external adapter registration status drift`);
+    }
+    if (!sameSet(externalRegistration.assertions, requiredExternalAdapterAssertions)) {
+      fail(`${module} external adapter registration assertions drift`);
+    }
+    if (externalRegistration.execution_status !== 'static_locked_runtime_pending') {
+      fail(`${module} external adapter registration execution status drift`);
+    }
+    for (const flag of [
+      'requires_descriptor_capability_match',
+      'requires_health_status_mapping',
+      'requires_degraded_mode_mapping',
+      'disallows_persisted_lifecycle_state_in_adapter',
+    ]) {
+      if (providerSpi.external_adapter_registration?.[flag] !== true) {
+        fail(`${module} registry external adapter registration must keep ${flag}`);
+      }
     }
   }
 }
