@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ai_domain_vertical_ownership_slice_complete
-- Last checkpoint: Extracted remaining generated payload contracts and validation for `media` (`image_asset`) and `alloy` (`alloy_code`) direct handlers into explicit capability adapters `rustok-ai-media` and `rustok-ai-alloy`, and registered them dynamically via adapter APIs. All tests and workspace compilation pass cleanly.
-- Next step: Parity and evidence hardening.
+- Last checkpoint: Hardened parity/evidence after media/alloy extraction by adding local implementation plans for `rustok-ai-media` and `rustok-ai-alloy`, linking them from the central module index, syncing the implementation-plan registry, and tightening `rustok-ai-order` generated payload validation for blank analytics array items plus null ops prefill.
+- Next step: Continue parity/evidence hardening without moving executable runtime composition out of `rustok-ai`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-19T05:30:00Z
+- Last updated at (UTC): 2026-06-19T06:15:00Z
 
 ## Состояние на 2026-04-04
 
@@ -141,7 +141,7 @@
 - Structural shape: `core_transport_ui` for the first AI admin slice.
 - Evidence: domain support crates `rustok-ai-product`, `rustok-ai-content` и `rustok-ai-order` expose `register_*_ai_vertical_handlers` adapter APIs consumed by `crates/rustok-ai/src/direct_domain_*.rs`; `rustok-ai-content` also owns `blog_draft` task/tool identity plus generated draft validation, so direct handler binding follows domain-owned descriptors while `rustok-ai` remains the runtime composition owner; `crates/rustok-ai/admin/src/core.rs` владеет Leptos-free request normalization, direct-job payload builders (`parse_csv`, `optional_text`, `alloy_task_payload`, `image_task_payload`, `product_task_payload`, `product_attributes_task_payload`, `blog_task_payload`) и diagnostics summary policy (`average_latency_ms`, `summarize_recent_runs`), `admin/src/transport/mod.rs` владеет current facade, `admin/src/transport/native_server_adapter.rs` владеет existing native server-function endpoints после удаления pre-FFA `api.rs` facade, `admin/src/transport/graphql_adapter.rs` владеет Leptos-free GraphQL/headless operation documents, request builders and live-stream GraphQL WebSocket endpoint/message construction, `admin/src/ui/leptos.rs` остаётся explicit Leptos adapter consuming `core` + `transport`, а `admin/src/lib.rs` только wires/re-exports module layers.
 - Guardrail: `scripts/verify/verify-ai-admin-boundary.mjs` проверяет core/transport slice, включая diagnostics summary helpers, GraphQL/headless adapter markers and live-stream WebSocket message builders, и не даёт перенесённым request/payload helpers или raw `api::` calls вернуться в Leptos adapter.
-- Next step: продолжить вынос remaining generated payload contracts/validation for media/alloy direct handlers into their owning support crates or explicit capability adapters, без удаления существующего runtime composition в `rustok-ai`.
+- Next step: продолжить parity/evidence hardening for domain-owned support crates and expand targeted verification evidence when compilation is allowed, без удаления существующего runtime composition в `rustok-ai`.
 
 ## Проверка
 
