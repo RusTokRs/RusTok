@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-17T00:00:00Z",
+  "updatedAt": "2026-06-19T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -207,7 +207,11 @@
       "D8.3 Leptos storefront static contract",
       "D8.2 RBAC/module gating static matrix",
       "D8.3 replay/index idempotency static matrix",
-      "D8.3 host runtime entrypoint static matrix"
+      "D8.3 host runtime entrypoint static matrix",
+      "D8.2 semantic error parity static matrix",
+      "D8.4 live evidence capture template",
+      "D9.2 incident evidence template seed",
+      "D9.3 owner closeout criteria matrix"
     ],
     "deferredBatches": [
       "D8.1 Rust unit execution",
@@ -225,7 +229,11 @@
       "missing Leptos storefront server-function/GraphQL parity evidence",
       "missing RBAC/module gating static evidence",
       "missing replay/index idempotency static evidence",
-      "missing host runtime entrypoint wiring"
+      "missing host runtime entrypoint wiring",
+      "missing semantic error parity evidence for GraphQL REST Next fallback",
+      "missing live evidence capture command template",
+      "missing operational incident evidence template",
+      "missing owner closeout acceptance criteria"
     ]
   },
   "docsSyncMatrix": [
@@ -499,6 +507,195 @@
         "build_seo_head",
         "render_head_html",
         "render_module_page_response"
+      ]
+    }
+  ],
+  "semanticErrorParityMatrix": [
+    {
+      "surface": "GraphQL validation errors",
+      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "GraphQLError>::bad_user_input",
+        "SeoIndexRepairReplayInput",
+        "limit"
+      ],
+      "expected": "invalid replay input maps to BAD_USER_INPUT without changing REST semantics"
+    },
+    {
+      "surface": "GraphQL permission errors",
+      "path": "crates/rustok-seo/src/graphql/mod.rs",
+      "mustContain": [
+        "GraphQLError>::permission_denied",
+        "Permission::SEO_MANAGE",
+        "require_seo_permission"
+      ],
+      "expected": "manage/read permission failures keep GraphQL semantic PERMISSION_DENIED"
+    },
+    {
+      "surface": "REST error envelope",
+      "path": "crates/rustok-seo/src/controllers/mod.rs",
+      "mustContain": [
+        "ErrorCode::BadUserInput",
+        "ErrorCode::PermissionDenied",
+        "ErrorCode::NotFound",
+        "error"
+      ],
+      "expected": "REST control-plane endpoints expose GraphQL-compatible semantic error codes"
+    },
+    {
+      "surface": "Next storefront safe fallback",
+      "path": "apps/next-frontend/src/shared/seo/runtime.ts",
+      "mustContain": [
+        "NOT_FOUND",
+        "PERMISSION_DENIED",
+        "TRANSPORT_ERROR",
+        "fallback_static"
+      ],
+      "expected": "Next runtime classifies semantic and transport failures before static fallback"
+    },
+    {
+      "surface": "Next admin operator API",
+      "path": "apps/next-admin/src/shared/api/seo.ts",
+      "mustContain": [
+        "BAD_USER_INPUT",
+        "PERMISSION_DENIED",
+        "NOT_FOUND",
+        "SeoRestErrorEnvelope"
+      ],
+      "expected": "operator helper preserves backend semantic codes for UI remediation"
+    }
+  ],
+  "liveEvidenceCaptureTemplate": {
+    "status": "template_only_no_runtime_started",
+    "commands": [
+      {
+        "surface": "backend_graphql_rest_parity",
+        "command": "cargo test -p rustok-seo --test seo_graphql_rest_parity -- --nocapture",
+        "requiredArtifacts": [
+          "seoPageContext sample",
+          "seoDiagnostics sample",
+          "seoIndexDeliveryStatus sample",
+          "REST /api/seo/index/tracking sample"
+        ]
+      },
+      {
+        "surface": "outbox_index_pipeline",
+        "command": "cargo test -p rustok-seo --test seo_index_pipeline -- --nocapture",
+        "requiredArtifacts": [
+          "before/after seo_event_deliveries counters",
+          "before/after seo_index_deliveries counters",
+          "duplicate idempotency sample"
+        ]
+      },
+      {
+        "surface": "next_frontend_runtime",
+        "command": "npm --prefix apps/next-frontend run test:seo-runtime-smoke",
+        "requiredArtifacts": [
+          "robots runtime source",
+          "sitemap runtime source",
+          "product metadata JSON-LD",
+          "blog hreflang"
+        ]
+      },
+      {
+        "surface": "leptos_storefront_runtime",
+        "command": "cargo test -p rustok-storefront seo_page_context -- --nocapture",
+        "requiredArtifacts": [
+          "server-function success sample",
+          "GraphQL fallback sample",
+          "rendered head sample"
+        ]
+      },
+      {
+        "surface": "next_admin_operator",
+        "command": "npm --prefix apps/next-admin run test:seo-operator-smoke",
+        "requiredArtifacts": [
+          "index tracking sample",
+          "repair replay success sample",
+          "semantic error sample"
+        ]
+      }
+    ],
+    "redactionRules": [
+      "tenant ids may be UUID-only",
+      "do not include auth tokens or cookies",
+      "replace public hostnames with example.test when logs leave CI"
+    ],
+    "closeoutRequires": "all commands or equivalent CI jobs attached to D8/D9 closeout with zero high-severity parity defects"
+  },
+  "incidentEvidenceTemplates": [
+    {
+      "scenario": "seo_event_backlog_stuck",
+      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "requiredEvidence": [
+        "initial queued/failed counters",
+        "worker/outbox health sample",
+        "repair action taken",
+        "post-repair counters"
+      ],
+      "status": "pending_live_incident_or_drill"
+    },
+    {
+      "scenario": "partial_indexing_failures",
+      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "requiredEvidence": [
+        "failed/dead-letter deliveries by target_kind",
+        "root cause classification",
+        "targeted replay command",
+        "post-replay delivery status"
+      ],
+      "status": "pending_live_incident_or_drill"
+    },
+    {
+      "scenario": "safe_replay_reindex",
+      "runbook": "crates/rustok-seo/docs/replay-repair-runbook.md",
+      "requiredEvidence": [
+        "selected replay mode",
+        "cursor before/after",
+        "idempotency duplicate check",
+        "rollback/stop criteria decision"
+      ],
+      "status": "pending_live_incident_or_drill"
+    }
+  ],
+  "ownerCloseoutCriteria": [
+    {
+      "owner": "Platform foundation",
+      "acceptance": [
+        "GraphQL/REST semantic error parity attached",
+        "outbox/index counters attached",
+        "no duplicate idempotency transitions"
+      ],
+      "blocksCloseoutIf": [
+        "unexplained NOT_FOUND/PERMISSION_DENIED drift",
+        "cursor regression",
+        "missing D8.2 live artifact"
+      ]
+    },
+    {
+      "owner": "Frontends",
+      "acceptance": [
+        "Next robots/sitemap runtime smoke attached",
+        "Next non-home metadata smoke attached",
+        "Leptos server-function and GraphQL fallback smoke attached"
+      ],
+      "blocksCloseoutIf": [
+        "runtime falls back silently for healthy SEO module",
+        "JSON-LD missing on product/blog smoke",
+        "missing D8.3 live artifact"
+      ]
+    },
+    {
+      "owner": "Domain modules",
+      "acceptance": [
+        "route ownership matrix remains current",
+        "owner panels remain canonical entity SEO editors",
+        "target provider route smoke attached"
+      ],
+      "blocksCloseoutIf": [
+        "host-local entity editor appears",
+        "target_kind owner mismatch",
+        "missing owner route smoke"
       ]
     }
   ]
