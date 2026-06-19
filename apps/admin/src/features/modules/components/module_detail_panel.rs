@@ -64,10 +64,9 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
 
 fn copy_text_to_clipboard(text: &str) {
     if let Some(window) = web_sys::window() {
-        if let Some(navigator) = window.navigator() {
-            let clipboard = navigator.clipboard();
-            let _ = clipboard.write_text(text);
-        }
+        let navigator = window.navigator();
+        let clipboard = navigator.clipboard();
+        let _ = clipboard.write_text(text);
     }
 }
 

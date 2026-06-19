@@ -3,7 +3,8 @@ use rust_decimal::Decimal;
 use rustok_payment::error::{PaymentError, PaymentResult};
 use rustok_payment::providers::{
     ManualPaymentProvider, PaymentProvider, PaymentProviderCapabilities, PaymentProviderDescriptor,
-    PaymentProviderOperationRequest, PaymentProviderOperationResult,
+    PaymentProviderOperationRequest, PaymentProviderOperationResult, PaymentProviderWebhookRequest,
+    PaymentProviderWebhookResult,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -81,6 +82,22 @@ impl PaymentProvider for MockPaymentProvider {
             authorized_amount: Decimal::ZERO,
             captured_amount: Decimal::ZERO,
             metadata: request.metadata,
+        })
+    }
+
+    async fn handle_webhook(
+        &self,
+        request: PaymentProviderWebhookRequest,
+    ) -> PaymentResult<PaymentProviderWebhookResult> {
+        if self.should_fail {
+            return Err(PaymentError::Validation(self.error_message.clone()));
+        }
+        Ok(PaymentProviderWebhookResult {
+            provider_id: self.descriptor.provider_id.clone(),
+            external_reference: Some("mock-webhook-ref".to_string()),
+            event_type: "mock_event".to_string(),
+            replay_key: request.delivery_id,
+            metadata: json!({}),
         })
     }
 }

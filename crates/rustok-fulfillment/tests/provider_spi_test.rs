@@ -4,7 +4,8 @@ use rustok_fulfillment::error::{FulfillmentError, FulfillmentResult};
 use rustok_fulfillment::providers::{
     FulfillmentProvider, FulfillmentProviderCapabilities, FulfillmentProviderDescriptor,
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult, FulfillmentRateQuote,
-    FulfillmentRateQuoteRequest, ManualFulfillmentProvider,
+    FulfillmentRateQuoteRequest, ManualFulfillmentProvider, FulfillmentProviderWebhookRequest,
+    FulfillmentProviderWebhookResult,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -64,6 +65,23 @@ impl FulfillmentProvider for MockFulfillmentProvider {
             external_reference: Some("mock-cancel-ref".to_string()),
             tracking_number: None,
             metadata: request.metadata,
+        })
+    }
+
+    async fn handle_tracking_webhook(
+        &self,
+        request: FulfillmentProviderWebhookRequest,
+    ) -> FulfillmentResult<FulfillmentProviderWebhookResult> {
+        if self.should_fail {
+            return Err(FulfillmentError::Validation(self.error_message.clone()));
+        }
+        Ok(FulfillmentProviderWebhookResult {
+            provider_id: self.descriptor.provider_id.clone(),
+            external_reference: Some("mock-webhook-ref".to_string()),
+            event_type: "mock_event".to_string(),
+            replay_key: request.delivery_id,
+            tracking_number: Some("TRK-MOCK-123".to_string()),
+            metadata: json!({}),
         })
     }
 }

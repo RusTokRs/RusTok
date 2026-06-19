@@ -1607,9 +1607,11 @@ fn merge_message_metadata(base: Value, extension: Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_generated_file_name, locale_matches, normalize_image_size, normalize_tag_list,
+        build_generated_file_name, locale_matches, normalize_tag_list,
         parse_generated_product_copy, parse_json_object_from_text,
     };
+    use rustok_ai_media::normalize_image_size;
+    use rustok_ai_content::BLOG_DRAFT_TASK_SLUG;
 
     #[test]
     fn normalize_image_size_accepts_valid_dimensions() {
