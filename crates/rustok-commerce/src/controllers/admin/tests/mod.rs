@@ -89,7 +89,6 @@
     }
 
     #[derive(Clone)]
-    #[derive(Clone)]
     pub(crate) struct TransportRequestContext {
         pub tenant: TenantContext,
         pub auth: AuthContext,
