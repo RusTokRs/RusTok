@@ -3,6 +3,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod ports;
 pub mod service;
 
 use async_trait::async_trait;
@@ -11,12 +12,13 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE, MediaImageDescriptor, MediaItem, MediaTranslationItem,
-    UploadInput, UpsertTranslationInput,
+    MediaImageDescriptor, MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
+    ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
 };
 pub use entities::*;
 pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};
+pub use ports::*;
 pub use service::{MediaService, MediaStorageCleanupDecision, MediaStorageCleanupReport};
 
 pub struct MediaModule;

@@ -4,9 +4,9 @@
 
 ## Execution checkpoint
 
-- Current phase: `phase_d8_static_evidence_hardening`
-- Last checkpoint: D8 compile-free verifier now enforces RBAC/module gating, replay/index idempotency and host runtime entrypoint matrices in addition to fixture/static source assertions.
-- Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 закрытыми по static evidence.
+- Current phase: `fba_media_consumer_static_metadata`
+- Last checkpoint: FBA media consumer slice added `crates/rustok-seo/contracts/seo-fba-registry.json`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json`, manifest consumer metadata and `npm run verify:seo:fba` to lock the SEO -> media `MediaAssetReadPort` / `media.asset_read.v1` dependency without raising status above `in_progress` before runtime fallback smoke.
+- Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, включая SEO image descriptor fallback smoke для `MediaAssetReadPort`, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 или FBA boundary readiness закрытыми по static evidence.
 - Open blockers:
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
   - Для D9 остаётся дополнить runbooks live incident evidence и получить owner sign-off по seeded checklist.
@@ -21,13 +21,14 @@
 ## FFA/FBA status block
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Last verification evidence:
   - `cargo fmt --all -- --check` *(pass, 2026-06-07)*
   - `cargo check -p rustok-seo-admin --config profile.dev.debug=0` *(pass, 2026-06-07)*
   - `cargo test -p rustok-seo-admin --lib --config profile.dev.debug=0` *(pass, 2026-06-07; 12 pure-core tests)*
 - Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); `rustok-seo-admin` теперь имеет явный `core/transport/ui` FFA split, а transport boundary продолжает развиваться через GraphQL + REST `/api/seo/page-context`, `/api/seo/cross-link-suggestions`, control-plane parity endpoints и унифицированный GraphQL-compatible REST error envelope в рамках Phase D.
+- FBA evidence: `crates/rustok-seo/contracts/seo-fba-registry.json` declares the `seo_image_descriptor` consumer profile for `MediaAssetReadPort` / `media.asset_read.v1`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json` mirrors planned consumer cases and degraded modes (`omit_image_metadata`, `keep_existing_seo_image`), and `scripts/verify/verify-seo-fba.mjs` checks drift against `crates/rustok-media/contracts/media-fba-registry.json` without long compilation; status remains below `boundary_ready` until runtime contract execution/fallback smoke lands.
 
 ## Область работ
 
