@@ -62,6 +62,15 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
     }
 }
 
+fn copy_text_to_clipboard(text: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Some(navigator) = window.navigator() {
+            let clipboard = navigator.clipboard();
+            let _ = clipboard.write_text(text);
+        }
+    }
+}
+
 fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&MarketplaceModuleVersion> {
     module.versions.iter().find(|version| !version.yanked)
 }
@@ -328,7 +337,12 @@ pub fn ModuleDetailPanel(
                             .as_ref()
                             .and_then(|lifecycle| lifecycle.latest_release.clone());
                         let lifecycle_note_lines =
-                            lifecycle_detail_lines(latest_registry_request.as_ref(), locale);
+                            lifecycle_detail_lines(
+                                latest_registry_request.as_ref(),
+                                latest_registry_release.as_ref(),
+                                registry_owner_binding.as_ref(),
+                                locale,
+                            );
                         let lifecycle_note_lines_for_show = lifecycle_note_lines.clone();
                         let review_policy_lines = registry_review_policy_lines(
                             latest_registry_request.as_ref(),

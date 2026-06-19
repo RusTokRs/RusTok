@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use leptos_i18n::Locale as LeptosLocale;
 use crate::use_i18n;
 use crate::Locale;
 use super::{tr, humanize_token, humanize_setting_key};

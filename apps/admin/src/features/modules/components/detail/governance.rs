@@ -546,20 +546,14 @@ pub fn lifecycle_detail_lines(
     }
 
     if let Some(release) = release {
-        let signature_label = if release.signature_present {
-            tr(locale, "Signature present", "Подпись есть")
-        } else {
-            tr(locale, "Signature missing", "Подписи нет")
-        };
         let checksum = short_checksum(release.checksum_sha256.as_deref());
 
         lines.push(format!(
-            "{}: v{} · {}: {} · {} · {}",
+            "{}: v{} · {}: {} · {}",
             tr(locale, "Release", "Релиз"),
             release.version,
             tr(locale, "Publisher", "Издатель"),
             release.publisher,
-            signature_label,
             checksum
                 .map(|val| format!("sha256 {val}"))
                 .unwrap_or_else(|| tr(locale, "No checksum", "Нет контрольной суммы").to_string())
@@ -2471,18 +2465,14 @@ pub fn follow_up_gate_detail_lines(
         status_label
     ));
 
-    if let Some(by) = &gate.updated_by {
-        lines.push(format!(
-            "{}: {} · {}: {}",
-            tr(locale, "Updated by", "Обновил"),
-            by,
-            tr(locale, "At", "Время"),
-            gate.updated_at
-        ));
-    }
+    lines.push(format!(
+        "{}: {}",
+        tr(locale, "At", "Время"),
+        gate.updated_at
+    ));
 
-    if let Some(detail) = &gate.detail {
-        lines.push(format!("{}: {detail}", tr(locale, "Detail", "Детали")));
+    if !gate.detail.is_empty() {
+        lines.push(format!("{}: {}", tr(locale, "Detail", "Детали"), gate.detail));
     }
 
     lines
