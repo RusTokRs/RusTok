@@ -4,7 +4,7 @@ use serde_json::Value;
 use unicode_normalization::UnicodeNormalization;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use rustok_core::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
@@ -14,7 +14,6 @@ use rustok_commerce_foundation::dto::{
     ProductResponse, ProductTranslationResponse, ProductTranslationInput,
     ProductOptionTranslationResponse, ProductOptionTranslationInput,
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto,
-    VariantResponse, VariantTranslationResponse, PriceResponse,
 };
 
 pub mod product_field_definitions_storage {
@@ -925,6 +924,32 @@ pub async fn find_first_published_product(
     }
 
     Ok(None)
+}
+
+pub async fn resolve_tag_locale_for_update<C>(
+    conn: &C,
+    product_id: Uuid,
+    translations: Option<&[ProductTranslationInput]>,
+) -> CommerceResult<String>
+where
+    C: ConnectionTrait,
+{
+    if let Some(translations) = translations {
+        if !translations.is_empty() {
+            return Ok(preferred_product_locale_from_translations(translations));
+        }
+    }
+
+    let existing = entities::product_translation::Entity::find()
+        .filter(entities::product_translation::Column::ProductId.eq(product_id))
+        .all(conn)
+        .await?;
+
+    if let Some(translation) = existing.first() {
+        return Ok(translation.locale.clone());
+    }
+
+    Ok(PLATFORM_FALLBACK_LOCALE.to_string())
 }
 
 #[cfg(test)]
