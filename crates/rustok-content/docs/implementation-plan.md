@@ -5,12 +5,12 @@ orchestration и rich-text/locale contract layer.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Current phase: orchestration_hardening
+- Last checkpoint: Добавлен compile-free guardrail `npm run verify:content:orchestration`, который фиксирует RBAC/idempotency/audit/outbox/canonical URL invariants для всех public orchestration commands и alias-first route resolution.
+- Next step: Закрыть targeted runtime/integration coverage для canonical URL collision/reindex drift сценариев без расширения shared storage ownership.
+- Open blockers: Runtime evidence still pending because this iteration intentionally avoided compilation.
+- Hand-off notes for next agent: Поддерживать `npm run verify:content:orchestration` вместе с любым изменением `ContentOrchestrationService`, `CanonicalUrlService`, local docs или registry row.
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## Область работ
 
@@ -32,22 +32,23 @@ orchestration и rich-text/locale contract layer.
 - [x] закрыть storage split и убрать product-owned transport surfaces из live runtime;
 - [x] зафиксировать rich-text, locale fallback и conversion contracts;
 - [x] встроить RBAC/idempotency/input-safety в orchestration path;
-- [ ] удерживать sync между orchestration contracts, event flows и module metadata.
+- [x] удерживать sync между orchestration contracts, event flows и module metadata через compile-free guardrail `npm run verify:content:orchestration`.
 
 ### 2. Orchestration hardening
 
-- [ ] держать canonical URL и alias semantics атомарными вместе с outbox/reindex flows;
+- [x] держать canonical URL и alias semantics атомарными вместе с outbox/reindex flows в статическом contract guardrail-е;
 - [ ] расширять conversion coverage только через явные bridge contracts;
 - [ ] удерживать rich-text и locale invariants синхронизированными с доменными модулями.
 
 ### 3. Operability
 
-- [ ] развивать runbooks и observability для orchestration incidents, partial failures и reindex drift;
+- [x] развивать runbooks и observability для orchestration incidents, partial failures и reindex drift: runbook теперь фиксирует verification gate `npm run verify:content:orchestration`;
 - [ ] покрывать новые orchestration guarantees targeted integration tests;
 - [ ] документировать изменения conversion policy одновременно с изменением runtime surface.
 
 ## Проверка
 
+- [x] compile-free guardrail покрывает public orchestration use-case contracts, route resolution и docs/registry sync: `npm run verify:content:orchestration`
 - [ ] контрактные тесты покрывают все публичные use-case orchestration и surface contracts
 - `cargo xtask module validate content`
 - `cargo xtask module test content`
@@ -65,4 +66,4 @@ orchestration и rich-text/locale contract layer.
 
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля (`npm run verify:content:orchestration`).

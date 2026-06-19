@@ -255,7 +255,7 @@ graph TD
 
 | Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
-| `content` | `rustok-content` | — | Shared content helpers, orchestration, rich-text/locale contract |
+| `content` | `rustok-content` | — | Shared content helpers, orchestration, rich-text/locale contract; compile-free guardrail `npm run verify:content:orchestration` pins RBAC/idempotency/audit/outbox/canonical URL invariants and docs/registry sync. |
 | `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context, canonical `seller_id` delivery-group ownership, typed cart adjustments, cart-owned storefront inspection UI |
 | `customer` | `rustok-customer` | — | Storefront customer profile boundary и customer-owned admin operations UI |
 | `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, nullable `seller_id` ownership contract, product-owned admin catalog UI и storefront catalog UI |
