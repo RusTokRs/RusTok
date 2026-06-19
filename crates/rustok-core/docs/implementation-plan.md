@@ -5,11 +5,11 @@
 ## Execution checkpoint
 
 - Current phase: quality_backlog_hardening
-- Last checkpoint: Added targeted contract coverage for permission parsing, namespaced resources, and rt_json sanitization guardrails without changing runtime surface.
-- Next step: Run the documented module verification gates when compilation is allowed and keep coverage expanding around cache/resilience contracts.
+- Last checkpoint: Added cache/resilience contract coverage for in-memory TTLs, retry predicates/backoff caps, circuit breaker controls, bulkhead metrics, and timeout errors without changing runtime surface.
+- Next step: Run the documented module verification gates when compilation is allowed and keep coverage expanding around event/cache observability contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-17T00:00:00Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## Область работ
 
@@ -28,6 +28,7 @@
 - **targeted tests**: добавлен `tests/foundation_primitives.rs` с coverage для `UserRole`/`UserStatus` (display, parse, serde), `generate_id`/`parse_id`, locale normalization и field-schema guardrails;
 - **security/validation tests**: добавлен `tests/security_validation.rs` с coverage для `SecurityHeaders`, `RateLimiter`, `InputValidator`, `SsrfProtection` и utils (`is_valid_email`, `is_valid_uuid`, `html_escape`, `slugify`);
 - **contract tests**: расширен `tests/contract_surface.rs` проверками на отсутствие auth re-exports и лишних auth-зависимостей в `Cargo.toml`;
+- **cache/resilience tests**: добавлен `tests/cache_resilience_contract.rs` с coverage для in-memory cache TTL/invalidation, retry predicates/backoff caps, circuit breaker manual/half-open controls, bulkhead metrics and timeout errors;
 - local docs и root `README.md` удерживаются как часть scoped audit path.
 
 ## Этапы
@@ -55,7 +56,7 @@
 - контрактные тесты покрывают все публичные use-case
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests для primitives, validation, security, permissions, rt_json sanitization и compatibility exports
+- targeted tests для primitives, validation, security, permissions, rt_json sanitization, cache/resilience contracts и compatibility exports
 
 ## Правила обновления
 
@@ -67,6 +68,6 @@
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля — добавлены permission/rt_json contract tests.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля — добавлены permission/rt_json/cache/resilience contract tests.
 - [x] Проверить полноту и актуальность `README.md` и локальных docs — README/docs остаются aligned с foundation-only surface; runtime changes не вносились.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля — documented gates сохранены; запуск отложен из-за запрета компиляций в этой итерации.
