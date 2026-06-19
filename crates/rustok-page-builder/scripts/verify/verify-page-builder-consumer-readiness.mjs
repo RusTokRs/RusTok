@@ -282,6 +282,79 @@ if (arg === "forum") {
     fail(`${arg}: Wave 1 evidence missing fallback profiles: ${[...requiredProfiles].join(", ")}`);
   }
 
+
+  const expectedSmokeKeys = ["list", "open", "preview", "save_draft", "publish_dry"];
+  for (const profile of wave1Profiles) {
+    for (const key of expectedSmokeKeys) {
+      const value = profile.smoke?.[key];
+      if (!value) {
+        fail(`${arg}: Wave 1 profile '${profile.name}' missing smoke key '${key}'`);
+      }
+      if (key === "list" || key === "open") {
+        if (value !== "pass") {
+          fail(`${arg}: Wave 1 profile '${profile.name}' smoke '${key}' must pass`);
+        }
+      } else if (!["pass", "typed_feature_disabled_error", "readonly_fallback"].includes(value)) {
+        fail(`${arg}: Wave 1 profile '${profile.name}' smoke '${key}' has unsupported outcome '${value}'`);
+      }
+    }
+  }
+
+  const metricActual = (name) => {
+    const raw = forumWave1Evidence.observability?.metrics?.[name];
+    if (typeof raw !== "string" || !raw.startsWith("live_wave1_actual:")) {
+      fail(`${arg}: Wave 1 metric '${name}' must be a live_wave1_actual value`);
+    }
+    const parsed = Number(raw.slice("live_wave1_actual:".length));
+    if (!Number.isFinite(parsed)) {
+      fail(`${arg}: Wave 1 metric '${name}' is not numeric: ${raw}`);
+    }
+    return parsed;
+  };
+  const thresholds = forumWave1Evidence.observability?.slo_thresholds ?? {};
+  for (const thresholdName of [
+    "preview_p95_ms",
+    "publish_p95_ms",
+    "sanitize_failure_rate_max",
+    "runtime_error_rate_max",
+  ]) {
+    if (!Number.isFinite(thresholds[thresholdName])) {
+      fail(`${arg}: Wave 1 SLO threshold '${thresholdName}' is missing or not numeric`);
+    }
+  }
+  if (metricActual("preview_p95_ms") > thresholds.preview_p95_ms) {
+    fail(`${arg}: Wave 1 preview_p95_ms exceeds threshold`);
+  }
+  if (metricActual("publish_p95_ms") > thresholds.publish_p95_ms) {
+    fail(`${arg}: Wave 1 publish_p95_ms exceeds threshold`);
+  }
+  if (metricActual("sanitize_failure_rate") > thresholds.sanitize_failure_rate_max) {
+    fail(`${arg}: Wave 1 sanitize_failure_rate exceeds threshold`);
+  }
+  if (metricActual("runtime_error_rate") > thresholds.runtime_error_rate_max) {
+    fail(`${arg}: Wave 1 runtime_error_rate exceeds threshold`);
+  }
+
+  const traceKeys = Object.keys(forumWave1Evidence.observability?.traces ?? {});
+  for (const traceKey of ["builder_write_to_forum_publish", "forum_publish_to_storefront_read"]) {
+    if (!traceKeys.includes(traceKey)) {
+      fail(`${arg}: Wave 1 observability traces missing '${traceKey}'`);
+    }
+  }
+  for (const traceKey of traceKeys) {
+    if (traceKey.includes("pages")) {
+      fail(`${arg}: Wave 1 observability trace key '${traceKey}' must be forum-owned, not pages-owned`);
+    }
+  }
+  for (const sample of forumWave1Evidence.observability?.trace_samples ?? []) {
+    if (!sample.correlation_path?.includes("forum_publish")) {
+      fail(`${arg}: Wave 1 trace sample '${sample.trace_id}' missing forum_publish correlation path`);
+    }
+    if (!["pass", "typed_feature_disabled_error_without_read_5xx"].includes(sample.result)) {
+      fail(`${arg}: Wave 1 trace sample '${sample.trace_id}' has unsupported result '${sample.result}'`);
+    }
+  }
+
   if (forumWave1Evidence.observability?.slo_evaluation?.overall !== "pass") {
     fail(`${arg}: Wave 1 evidence must record passing overall SLO evaluation`);
   }
