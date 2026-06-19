@@ -6,11 +6,11 @@ steady-state hardening и drift-prevention режиме.
 ## Execution checkpoint
 
 - Current phase: phase_b_in_progress
-- Last checkpoint: Admin overview переведён на FFA shape: Leptos-free `core.rs`, native-only `transport/` facade и явный `ui/leptos.rs` adapter.
-- Next step: Расширить operator flows/verification для role and permission management surfaces и добавить GraphQL/REST fallback только если такой remote/headless admin contract будет утверждён.
+- Last checkpoint: RBAC admin FFA guardrail добавил fast boundary verifier `scripts/verify/verify-rbac-admin-boundary.mjs` и fixture suite `scripts/verify/verify-rbac-admin-boundary.test.mjs` для canonical split, legacy `api.rs`, Leptos-specific core, raw adapter calls, package-local GraphQL fallback и misplaced `#[server]` endpoints без долгой Rust-компиляции.
+- Next step: Расширить operator flows/verification для role and permission management surfaces; GraphQL/REST fallback добавлять только если такой remote/headless admin contract будет утверждён, а текущий native-only overview удерживать быстрыми boundary guardrails.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-08T00:00:00Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## FFA/FBA status
 
@@ -20,7 +20,8 @@ steady-state hardening и drift-prevention режиме.
 - Evidence:
   - admin package split introduced `admin/src/core.rs` for Leptos-free overview view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-rbac` had no legacy GraphQL/REST operator contract for this overview;
-  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`.
+  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
+  - `scripts/verify/verify-rbac-admin-boundary.mjs` and `scripts/verify/verify-rbac-admin-boundary.test.mjs` enforce Leptos-free core, facade-only UI transport calls, native-only overview exception, typed transport error envelope and server-function adapter placement without full Rust compilation.
 
 ## Область работ
 
