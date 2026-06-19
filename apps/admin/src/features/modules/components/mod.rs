@@ -1,3 +1,4 @@
+pub mod detail;
 pub mod module_card;
 pub mod module_detail_panel;
 pub mod module_update_card;
