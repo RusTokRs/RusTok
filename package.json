@@ -16,7 +16,7 @@
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
     "verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.mjs",
     "test:verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.test.mjs",
-    "verify:ffa:ui:migration": "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary && npm run verify:rbac:admin-boundary && npm run verify:comments:admin-boundary && npm run verify:region:admin-boundary && npm run verify:blog:admin-boundary && npm run verify:pages:ui-boundary && npm run verify:fulfillment:admin-boundary && npm run verify:fulfillment:storefront-boundary && npm run verify:product:admin-boundary && npm run verify:product:storefront-boundary && npm run verify:forum:admin-boundary && npm run verify:inventory:admin-boundary && npm run verify:media:admin-boundary && npm run verify:workflow:admin-boundary && npm run verify:order:admin-boundary && npm run verify:order:storefront-boundary && npm run verify:payment:storefront-boundary && npm run verify:commerce:storefront-transport-handoff",
+    "verify:ffa:ui:migration": "npm run verify:ffa:ui:migration:contract && npm run verify:ffa:ui:migration:docs && npm run verify:ffa:ui:migration:boundary-sweep && npm run verify:ffa:ui:migration:transport-profile && npm run verify:channel:admin-boundary && npm run verify:ai:admin-boundary && npm run verify:tenant:admin-boundary && npm run verify:rbac:admin-boundary && npm run verify:comments:admin-boundary && npm run verify:region:admin-boundary && npm run verify:blog:admin-boundary && npm run verify:pages:ui-boundary && npm run verify:fulfillment:admin-boundary && npm run verify:fulfillment:storefront-boundary && npm run verify:product:admin-boundary && npm run verify:product:storefront-boundary && npm run verify:forum:admin-boundary && npm run verify:inventory:admin-boundary && npm run verify:media:admin-boundary && npm run verify:seo:admin-boundary && npm run verify:workflow:admin-boundary && npm run verify:order:admin-boundary && npm run verify:order:storefront-boundary && npm run verify:payment:storefront-boundary && npm run verify:commerce:storefront-transport-handoff",
     "verify:ffa:ui:migration:contract": "node scripts/verify/verify-ffa-ui-migration-contract.mjs",
     "verify:ffa:ui:migration:docs": "node scripts/verify/verify-ffa-ui-doc-patterns.mjs",
     "verify:ffa:ui:migration:boundary-sweep": "node scripts/verify/verify-ffa-ui-boundary-sweep.mjs",
@@ -71,7 +71,8 @@
     "verify:rbac:admin-boundary": "node scripts/verify/verify-rbac-admin-boundary.mjs",
     "test:verify:rbac:admin-boundary": "node scripts/verify/verify-rbac-admin-boundary.test.mjs",
     "verify:media:admin-boundary": "node scripts/verify/verify-media-admin-boundary.mjs",
-    "verify:commerce:storefront-transport-handoff": "node scripts/verify/verify-commerce-storefront-transport-handoff.mjs"
+    "verify:commerce:storefront-transport-handoff": "node scripts/verify/verify-commerce-storefront-transport-handoff.mjs",
+    "verify:seo:admin-boundary": "node scripts/verify/verify-seo-admin-boundary.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
