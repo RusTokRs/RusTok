@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "server"), allow(dead_code))]
 
-
 pub const ALLOY_CODE_TASK_SLUG: &str = "alloy_code";
 pub const ALLOY_CODE_TOOL_NAME: &str = "direct.alloy.run_script";
 
@@ -11,13 +10,11 @@ pub struct AlloyAiVerticalDescriptor {
     pub sensitive: bool,
 }
 
-pub const ALLOY_AI_VERTICALS: &[AlloyAiVerticalDescriptor] = &[
-    AlloyAiVerticalDescriptor {
-        task_slug: ALLOY_CODE_TASK_SLUG,
-        tool_name: ALLOY_CODE_TOOL_NAME,
-        sensitive: false,
-    },
-];
+pub const ALLOY_AI_VERTICALS: &[AlloyAiVerticalDescriptor] = &[AlloyAiVerticalDescriptor {
+    task_slug: ALLOY_CODE_TASK_SLUG,
+    tool_name: ALLOY_CODE_TOOL_NAME,
+    sensitive: false,
+}];
 
 pub fn alloy_ai_verticals() -> &'static [AlloyAiVerticalDescriptor] {
     ALLOY_AI_VERTICALS

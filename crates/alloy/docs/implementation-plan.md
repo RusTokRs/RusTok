@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Exposed DB-backed execution history through GraphQL and HTTP transport surfaces without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then add transport-level assertions for execution-history pagination and canonical field mapping.
+- Last checkpoint: Added DB-level offset pagination for execution history and routed GraphQL/Loco history reads through tenant-scoped paginated accessors without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then add end-to-end transport assertions for canonical field mapping.
 - Open blockers: None.
 - Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests.
-- Last updated at (UTC): 2026-06-17T18:26:29Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## Область работ
 

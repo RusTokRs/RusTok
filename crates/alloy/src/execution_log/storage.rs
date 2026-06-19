@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    entity::prelude::*, ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Select,
+    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Select, entity::prelude::*,
 };
 use uuid::Uuid;
 
@@ -100,7 +100,17 @@ impl SeaOrmExecutionLog {
         script_id: ScriptId,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        self.list_for_script_scoped(script_id, None, limit).await
+        self.list_for_script_paginated(script_id, 0, limit).await
+    }
+
+    pub async fn list_for_script_paginated(
+        &self,
+        script_id: ScriptId,
+        offset: u64,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.list_for_script_scoped(script_id, None, offset, limit)
+            .await
     }
 
     pub async fn list_for_script_for_tenant(
@@ -109,12 +119,31 @@ impl SeaOrmExecutionLog {
         tenant_id: Uuid,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        self.list_for_script_scoped(script_id, Some(tenant_id), limit)
+        self.list_for_script_for_tenant_paginated(script_id, tenant_id, 0, limit)
+            .await
+    }
+
+    pub async fn list_for_script_for_tenant_paginated(
+        &self,
+        script_id: ScriptId,
+        tenant_id: Uuid,
+        offset: u64,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.list_for_script_scoped(script_id, Some(tenant_id), offset, limit)
             .await
     }
 
     pub async fn list_recent(&self, limit: u64) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        self.list_recent_scoped(None, limit).await
+        self.list_recent_paginated(0, limit).await
+    }
+
+    pub async fn list_recent_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.list_recent_scoped(None, offset, limit).await
     }
 
     pub async fn list_recent_for_tenant(
@@ -122,36 +151,55 @@ impl SeaOrmExecutionLog {
         tenant_id: Uuid,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        self.list_recent_scoped(Some(tenant_id), limit).await
+        self.list_recent_for_tenant_paginated(tenant_id, 0, limit)
+            .await
+    }
+
+    pub async fn list_recent_for_tenant_paginated(
+        &self,
+        tenant_id: Uuid,
+        offset: u64,
+        limit: u64,
+    ) -> ScriptResult<Vec<ExecutionLogEntry>> {
+        self.list_recent_scoped(Some(tenant_id), offset, limit)
+            .await
     }
 
     async fn list_for_script_scoped(
         &self,
         script_id: ScriptId,
         tenant_id: Option<Uuid>,
+        offset: u64,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
         let query = Entity::find().filter(Column::ScriptId.eq(script_id));
-        self.fetch_entries(apply_tenant_filter(query, tenant_id), limit)
+        self.fetch_entries(apply_tenant_filter(query, tenant_id), offset, limit)
             .await
     }
 
     async fn list_recent_scoped(
         &self,
         tenant_id: Option<Uuid>,
+        offset: u64,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
-        self.fetch_entries(apply_tenant_filter(Entity::find(), tenant_id), limit)
-            .await
+        self.fetch_entries(
+            apply_tenant_filter(Entity::find(), tenant_id),
+            offset,
+            limit,
+        )
+        .await
     }
 
     async fn fetch_entries(
         &self,
         query: Select<Entity>,
+        offset: u64,
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
         let models = query
             .order_by_desc(Column::CreatedAt)
+            .offset(offset)
             .limit(limit)
             .all(&self.db)
             .await
@@ -429,13 +477,135 @@ mod tests {
         assert_eq!(entries[0].id, newer.execution_id);
         assert_eq!(entries[0].phase, ExecutionPhase::OnCommit);
         assert_eq!(entries[0].outcome, "failed");
-        assert!(entries[0]
-            .error
-            .as_deref()
-            .is_some_and(|error| error.contains("Runtime error: boom")));
+        assert!(
+            entries[0]
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("Runtime error: boom"))
+        );
         assert_eq!(entries[1].id, older.execution_id);
         assert_eq!(entries[1].phase, ExecutionPhase::Scheduled);
         assert_eq!(entries[1].outcome, "aborted");
         assert_eq!(entries[1].error.as_deref(), Some("guard rejected"));
+    }
+    #[tokio::test]
+    async fn paginated_history_uses_database_offset_and_limit() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+
+        let oldest = result_for(
+            script_id,
+            "paginated_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            0,
+        );
+        let middle = result_for(
+            script_id,
+            "paginated_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            1_000,
+        );
+        let newest = result_for(
+            script_id,
+            "paginated_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            2_000,
+        );
+
+        for result in [&oldest, &middle, &newest] {
+            log.record(result)
+                .await
+                .expect("execution row should persist");
+        }
+
+        let second_page = log
+            .list_for_script_paginated(script_id, 1, 1)
+            .await
+            .expect("script execution rows should be paginated in storage");
+        assert_eq!(second_page.len(), 1);
+        assert_eq!(second_page[0].id, middle.execution_id);
+
+        let recent_tail = log
+            .list_recent_paginated(2, 5)
+            .await
+            .expect("recent execution rows should support offset pagination");
+        assert_eq!(recent_tail.len(), 1);
+        assert_eq!(recent_tail[0].id, oldest.execution_id);
+    }
+
+    #[tokio::test]
+    async fn tenant_paginated_history_stays_scoped_before_offset() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+        let tenant_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+        let tenant_a_old = result_for(
+            script_id,
+            "tenant_paginated_old",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            0,
+        );
+        let tenant_b_newer = result_for(
+            script_id,
+            "tenant_paginated_other",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            1_000,
+        );
+        let tenant_a_newest = result_for(
+            script_id,
+            "tenant_paginated_new",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            2_000,
+        );
+
+        log.record_with_context(&tenant_a_old, None, Some(tenant_a))
+            .await
+            .expect("tenant A older row should persist");
+        log.record_with_context(&tenant_b_newer, None, Some(tenant_b))
+            .await
+            .expect("tenant B row should persist");
+        log.record_with_context(&tenant_a_newest, None, Some(tenant_a))
+            .await
+            .expect("tenant A newer row should persist");
+
+        let tenant_a_second = log
+            .list_for_script_for_tenant_paginated(script_id, tenant_a, 1, 1)
+            .await
+            .expect("tenant-scoped script rows should paginate after filtering");
+        assert_eq!(tenant_a_second.len(), 1);
+        assert_eq!(tenant_a_second[0].id, tenant_a_old.execution_id);
+        assert_eq!(tenant_a_second[0].tenant_id, Some(tenant_a));
+
+        let tenant_a_recent = log
+            .list_recent_for_tenant_paginated(tenant_a, 0, 2)
+            .await
+            .expect("tenant-scoped recent rows should paginate after filtering");
+        assert_eq!(tenant_a_recent.len(), 2);
+        assert_eq!(tenant_a_recent[0].id, tenant_a_newest.execution_id);
+        assert_eq!(tenant_a_recent[1].id, tenant_a_old.execution_id);
     }
 }

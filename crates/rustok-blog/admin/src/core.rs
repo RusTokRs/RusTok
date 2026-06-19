@@ -388,6 +388,7 @@ pub struct BlogPostAdminTableRowViewModel {
     pub delete_label: String,
 }
 
+#[derive(Clone, Copy)]
 pub struct BlogPostAdminTableRowLabels<'a> {
     pub draft_slug: &'a str,
     pub no_excerpt: &'a str,
@@ -491,6 +492,82 @@ pub struct BlogPostAdminFormViewModel {
     pub title: String,
     pub submit_label: String,
     pub submit_disabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminPostsTableViewModel {
+    pub is_empty: bool,
+    pub total_label: String,
+    pub empty_message: String,
+    pub title_header: String,
+    pub slug_header: String,
+    pub status_header: String,
+    pub locale_header: String,
+    pub rows: Vec<BlogPostAdminTableRowViewModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminPostsTableLabels {
+    pub empty_message: String,
+    pub total_label: String,
+    pub title_header: String,
+    pub slug_header: String,
+    pub status_header: String,
+    pub locale_header: String,
+    pub draft_slug: String,
+    pub no_excerpt: String,
+    pub editing: String,
+    pub edit: String,
+    pub unpublish: String,
+    pub publish: String,
+    pub archive: String,
+    pub delete: String,
+}
+
+pub fn blog_post_admin_posts_table_view_from_items(
+    items: Vec<BlogPostListItem>,
+    total: u64,
+    editing_post_id: Option<&str>,
+    busy_key: Option<&str>,
+    labels: BlogPostAdminPostsTableLabels,
+) -> BlogPostAdminPostsTableViewModel {
+    let table = blog_post_admin_table_view(
+        items.len(),
+        total,
+        BlogPostAdminTableLabels {
+            empty_message: labels.empty_message,
+            total_label: labels.total_label,
+            title_header: labels.title_header,
+            slug_header: labels.slug_header,
+            status_header: labels.status_header,
+            locale_header: labels.locale_header,
+        },
+    );
+    let row_labels = BlogPostAdminTableRowLabels {
+        draft_slug: labels.draft_slug.as_str(),
+        no_excerpt: labels.no_excerpt.as_str(),
+        editing: labels.editing.as_str(),
+        edit: labels.edit.as_str(),
+        unpublish: labels.unpublish.as_str(),
+        publish: labels.publish.as_str(),
+        archive: labels.archive.as_str(),
+        delete: labels.delete.as_str(),
+    };
+    let rows = items
+        .into_iter()
+        .map(|post| blog_post_admin_table_row_view(post, editing_post_id, busy_key, row_labels))
+        .collect();
+
+    BlogPostAdminPostsTableViewModel {
+        is_empty: table.is_empty,
+        total_label: table.total_label,
+        empty_message: table.empty_message,
+        title_header: table.title_header,
+        slug_header: table.slug_header,
+        status_header: table.status_header,
+        locale_header: table.locale_header,
+        rows,
+    }
 }
 
 pub fn blog_post_admin_form_view(

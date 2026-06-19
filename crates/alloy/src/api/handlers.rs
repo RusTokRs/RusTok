@@ -2,20 +2,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
 };
 use tracing::{info, instrument};
 use uuid::Uuid;
 
+use crate::SeaOrmExecutionLog;
 use crate::error::ScriptError;
 use crate::model::{EntityProxy, ScriptStatus};
 use crate::runner::ScriptOrchestrator;
 use crate::storage::{ScriptQuery, ScriptRegistry};
 use crate::utils::{dynamic_to_json, json_to_dynamic};
-use crate::SeaOrmExecutionLog;
 
 use super::dto::*;
 
@@ -336,16 +336,18 @@ pub async fn list_recent_executions<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
     Query(query): Query<ListScriptsQuery>,
 ) -> ApiResult<Json<ListExecutionLogResponse>> {
-    let requested = query.offset() + query.limit();
-    let executions = state
+    let offset = query.offset();
+    let limit = query.limit();
+    let mut executions = state
         .execution_log
-        .list_recent(requested)
+        .list_recent_paginated(offset, limit + 1)
         .await
         .map_err(ApiError::from)?;
-    let total = executions.len();
+    let has_next = executions.len() > limit as usize;
+    executions.truncate(limit as usize);
+    let total = offset as usize + executions.len() + usize::from(has_next);
     let executions = executions
         .into_iter()
-        .skip(query.offset() as usize)
         .map(ExecutionLogResponse::from)
         .collect();
 
@@ -363,16 +365,18 @@ pub async fn list_script_executions<S: ScriptRegistry>(
     Path(id): Path<Uuid>,
     Query(query): Query<ListScriptsQuery>,
 ) -> ApiResult<Json<ListExecutionLogResponse>> {
-    let requested = query.offset() + query.limit();
-    let executions = state
+    let offset = query.offset();
+    let limit = query.limit();
+    let mut executions = state
         .execution_log
-        .list_for_script(id, requested)
+        .list_for_script_paginated(id, offset, limit + 1)
         .await
         .map_err(ApiError::from)?;
-    let total = executions.len();
+    let has_next = executions.len() > limit as usize;
+    executions.truncate(limit as usize);
+    let total = offset as usize + executions.len() + usize::from(has_next);
     let executions = executions
         .into_iter()
-        .skip(query.offset() as usize)
         .map(ExecutionLogResponse::from)
         .collect();
 

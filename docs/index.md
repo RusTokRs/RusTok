@@ -43,6 +43,7 @@
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
+- AI support adapter plans для `rustok-ai-media` и `rustok-ai-alloy` доступны через [индекс документации по модулям](./modules/_index.md).
 
 ## UI и клиентские поверхности
 

@@ -889,10 +889,12 @@ fn BlogPostsTable(
     on_delete: Callback<String>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let table = core::blog_post_admin_table_view(
-        items.len(),
+    let table = core::blog_post_admin_posts_table_view_from_items(
+        items,
         total,
-        core::BlogPostAdminTableLabels {
+        editing_post_id.as_deref(),
+        busy_key.as_deref(),
+        core::BlogPostAdminPostsTableLabels {
             empty_message: t(
                 locale.as_deref(),
                 "blog.table.empty",
@@ -903,6 +905,14 @@ fn BlogPostsTable(
             slug_header: t(locale.as_deref(), "blog.table.slug", "Slug"),
             status_header: t(locale.as_deref(), "blog.table.status", "Status"),
             locale_header: t(locale.as_deref(), "blog.table.locale", "Locale"),
+            draft_slug: t(locale.as_deref(), "blog.table.draft", "draft"),
+            no_excerpt: t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt"),
+            editing: t(locale.as_deref(), "blog.table.editing", "Editing"),
+            edit: t(locale.as_deref(), "blog.table.edit", "Edit"),
+            unpublish: t(locale.as_deref(), "blog.table.unpublish", "Unpublish"),
+            publish: t(locale.as_deref(), "blog.table.publish", "Publish"),
+            archive: t(locale.as_deref(), "blog.table.archive", "Archive"),
+            delete: t(locale.as_deref(), "blog.table.delete", "Delete"),
         },
     );
     if table.is_empty {
@@ -933,25 +943,9 @@ fn BlogPostsTable(
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
-                        {items
+                        {table.rows
                             .into_iter()
-                            .map(|post| {
-                                let locale = locale.clone();
-                                let row = core::blog_post_admin_table_row_view(
-                                    post,
-                                    editing_post_id.as_deref(),
-                                    busy_key.as_deref(),
-                                    core::BlogPostAdminTableRowLabels {
-                                        draft_slug: &t(locale.as_deref(), "blog.table.draft", "draft"),
-                                        no_excerpt: &t(locale.as_deref(), "blog.table.noExcerpt", "No excerpt"),
-                                        editing: &t(locale.as_deref(), "blog.table.editing", "Editing"),
-                                        edit: &t(locale.as_deref(), "blog.table.edit", "Edit"),
-                                        unpublish: &t(locale.as_deref(), "blog.table.unpublish", "Unpublish"),
-                                        publish: &t(locale.as_deref(), "blog.table.publish", "Publish"),
-                                        archive: &t(locale.as_deref(), "blog.table.archive", "Archive"),
-                                        delete: &t(locale.as_deref(), "blog.table.delete", "Delete"),
-                                    },
-                                );
+                            .map(|row| {
                                 let post_id_edit = row.post_id.clone();
                                 let post_id_publish = row.post_id.clone();
                                 let post_id_archive = row.post_id.clone();

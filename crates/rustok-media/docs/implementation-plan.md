@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: FFA-разделение admin ui/core/transport
-- Last checkpoint: Runtime translation boundary усилен: `UpsertTranslationInput` теперь нормализует locale (`trim/lowercase/_ -> -`), отбрасывает пустые optional text fields и отклоняет пустые/unsafe locale ключи до записи; edge-case unit tests добавлены без изменения transport parity.
-- Next step: Добрать интеграционные проверки owner-module SEO providers, которые используют descriptor contract, и расширить targeted runtime tests для cleanup/storage edge-cases без изменения transport parity.
+- Last checkpoint: Runtime hardening slice расширил Leptos-free service helpers: upload policy вынесена в pre-storage validator, cleanup probe classification закрепляет `read -> keep`, `NotFound/InvalidPath -> delete DB record`, transient `Io/Backend -> retry later`, а `cleanup_storage_orphans` публикует tenant-scoped report без изменения transport parity.
+- Next step: Добрать интеграционные проверки owner-module SEO providers, которые используют descriptor contract, и при необходимости добавить DB-backed integration tests для `cleanup_storage_orphans` поверх тестового storage backend без компиляционного изменения transport parity.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
-- Last updated at (UTC): 2026-06-17T00:00:00Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 ## FFA/FBA status
 
@@ -19,9 +19,10 @@
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; media admin surface уже опубликован и ведётся в migration/backlog ритме;
-  - FFA admin slice: `admin/src/core.rs` владеет Leptos-free form/presentation/state helpers (`non_empty_option`, dimensions label, pagination label, translation form state, usage stat cards, upload success state, busy-key policy, detail-line view-model) с unit tests;
+  - FFA admin slice: `admin/src/core.rs` владеет Leptos-free form/presentation/state helpers (`non_empty_option`, dimensions label, pagination label, translation form state, usage stat cards, upload success state, busy-key policy, detail-line/list-card view-models и context-error message policy) с unit tests;
   - `admin/src/transport/` владеет текущим native-first + GraphQL fallback + REST upload transport facade без изменения внешних GraphQL/REST contracts; facade split зафиксирован через `graphql_adapter.rs`, `rest_adapter.rs` и `native_server_adapter.rs`;
-  - `admin/src/ui/leptos.rs` является явным Leptos render adapter, а crate root только связывает модули и реэкспортирует `MediaAdmin`.
+  - `admin/src/ui/leptos.rs` является явным Leptos render adapter, а crate root только связывает модули и реэкспортирует `MediaAdmin`;
+  - runtime hardening slice добавил service-level cleanup report/decision helpers и targeted unit coverage для upload policy + storage cleanup classification без transport changes.
 
 ## Область работ
 
@@ -44,11 +45,11 @@
 - [x] зафиксировать upload/list/delete/translation runtime contract;
 - [x] удерживать tenant isolation и MIME/size validation внутри модуля;
 - [x] держать media storage metadata и physical storage boundary явными;
-- [~] удерживать sync между runtime contracts, admin UI и module metadata; текущий FFA admin slice вынес Leptos-free helpers в `admin/src/core.rs`, включая upload/detail state policy, transport facade в `admin/src/transport/` и явный render adapter в `admin/src/ui/leptos.rs`.
+- [~] удерживать sync между runtime contracts, admin UI и module metadata; текущий FFA admin slice вынес Leptos-free helpers в `admin/src/core.rs`, включая upload/detail/list-card/error state policy, transport facade в `admin/src/transport/` и явный render adapter в `admin/src/ui/leptos.rs`.
 
 ### 2. Runtime hardening
 
-- [~] покрыть cleanup task, storage failures и translation edge-cases targeted integration tests; translation boundary теперь имеет unit coverage для locale/text normalization, cleanup/storage остаются открытыми;
+- [~] покрыть cleanup task, storage failures и translation edge-cases targeted integration tests; translation boundary имеет unit coverage для locale/text normalization, upload policy и cleanup probe classification покрыты service-level unit tests, DB-backed cleanup integration остаётся открытым;
 - [ ] развивать richer metadata/use-case surfaces только через module-owned service layer;
 - [ ] уточнить long-term policy для public URLs и storage-driver-specific guarantees.
 

@@ -94,7 +94,8 @@
     "operations": [
       "quote_rates",
       "create_label",
-      "cancel"
+      "cancel",
+      "handle_tracking_webhook"
     ],
     "capabilities": [
       "rate_quote",
@@ -107,8 +108,19 @@
     "webhook_ingress": {
       "status": "planned",
       "idempotency_required": true,
-      "replay_required": true
+      "replay_required": true,
+      "adapter_operation": "handle_tracking_webhook",
+      "raw_payload_audit_required": true,
+      "owner_service_replay_guard_required": true
     },
-    "lifecycle_owner_service": "FulfillmentService"
+    "lifecycle_owner_service": "FulfillmentService",
+    "external_adapter_registration": {
+      "status": "planned_contract_locked",
+      "registration_owner": "rustok-fulfillment",
+      "requires_descriptor_capability_match": true,
+      "requires_health_status_mapping": true,
+      "requires_degraded_mode_mapping": true,
+      "disallows_persisted_lifecycle_state_in_adapter": true
+    }
   }
 }

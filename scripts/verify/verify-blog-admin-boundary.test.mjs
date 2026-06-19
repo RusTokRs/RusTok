@@ -41,6 +41,9 @@ pub struct BlogPostAdminTableRowViewModel;
 pub fn blog_post_admin_table_row_view() {}
 pub struct BlogPostAdminTableViewModel;
 pub fn blog_post_admin_table_view() {}
+pub struct BlogPostAdminPostsTableViewModel;
+pub struct BlogPostAdminPostsTableLabels;
+pub fn blog_post_admin_posts_table_view_from_items() {}
 pub struct BlogPostAdminFormViewModel;
 pub fn blog_post_admin_form_view() {}
 pub struct BlogPostAdminStatusBadgeViewModel;
@@ -91,6 +94,7 @@ pub fn BlogAdmin() {
     let _raw_warning = core::blog_post_admin_raw_body_warning_view;
     let _posts_load = core::blog_post_admin_posts_load_view_from_list;
     let _status_badge = core::blog_post_admin_status_badge_view;
+    let _posts_table = core::blog_post_admin_posts_table_view_from_items;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;
     let _clear = core::blog_post_admin_clear_post_query_intent;

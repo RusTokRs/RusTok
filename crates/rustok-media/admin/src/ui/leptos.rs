@@ -7,9 +7,10 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    is_busy_key, media_detail_lines, media_dimensions_label, media_upload_success_state,
-    media_usage_stat_cards, page_count_label, selected_translation_form_state, MediaAdminBusyKey,
-    MediaDetailLabels, MediaTranslationFormState, MediaUsageLabels,
+    is_busy_key, media_admin_context_error, media_detail_lines, media_list_card_view_model,
+    media_upload_success_state, media_usage_stat_cards, page_count_label,
+    selected_translation_form_state, MediaAdminBusyKey, MediaDetailLabels, MediaListCardLabels,
+    MediaTranslationFormState, MediaUsageLabels,
 };
 use crate::i18n::t;
 use crate::model::{MediaListItem, MediaUsageSnapshot};
@@ -431,7 +432,7 @@ pub fn MediaAdmin() -> impl IntoView {
                                         </div>
                                     </div>
                                 }.into_any(),
-                                Err(err) => render_error_view(format!("{}: {err}", load_library_error)),
+                                Err(err) => render_error_view(media_admin_context_error(&load_library_error, err).message),
                             })
                         }}
                     </Suspense>
@@ -456,7 +457,7 @@ pub fn MediaAdmin() -> impl IntoView {
                                 Ok(None) => view! {
                                     <div class="rounded-xl border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">{detail_empty.clone()}</div>
                                 }.into_any(),
-                                Err(err) => render_error_view(format!("{}: {err}", load_detail_error)),
+                                Err(err) => render_error_view(media_admin_context_error(&load_detail_error, err).message),
                             })
                         }}
                     </Suspense>
@@ -503,7 +504,7 @@ pub fn MediaAdmin() -> impl IntoView {
                                             }).collect_view()}
                                         </div>
                                     }.into_any(),
-                                    Err(err) => render_error_view(format!("{}: {err}", load_translations_error)),
+                                    Err(err) => render_error_view(media_admin_context_error(&load_translations_error, err).message),
                                 })
                             }}
                         </Suspense>
@@ -543,24 +544,26 @@ pub fn MediaAdmin() -> impl IntoView {
 #[component]
 fn MediaListCard(item: MediaListItem) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let dimensions = media_dimensions_label(
-        item.width,
-        item.height,
-        &t(locale.as_deref(), "media.asset.notAvailable", "n/a"),
+    let card = media_list_card_view_model(
+        &item,
+        MediaListCardLabels {
+            bytes_template: t(locale.as_deref(), "media.asset.bytes", "{count} bytes"),
+            dimensions_not_available: t(locale.as_deref(), "media.asset.notAvailable", "n/a"),
+        },
     );
     view! {
         <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 space-y-1">
-                <div class="truncate text-sm font-semibold text-card-foreground">{item.original_name}</div>
-                <div class="truncate text-xs text-muted-foreground">{item.public_url}</div>
+                <div class="truncate text-sm font-semibold text-card-foreground">{card.original_name}</div>
+                <div class="truncate text-xs text-muted-foreground">{card.public_url}</div>
                 <div class="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>{item.mime_type}</span>
-                    <span>{t(locale.as_deref(), "media.asset.bytes", "{count} bytes").replace("{count}", &item.size.to_string())}</span>
-                    <span>{dimensions}</span>
+                    <span>{card.mime_type}</span>
+                    <span>{card.size_label}</span>
+                    <span>{card.dimensions_label}</span>
                 </div>
             </div>
             <span class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground">
-                {item.storage_driver}
+                {card.storage_driver}
             </span>
         </div>
     }
@@ -637,7 +640,9 @@ fn render_usage(result: Result<MediaUsageSnapshot, ApiError>) -> AnyView {
             }
             .into_any()
         }
-        Err(err) => render_error_view(format!("Failed to load media usage: {err}")),
+        Err(err) => {
+            render_error_view(media_admin_context_error("Failed to load media usage", err).message)
+        }
     }
 }
 
