@@ -1,7 +1,8 @@
 use crate::dto::{
     BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
-    BuilderTreeInput, BuilderTreeResult, PreviewPageBuilderInput, PreviewPageBuilderResult,
-    PublishPageBuilderInput, PublishPageBuilderResult,
+    BuilderTreeInput, BuilderTreeResult, PageBuilderErrorKind, PreviewPageBuilderInput,
+    PreviewPageBuilderResult, PublishPageBuilderInput, PublishPageBuilderResult,
+    PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
@@ -50,6 +51,21 @@ pub enum PageBuilderServiceError {
 }
 
 impl PageBuilderServiceError {
+    pub fn kind(&self) -> PageBuilderErrorKind {
+        match self {
+            Self::Validation(_) => PageBuilderErrorKind::Validation,
+            Self::Forbidden(_) | Self::Runtime(_) => PageBuilderErrorKind::Runtime,
+            Self::CapabilityDisabled(_) => PageBuilderErrorKind::FeatureDisabled,
+        }
+    }
+
+    pub fn stable_code(&self) -> Option<&'static str> {
+        match self {
+            Self::CapabilityDisabled(_) => Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE),
+            _ => None,
+        }
+    }
+
     pub fn from_port_error(error: rustok_api::PortError) -> Self {
         match error.kind {
             PortErrorKind::Validation => Self::Validation(error.message),
@@ -409,7 +425,13 @@ mod tests {
             .expect_err("publish should be blocked by capability before context validation");
 
         match err {
-            PageBuilderServiceError::CapabilityDisabled(name) => assert_eq!(name, "publish"),
+            PageBuilderServiceError::CapabilityDisabled(name) => {
+                assert_eq!(name, "publish");
+                assert_eq!(
+                    PageBuilderServiceError::CapabilityDisabled(name).stable_code(),
+                    Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)
+                );
+            }
             other => panic!("unexpected error: {other:?}"),
         }
     }
@@ -558,6 +580,21 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn service_errors_expose_typed_catalog_kind_and_code() {
+        let validation = PageBuilderServiceError::Validation("bad payload".to_string());
+        assert_eq!(validation.kind(), PageBuilderErrorKind::Validation);
+        assert_eq!(validation.stable_code(), None);
+
+        let disabled =
+            PageBuilderServiceError::from(BuilderRolloutError::CapabilityDisabled("publish"));
+        assert_eq!(disabled.kind(), PageBuilderErrorKind::FeatureDisabled);
+        assert_eq!(
+            disabled.stable_code(),
+            Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)
+        );
     }
 
     #[tokio::test]
