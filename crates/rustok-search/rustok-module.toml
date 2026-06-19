@@ -58,3 +58,9 @@ next_package = "@rustok/search-frontend"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
+
+[fba.provider]
+registry = "contracts/search-fba-registry.json"
+contract_version = "search.query.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"

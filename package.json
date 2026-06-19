@@ -63,7 +63,8 @@
     "verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.mjs",
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs",
-    "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs"
+    "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs",
+    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
