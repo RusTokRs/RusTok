@@ -19,7 +19,7 @@
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; media admin surface уже опубликован и ведётся в migration/backlog ритме;
-  - FFA admin slice: `admin/src/core.rs` владеет Leptos-free form/presentation/state helpers (`non_empty_option`, dimensions label, pagination label, translation form state, usage stat cards, upload success state, busy-key policy, detail-line view-model) с unit tests;
+  - FFA admin slice: `admin/src/core.rs` владеет Leptos-free form/presentation/state helpers (`non_empty_option`, dimensions label, pagination label, translation form state, usage stat cards, upload success state, busy-key policy, detail-line/list-card view-models и context-error message policy) с unit tests;
   - `admin/src/transport/` владеет текущим native-first + GraphQL fallback + REST upload transport facade без изменения внешних GraphQL/REST contracts; facade split зафиксирован через `graphql_adapter.rs`, `rest_adapter.rs` и `native_server_adapter.rs`;
   - `admin/src/ui/leptos.rs` является явным Leptos render adapter, а crate root только связывает модули и реэкспортирует `MediaAdmin`;
   - runtime hardening slice добавил service-level cleanup report/decision helpers и targeted unit coverage для upload policy + storage cleanup classification без transport changes.
@@ -45,7 +45,7 @@
 - [x] зафиксировать upload/list/delete/translation runtime contract;
 - [x] удерживать tenant isolation и MIME/size validation внутри модуля;
 - [x] держать media storage metadata и physical storage boundary явными;
-- [~] удерживать sync между runtime contracts, admin UI и module metadata; текущий FFA admin slice вынес Leptos-free helpers в `admin/src/core.rs`, включая upload/detail state policy, transport facade в `admin/src/transport/` и явный render adapter в `admin/src/ui/leptos.rs`.
+- [~] удерживать sync между runtime contracts, admin UI и module metadata; текущий FFA admin slice вынес Leptos-free helpers в `admin/src/core.rs`, включая upload/detail/list-card/error state policy, transport facade в `admin/src/transport/` и явный render adapter в `admin/src/ui/leptos.rs`.
 
 ### 2. Runtime hardening
 

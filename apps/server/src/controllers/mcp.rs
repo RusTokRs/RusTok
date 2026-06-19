@@ -1,7 +1,8 @@
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, Query, State},
     http::HeaderMap,
+    response::sse::{Event, KeepAlive, Sse},
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
@@ -20,7 +21,15 @@ use crate::services::mcp_management::{
     McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
 };
 use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapResponse};
-use rustok_mcp::{McpActorType, McpSessionContext, ScaffoldModuleRequest};
+use rustok_core::ModuleRegistry;
+use rustok_mcp::{
+    McpActorType, McpAuditSink, McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome,
+    McpToolResponse, ModuleDetailsResponse, ModuleInfo, ModuleListResponse, ModuleLookupRequest,
+    ModuleLookupResponse, ScaffoldModuleRequest, TOOL_LIST_MODULES, TOOL_MCP_HEALTH,
+    TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_QUERY_MODULES,
+    default_tool_requirement,
+};
+use tokio_stream::once;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateMcpClientRequest {
@@ -73,6 +82,27 @@ pub struct BootstrapMcpRemoteSessionRequest {
     pub correlation_id: Option<String>,
     #[serde(default = "default_metadata")]
     pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct McpRemoteToolCallRequest {
+    pub tool_name: String,
+    pub arguments: Option<serde_json::Value>,
+    pub plaintext_token: Option<String>,
+    pub correlation_id: Option<String>,
+    #[serde(default = "default_metadata")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpRemoteToolCallResponse {
+    pub transport: String,
+    pub correlation_id: String,
+    pub tenant_id: Option<String>,
+    pub client_id: Option<String>,
+    pub token_id: Option<String>,
+    pub tool_name: String,
+    pub result: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -227,6 +257,225 @@ async fn bootstrap_remote_session(
         .await?;
 
     Ok(Json(response))
+}
+
+async fn call_remote_tool(
+    State(ctx): State<AppContext>,
+    Extension(registry): Extension<ModuleRegistry>,
+    headers: HeaderMap,
+    Json(input): Json<McpRemoteToolCallRequest>,
+) -> Result<Json<McpRemoteToolCallResponse>> {
+    let response = execute_remote_tool_call(&ctx, registry, headers, input, "http-json").await?;
+    Ok(Json(response))
+}
+
+async fn stream_remote_tool(
+    State(ctx): State<AppContext>,
+    Extension(registry): Extension<ModuleRegistry>,
+    headers: HeaderMap,
+    Json(input): Json<McpRemoteToolCallRequest>,
+) -> Result<
+    Sse<impl futures_util::Stream<Item = std::result::Result<Event, std::convert::Infallible>>>,
+> {
+    let response = execute_remote_tool_call(&ctx, registry, headers, input, "sse").await?;
+    let event = Event::default()
+        .event("mcp.tool.result")
+        .id(response.correlation_id.clone())
+        .json_data(response)
+        .map_err(|error| {
+            crate::error::Error::Message(format!("Failed to serialize MCP SSE event: {error}"))
+        })?;
+
+    Ok(Sse::new(once(Ok(event))).keep_alive(KeepAlive::default()))
+}
+
+async fn execute_remote_tool_call(
+    ctx: &AppContext,
+    registry: ModuleRegistry,
+    headers: HeaderMap,
+    input: McpRemoteToolCallRequest,
+    transport: &str,
+) -> Result<McpRemoteToolCallResponse> {
+    let plaintext_token = input
+        .plaintext_token
+        .or_else(|| bearer_token_from_headers(&headers))
+        .ok_or_else(|| crate::error::Error::Unauthorized("MCP bearer token is required".into()))?;
+    let correlation_id = input
+        .correlation_id
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    let bridge = ctx
+        .shared_store
+        .get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
+        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
+    let binding = bridge.resolve_binding_for_token(&plaintext_token).await?;
+
+    let decision = if input.tool_name == TOOL_MCP_HEALTH {
+        rustok_mcp::McpAuthorizationDecision::allow()
+    } else {
+        binding
+            .access_context
+            .authorize_tool(&default_tool_requirement(&input.tool_name))
+    };
+
+    if !decision.allowed {
+        bridge
+            .record_tool_call(McpToolCallAuditEvent {
+                transport: transport.to_string(),
+                tenant_id: binding.tenant_id.clone(),
+                client_id: binding.client_id.clone(),
+                token_id: binding.token_id.clone(),
+                identity: binding.access_context.identity.clone(),
+                tool_name: input.tool_name.clone(),
+                outcome: McpToolCallOutcome::Denied,
+                reason: decision.message.clone().or_else(|| decision.code.clone()),
+                correlation_id: Some(correlation_id.clone()),
+                metadata: input.metadata.clone(),
+            })
+            .await
+            .map_err(|error| crate::error::Error::Message(error.to_string()))?;
+        let result = serde_json::to_value(McpToolResponse::<()>::error(
+            decision.code.unwrap_or_else(|| "access_denied".to_string()),
+            decision
+                .message
+                .unwrap_or_else(|| "MCP access policy denied this tool".to_string()),
+        ))?;
+        return Ok(McpRemoteToolCallResponse {
+            transport: transport.to_string(),
+            correlation_id,
+            tenant_id: binding.tenant_id,
+            client_id: binding.client_id,
+            token_id: binding.token_id,
+            tool_name: input.tool_name,
+            result,
+        });
+    }
+
+    bridge
+        .record_tool_call(McpToolCallAuditEvent {
+            transport: transport.to_string(),
+            tenant_id: binding.tenant_id.clone(),
+            client_id: binding.client_id.clone(),
+            token_id: binding.token_id.clone(),
+            identity: binding.access_context.identity.clone(),
+            tool_name: input.tool_name.clone(),
+            outcome: McpToolCallOutcome::Allowed,
+            reason: None,
+            correlation_id: Some(correlation_id.clone()),
+            metadata: input.metadata.clone(),
+        })
+        .await
+        .map_err(|error| crate::error::Error::Message(error.to_string()))?;
+
+    let result = execute_registry_tool(
+        &registry,
+        &binding.access_context,
+        &input.tool_name,
+        input.arguments,
+    )?;
+
+    Ok(McpRemoteToolCallResponse {
+        transport: transport.to_string(),
+        correlation_id,
+        tenant_id: binding.tenant_id,
+        client_id: binding.client_id,
+        token_id: binding.token_id,
+        tool_name: input.tool_name,
+        result,
+    })
+}
+
+fn execute_registry_tool(
+    registry: &ModuleRegistry,
+    access_context: &rustok_mcp::McpAccessContext,
+    tool_name: &str,
+    arguments: Option<serde_json::Value>,
+) -> Result<serde_json::Value> {
+    match tool_name {
+        TOOL_LIST_MODULES => envelope_value(McpToolResponse::success(ModuleListResponse {
+            modules: registry.list().into_iter().map(module_info).collect(),
+        })),
+        TOOL_QUERY_MODULES => {
+            let request: rustok_mcp::ModuleQueryRequest = parse_tool_args(arguments)?;
+            let modules = registry
+                .list()
+                .into_iter()
+                .filter(|module| {
+                    request
+                        .slug_prefix
+                        .as_ref()
+                        .map_or(true, |prefix| module.slug().starts_with(prefix))
+                })
+                .filter(|module| {
+                    request.dependency.as_ref().map_or(true, |dependency| {
+                        module
+                            .dependencies()
+                            .iter()
+                            .any(|value| value == dependency)
+                    })
+                })
+                .skip(request.offset.unwrap_or(0))
+                .take(request.limit.unwrap_or(usize::MAX))
+                .map(module_info)
+                .collect::<Vec<_>>();
+            envelope_value(McpToolResponse::success(ModuleListResponse { modules }))
+        }
+        TOOL_MODULE_EXISTS => {
+            let request: ModuleLookupRequest = parse_tool_args(arguments)?;
+            envelope_value(McpToolResponse::success(ModuleLookupResponse {
+                exists: registry.contains(&request.slug),
+                slug: request.slug,
+            }))
+        }
+        TOOL_MODULE_DETAILS => {
+            let request: ModuleLookupRequest = parse_tool_args(arguments)?;
+            let module = registry.get(&request.slug).map(module_info);
+            envelope_value(McpToolResponse::success(ModuleDetailsResponse {
+                slug: request.slug,
+                module,
+            }))
+        }
+        TOOL_MCP_WHOAMI => envelope_value(McpToolResponse::success(access_context.whoami())),
+        TOOL_MCP_HEALTH => {
+            envelope_value(McpToolResponse::success(rustok_mcp::McpHealthResponse {
+                status: "ready".to_string(),
+                protocol_version: "2024-11-05".to_string(),
+                tool_count: 6,
+                enabled_tools: access_context.whoami().allowed_tools,
+                access_mode: "policy".to_string(),
+                identity: access_context.identity.clone(),
+            }))
+        }
+        _ => envelope_value(McpToolResponse::<()>::error(
+            "tool_not_supported",
+            format!("Remote HTTP transport does not support tool: {tool_name}"),
+        )),
+    }
+}
+
+fn envelope_value<T: serde::Serialize>(envelope: McpToolResponse<T>) -> Result<serde_json::Value> {
+    serde_json::to_value(envelope).map_err(Into::into)
+}
+
+fn parse_tool_args<T: serde::de::DeserializeOwned>(
+    arguments: Option<serde_json::Value>,
+) -> Result<T> {
+    serde_json::from_value(arguments.unwrap_or_else(|| serde_json::json!({}))).map_err(Into::into)
+}
+
+fn module_info(module: &dyn rustok_core::RusToKModule) -> ModuleInfo {
+    ModuleInfo {
+        slug: module.slug().to_string(),
+        name: module.name().to_string(),
+        description: module.description().to_string(),
+        version: module.version().to_string(),
+        dependencies: module
+            .dependencies()
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+    }
 }
 
 async fn list_clients(
@@ -463,6 +712,8 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/mcp")
         .add("/runtime/bootstrap", post(bootstrap_remote_session))
+        .add("/runtime/tools/call", post(call_remote_tool))
+        .add("/runtime/tools/stream", post(stream_remote_tool))
         .add("/clients", get(list_clients).post(create_client))
         .add("/clients/{id}", get(get_client))
         .add("/clients/{id}/rotate-token", post(rotate_token))
