@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "module": "rbac",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "rbac.permission_decision.v1",
+  "ports": [
+    {
+      "name": "RbacPermissionDecisionPort",
+      "owner": "rbac",
+      "operations": ["check_permissions"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "admin-hosts",
+      "profile": "admin_permission_decision",
+      "degraded_modes": ["hide_restricted_actions", "show_permission_refresh_prompt"],
+      "fallback_profiles": ["embedded_native"]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-rbac/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-rbac-fba.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "RbacModule",
+    "source": "crates/rustok-rbac/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-rbac/contracts/rbac-fba-registry.json",
+    "runner": "scripts/verify/verify-rbac-fba.mjs",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "operation": "check_permissions",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "claims_scope_preserved"]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["hide_restricted_actions", "show_permission_refresh_prompt"]
+    }
+  }
+}
