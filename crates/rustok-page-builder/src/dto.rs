@@ -45,6 +45,71 @@ impl std::fmt::Display for BuilderCapabilityKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PageBuilderErrorKind {
+    Validation,
+    Sanitize,
+    Runtime,
+    FeatureDisabled,
+}
+
+impl PageBuilderErrorKind {
+    pub const ALL: [Self; 4] = [
+        Self::Validation,
+        Self::Sanitize,
+        Self::Runtime,
+        Self::FeatureDisabled,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Validation => "validation",
+            Self::Sanitize => "sanitize",
+            Self::Runtime => "runtime",
+            Self::FeatureDisabled => "feature-disabled",
+        }
+    }
+}
+
+impl std::fmt::Display for PageBuilderErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+pub const PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE: &str = "FEATURE_DISABLED";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PageBuilderErrorCatalogEntry {
+    pub key: &'static str,
+    pub kind: PageBuilderErrorKind,
+    pub code: Option<&'static str>,
+}
+
+pub const PAGE_BUILDER_ERROR_CATALOG: [PageBuilderErrorCatalogEntry; 4] = [
+    PageBuilderErrorCatalogEntry {
+        key: "validation",
+        kind: PageBuilderErrorKind::Validation,
+        code: None,
+    },
+    PageBuilderErrorCatalogEntry {
+        key: "sanitize",
+        kind: PageBuilderErrorKind::Sanitize,
+        code: None,
+    },
+    PageBuilderErrorCatalogEntry {
+        key: "runtime",
+        kind: PageBuilderErrorKind::Runtime,
+        code: None,
+    },
+    PageBuilderErrorCatalogEntry {
+        key: "feature_disabled",
+        kind: PageBuilderErrorKind::FeatureDisabled,
+        code: Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE),
+    },
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuilderTreeNode {
     pub id: String,

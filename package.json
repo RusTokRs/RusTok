@@ -63,7 +63,8 @@
     "verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.mjs",
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs",
-    "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs"
+    "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs",
+    "verify:page-builder:pages:contract-surface": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-contract-surface.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

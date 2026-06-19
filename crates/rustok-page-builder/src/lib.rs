@@ -60,7 +60,8 @@ mod tests {
     use super::*;
     use crate::dto::{
         BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderContractMetadata,
-        PublishPageBuilderInput, PublishPageBuilderResult,
+        PageBuilderErrorKind, PublishPageBuilderInput, PublishPageBuilderResult,
+        PAGE_BUILDER_ERROR_CATALOG, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
     };
     use crate::health::{
         ProviderDegradationReason, ProviderHealthEvidence, ProviderHealthSnapshot,
@@ -126,6 +127,20 @@ mod tests {
         assert_eq!(
             metadata.capabilities,
             &["preview", "tree", "properties", "publish"]
+        );
+
+        let error_kinds: Vec<_> = PageBuilderErrorKind::ALL
+            .iter()
+            .map(|kind| kind.as_str())
+            .collect();
+        assert_eq!(
+            error_kinds,
+            vec!["validation", "sanitize", "runtime", "feature-disabled"]
+        );
+        assert_eq!(PAGE_BUILDER_ERROR_CATALOG[3].key, "feature_disabled");
+        assert_eq!(
+            PAGE_BUILDER_ERROR_CATALOG[3].code,
+            Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)
         );
     }
 

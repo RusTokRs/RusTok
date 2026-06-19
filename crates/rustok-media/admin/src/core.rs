@@ -24,6 +24,56 @@ pub fn is_busy_key(current: Option<&str>, expected: MediaAdminBusyKey) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaAdminErrorMessage {
+    pub message: String,
+}
+
+pub fn media_admin_context_error(
+    context: &str,
+    err: impl std::fmt::Display,
+) -> MediaAdminErrorMessage {
+    MediaAdminErrorMessage {
+        message: format!("{context}: {err}"),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaListCardLabels {
+    pub bytes_template: String,
+    pub dimensions_not_available: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaListCardViewModel {
+    pub original_name: String,
+    pub public_url: String,
+    pub mime_type: String,
+    pub size_label: String,
+    pub dimensions_label: String,
+    pub storage_driver: String,
+}
+
+pub fn media_list_card_view_model(
+    item: &MediaListItem,
+    labels: MediaListCardLabels,
+) -> MediaListCardViewModel {
+    MediaListCardViewModel {
+        original_name: item.original_name.clone(),
+        public_url: item.public_url.clone(),
+        mime_type: item.mime_type.clone(),
+        size_label: labels
+            .bytes_template
+            .replace("{count}", &item.size.to_string()),
+        dimensions_label: media_dimensions_label(
+            item.width,
+            item.height,
+            &labels.dimensions_not_available,
+        ),
+        storage_driver: item.storage_driver.clone(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MediaUploadSuccessState {
     pub selected_media_id: String,
     pub should_refresh: bool,
@@ -353,5 +403,27 @@ mod tests {
         assert_eq!(cards[0].value, "2");
         assert_eq!(cards[1].value, "2048");
         assert_eq!(cards[2].value, "tenant-a");
+    }
+
+    #[test]
+    fn list_card_view_model_formats_reusable_display_policy() {
+        let vm = media_list_card_view_model(
+            &media_item(),
+            MediaListCardLabels {
+                bytes_template: "{count} bytes".to_string(),
+                dimensions_not_available: "n/a".to_string(),
+            },
+        );
+
+        assert_eq!(vm.original_name, "Hero.webp");
+        assert_eq!(vm.size_label, "2048 bytes");
+        assert_eq!(vm.dimensions_label, "1200×630");
+        assert_eq!(vm.storage_driver, "s3");
+    }
+
+    #[test]
+    fn context_error_keeps_ui_error_prefix_policy_outside_leptos() {
+        let message = media_admin_context_error("Failed to load media library", "timeout");
+        assert_eq!(message.message, "Failed to load media library: timeout");
     }
 }
