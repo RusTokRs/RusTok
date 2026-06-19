@@ -338,14 +338,16 @@ pub async fn list_recent_executions<S: ScriptRegistry>(
 ) -> ApiResult<Json<ListExecutionLogResponse>> {
     let offset = query.offset();
     let limit = query.limit();
-    let mut executions = state
+    let executions = state
         .execution_log
-        .list_recent_paginated(offset, limit + 1)
+        .list_recent_paginated(offset, limit)
         .await
         .map_err(ApiError::from)?;
-    let has_next = executions.len() > limit as usize;
-    executions.truncate(limit as usize);
-    let total = offset as usize + executions.len() + usize::from(has_next);
+    let total = state
+        .execution_log
+        .count_recent()
+        .await
+        .map_err(ApiError::from)? as usize;
     let executions = executions
         .into_iter()
         .map(ExecutionLogResponse::from)
@@ -367,14 +369,16 @@ pub async fn list_script_executions<S: ScriptRegistry>(
 ) -> ApiResult<Json<ListExecutionLogResponse>> {
     let offset = query.offset();
     let limit = query.limit();
-    let mut executions = state
+    let executions = state
         .execution_log
-        .list_for_script_paginated(id, offset, limit + 1)
+        .list_for_script_paginated(id, offset, limit)
         .await
         .map_err(ApiError::from)?;
-    let has_next = executions.len() > limit as usize;
-    executions.truncate(limit as usize);
-    let total = offset as usize + executions.len() + usize::from(has_next);
+    let total = state
+        .execution_log
+        .count_for_script(id)
+        .await
+        .map_err(ApiError::from)? as usize;
     let executions = executions
         .into_iter()
         .map(ExecutionLogResponse::from)

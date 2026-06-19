@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Select, entity::prelude::*,
+    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Select, entity::prelude::*,
 };
 use uuid::Uuid;
 
@@ -113,6 +113,10 @@ impl SeaOrmExecutionLog {
             .await
     }
 
+    pub async fn count_for_script(&self, script_id: ScriptId) -> ScriptResult<u64> {
+        self.count_for_script_scoped(script_id, None).await
+    }
+
     pub async fn list_for_script_for_tenant(
         &self,
         script_id: ScriptId,
@@ -134,6 +138,15 @@ impl SeaOrmExecutionLog {
             .await
     }
 
+    pub async fn count_for_script_for_tenant(
+        &self,
+        script_id: ScriptId,
+        tenant_id: Uuid,
+    ) -> ScriptResult<u64> {
+        self.count_for_script_scoped(script_id, Some(tenant_id))
+            .await
+    }
+
     pub async fn list_recent(&self, limit: u64) -> ScriptResult<Vec<ExecutionLogEntry>> {
         self.list_recent_paginated(0, limit).await
     }
@@ -144,6 +157,10 @@ impl SeaOrmExecutionLog {
         limit: u64,
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
         self.list_recent_scoped(None, offset, limit).await
+    }
+
+    pub async fn count_recent(&self) -> ScriptResult<u64> {
+        self.count_recent_scoped(None).await
     }
 
     pub async fn list_recent_for_tenant(
@@ -163,6 +180,10 @@ impl SeaOrmExecutionLog {
     ) -> ScriptResult<Vec<ExecutionLogEntry>> {
         self.list_recent_scoped(Some(tenant_id), offset, limit)
             .await
+    }
+
+    pub async fn count_recent_for_tenant(&self, tenant_id: Uuid) -> ScriptResult<u64> {
+        self.count_recent_scoped(Some(tenant_id)).await
     }
 
     async fn list_for_script_scoped(
@@ -189,6 +210,28 @@ impl SeaOrmExecutionLog {
             limit,
         )
         .await
+    }
+
+    async fn count_for_script_scoped(
+        &self,
+        script_id: ScriptId,
+        tenant_id: Option<Uuid>,
+    ) -> ScriptResult<u64> {
+        let query = Entity::find().filter(Column::ScriptId.eq(script_id));
+        self.count_entries(apply_tenant_filter(query, tenant_id))
+            .await
+    }
+
+    async fn count_recent_scoped(&self, tenant_id: Option<Uuid>) -> ScriptResult<u64> {
+        self.count_entries(apply_tenant_filter(Entity::find(), tenant_id))
+            .await
+    }
+
+    async fn count_entries(&self, query: Select<Entity>) -> ScriptResult<u64> {
+        query
+            .count(&self.db)
+            .await
+            .map_err(|err| ScriptError::Storage(err.to_string()))
     }
 
     async fn fetch_entries(
@@ -607,5 +650,85 @@ mod tests {
         assert_eq!(tenant_a_recent.len(), 2);
         assert_eq!(tenant_a_recent[0].id, tenant_a_newest.execution_id);
         assert_eq!(tenant_a_recent[1].id, tenant_a_old.execution_id);
+    }
+    #[tokio::test]
+    async fn count_helpers_report_canonical_totals_after_scoping() {
+        let log = execution_log().await;
+        let script_id = Uuid::new_v4();
+        let other_script_id = Uuid::new_v4();
+        let tenant_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+
+        let tenant_a_first = result_for(
+            script_id,
+            "counted_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            0,
+        );
+        let tenant_a_second = result_for(
+            script_id,
+            "counted_history",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            1_000,
+        );
+        let tenant_b_row = result_for(
+            script_id,
+            "counted_history_other_tenant",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            2_000,
+        );
+        let other_script_row = result_for(
+            other_script_id,
+            "counted_history_other_script",
+            ExecutionPhase::Manual,
+            ExecutionOutcome::Success {
+                return_value: None,
+                entity_changes: HashMap::new(),
+            },
+            3_000,
+        );
+
+        log.record_with_context(&tenant_a_first, None, Some(tenant_a))
+            .await
+            .expect("tenant A first row should persist");
+        log.record_with_context(&tenant_a_second, None, Some(tenant_a))
+            .await
+            .expect("tenant A second row should persist");
+        log.record_with_context(&tenant_b_row, None, Some(tenant_b))
+            .await
+            .expect("tenant B row should persist");
+        log.record_with_context(&other_script_row, None, Some(tenant_a))
+            .await
+            .expect("other script row should persist");
+
+        assert_eq!(log.count_recent().await.expect("recent count"), 4);
+        assert_eq!(
+            log.count_recent_for_tenant(tenant_a)
+                .await
+                .expect("tenant recent count"),
+            3
+        );
+        assert_eq!(
+            log.count_for_script(script_id).await.expect("script count"),
+            3
+        );
+        assert_eq!(
+            log.count_for_script_for_tenant(script_id, tenant_a)
+                .await
+                .expect("tenant script count"),
+            2
+        );
     }
 }
