@@ -73,7 +73,7 @@ npm run verify:page-builder:toggle-profiles
 npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:error-catalog
 npm run verify:page-builder:consumer:pages
-npm run verify:page-builder:consumer:forum
+npm run verify:page-builder:consumer:forum  # forum FW-2 + Wave 1 smoke/SLO/trace guardrail
 npm run verify:ffa:ui:migration
 npm run verify:ffa:ui:migration:boundary-sweep
 npm run test:verify:ffa:ui:migration:boundary-sweep
