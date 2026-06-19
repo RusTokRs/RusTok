@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "role": "consumer",
+  "provider": "comments",
+  "generated_from": "crates/rustok-blog/contracts/blog-fba-registry.json",
+  "status": "source_verified_no_compile",
+  "runner": "scripts/verify/verify-blog-fba.mjs",
+  "compile_policy": "not_run_by_request",
+  "source_contract": {
+    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
+    "consumer_error_mapping": "crates/rustok-blog/src/error.rs",
+    "provider_port_registry": "crates/rustok-comments/contracts/comments-fba-registry.json"
+  },
+  "fallback_smoke": {
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "hide_comment_form",
+      "show_cached_thread_snapshot"
+    ],
+    "cases": [
+      {
+        "operation": "create_comment",
+        "profile": "embedded_native",
+        "source_markers": [
+          "create_comment_in_tx",
+          "ensure_post_exists",
+          "DomainCreateCommentInput"
+        ],
+        "typed_error_markers": [
+          "CommentsError::CommentThreadClosed",
+          "CommentsError::Forbidden",
+          "CommentsError::Validation"
+        ],
+        "degraded_mode": "hide_comment_form",
+        "expected_consumer_behavior": "comment composer can be hidden when comments provider returns unavailable/closed/forbidden states without changing blog post rendering"
+      },
+      {
+        "operation": "list_comments_for_target",
+        "profile": "embedded_native",
+        "source_markers": [
+          "list_comments_for_target",
+          "TARGET_TYPE_BLOG_POST",
+          "post_id"
+        ],
+        "typed_error_markers": [
+          "CommentsError::Database",
+          "CommentsError::CommentThreadNotFound"
+        ],
+        "degraded_mode": "show_cached_thread_snapshot",
+        "expected_consumer_behavior": "thread read failure can be represented as a stale/cached thread snapshot branch while the blog post remains readable"
+      }
+    ]
+  }
+}

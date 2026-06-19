@@ -36,7 +36,8 @@
     "local_plan": "crates/rustok-blog/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-blog-fba.mjs",
-    "static_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json"
+    "static_matrix": "crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
@@ -86,7 +87,7 @@
       }
     ],
     "fallback_smoke": {
-      "status": "planned",
+      "status": "source_verified_no_compile",
       "profiles": [
         "embedded_native"
       ],
