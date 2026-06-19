@@ -31,6 +31,7 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migration;
+pub mod ports;
 pub mod migrations;
 pub mod services;
 pub mod steps;
@@ -40,6 +41,7 @@ pub use dto::*;
 pub use error::{WorkflowError, WorkflowResult};
 pub use graphql::{WorkflowMutation, WorkflowQuery};
 pub use migration::{WorkflowPhase4Migration, WorkflowsMigration};
+pub use ports::*;
 pub use services::{
     WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler,
 };
