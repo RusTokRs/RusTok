@@ -1,26 +1,26 @@
 use std::collections::HashMap;
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-    Json,
 };
 use chrono::Utc;
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use loco_rs::{Error, Result, app::AppContext, controller::Routes};
 use rustok_api::TenantContext;
 use uuid::Uuid;
 
 use crate::{
+    ScriptError, ScriptRegistry,
     api::{
-        CreateScriptRequest, EntityInput, ExecutionLogResponse,
-        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
-        RunScriptResponse, ScriptResponse, UpdateScriptRequest,
+        CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogResponse,
+        ListScriptsQuery, ListScriptsResponse, RunScriptRequest, RunScriptResponse, ScriptResponse,
+        UpdateScriptRequest,
     },
     model::{EntityProxy, Script, ScriptStatus},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic},
-    ScriptError, ScriptRegistry,
 };
 
 fn script_error(error: ScriptError) -> Error {
@@ -210,16 +210,18 @@ pub async fn list_recent_executions(
     Query(query): Query<ListScriptsQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
-    let requested = query.offset() + query.limit();
-    let executions = runtime
+    let offset = query.offset();
+    let limit = query.limit();
+    let mut executions = runtime
         .execution_log
-        .list_recent(requested)
+        .list_recent_for_tenant_paginated(tenant.id, offset, limit + 1)
         .await
         .map_err(script_error)?;
-    let total = executions.len();
+    let has_next = executions.len() > limit as usize;
+    executions.truncate(limit as usize);
+    let total = offset as usize + executions.len() + usize::from(has_next);
     let executions = executions
         .into_iter()
-        .skip(query.offset() as usize)
         .map(ExecutionLogResponse::from)
         .collect();
 
@@ -238,16 +240,18 @@ pub async fn list_script_executions(
     Query(query): Query<ListScriptsQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
-    let requested = query.offset() + query.limit();
-    let executions = runtime
+    let offset = query.offset();
+    let limit = query.limit();
+    let mut executions = runtime
         .execution_log
-        .list_for_script(id, requested)
+        .list_for_script_for_tenant_paginated(id, tenant.id, offset, limit + 1)
         .await
         .map_err(script_error)?;
-    let total = executions.len();
+    let has_next = executions.len() > limit as usize;
+    executions.truncate(limit as usize);
+    let total = offset as usize + executions.len() + usize::from(has_next);
     let executions = executions
         .into_iter()
-        .skip(query.offset() as usize)
         .map(ExecutionLogResponse::from)
         .collect();
 

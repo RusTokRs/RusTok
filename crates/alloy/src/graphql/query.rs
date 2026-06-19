@@ -3,11 +3,11 @@ use rustok_api::graphql::{PageInfo, PaginationInput};
 use rustok_telemetry::metrics;
 use uuid::Uuid;
 
-use crate::{storage::ScriptQuery, ScriptRegistry};
+use crate::{ScriptRegistry, storage::ScriptQuery};
 
 use super::{
-    require_admin, runtime_from_graphql_ctx, GqlEventType, GqlExecutionLogConnection,
-    GqlExecutionLogEntry, GqlScript, GqlScriptConnection, GqlScriptStatus,
+    GqlEventType, GqlExecutionLogConnection, GqlExecutionLogEntry, GqlScript, GqlScriptConnection,
+    GqlScriptStatus, require_admin, runtime_from_graphql_ctx,
 };
 
 #[derive(Default)]
@@ -170,11 +170,15 @@ impl AlloyQuery {
 
         let mut entries = state
             .execution_log
-            .list_for_script(script_id, (offset + limit + 1) as u64)
+            .list_for_script_for_tenant_paginated(
+                script_id,
+                state.tenant_id,
+                offset as u64,
+                (limit + 1) as u64,
+            )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .into_iter()
-            .skip(offset as usize)
             .map(GqlExecutionLogEntry::from)
             .collect::<Vec<_>>();
         let has_next = entries.len() > limit as usize;
@@ -210,11 +214,10 @@ impl AlloyQuery {
 
         let mut entries = state
             .execution_log
-            .list_recent((offset + limit + 1) as u64)
+            .list_recent_for_tenant_paginated(state.tenant_id, offset as u64, (limit + 1) as u64)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .into_iter()
-            .skip(offset as usize)
             .map(GqlExecutionLogEntry::from)
             .collect::<Vec<_>>();
         let has_next = entries.len() > limit as usize;
