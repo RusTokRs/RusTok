@@ -15,12 +15,13 @@ steady-state hardening и drift-prevention режиме.
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - admin package split introduced `admin/src/core.rs` for Leptos-free overview view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-rbac` had no legacy GraphQL/REST operator contract for this overview;
   - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
+  - FBA provider slice: `crates/rustok-rbac/src/ports.rs` declares `RbacPermissionDecisionPort` / `rbac.permission_decision.v1` for admin permission-decision consumers with typed `PortContext`/`PortError`, read deadline semantics, claims-scope preservation and serializable DTOs; `crates/rustok-rbac/contracts/rbac-fba-registry.json` plus `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:rbac:fba` while runtime fallback smoke remains pending before `boundary_ready`;
   - `scripts/verify/verify-rbac-admin-boundary.mjs` and `scripts/verify/verify-rbac-admin-boundary.test.mjs` enforce Leptos-free core, facade-only UI transport calls, native-only overview exception, typed transport error envelope and server-function adapter placement without full Rust compilation.
 
 ## Область работ

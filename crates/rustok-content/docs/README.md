@@ -27,6 +27,7 @@ conversion contracts, на которые опираются доменные м
 
 ## Проверка
 
+- `npm run verify:content:orchestration` — compile-free guardrail для orchestration RBAC/idempotency/audit/outbox/canonical URL invariants и синхронизации docs/registry.
 - `cargo xtask module validate content`
 - `cargo xtask module test content`
 - targeted tests для orchestration commands, canonical URL flows, locale fallback и rich-text validation

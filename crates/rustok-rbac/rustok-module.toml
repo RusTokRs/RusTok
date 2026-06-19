@@ -20,3 +20,12 @@ nav_label = "RBAC"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/rbac-fba-registry.json"
+contract_version = "rbac.permission_decision.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+profiles = ["admin_permission_decision"]
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["hide_restricted_actions", "show_permission_refresh_prompt"]

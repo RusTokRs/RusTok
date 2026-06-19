@@ -95,6 +95,8 @@ pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result
 
 /// Validate standalone entry command before handing it to adapter/service layer.
 pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(), FlexError> {
+    validate_uuid(input.schema_id, "schema_id")?;
+
     let relation_shape_ok = (input.entity_type.is_some() && input.entity_id.is_some())
         || (input.entity_type.is_none() && input.entity_id.is_none());
 
@@ -112,6 +114,10 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
                 "standalone flex entries cannot attach to flex_entry; max relation depth is 1"
                     .to_string(),
             ));
+        }
+
+        if let Some(entity_id) = input.entity_id {
+            validate_uuid(entity_id, "entity_id")?;
         }
     }
 
@@ -160,6 +166,7 @@ pub async fn find_schema(
     tenant_id: Uuid,
     schema_id: Uuid,
 ) -> Result<Option<FlexSchemaView>, FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
     service.find_schema(tenant_id, schema_id).await
 }
 
@@ -170,6 +177,7 @@ pub async fn delete_schema(
     actor_id: Option<Uuid>,
     schema_id: Uuid,
 ) -> Result<(), FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
     service.delete_schema(tenant_id, actor_id, schema_id).await
 }
 
@@ -179,6 +187,7 @@ pub async fn list_entries(
     tenant_id: Uuid,
     schema_id: Uuid,
 ) -> Result<Vec<FlexEntryView>, FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
     service.list_entries(tenant_id, schema_id).await
 }
 
@@ -189,6 +198,8 @@ pub async fn find_entry(
     schema_id: Uuid,
     entry_id: Uuid,
 ) -> Result<Option<FlexEntryView>, FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
+    validate_uuid(entry_id, "entry_id")?;
     service.find_entry(tenant_id, schema_id, entry_id).await
 }
 
@@ -200,6 +211,8 @@ pub async fn delete_entry(
     schema_id: Uuid,
     entry_id: Uuid,
 ) -> Result<(), FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
+    validate_uuid(entry_id, "entry_id")?;
     service
         .delete_entry(tenant_id, actor_id, schema_id, entry_id)
         .await
@@ -224,6 +237,7 @@ pub async fn update_schema(
     schema_id: Uuid,
     input: UpdateFlexSchemaCommand,
 ) -> Result<FlexSchemaView, FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
     validate_update_schema_command(&input)?;
     service
         .update_schema(tenant_id, actor_id, schema_id, input)
@@ -250,6 +264,8 @@ pub async fn update_entry(
     entry_id: Uuid,
     input: UpdateFlexEntryCommand,
 ) -> Result<FlexEntryView, FlexError> {
+    validate_uuid(schema_id, "schema_id")?;
+    validate_uuid(entry_id, "entry_id")?;
     validate_update_entry_command(&input)?;
     service
         .update_entry(tenant_id, actor_id, schema_id, entry_id, input)
@@ -445,6 +461,16 @@ fn validate_identifier(value: &str, label: &str, max_len: usize) -> Result<(), F
     Ok(())
 }
 
+fn validate_uuid(value: Uuid, label: &str) -> Result<(), FlexError> {
+    if value.is_nil() {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "{label} must not be the nil UUID"
+        )));
+    }
+
+    Ok(())
+}
+
 /// Service contract for standalone Flex mode.
 #[async_trait]
 pub trait FlexStandaloneService: Send + Sync {
@@ -521,8 +547,8 @@ mod tests {
     use super::{
         create_entry, create_entry_with_event, create_schema, create_schema_with_event,
         delete_entry, delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry,
-        find_schema, list_entries, list_schemas, update_entry_with_event, update_schema_with_event,
-        validate_create_entry_command, validate_create_schema_command,
+        find_schema, list_entries, list_schemas, update_entry, update_entry_with_event,
+        update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
         validate_update_entry_command, validate_update_schema_command, CreateFlexEntryCommand,
         CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView, FlexStandaloneService,
         UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
@@ -792,6 +818,29 @@ mod tests {
         };
 
         assert!(validate_create_entry_command(&valid).is_ok());
+    }
+
+    #[test]
+    fn validate_entry_command_rejects_nil_schema_or_entity_ids() {
+        let nil_schema = CreateFlexEntryCommand {
+            schema_id: Uuid::nil(),
+            entity_type: None,
+            entity_id: None,
+            data: json!({"title": "Hello"}),
+            status: Some("draft".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&nil_schema).is_err());
+
+        let nil_entity_id = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: Some("product".to_string()),
+            entity_id: Some(Uuid::nil()),
+            data: json!({"title": "Hello"}),
+            status: Some("draft".to_string()),
+        };
+
+        assert!(validate_create_entry_command(&nil_entity_id).is_err());
     }
 
     #[test]
@@ -1180,6 +1229,42 @@ mod tests {
         .expect("delete entry");
 
         assert_eq!(delete_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn entry_orchestration_skips_service_on_nil_ids() {
+        let update_calls = Arc::new(AtomicUsize::new(0));
+        let delete_calls = Arc::new(AtomicUsize::new(0));
+        let mut service = mock_service();
+        service.update_entry_calls = update_calls.clone();
+        service.delete_entry_calls = delete_calls.clone();
+
+        let update = update_entry(
+            &service,
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            Uuid::nil(),
+            Uuid::new_v4(),
+            UpdateFlexEntryCommand {
+                data: Some(json!({"title": "Updated"})),
+                status: None,
+            },
+        )
+        .await;
+        assert!(update.is_err());
+
+        let delete = delete_entry(
+            &service,
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            Uuid::new_v4(),
+            Uuid::nil(),
+        )
+        .await;
+        assert!(delete.is_err());
+
+        assert_eq!(update_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(delete_calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

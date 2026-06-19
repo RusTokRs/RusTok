@@ -4,6 +4,12 @@ Operational procedures for `rustok-content` in production and staging environmen
 
 ---
 
+## Verification gate
+
+Run `npm run verify:content:orchestration` after any change to orchestration commands, canonical URL mapping, route resolution, local docs, or the central content registry row. The gate is compile-free and checks RBAC/idempotency/audit/outbox invariants, alias-first redirects, shared locale fallback usage, and documentation sync.
+
+---
+
 ## Migration rollback
 
 ### Orchestration tables (Phase 1)
