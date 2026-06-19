@@ -20,3 +20,11 @@ nav_label = "Media"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[fba.provider]
+registry = "contracts/media-fba-registry.json"
+contract_version = "media.asset_read.v1"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["omit_image_metadata", "keep_existing_seo_image", "skip_asset_enrichment"]

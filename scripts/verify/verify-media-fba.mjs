@@ -1,0 +1,59 @@
+import fs from 'node:fs';
+
+function read(path) { return fs.readFileSync(path, 'utf8'); }
+function json(path) { return JSON.parse(read(path)); }
+function fail(message) { console.error(`[verify-media-fba] ${message}`); process.exit(1); }
+function hasAll(text, snippets, label) { for (const snippet of snippets) if (!text.includes(snippet)) fail(`${label} missing ${snippet}`); }
+function sameSet(actual, expected, label) {
+  const a = [...actual].sort().join('|');
+  const e = [...expected].sort().join('|');
+  if (a !== e) fail(`${label} drift: expected ${e}, got ${a}`);
+}
+
+const registryPath = 'crates/rustok-media/contracts/media-fba-registry.json';
+const evidencePath = 'crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json';
+const registry = json(registryPath);
+const evidence = json(evidencePath);
+
+if (registry.schema_version !== 1) fail('registry schema_version drift');
+if (registry.module !== 'media' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.contract_version !== 'media.asset_read.v1') fail('contract_version drift');
+const port = registry.ports?.[0];
+if (!port || port.name !== 'MediaAssetReadPort') fail('port name drift');
+sameSet(port.operations, ['get_asset', 'list_assets', 'get_image_descriptor', 'get_translations'], 'port operations');
+sameSet(port.read_operations, port.operations, 'read operations');
+if ((port.write_operations ?? []).length !== 0 || port.idempotency_required !== false) fail('media read port unexpectedly declares write semantics');
+if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
+
+const manifest = read('crates/rustok-media/rustok-module.toml');
+hasAll(manifest, ['[fba.provider]', 'registry = "contracts/media-fba-registry.json"', 'contract_version = "media.asset_read.v1"'], 'manifest');
+
+const lib = read('crates/rustok-media/src/lib.rs');
+hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
+const ports = read('crates/rustok-media/src/ports.rs');
+hasAll(ports, ['pub trait MediaAssetReadPort', 'impl MediaAssetReadPort for MediaService', 'MediaImageDescriptor', 'PortContext', 'PortError'], 'ports.rs');
+const implStart = ports.indexOf('impl MediaAssetReadPort for MediaService');
+if (implStart === -1) fail('ports.rs missing MediaService impl');
+const implPorts = ports.slice(implStart);
+for (const op of port.read_operations) {
+  const idx = implPorts.indexOf(`async fn ${op}`);
+  if (idx === -1) fail(`ports.rs missing read operation ${op}`);
+  const next = implPorts.indexOf('\n    async fn ', idx + 1);
+  const body = implPorts.slice(idx, next === -1 ? implPorts.length : next);
+  if (!body.includes('context.require_deadline_semantics()?')) fail(`${op} does not require deadline semantics`);
+  if (body.includes('context.require_write_semantics()?')) fail(`${op} unexpectedly requires write semantics`);
+}
+
+if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
+sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
+sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
+sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
+
+const plan = read('crates/rustok-media/docs/implementation-plan.md');
+hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json'], 'local plan');
+const central = read('docs/modules/registry.md');
+hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
+const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
+hasAll(unified, ['`media`', 'MediaAssetReadPort', 'media-fba-registry.json'], 'unified plan');
+
+console.log('[verify-media-fba] media FBA provider metadata, port semantics and static evidence are consistent');

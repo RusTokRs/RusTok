@@ -65,7 +65,8 @@
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs",
     "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs",
     "verify:search:fba": "node scripts/verify/verify-search-fba.mjs",
-    "verify:blog:fba": "node scripts/verify/verify-blog-fba.mjs"
+    "verify:blog:fba": "node scripts/verify/verify-blog-fba.mjs",
+    "verify:media:fba": "node scripts/verify/verify-media-fba.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
