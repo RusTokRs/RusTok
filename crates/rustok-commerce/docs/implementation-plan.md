@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: provider SPI baseline and storefront owner transport handoff
-- Last checkpoint: Storefront owner transport handoff hardening narrowed aggregate checkout GraphQL compatibility fallback to MissingServer/native-unavailable errors only for payment collection create, shipping selection and complete-checkout paths. Validation, GraphQL and domain errors now return directly instead of being retried through the parallel transport, and `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` locks the owner DTO aliases plus fallback policy without a compile step.
-- Next step: Move payment/order/fulfillment async native/GraphQL adapters behind owner storefront packages when host routing can depend on those adapters without circular orchestration, then replace static provider SPI evidence with runtime contract execution; keep Next commerce pages behind the shared module guard.
+- Last checkpoint: Provider SPI static hardening added typed payment/fulfillment webhook adapter operations, external adapter registration contract locks and verifier coverage for descriptor/capability, health/degraded-mode mapping and adapter no-persistence rules without a compile step.
+- Next step: Move payment/order/fulfillment async native/GraphQL adapters behind owner storefront packages when host routing can depend on those adapters without circular orchestration, then turn provider SPI webhook/registration static contracts into runtime contract execution; keep Next commerce pages behind the shared module guard.
 - Open blockers: None.
 - Hand-off notes for next agent: After each post-order operator UI/page addition, update this checkpoint block and central registry evidence; keep the Next host route as a thin auth/options adapter only.
-- Last updated at (UTC): 2026-06-17T00:00:00Z
+- Last updated at (UTC): 2026-06-19T00:00:00Z
 
 
 ## FFA/FBA status
@@ -30,8 +30,8 @@
   - consumer-side FBA metadata теперь закреплена в `crates/rustok-commerce/contracts/commerce-fba-registry.json`: commerce явно перечисляет provider contracts для pricing/inventory/order/payment/fulfillment/product/customer/cart, checkout profiles, degraded modes и fallback profiles, `src/fba.rs` публикует typed embedded registry entrypoint для runtime/composition кода, а aggregate verifier сверяет эти записи с owner provider registries;
   - provider registry evidence зафиксирован для `crates/rustok-pricing/contracts/pricing-fba-registry.json`, `crates/rustok-inventory/contracts/inventory-fba-registry.json`, `crates/rustok-order/contracts/order-fba-registry.json`, `crates/rustok-payment/contracts/payment-fba-registry.json`, `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`, `crates/rustok-product/contracts/product-fba-registry.json`, `crates/rustok-customer/contracts/customer-fba-registry.json` и `crates/rustok-cart/contracts/cart-fba-registry.json`, чтобы commerce local plan не расходился с consumer registry;
   - Phase 11 provider SPI baseline начат без vendor-specific adapters: payment-owned `src/providers.rs` фиксирует manual provider capabilities и adapter trait для authorize/capture/cancel/refund, fulfillment-owned `src/providers.rs` фиксирует manual carrier capabilities и adapter trait для quote/label/cancel, а lifecycle persistence остаётся в `PaymentService` / `FulfillmentService`;
-  - provider SPI static evidence теперь закрепляет payment/fulfillment operation cases и webhook replay contracts в `crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json` и `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`; aggregate `npm run verify:ecommerce:fba` запускает `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` вместе с registry/port evidence gates, но FBA статус остаётся `in_progress` до runtime execution;
-- Last verified at (UTC): 2026-06-18T00:00:00Z
+  - provider SPI static evidence теперь закрепляет payment/fulfillment operation cases, typed webhook adapter operations и external adapter registration contracts в `crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json` и `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`; aggregate `npm run verify:ecommerce:fba` запускает `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` вместе с registry/port evidence gates, но FBA статус остаётся `in_progress` до runtime execution;
+- Last verified at (UTC): 2026-06-19T00:00:00Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа
@@ -675,8 +675,9 @@ Deliverables:
 
 - [x] payment provider SPI baseline: manual provider descriptor/capabilities and adapter boundary for authorize/capture/cancel/refund;
 - [x] fulfillment provider SPI baseline: manual carrier descriptor/capabilities and adapter boundary for rate quote/create label/cancel;
-- [x] payment provider SPI static evidence и webhook ingress/replay contract;
-- [x] fulfillment provider SPI static evidence и carrier webhook replay contract;
+- [x] payment provider SPI static evidence, typed webhook adapter operation и webhook ingress/replay contract;
+- [x] fulfillment provider SPI static evidence, typed carrier webhook adapter operation и carrier webhook replay contract;
+- [x] external provider/carrier adapter registration static contract locks (descriptor/capability match, health/degraded-mode mapping, no lifecycle persistence in adapters);
 - [x] provider capability model baseline для authorize/capture/refund/cancel и rate-quote/label/cancel;
 - [x] явные fallback semantics для manual/default providers;
 - [ ] external gateway/carrier adapter registration and remote failure/degraded-mode evidence.
