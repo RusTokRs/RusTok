@@ -298,10 +298,12 @@ graph TD
 | `rustok-iggy-connector` | Embedded/remote connector layer для Iggy |
 | `rustok-telemetry` | Observability bootstrap и shared telemetry helpers |
 | `rustok-mcp` | MCP adapter/server tool surface |
-| `rustok-ai` | AI host/orchestrator capability with large operator/admin UI surfaces for Leptos and Next.js hosts; Leptos admin core/transport/ui slice отслеживается в local AI implementation plan с core-owned request/payload/diagnostics policy, native adapter `admin/src/transport/native_server_adapter.rs`, domain direct handler registration adapters from `rustok-ai-product`/`rustok-ai-content`/`rustok-ai-order`, and guardrail `scripts/verify/verify-ai-admin-boundary.mjs` |
+| `rustok-ai` | AI host/orchestrator capability with large operator/admin UI surfaces for Leptos and Next.js hosts; Leptos admin core/transport/ui slice отслеживается in local AI implementation plan с core-owned request/payload/diagnostics policy, native adapter `admin/src/transport/native_server_adapter.rs`, domain direct handler registration adapters from `rustok-ai-product`/`rustok-ai-content`/`rustok-ai-order`/`rustok-ai-media`/`rustok-ai-alloy`, and guardrail `scripts/verify/verify-ai-admin-boundary.mjs` |
 | `rustok-ai-content` | Domain-owned AI support crate for content moderation and blog draft vertical registration, handler adapter API, generated payload validation, and policy seams |
 | `rustok-ai-product` | Domain-owned AI support crate for product vertical registration (`product_copy`, `product_attributes`) and handler adapter API |
 | `rustok-ai-order` | Domain-owned AI support crate for order vertical registration (`order_analytics`, `order_ops_assistant`) and handler adapter API |
+| `rustok-ai-media` | Domain-owned AI support crate/adapter for media/image asset AI vertical registration and image size validation |
+| `rustok-ai-alloy` | Domain-owned AI support crate/adapter for alloy scripting AI vertical registration and runtime payload validation |
 
 ## Приложения
 

@@ -226,6 +226,8 @@ rustok-ai = { path = "crates/rustok-ai" }
 rustok-ai-content = { path = "crates/rustok-ai-content" }
 rustok-ai-order = { path = "crates/rustok-ai-order" }
 rustok-ai-product = { path = "crates/rustok-ai-product" }
+rustok-ai-media = { path = "crates/rustok-ai-media" }
+rustok-ai-alloy = { path = "crates/rustok-ai-alloy" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }

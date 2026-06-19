@@ -9629,7 +9629,9 @@ dependencies = [
  "once_cell",
  "reqwest 0.13.2",
  "rhai",
+ "rustok-ai-alloy",
  "rustok-ai-content",
+ "rustok-ai-media",
  "rustok-ai-order",
  "rustok-ai-product",
  "rustok-api",
@@ -9673,6 +9675,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-ai-alloy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-ai-content"
 version = "0.1.0"
 dependencies = [
@@ -9682,6 +9692,13 @@ dependencies = [
 [[package]]
 name = "rustok-ai-content-admin"
 version = "0.1.0"
+
+[[package]]
+name = "rustok-ai-media"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "rustok-ai-order"
