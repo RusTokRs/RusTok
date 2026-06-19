@@ -236,14 +236,15 @@
   - [ ] D.1 Прогнать unit coverage для normalization/validation/idempotency/replay transitions.
   - [ ] D.2 Прогнать `rustok-seo` integration matrix (GraphQL/REST parity + outbox/index pipeline + tenant/module gating).
   - [ ] D.3 Прогнать host integration matrix (`apps/storefront`, `apps/next-frontend`, `apps/next-admin`) с RBAC/module gating parity.
-  - [x] D.4 Собрать lightweight evidence packet seed (без компиляции): fixture verifier + static matrix + stop criteria.
+  - [x] D.4 Собрать lightweight evidence packet seed (без компиляции): fixture verifier + static matrix + stop criteria + live capture template.
   - [ ] D.4b Собрать live CI/runtime evidence packet (backend + hosts), закрыть high-severity parity defects.
 
 - [ ] **Batch D9 — Docs / runbooks / readiness closeout (Milestone E, operational batch)**
   - [x] E.1 Обновить docs в `rustok-seo`, `rustok-seo-admin-support`, `rustok-seo-render`, `apps/storefront`, `apps/next-frontend`, `apps/next-admin`, central docs registry/index — compile-free sync matrix зафиксирована в `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json`.
   - [x] E.2 Финализировать baseline runbooks: `SEO event backlog stuck`, `Partial indexing failures`, `Replay/Reindex procedures` с rollback/stop criteria.
+  - [x] E.2a Зафиксировать compile-free incident evidence templates для backlog, partial indexing failures и replay/reindex drills.
   - [ ] E.2b Дополнить runbooks live incident evidence после D8 backend/host прогонов.
-  - [x] E.3 Зафиксировать owner sign-off checklist и DoD/DoR для следующего execution wave — checklist seeded в runtime parity fixture; фактические подписи ждут live evidence.
+  - [x] E.3 Зафиксировать owner sign-off checklist, owner closeout criteria и DoD/DoR для следующего execution wave — checklist seeded в runtime parity fixture; фактические подписи ждут live evidence.
 
 ## Осталось сделать (оценка на 2026-06-08)
 
@@ -287,19 +288,22 @@
 - [ ] D.2 RBAC/module gating parity checks.
   - [x] D.2a Compile-free backend/admin transport symbol guard для GraphQL/REST parity surfaces.
   - [x] D.2b Compile-free RBAC/module gating matrix для GraphQL, REST и Next fallback classification.
+  - [x] D.2c Compile-free semantic error parity matrix для GraphQL validation/permission, REST envelope, Next fallback и Next Admin operator API.
 - [ ] D.3 Replay/index pipeline regression checks.
   - [x] D.3a Compile-free Next Admin index tracking/replay endpoint guard.
   - [x] D.3b Compile-free replay/index idempotency invariant matrix для delivery trackers, unique transitions и forward-only replay modes.
 - [x] D.4 Lightweight evidence packet seed + stop criteria.
   - [x] D.4a Compile-free host runtime entrypoint matrix для Next robots/sitemap/metadata и Leptos SSR head preflight.
+  - [x] D.4a.1 Live evidence capture template для backend parity, outbox/index pipeline, Next runtime, Leptos runtime и Next Admin operator smoke.
   - [ ] D.4b Live evidence packet + high-severity defect closure.
 
 ### Milestone E — Docs / runbooks / readiness closeout
 
 - [x] E.1 Docs sync (`rustok-seo*`, host docs, central docs) — compile-free matrix покрывает SEO runtime docs, Next storefront, Next admin и Leptos storefront.
 - [x] E.2 Baseline operational runbooks (backlog stuck / partial indexing / replay-reindex).
+  - [x] E.2a Compile-free incident evidence templates для трёх baseline runbook-сценариев.
   - [ ] E.2b Live incident examples после D8 runtime прогонов.
-- [x] E.3 Owner sign-off checklist + DoD/DoR finalization — static checklist готов; live signatures deferred до D8 runtime packet.
+- [x] E.3 Owner sign-off checklist + DoD/DoR finalization — static checklist и closeout blockers готовы; live signatures deferred до D8 runtime packet.
 
 ## Проверка
 
