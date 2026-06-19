@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "role": "consumer",
+  "provider": "comments",
+  "generated_from": "crates/rustok-blog/contracts/blog-fba-registry.json",
+  "status": "planned_cases_locked",
+  "cases": [
+    {
+      "operation": "create_comment",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "degraded_hide_comment_form_on_unavailable"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "list_comments_for_target",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "degraded_cached_thread_snapshot_on_unavailable"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "update_comment",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "delete_comment",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "runtime_evidence": "pending"
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned",
+    "profiles": ["embedded_native"],
+    "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "module": "seo",
+  "role": "consumer",
+  "provider": "media",
+  "generated_from": "crates/rustok-seo/contracts/seo-fba-registry.json",
+  "status": "planned_cases_locked",
+  "cases": [
+    {
+      "operation": "get_image_descriptor",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "seo_descriptor_normalization_preserved", "degraded_omit_image_metadata_on_unavailable"],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "get_asset",
+      "profiles": ["in_process", "remote_adapter_placeholder"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "degraded_keep_existing_seo_image_on_unavailable"],
+      "runtime_evidence": "pending"
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned",
+    "profiles": ["embedded_native"],
+    "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image"]
+  }
+}

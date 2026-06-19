@@ -5,9 +5,9 @@
 
 ## Execution checkpoint
 
-- Current phase: FFA-разделение admin ui/core/transport
-- Last checkpoint: Runtime hardening slice расширил Leptos-free service helpers: upload policy вынесена в pre-storage validator, cleanup probe classification закрепляет `read -> keep`, `NotFound/InvalidPath -> delete DB record`, transient `Io/Backend -> retry later`, а `cleanup_storage_orphans` публикует tenant-scoped report без изменения transport parity.
-- Next step: Добрать интеграционные проверки owner-module SEO providers, которые используют descriptor contract, и при необходимости добавить DB-backed integration tests для `cleanup_storage_orphans` поверх тестового storage backend без компиляционного изменения transport parity.
+- Current phase: FBA media asset read provider metadata
+- Last checkpoint: FBA asset-read provider slice added `MediaAssetReadPort` / `media.asset_read.v1`, machine-readable registry `crates/rustok-media/contracts/media-fba-registry.json`, static evidence `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, manifest provider metadata and fast guardrail `npm run verify:media:fba`.
+- Next step: Закрыть runtime contract execution/fallback smoke для `MediaAssetReadPort`, особенно SEO image descriptor degraded modes, и затем добрать DB-backed integration tests для `cleanup_storage_orphans` без изменения transport parity.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
 - Last updated at (UTC): 2026-06-19T00:00:00Z
@@ -15,14 +15,15 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; media admin surface уже опубликован и ведётся в migration/backlog ритме;
   - FFA admin slice: `admin/src/core.rs` владеет Leptos-free form/presentation/state helpers (`non_empty_option`, dimensions label, pagination label, translation form state, usage stat cards, upload success state, busy-key policy, detail-line/list-card view-models и context-error message policy) с unit tests;
   - `admin/src/transport/` владеет текущим native-first + GraphQL fallback + REST upload transport facade без изменения внешних GraphQL/REST contracts; facade split зафиксирован через `graphql_adapter.rs`, `rest_adapter.rs` и `native_server_adapter.rs`;
   - `admin/src/ui/leptos.rs` является явным Leptos render adapter, а crate root только связывает модули и реэкспортирует `MediaAdmin`;
-  - runtime hardening slice добавил service-level cleanup report/decision helpers и targeted unit coverage для upload policy + storage cleanup classification без transport changes.
+  - runtime hardening slice добавил service-level cleanup report/decision helpers и targeted unit coverage для upload policy + storage cleanup classification без transport changes;
+  - FBA provider metadata now exposes the media asset read boundary through `MediaAssetReadPort` / `media.asset_read.v1`: `crates/rustok-media/contracts/media-fba-registry.json`, `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json` and `scripts/verify/verify-media-fba.mjs` lock read-only deadline semantics, typed `PortError` mapping, SEO descriptor fallback profiles and consumer metadata without promoting beyond `in_progress` before runtime smoke.
 
 ## Область работ
 

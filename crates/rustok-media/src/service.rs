@@ -10,8 +10,8 @@ use rustok_storage::{StorageError, StorageService};
 
 use crate::{
     dto::{
-        ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE, MediaItem, MediaTranslationItem, UploadInput,
-        UpsertTranslationInput,
+        MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
+        ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
     },
     entities::{
         media::{self, ActiveModel as MediaActiveModel, Column as MediaCol, Entity as MediaEntity},
@@ -82,9 +82,9 @@ mod tests {
     use bytes::Bytes;
     use uuid::Uuid;
 
-    use super::{MediaStorageCleanupDecision, classify_cleanup_probe, validate_upload_policy};
+    use super::{classify_cleanup_probe, validate_upload_policy, MediaStorageCleanupDecision};
     use crate::{
-        dto::{DEFAULT_MAX_SIZE, UploadInput},
+        dto::{UploadInput, DEFAULT_MAX_SIZE},
         error::MediaError,
     };
     use rustok_storage::StorageError;
