@@ -10,7 +10,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration, then execute the locked live gateway plan against a concrete external adapter.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T14:12:00Z
 
 ## FFA/FBA status
 
@@ -18,6 +18,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA maintenance slice перевёл read-only `read_collection_status` path на shared `PortCallPolicy::read()`, оставив create/reuse write path на idempotent write semantics и не меняя commerce compatibility transport.
   - in-process реализация `PaymentCollectionPort for PaymentService` добавлена в `src/ports.rs`: create/reuse path требует `PortContext::require_write_semantics`, переиспользует reusable cart collection перед созданием новой и мапит `PaymentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `PaymentCollectionPort` и DTO для create/reuse/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `payment collection create/reuse` через `crates/rustok-payment/contracts/payment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
