@@ -86,6 +86,8 @@
     "verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.mjs",
     "verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.mjs",
     "verify:outbox:fba": "node scripts/verify/verify-outbox-fba.mjs",
+    "verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.mjs",
+    "test:verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.test.mjs",
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs"
   },
   "dependencies": {
