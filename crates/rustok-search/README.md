@@ -31,6 +31,8 @@
 - `SearchConnectorDescriptor`
 - `SearchSettingsRecord`
 - `PgSearchEngine`
+- `SearchQueryPort`
+- `SearchSuggestionPort`
 
 ## Capability matrix
 
@@ -56,6 +58,12 @@
 - Ranking-profile surfaces accept only stable identifiers and only the built-in profiles `balanced`, `exact`, `fresh`, `catalog`, and `content`.
 - Filter-preset surfaces accept only stable ASCII identifiers, normalize values to lowercase, and reject duplicates or oversized lists instead of silently truncating them.
 - Query normalization trims whitespace, lowercases tokens, removes configured stop words, and expands tenant-owned synonym groups before PostgreSQL FTS execution.
+
+## FBA provider boundary
+
+- `SearchQueryPort` and `SearchSuggestionPort` define the transport-neutral `search.query.v1` provider boundary for storefront/admin consumers.
+- The in-process PostgreSQL provider is `PgSearchEngine`; both query execution and suggestions require read deadline semantics, use `PortContext.locale` as the fallback locale, and map module errors to `PortError`.
+- `contracts/search-fba-registry.json`, `contracts/evidence/search-contract-test-static-matrix.json`, and `contracts/evidence/search-runtime-fallback-smoke.json` are checked by `npm run verify:search:fba` without compiling the workspace.
 
 ## Current status
 

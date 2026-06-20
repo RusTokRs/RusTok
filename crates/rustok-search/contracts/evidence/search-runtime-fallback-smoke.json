@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-search/contracts/search-fba-registry.json",
+  "runner": "scripts/verify/verify-search-fba.mjs",
+  "status": "source_locked_no_compile",
+  "profiles": ["embedded_postgres"],
+  "source_markers": {
+    "provider_source": "crates/rustok-search/src/ports.rs",
+    "engine_source": "crates/rustok-search/src/pg_engine.rs",
+    "suggestion_source": "crates/rustok-search/src/suggestions.rs"
+  },
+  "cases": [
+    {
+      "operation": "execute_search",
+      "fallback_profile": "embedded_postgres",
+      "degraded_modes": ["show_empty_results", "disable_preview", "show_last_diagnostics_snapshot"],
+      "assertions": ["in_process_pg_provider_impl", "deadline_semantics_required", "locale_context_fallback", "typed_port_error_mapping"]
+    },
+    {
+      "operation": "suggest",
+      "fallback_profile": "embedded_postgres",
+      "degraded_modes": ["hide_suggestions"],
+      "assertions": ["in_process_pg_provider_impl", "deadline_semantics_required", "locale_context_fallback", "typed_port_error_mapping"]
+    }
+  ],
+  "notes": "No-compile smoke locks the runtime fallback source path until executable contract smoke is added."
+}
