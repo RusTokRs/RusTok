@@ -608,6 +608,16 @@ impl ContentOrchestrationService {
             let canonical_route =
                 self.normalize_route_url("canonical_url", update.canonical_url.as_str())?;
 
+            self.ensure_canonical_route_available(
+                txn,
+                tenant_id,
+                &locale,
+                &canonical_route,
+                &target_kind,
+                update.target_id,
+            )
+            .await?;
+
             let mut alias_urls = BTreeSet::new();
             for alias in &update.alias_urls {
                 let alias = self.normalize_route_url("alias_url", alias)?;
@@ -693,6 +703,18 @@ impl ContentOrchestrationService {
 
             let alias_urls = alias_urls.into_iter().collect::<Vec<_>>();
 
+            for alias in &alias_urls {
+                self.ensure_alias_route_available(
+                    txn,
+                    tenant_id,
+                    &locale,
+                    alias,
+                    &target_kind,
+                    update.target_id,
+                )
+                .await?;
+            }
+
             url_alias::Entity::delete_many()
                 .filter(url_alias::Column::TenantId.eq(tenant_id))
                 .filter(url_alias::Column::Locale.eq(locale.clone()))
@@ -763,6 +785,75 @@ impl ContentOrchestrationService {
                         )
                         .await?;
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn ensure_canonical_route_available(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        locale: &str,
+        canonical_route: &str,
+        target_kind: &str,
+        target_id: Uuid,
+    ) -> ContentResult<()> {
+        let existing_canonical = canonical_url::Entity::find()
+            .filter(canonical_url::Column::TenantId.eq(tenant_id))
+            .filter(canonical_url::Column::Locale.eq(locale.to_string()))
+            .filter(canonical_url::Column::CanonicalUrl.eq(canonical_route.to_string()))
+            .one(txn)
+            .await?;
+
+        if let Some(existing) = existing_canonical {
+            if existing.target_kind != target_kind || existing.target_id != target_id {
+                return Err(ContentError::validation(format!(
+                    "canonical_url `{canonical_route}` already belongs to another content target"
+                )));
+            }
+        }
+
+        let existing_alias = url_alias::Entity::find()
+            .filter(url_alias::Column::TenantId.eq(tenant_id))
+            .filter(url_alias::Column::Locale.eq(locale.to_string()))
+            .filter(url_alias::Column::AliasUrl.eq(canonical_route.to_string()))
+            .one(txn)
+            .await?;
+
+        if let Some(existing) = existing_alias {
+            if existing.target_kind != target_kind || existing.target_id != target_id {
+                return Err(ContentError::validation(format!(
+                    "canonical_url `{canonical_route}` collides with an alias owned by another content target"
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn ensure_alias_route_available(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        locale: &str,
+        alias_route: &str,
+        target_kind: &str,
+        target_id: Uuid,
+    ) -> ContentResult<()> {
+        let existing_canonical = canonical_url::Entity::find()
+            .filter(canonical_url::Column::TenantId.eq(tenant_id))
+            .filter(canonical_url::Column::Locale.eq(locale.to_string()))
+            .filter(canonical_url::Column::CanonicalUrl.eq(alias_route.to_string()))
+            .one(txn)
+            .await?;
+
+        if let Some(existing) = existing_canonical {
+            if existing.target_kind != target_kind || existing.target_id != target_id {
+                return Err(ContentError::validation(format!(
+                    "alias_url `{alias_route}` would shadow another target canonical URL"
+                )));
             }
         }
 

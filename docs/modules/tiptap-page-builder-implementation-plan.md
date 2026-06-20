@@ -84,7 +84,7 @@
 - [x] Зафиксировать parity-план для `apps/next-admin` и `apps/admin` на уровне capability-contract.
 - [x] Выровнять UX-обработку validation/sanitize ошибок в формах.
 - [x] Синхронизировать dependency с Flutter registry/codegen планом (`docs/research/flutter.md`, anti-drift guardrail).
-- [~] Зафиксировать FBA migration contract для `rustok-pages`: pages остаётся владельцем page/menu runtime, но визуальный builder-домен потребляется как внешний reference-capability слой.
+- [~] Зафиксировать FBA migration contract для `rustok-pages`: pages остаётся владельцем page/menu runtime, но визуальный builder-домен потребляется как внешний reference-capability слой; provider-side unified handler seam уже готов для consumer adapters.
 - [x] Вынести в отдельный runbook процедуру включения/отключения builder-capabilities tenant-by-tenant без отката всего pages runtime (см. `crates/rustok-pages/docs/implementation-plan.md`, разделы `Tenant switch procedure` + `FBA execution backlog`).
 - [~] Свести capability readiness к единому FBA execution backlog для `pages` (metadata/provider contract, fallback semantics, observability correlation, CI fallback-gate).
 

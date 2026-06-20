@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "module": "workflow",
+  "status": "compile_free_runtime_smoke_locked",
+  "generated_from": "crates/rustok-workflow/contracts/workflow-fba-registry.json",
+  "runner": "scripts/verify/verify-workflow-fba.mjs",
+  "contract_version": "workflow.read_projection.v1",
+  "captured_at_utc": "2026-06-20T00:00:00Z",
+  "execution_mode": "compile_free_source_and_fixture_smoke",
+  "promotion_allowed": false,
+  "profiles": ["embedded_native", "graphql_compat"],
+  "native_entrypoints": [
+    {
+      "operation": "list_workflows",
+      "source": "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs",
+      "server_fn_endpoint": "workflow-admin/list-workflows",
+      "required_permission": "workflows:list",
+      "tenant_source": "TenantContext",
+      "service_call": "WorkflowService::list",
+      "projection_mapper": "map_workflow_summary"
+    },
+    {
+      "operation": "list_templates",
+      "source": "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs",
+      "server_fn_endpoint": "workflow-admin/templates",
+      "required_permission": null,
+      "tenant_source": null,
+      "service_call": "BUILTIN_TEMPLATES",
+      "projection_mapper": "WorkflowTemplateDto"
+    },
+    {
+      "operation": "create_from_template",
+      "source": "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs",
+      "server_fn_endpoint": "workflow-admin/create-from-template",
+      "required_permission": "workflows:create",
+      "tenant_source": "TenantContext",
+      "service_call": "WorkflowService::create_from_template",
+      "projection_mapper": "Uuid::to_string"
+    }
+  ],
+  "graphql_fallback_entrypoints": [
+    {
+      "operation": "list_workflows",
+      "source": "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+      "query_marker": "query Workflows",
+      "projection_field": "workflows"
+    },
+    {
+      "operation": "list_templates",
+      "source": "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+      "query_marker": "query WorkflowTemplates",
+      "projection_field": "workflowTemplates"
+    },
+    {
+      "operation": "create_from_template",
+      "source": "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs",
+      "query_marker": "mutation CreateWorkflowFromTemplate",
+      "projection_field": "createWorkflowFromTemplate"
+    }
+  ],
+  "facade_assertions": [
+    "native_first_before_graphql_fallback",
+    "host_token_preserved_for_graphql_fallback",
+    "host_tenant_slug_preserved_for_graphql_fallback",
+    "combined_native_and_graphql_error_visible_to_ui"
+  ],
+  "contract_assertions": [
+    "WorkflowReadPort requires deadline semantics",
+    "WorkflowReadPort rejects non UUID tenant ids",
+    "WorkflowError::NotFound maps to PortErrorKind::NotFound",
+    "Workflow DTOs remain serde serializable for native and GraphQL transports"
+  ],
+  "fallback_smoke": {
+    "status": "source_locked_live_runtime_pending",
+    "native_failure_source": "ServerFnError from native server function path",
+    "fallback_target": "GraphQL adapter",
+    "degraded_modes": ["show_cached_workflow_list", "disable_workflow_detail_open"]
+  },
+  "live_evidence_required_before_boundary_ready": [
+    "run native server-function list_workflows against a tenant-scoped backend",
+    "force native failure and observe GraphQL fallback success for workflow list",
+    "capture typed PortError mapping for not_found and validation errors",
+    "attach before/after evidence to this packet or a successor live packet"
+  ]
+}

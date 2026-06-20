@@ -59,17 +59,18 @@ impl MigrationSource for PageBuilderModule {
 mod tests {
     use super::*;
     use crate::dto::{
-        BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderContractMetadata,
-        PageBuilderErrorKind, PublishPageBuilderInput, PublishPageBuilderResult,
-        PAGE_BUILDER_ERROR_CATALOG, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+        BuilderCapabilityKind, BuilderNodePropertiesInput, PAGE_BUILDER_ERROR_CATALOG,
+        PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderCapabilityRequest,
+        PageBuilderCapabilityResponse, PageBuilderContractMetadata, PageBuilderErrorKind,
+        PublishPageBuilderInput, PublishPageBuilderResult,
     };
     use crate::health::{
         ProviderDegradationReason, ProviderHealthEvidence, ProviderHealthSnapshot,
         ProviderHealthState, ProviderSloObservations, ProviderSloStatus, ProviderSloThresholds,
     };
     use crate::rollout::{
-        ensure_capability, fallback_matrix, BuilderCapabilityFlags, BuilderRolloutError,
-        BuilderToggleProfile,
+        BuilderCapabilityFlags, BuilderRolloutError, BuilderToggleProfile, ensure_capability,
+        fallback_matrix,
     };
 
     #[test]
@@ -113,6 +114,11 @@ mod tests {
             published: true,
         };
         assert!(result.published);
+
+        let request = PageBuilderCapabilityRequest::Publish(input);
+        assert_eq!(request.capability(), BuilderCapabilityKind::Publish);
+        let response = PageBuilderCapabilityResponse::Publish(result);
+        assert_eq!(response.capability(), BuilderCapabilityKind::Publish);
         assert_eq!(
             BuilderCapabilityKind::Publish.as_str(),
             "publish",
