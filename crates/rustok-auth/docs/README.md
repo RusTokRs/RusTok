@@ -26,6 +26,21 @@ runtime RBAC surface `users:*`.
 - не публикует собственный UI и остаётся `ui_classification = "capability_only"`;
 - email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
 
+## Поверхность token lifecycle
+
+Канонический набор auth-owned token helpers:
+
+- access tokens: `encode_access_token`, `decode_access_token`;
+- OAuth access tokens: `encode_oauth_access_token`;
+- password reset tokens: `encode_password_reset_token`, `decode_password_reset_token`;
+- email verification tokens: `encode_email_verification_token`, `decode_email_verification_token`;
+- invite tokens: `encode_invite_token`, `decode_invite_token`.
+
+Special-purpose tokens содержат строгий claim `purpose`, используют общую JWT-валидацию
+`issuer`/`audience` и нормализуют email-subject в lowercase перед выпуском.
+Host-слой (`apps/server`) должен публиковать transport endpoints только через эти
+helpers, чтобы invite/reset/verification flows оставались auth-owned.
+
 ## Runtime-набор permissions
 
 Канонический набор permissions, принадлежащих auth-модулю:
