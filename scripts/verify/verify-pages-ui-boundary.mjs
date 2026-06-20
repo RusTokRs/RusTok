@@ -103,6 +103,7 @@ for (const marker of [
   "legacy_block_snapshot_label",
   "is_save_action_busy",
   "is_publish_action_disabled",
+  "admin_page_list_item_view",
 ]) {
   assertContains(adminCore, marker, `${files.adminCore}: expected admin core-owned helper ${marker}`);
 }
@@ -116,6 +117,7 @@ for (const marker of [
   "page_status_label",
   "selected_page_empty_state",
   "load_error_message",
+  "storefront_page_list_item_view",
 ]) {
   assertContains(storefrontCore, marker, `${files.storefrontCore}: expected storefront core-owned helper ${marker}`);
 }
@@ -127,14 +129,14 @@ assertContains(adminUi, "core::publish_state_view", `${files.adminUi}: admin UI 
 assertContains(adminUi, "core::legacy_block_snapshot_label", `${files.adminUi}: admin UI must use core-owned legacy block labels`);
 assertContains(adminUi, "core::is_save_action_busy", `${files.adminUi}: admin UI must use core-owned save busy state mapping`);
 assertContains(adminUi, "core::is_publish_action_disabled", `${files.adminUi}: admin UI must use core-owned publish disabled mapping`);
+assertContains(adminUi, "core::admin_page_list_item_view", `${files.adminUi}: admin UI must use core-owned table item view mapping`);
 assertContains(adminUi, "transport::fetch_pages", `${files.adminUi}: admin UI must call transport facade`);
 assertContains(storefrontUi, "use crate::core;", `${files.storefrontUi}: storefront UI must consume core layer`);
 assertContains(storefrontUi, "use crate::transport;", `${files.storefrontUi}: storefront UI must consume transport layer`);
 assertContains(storefrontUi, "core::selected_page_title", `${files.storefrontUi}: storefront UI must use core-owned selected page view helpers`);
-assertContains(storefrontUi, "core::page_link_href", `${files.storefrontUi}: storefront UI must use core-owned page links`);
-assertContains(storefrontUi, "core::page_status_label", `${files.storefrontUi}: storefront UI must use core-owned status labels`);
 assertContains(storefrontUi, "core::selected_page_empty_state", `${files.storefrontUi}: storefront UI must use core-owned selected-page empty state`);
 assertContains(storefrontUi, "core::load_error_message", `${files.storefrontUi}: storefront UI must use core-owned load error composition`);
+assertContains(storefrontUi, "core::storefront_page_list_item_view", `${files.storefrontUi}: storefront UI must use core-owned list item view mapping`);
 assertContains(storefrontUi, "transport::fetch_pages", `${files.storefrontUi}: storefront UI must call transport facade`);
 for (const [source, label] of [
   [adminUi, files.adminUi],

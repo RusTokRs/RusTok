@@ -1120,26 +1120,27 @@ fn PagesTable(
                             .into_iter()
                             .map(|page| {
                                 let page_id = page.id.clone();
-                                let is_editing =
-                                    editing_page_id.as_deref() == Some(page_id.as_str());
-                                let is_published = page.status.eq_ignore_ascii_case("published");
-                                let is_busy = busy_key
-                                    .as_deref()
-                                    .map(|key| key.ends_with(page_id.as_str()))
-                                    .unwrap_or(false);
+                                let item_view = core::admin_page_list_item_view(
+                                    &page,
+                                    editing_page_id.as_deref(),
+                                    busy_key.as_deref(),
+                                    t(locale.as_deref(), "pages.table.untitled", "Untitled page"),
+                                    "-".to_string(),
+                                );
+                                let is_editing = item_view.is_editing;
+                                let is_published = item_view.is_published;
+                                let is_busy = item_view.is_busy;
 
                                 view! {
                                     <tr class=("bg-primary/5", is_editing)>
                                         <td class="px-4 py-3">
                                             <div class="font-medium text-foreground">
-                                                {page.title.unwrap_or_else(|| {
-                                                    t(locale.as_deref(), "pages.table.untitled", "Untitled page")
-                                                })}
+                                                {item_view.title}
                                             </div>
                                             <div class="text-xs text-muted-foreground">{page.template}</div>
                                         </td>
                                         <td class="px-4 py-3 text-muted-foreground">
-                                            {page.slug.unwrap_or_else(|| "-".to_string())}
+                                            {item_view.slug}
                                         </td>
                                         <td class="px-4 py-3">
                                             <StatusBadge status=page.status.clone() />
