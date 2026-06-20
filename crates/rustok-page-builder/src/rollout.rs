@@ -172,6 +172,64 @@ impl BuilderCapabilityFlags {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuilderControlPlaneChangeSet {
+    pub tenant_id: String,
+    pub change_set_id: String,
+    pub requested_by: String,
+    pub approved_by: Vec<String>,
+    pub trace_id: String,
+    pub profile: BuilderToggleProfile,
+    pub flags_before: BuilderCapabilityFlags,
+    pub flags_after: BuilderCapabilityFlags,
+    pub rollback_decision: BuilderRollbackDecision,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuilderRollbackDecision {
+    Keep,
+    Rollback,
+}
+
+impl BuilderControlPlaneChangeSet {
+    pub fn dry_run(
+        tenant_id: impl Into<String>,
+        change_set_id: impl Into<String>,
+        requested_by: impl Into<String>,
+        approved_by: Vec<String>,
+        trace_id: impl Into<String>,
+        profile: BuilderToggleProfile,
+        flags_before: BuilderCapabilityFlags,
+    ) -> Result<Self, BuilderRolloutError> {
+        let flags_after = profile.flags();
+        flags_before.validate()?;
+        flags_after.validate()?;
+
+        Ok(Self {
+            tenant_id: tenant_id.into(),
+            change_set_id: change_set_id.into(),
+            requested_by: requested_by.into(),
+            approved_by,
+            trace_id: trace_id.into(),
+            profile,
+            flags_before,
+            flags_after,
+            rollback_decision: BuilderRollbackDecision::Keep,
+        })
+    }
+
+    pub fn atomic_flag_keys() -> [&'static str; 5] {
+        [
+            "builder.enabled",
+            "builder.preview.enabled",
+            "builder.properties.enabled",
+            "builder.publish.enabled",
+            "builder.legacy_bridge_readonly",
+        ]
+    }
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum BuilderRolloutError {
     #[error("capability disabled: {0}")]

@@ -36,6 +36,7 @@
 - [Runtime-контракт `rustok-page-builder`](../crates/rustok-page-builder/docs/README.md)
 - [Machine-readable FBA registry page-builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
 - [Machine-readable Page Builder Wave evidence template](../crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
+- [Machine-readable Page Builder control-plane dry-run contract](../crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
 - [Synthetic pages Wave 0 dry-run evidence packet](../crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
 - [Индекс документации по модулям](./modules/_index.md)
 - [Реестр implementation plans](./modules/implementation-plans-registry.md)
