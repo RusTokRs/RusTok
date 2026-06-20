@@ -1,6 +1,7 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod ports;
 pub mod services;
 
 mod settings_schema;
@@ -9,6 +10,7 @@ pub use dto::{
     CreateTenantInput, TenantModuleResponse, TenantResponse, ToggleModuleInput, UpdateTenantInput,
 };
 pub use error::TenantError;
+pub use ports::*;
 pub use services::TenantService;
 
 use async_trait::async_trait;

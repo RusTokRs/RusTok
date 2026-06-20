@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "module": "tenant",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
+  "runner": "scripts/verify/verify-tenant-fba.mjs",
+  "contract_version": "tenant.read_projection.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "read_tenant",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_tenant_degraded_mode_preserved"]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned",
+    "profiles": ["embedded_native"],
+    "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"]
+  }
+}
