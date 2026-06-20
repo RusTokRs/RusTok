@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "module": "email",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-email/contracts/email-fba-registry.json",
+  "runner": "scripts/verify/verify-email-fba.mjs",
+  "contract_version": "email.delivery.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "send_transactional_email",
+      "execution_status": "runtime_cases_planned_uncompiled",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_preserved", "disabled_provider_noop_preserved", "template_error_not_retryable"]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned_uncompiled",
+    "profiles": ["embedded_disabled_noop", "embedded_smtp"],
+    "degraded_modes": ["skip_disabled_provider", "surface_delivery_retry_needed"]
+  }
+}
