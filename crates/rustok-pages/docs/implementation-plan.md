@@ -34,6 +34,7 @@
 - Last updated at (UTC): 2026-06-14T18:00:00Z
 - Last updated at (UTC): 2026-06-15T00:00:00Z
 - Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T01:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
@@ -49,6 +50,7 @@
 - Latest FFA maintenance update: storefront selected-page empty-state DTO/helper (`selected_page_empty_state`) вынесен в `core`, а `verify-pages-ui-boundary.mjs` и fixture suite закрепляют, что Leptos adapter потребляет core-owned empty-state policy без прямого владения fallback state.
 - Latest Wave 1 hold update: `verify-page-builder-wave1-readiness-draft.mjs` теперь закрепляет draft-only invariants для pending tenant, draft change-set namespace, pending metric markers, pending approvals, hold rollback reason и отсутствие waivers; package script `npm run verify:page-builder:wave1-readiness-draft` добавлен без Cargo-компиляции.
 - Latest observability gate update: `crates/rustok-page-builder/contracts/page-builder-correlation-contract.json` и `verify-page-builder-correlation-evidence.mjs` фиксируют no-compile correlation chain `builder write -> pages publish -> storefront read` для Wave 0/Wave 1 packets и source markers в pages publish/storefront read paths.
+- Latest FFA maintenance update: admin table item state/fallback mapping (`admin_page_list_item_view`) и storefront published list item mapping (`storefront_page_list_item_view`) вынесены в `core`, а package-level `verify:pages:ui-boundary` scripts восстановлены после JSON drift без Cargo-компиляции.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -318,6 +320,8 @@ Rollback target: переключение tenant flags назад должно �
 - [x] Slice 20: storefront published-page link/status presentation moved to core (`page_link_href`, `page_status_label`).
 - [x] Slice 21: admin save/publish busy-state helpers moved to core (`is_save_action_busy`, `is_publish_action_disabled`).
 - [x] Slice 22: storefront load-error composition moved to core (`load_error_message`).
+- [x] Slice 23: admin table row fallback/state view moved to core (`admin_page_list_item_view`).
+- [x] Slice 24: storefront published list item view moved to core (`storefront_page_list_item_view`).
 
 
 ## Phase B pilot closure (rustok-pages)

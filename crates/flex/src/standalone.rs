@@ -10,7 +10,8 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use rustok_core::field_schema::{
-    is_valid_field_key, CustomFieldsSchema, FieldDefinition, FlexError,
+    is_valid_field_key, is_valid_locale_key, CustomFieldsSchema, FieldDefinition, FieldType,
+    FlexError,
 };
 use rustok_events::EventEnvelope;
 
@@ -400,44 +401,23 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
 }
 
 fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexError> {
-    if definition.label.is_empty() {
-        return Err(FlexError::InvalidFieldKey(format!(
-            "field '{}' must have at least one localized label",
-            definition.field_key
-        )));
-    }
-
-    for (locale, label) in &definition.label {
-        if locale.trim().is_empty() || label.trim().is_empty() {
-            return Err(FlexError::InvalidFieldKey(format!(
-                "field '{}' labels must have non-empty locale keys and values",
-                definition.field_key
-            )));
-        }
-    }
+    validate_localized_text_map(&definition.field_key, "labels", &definition.label, true)?;
 
     if let Some(description) = &definition.description {
-        for (locale, value) in description {
-            if locale.trim().is_empty() || value.trim().is_empty() {
-                return Err(FlexError::InvalidFieldKey(format!(
-                    "field '{}' descriptions must have non-empty locale keys and values",
-                    definition.field_key
-                )));
-            }
-        }
+        validate_localized_text_map(&definition.field_key, "descriptions", description, false)?;
     }
 
     if let Some(validation) = &definition.validation {
         if let Some(error_message) = &validation.error_message {
-            for (locale, value) in error_message {
-                if locale.trim().is_empty() || value.trim().is_empty() {
-                    return Err(FlexError::InvalidFieldKey(format!(
-                        "field '{}' validation error messages must have non-empty locale keys and values",
-                        definition.field_key
-                    )));
-                }
-            }
+            validate_localized_text_map(
+                &definition.field_key,
+                "validation error messages",
+                error_message,
+                false,
+            )?;
         }
+
+        validate_numeric_rule_shape(definition, validation)?;
 
         if let (Some(min), Some(max)) = (validation.min, validation.max) {
             if min > max {
@@ -485,12 +465,7 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
 
             let mut option_values = std::collections::HashSet::new();
             for option in options {
-                if option.value.trim().is_empty() {
-                    return Err(FlexError::InvalidFieldKey(format!(
-                        "field '{}' select option values must not be empty",
-                        definition.field_key
-                    )));
-                }
+                validate_identifier(&option.value, "select option value in fields_config", 128)?;
 
                 if !option_values.insert(option.value.as_str()) {
                     return Err(FlexError::InvalidFieldKey(format!(
@@ -499,17 +474,12 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
                     )));
                 }
 
-                if option.label.is_empty()
-                    || option
-                        .label
-                        .iter()
-                        .any(|(locale, label)| locale.trim().is_empty() || label.trim().is_empty())
-                {
-                    return Err(FlexError::InvalidFieldKey(format!(
-                        "field '{}' select option labels must not be empty",
-                        definition.field_key
-                    )));
-                }
+                validate_localized_text_map(
+                    &definition.field_key,
+                    "select option labels",
+                    &option.label,
+                    true,
+                )?;
             }
         } else if validation.options.is_some() {
             return Err(FlexError::InvalidFieldKey(format!(
@@ -532,6 +502,91 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
                 "field '{}' default value is invalid: {}",
                 definition.field_key, error.message
             )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_localized_text_map(
+    field_key: &str,
+    label: &str,
+    values: &std::collections::HashMap<String, String>,
+    require_non_empty_map: bool,
+) -> Result<(), FlexError> {
+    if require_non_empty_map && values.is_empty() {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "field '{field_key}' must have at least one localized {label}"
+        )));
+    }
+
+    if !require_non_empty_map && values.is_empty() {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "field '{field_key}' {label} must not be an empty localized map"
+        )));
+    }
+
+    for (locale, value) in values {
+        if !is_valid_locale_key(locale) || value.trim().is_empty() {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{field_key}' {label} must have normalized locale keys and non-empty values"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_numeric_rule_shape(
+    definition: &FieldDefinition,
+    validation: &rustok_core::field_schema::ValidationRule,
+) -> Result<(), FlexError> {
+    let has_min_max = validation.min.is_some() || validation.max.is_some();
+    if !has_min_max {
+        return Ok(());
+    }
+
+    if !matches!(
+        definition.field_type,
+        FieldType::Text
+            | FieldType::Textarea
+            | FieldType::Phone
+            | FieldType::Url
+            | FieldType::Email
+            | FieldType::Integer
+            | FieldType::Decimal
+            | FieldType::MultiSelect
+    ) {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "field '{}' type does not support min/max validation",
+            definition.field_key
+        )));
+    }
+
+    for (name, value) in [("min", validation.min), ("max", validation.max)] {
+        if let Some(value) = value {
+            if !value.is_finite() {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' validation {name} must be finite",
+                    definition.field_key
+                )));
+            }
+
+            if matches!(
+                definition.field_type,
+                FieldType::Text
+                    | FieldType::Textarea
+                    | FieldType::Phone
+                    | FieldType::Url
+                    | FieldType::Email
+                    | FieldType::MultiSelect
+            ) && value < 0.0
+            {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' validation {name} must not be negative",
+                    definition.field_key
+                )));
+            }
         }
     }
 
@@ -971,6 +1026,101 @@ mod tests {
             is_active: None,
         };
         assert!(validate_create_schema_command(&empty_error_message).is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_non_normalized_localized_maps() {
+        let invalid_label_locale = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                label: HashMap::from([("EN".to_string(), "Label".to_string())]),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&invalid_label_locale).is_err());
+
+        let empty_description_map = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                description: Some(HashMap::new()),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&empty_description_map).is_err());
+
+        let invalid_option_label_locale = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                field_type: FieldType::Select,
+                validation: Some(ValidationRule {
+                    options: Some(vec![SelectOption {
+                        value: "featured".to_string(),
+                        label: HashMap::from([("ru_RU".to_string(), "Избранное".to_string())]),
+                    }]),
+                    ..Default::default()
+                }),
+                ..sample_definition("status")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&invalid_option_label_locale).is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_invalid_min_max_and_option_value_shape() {
+        let unsupported_min = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                field_type: FieldType::Boolean,
+                validation: Some(ValidationRule {
+                    min: Some(1.0),
+                    ..Default::default()
+                }),
+                ..sample_definition("is_featured")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&unsupported_min).is_err());
+
+        let negative_text_min = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                validation: Some(ValidationRule {
+                    min: Some(-1.0),
+                    ..Default::default()
+                }),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&negative_text_min).is_err());
+
+        let invalid_option_value = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![select_definition("status", &["ready now"])],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&invalid_option_value).is_err());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::model::{CreatePageDraft, PageBlock, PageDetail};
+use crate::model::{CreatePageDraft, PageBlock, PageDetail, PageListItem};
 use rustok_api::{normalize_ui_text, parse_ui_csv, WritePathIssue, WritePathIssueKind};
 use serde_json::{json, Value};
 
@@ -539,6 +539,33 @@ pub fn label_with_id(template: &str, id: &str) -> String {
     template.replace("{id}", id)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminPageListItemView {
+    pub title: String,
+    pub slug: String,
+    pub is_editing: bool,
+    pub is_published: bool,
+    pub is_busy: bool,
+}
+
+pub fn admin_page_list_item_view(
+    page: &PageListItem,
+    editing_page_id: Option<&str>,
+    busy_key: Option<&str>,
+    untitled_title: String,
+    missing_slug: String,
+) -> AdminPageListItemView {
+    AdminPageListItemView {
+        title: page.title.clone().unwrap_or(untitled_title),
+        slug: page.slug.clone().unwrap_or(missing_slug),
+        is_editing: editing_page_id == Some(page.id.as_str()),
+        is_published: page.status.eq_ignore_ascii_case("published"),
+        is_busy: busy_key
+            .map(|key| key.ends_with(page.id.as_str()))
+            .unwrap_or(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -725,6 +752,32 @@ mod tests {
     #[test]
     fn count_label_replaces_placeholder() {
         assert_eq!(count_label("{count} page(s)", 7), "7 page(s)");
+    }
+
+    #[test]
+    fn admin_page_list_item_view_applies_core_owned_table_state() {
+        let page = PageListItem {
+            id: "page_1".to_string(),
+            status: "Published".to_string(),
+            template: "default".to_string(),
+            title: None,
+            slug: None,
+            updated_at: "2026-06-20T00:00:00Z".to_string(),
+        };
+
+        let view = admin_page_list_item_view(
+            &page,
+            Some("page_1"),
+            Some("publish:page_1"),
+            "Untitled page".to_string(),
+            "-".to_string(),
+        );
+
+        assert_eq!(view.title, "Untitled page");
+        assert_eq!(view.slug, "-");
+        assert!(view.is_editing);
+        assert!(view.is_published);
+        assert!(view.is_busy);
     }
 
     #[test]
