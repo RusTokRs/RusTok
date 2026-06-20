@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{FulfillmentError, FulfillmentResult};
@@ -101,6 +103,92 @@ impl ExternalFulfillmentProviderRegistration {
         }
 
         Ok(())
+    }
+}
+
+/// In-memory provider registry assembled by host composition before fulfillment runtime.
+///
+/// The registry keeps carrier lookup explicit and validates external registrations
+/// before an adapter can become visible to orchestration code. It does not persist
+/// lifecycle state and does not choose degraded fulfillment policy by itself.
+#[derive(Clone, Default)]
+pub struct FulfillmentProviderRegistry {
+    providers: HashMap<String, Arc<dyn FulfillmentProvider>>,
+    registrations: HashMap<String, ExternalFulfillmentProviderRegistration>,
+}
+
+impl FulfillmentProviderRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_manual_provider() -> Self {
+        let mut registry = Self::new();
+        registry.register_builtin(Arc::new(ManualFulfillmentProvider));
+        registry
+    }
+
+    pub fn register_builtin(&mut self, provider: Arc<dyn FulfillmentProvider>) {
+        let descriptor = provider.descriptor();
+        self.providers
+            .insert(descriptor.provider_id.clone(), provider);
+        self.registrations.insert(
+            descriptor.provider_id.clone(),
+            ExternalFulfillmentProviderRegistration {
+                descriptor,
+                health: FulfillmentProviderHealth::Ready,
+                degraded_mode: None,
+            },
+        );
+    }
+
+    pub fn register_external(
+        &mut self,
+        expected_provider_id: &str,
+        provider: Arc<dyn FulfillmentProvider>,
+        registration: ExternalFulfillmentProviderRegistration,
+    ) -> FulfillmentResult<()> {
+        registration.validate(expected_provider_id)?;
+        let descriptor = provider.descriptor();
+        if descriptor.provider_id != registration.descriptor.provider_id {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider adapter id `{}` does not match descriptor id `{}`",
+                descriptor.provider_id, registration.descriptor.provider_id
+            )));
+        }
+        if self.providers.contains_key(expected_provider_id) {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider `{}` is already registered",
+                expected_provider_id
+            )));
+        }
+
+        self.providers
+            .insert(expected_provider_id.to_string(), provider);
+        self.registrations
+            .insert(expected_provider_id.to_string(), registration);
+        Ok(())
+    }
+
+    pub fn provider(&self, provider_id: &str) -> Option<Arc<dyn FulfillmentProvider>> {
+        self.providers.get(provider_id).cloned()
+    }
+
+    pub fn registration(
+        &self,
+        provider_id: &str,
+    ) -> Option<&ExternalFulfillmentProviderRegistration> {
+        self.registrations.get(provider_id)
+    }
+
+    pub fn descriptors(&self) -> Vec<FulfillmentProviderDescriptor> {
+        let mut descriptors = self
+            .registrations
+            .values()
+            .map(|registration| registration.descriptor.clone())
+            .collect::<Vec<_>>();
+        descriptors.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
+        descriptors
     }
 }
 

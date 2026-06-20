@@ -91,7 +91,14 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, providerSource } = 
   write(
     'crates/rustok-payment/src/providers.rs',
     providerSource ??
-      `pub enum PaymentProviderHealth { Ready, Degraded, Unavailable }\nPaymentProviderHealth::Unavailable\npub struct PaymentProviderDegradedMode { reason: String }\npub struct ExternalPaymentProviderRegistration { descriptor: PaymentProviderDescriptor }\nimpl ExternalPaymentProviderRegistration { pub fn validate(&self, expected_provider_id: &str) { self.descriptor.provider_id; self.degraded_mode.is_none(); } }\n`,
+      `pub enum PaymentProviderHealth { Ready, Degraded, Unavailable }
+PaymentProviderHealth::Unavailable
+pub struct PaymentProviderDegradedMode { reason: String }
+pub struct ExternalPaymentProviderRegistration { descriptor: PaymentProviderDescriptor }
+pub struct PaymentProviderRegistry;
+impl PaymentProviderRegistry { pub fn register_external(&mut self, expected_provider_id: &str) { self.providers.contains_key(expected_provider_id); descriptor.provider_id != registration.descriptor.provider_id; } }
+impl ExternalPaymentProviderRegistration { pub fn validate(&self, expected_provider_id: &str) { self.descriptor.provider_id; self.degraded_mode.is_none(); } }
+`,
   );
   return pathToFileURL(`${rootPath}/`);
 };

@@ -130,12 +130,27 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     const healthType = module === 'payment' ? 'PaymentProviderHealth' : 'FulfillmentProviderHealth';
     const degradedType =
       module === 'payment' ? 'PaymentProviderDegradedMode' : 'FulfillmentProviderDegradedMode';
-    for (const marker of [registrationType, healthType, degradedType, 'pub fn validate(&self, expected_provider_id: &str)']) {
+    const registryType = module === 'payment' ? 'PaymentProviderRegistry' : 'FulfillmentProviderRegistry';
+    for (const marker of [
+      registrationType,
+      healthType,
+      degradedType,
+      registryType,
+      'pub fn validate(&self, expected_provider_id: &str)',
+      'pub fn register_external(',
+    ]) {
       if (!providerSource.includes(marker)) {
         fail(`${module} provider SPI source lacks external registration marker ${marker}`);
       }
     }
-    for (const marker of ['descriptor.provider_id', 'degraded_mode.is_none()', 'PaymentProviderHealth::Unavailable', 'FulfillmentProviderHealth::Unavailable']) {
+    for (const marker of [
+      'descriptor.provider_id',
+      'descriptor.provider_id != registration.descriptor.provider_id',
+      'providers.contains_key(expected_provider_id)',
+      'degraded_mode.is_none()',
+      'PaymentProviderHealth::Unavailable',
+      'FulfillmentProviderHealth::Unavailable',
+    ]) {
       if (marker.includes(module === 'payment' ? 'Fulfillment' : 'Payment')) continue;
       if (!providerSource.includes(marker)) {
         fail(`${module} provider SPI source lacks registration guard ${marker}`);
