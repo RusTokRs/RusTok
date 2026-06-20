@@ -12,9 +12,11 @@ function sameSet(actual, expected, label) {
 
 const registryPath = 'crates/rustok-ai-media/contracts/ai-media-fba-registry.json';
 const evidencePath = 'crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json';
+const fallbackSmokePath = 'crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json';
 const providerPath = 'crates/rustok-media/contracts/media-fba-registry.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
+const fallbackSmoke = json(fallbackSmokePath);
 const provider = json(providerPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
@@ -43,12 +45,16 @@ if (evidence.generated_from !== registryPath || evidence.status !== registry.con
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
+if (fallbackSmoke.generated_from !== registryPath || fallbackSmoke.status !== 'source_smoke_locked') fail('fallback smoke header drift');
+if (fallbackSmoke.profile !== registry.contract_tests.fallback_smoke.profiles[0]) fail('fallback smoke profile drift');
+if (fallbackSmoke.degraded_mode !== registry.contract_tests.fallback_smoke.degraded_modes[0]) fail('fallback smoke degraded mode drift');
+sameSet(fallbackSmoke.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'fallback smoke cases');
 
 const plan = read('crates/rustok-ai-media/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'ai-media-fba-registry.json', 'MediaAssetReadPort', 'ai-media-consumer-static-matrix.json'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'ai-media-fba-registry.json', 'MediaAssetReadPort', 'ai-media-consumer-static-matrix.json', 'ai-media-runtime-fallback-smoke.json'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `rustok-ai-media` |', 'crates/rustok-ai-media/contracts/ai-media-fba-registry.json'], 'central registry');
+hasAll(central, ['| `rustok-ai-media` |', 'crates/rustok-ai-media/contracts/ai-media-fba-registry.json', 'crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
-hasAll(unified, ['`ai-media`', 'MediaAssetReadPort', 'ai-media-fba-registry.json'], 'unified plan');
+hasAll(unified, ['`ai-media`', 'MediaAssetReadPort', 'ai-media-fba-registry.json', 'ai-media-runtime-fallback-smoke.json'], 'unified plan');
 
 console.log('[verify-ai-media-fba] ai-media FBA media consumer support metadata and static evidence are consistent');

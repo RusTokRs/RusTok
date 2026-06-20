@@ -73,7 +73,9 @@
     "test:verify:rbac:admin-boundary": "node scripts/verify/verify-rbac-admin-boundary.test.mjs",
     "verify:media:admin-boundary": "node scripts/verify/verify-media-admin-boundary.mjs",
     "verify:commerce:storefront-transport-handoff": "node scripts/verify/verify-commerce-storefront-transport-handoff.mjs",
-    "verify:seo:admin-boundary": "node scripts/verify/verify-seo-admin-boundary.mjs"
+    "verify:seo:admin-boundary": "node scripts/verify/verify-seo-admin-boundary.mjs",
+    "verify:ai-media:fba": "node scripts/verify/verify-ai-media-fba.mjs",
+    "verify:ai-alloy:policy": "node scripts/verify/verify-ai-alloy-policy.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
