@@ -69,6 +69,15 @@ pub struct FulfillmentProviderDegradedMode {
     pub fallback_profile: String,
 }
 
+/// Runtime decision for fulfillment orchestration before a provider side effect is invoked.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FulfillmentProviderRuntimeMode {
+    pub provider_id: String,
+    pub operation: String,
+    pub can_execute: bool,
+    pub degraded_mode: Option<FulfillmentProviderDegradedMode>,
+}
+
 /// External carrier registration contract. The adapter remains side-effect-only:
 /// lifecycle persistence and replay/idempotency decisions stay in `FulfillmentService`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -189,6 +198,56 @@ impl FulfillmentProviderRegistry {
             .collect::<Vec<_>>();
         descriptors.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
         descriptors
+    }
+
+    /// Resolve runtime execution mode for an operation without invoking the adapter.
+    ///
+    /// This is intentionally side-effect-free: callers use it to map unavailable or
+    /// degraded carrier providers into explicit fallback/degraded fulfillment modes,
+    /// while lifecycle persistence remains in `FulfillmentService`.
+    pub fn runtime_mode(
+        &self,
+        provider_id: &str,
+        operation: &str,
+    ) -> FulfillmentResult<FulfillmentProviderRuntimeMode> {
+        let registration = self.registrations.get(provider_id).ok_or_else(|| {
+            FulfillmentError::Validation(format!(
+                "fulfillment provider `{}` is not registered",
+                provider_id
+            ))
+        })?;
+        let supported = match operation {
+            "rate_quote" => registration.descriptor.capabilities.rate_quote,
+            "create_label" => registration.descriptor.capabilities.create_label,
+            "ship" => registration.descriptor.capabilities.ship,
+            "cancel" => registration.descriptor.capabilities.cancel,
+            "tracking_webhook_ingress" => {
+                registration
+                    .descriptor
+                    .capabilities
+                    .tracking_webhook_ingress
+            }
+            other => {
+                return Err(FulfillmentError::Validation(format!(
+                    "unknown fulfillment provider operation `{}`",
+                    other
+                )))
+            }
+        };
+
+        if !supported {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider `{}` does not support `{}`",
+                provider_id, operation
+            )));
+        }
+
+        Ok(FulfillmentProviderRuntimeMode {
+            provider_id: provider_id.to_string(),
+            operation: operation.to_string(),
+            can_execute: registration.health != FulfillmentProviderHealth::Unavailable,
+            degraded_mode: registration.degraded_mode.clone(),
+        })
     }
 }
 

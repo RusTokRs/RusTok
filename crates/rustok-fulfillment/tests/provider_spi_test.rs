@@ -5,8 +5,9 @@ use rustok_fulfillment::providers::{
     ExternalFulfillmentProviderRegistration, FulfillmentProvider, FulfillmentProviderCapabilities,
     FulfillmentProviderDegradedMode, FulfillmentProviderDescriptor, FulfillmentProviderHealth,
     FulfillmentProviderOperationRequest, FulfillmentProviderOperationResult,
-    FulfillmentProviderWebhookRequest, FulfillmentProviderWebhookResult, FulfillmentRateQuote,
-    FulfillmentRateQuoteRequest, ManualFulfillmentProvider,
+    FulfillmentProviderRegistry, FulfillmentProviderWebhookRequest,
+    FulfillmentProviderWebhookResult, FulfillmentRateQuote, FulfillmentRateQuoteRequest,
+    ManualFulfillmentProvider,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -228,4 +229,55 @@ fn test_external_fulfillment_provider_registration_contract() {
 
     assert!(registration.validate("mock-carrier").is_ok());
     assert!(registration.validate("other-carrier").is_err());
+}
+
+#[test]
+fn test_fulfillment_provider_runtime_mode_maps_degraded_and_capability_guards() {
+    let mut registry = FulfillmentProviderRegistry::with_manual_provider();
+    let descriptor = FulfillmentProviderDescriptor {
+        provider_id: "slow-carrier".to_string(),
+        display_name: "Slow Carrier".to_string(),
+        capabilities: FulfillmentProviderCapabilities {
+            rate_quote: true,
+            create_label: true,
+            ship: true,
+            cancel: false,
+            tracking_webhook_ingress: true,
+        },
+        default_for_manual_options: false,
+    };
+    let provider = MockFulfillmentProvider {
+        descriptor: descriptor.clone(),
+        should_fail: false,
+        error_message: String::new(),
+    };
+    registry
+        .register_external(
+            "slow-carrier",
+            std::sync::Arc::new(provider),
+            ExternalFulfillmentProviderRegistration {
+                descriptor,
+                health: FulfillmentProviderHealth::Degraded,
+                degraded_mode: Some(FulfillmentProviderDegradedMode {
+                    reason: "carrier_rate_limit".to_string(),
+                    fallback_profile: "manual_shipping".to_string(),
+                }),
+            },
+        )
+        .unwrap();
+
+    let mode = registry
+        .runtime_mode("slow-carrier", "create_label")
+        .unwrap();
+    assert!(mode.can_execute);
+    assert_eq!(
+        mode.degraded_mode.unwrap().fallback_profile,
+        "manual_shipping"
+    );
+
+    assert!(registry.runtime_mode("slow-carrier", "cancel").is_err());
+    assert!(registry.runtime_mode("slow-carrier", "unknown").is_err());
+    assert!(registry
+        .runtime_mode("missing-carrier", "create_label")
+        .is_err());
 }

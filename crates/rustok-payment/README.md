@@ -10,7 +10,8 @@
 - Own refund record storage and basic refund lifecycle for the default manual flow.
 - Prepare a stable payment boundary for checkout orchestration.
 - Keep payment state transitions isolated from the ecommerce umbrella.
-- Provide a built-in manual/default payment flow for the current stage, without external payment providers.
+- Provide a built-in manual/default payment flow for the current stage.
+- Expose a payment-owned provider SPI registry with external registration validation and side-effect-free runtime-mode guardrails before adapter invocation.
 
 ## Interactions
 
@@ -22,6 +23,7 @@
 
 - `PaymentModule`
 - `PaymentService`
+- `providers::*`
 - `dto::*`
 - `entities::*`
 
