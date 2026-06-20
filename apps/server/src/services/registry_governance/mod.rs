@@ -412,7 +412,10 @@ pub mod releases;
 #[cfg(test)]
 mod tests;
 
-impl RegistryGovernanceService {
+pub use publishing::request_status_label;
+pub use releases::release_status_label;
+pub use validation::validation_stage_status_label;
+
 impl RegistryGovernanceService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db, storage: None }
@@ -975,6 +978,4 @@ fn normalize_required_reason(reason: &str, action_label: &str) -> anyhow::Result
         )));
     }
     Ok(normalized.to_string())
-}
-
 }
