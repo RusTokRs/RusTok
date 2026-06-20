@@ -51,6 +51,9 @@ pub struct BlogPostAdminEditorFormCopyLabels;
 pub fn blog_post_admin_editor_form_copy_view() {}
 pub struct BlogPostAdminTitleInputViewModel;
 pub fn blog_post_admin_title_input_view() {}
+pub struct BlogPostAdminBodyFormatSelectViewModel;
+pub struct BlogPostAdminBodyFormatOptionViewModel;
+pub fn blog_post_admin_body_format_select_view() {}
 pub struct BlogPostAdminStatusBadgeViewModel;
 pub fn blog_post_admin_status_badge_view() {}
 pub struct BlogPostAdminEditBannerViewModel;
@@ -101,6 +104,7 @@ pub fn BlogAdmin() {
     let _status_badge = core::blog_post_admin_status_badge_view;
     let _form_copy = core::blog_post_admin_editor_form_copy_view;
     let _title_input = core::blog_post_admin_title_input_view;
+    let _body_format = core::blog_post_admin_body_format_select_view;
     let _posts_table = core::blog_post_admin_posts_table_view_from_items;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;

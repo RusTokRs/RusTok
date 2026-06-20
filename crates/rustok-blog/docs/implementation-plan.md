@@ -7,8 +7,8 @@ packages и module metadata синхронизированы.
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_title_input_autoslug
-- Last checkpoint: FFA slice #98 moved admin title-input autoslug decision into Leptos-free `BlogPostAdminTitleInputViewModel` / `blog_post_admin_title_input_view`, so the Leptos adapter only applies prepared title and optional slug updates from core without owning the autoslug policy.
+- Current phase: ffa_admin_body_format_select
+- Last checkpoint: FFA slice #99 moved admin body-format select options into Leptos-free `BlogPostAdminBodyFormatSelectViewModel` / `blog_post_admin_body_format_select_view`, so the Leptos adapter renders prepared option payloads without owning body-format option policy.
 - Previous checkpoint: FBA comments consumer source-smoke slice added `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`, wired `npm run verify:blog:fba`, and extended `scripts/verify/verify-blog-fba.mjs` to verify embedded-native source markers plus typed comments error mappings for `hide_comment_form` / `show_cached_thread_snapshot` degraded modes without running compilation.
 - Next step: Continue small admin render/input fragments without changing the dual-path contract, or add real runtime contract execution against the comments port when compilation/runtime checks are allowed.
 - Open blockers: None.
@@ -16,7 +16,7 @@ packages и module metadata синхронизированы.
   1. Продолжать one-task-per-iteration: один helper/use-case -> storefront/admin -> docs double-check.
   2. Не менять dual-path контракт (`native #[server]` + GraphQL fallback) при FFA-декомпозиции.
   3. После каждого slice обновлять parity evidence (`docs/verification/ffa-ui-parity-checklist.md`).
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T01:00:00Z
 
 ## FFA/FBA status
 
@@ -224,11 +224,12 @@ packages и module metadata синхронизированы.
 - [x] Slice 96: admin posts-table header, empty-state and row normalization moved into Leptos-free `BlogPostAdminPostsTableViewModel` / `BlogPostAdminPostsTableLabels` / `blog_post_admin_posts_table_view_from_items`; the Leptos adapter now builds localized labels once and renders prepared rows without calling row view-model construction inside the render loop. Fast guardrail markers and fixture tests were extended for the posts-table ownership rule. Evidence: `node --test scripts/verify/verify-blog-admin-boundary.test.mjs`; `node scripts/verify/verify-blog-admin-boundary.mjs`; no Cargo compilation was run by request.
 - [x] Slice 97: admin editor form copy envelope moved into Leptos-free `BlogPostAdminEditorFormCopyViewModel` / `BlogPostAdminEditorFormCopyLabels` / `blog_post_admin_editor_form_copy_view`; the Leptos adapter now resolves localized form labels/placeholders once and renders the prepared copy payload without inline field-label policy in the form tree. Fast guardrail markers and fixture tests were extended for the editor-form-copy ownership rule. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; `node --test scripts/verify/verify-blog-admin-boundary.test.mjs`; `cargo fmt --package rustok-blog-admin`; no Cargo compilation was run by request.
 - [x] Slice 98: admin title-input autoslug decision moved into Leptos-free `BlogPostAdminTitleInputViewModel` / `blog_post_admin_title_input_view`; the Leptos adapter now passes raw title input and current slug to core, then applies only the prepared title and optional slug update. Fast guardrail markers and fixture tests were extended for the title-input ownership rule. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; `node --test scripts/verify/verify-blog-admin-boundary.test.mjs`; `cargo fmt --package rustok-blog-admin`; no Cargo compilation was run by request.
+- [x] Slice 99: admin body-format select option policy moved into Leptos-free `BlogPostAdminBodyFormatSelectViewModel` / `BlogPostAdminBodyFormatOptionViewModel` / `blog_post_admin_body_format_select_view`; the Leptos adapter now renders prepared `markdown` / `rt_json_v1` options and selected state without owning format-option policy. Fast guardrail markers and fixture tests were extended for the body-format ownership rule. Evidence: `node scripts/verify/verify-blog-admin-boundary.mjs`; `node --test scripts/verify/verify-blog-admin-boundary.test.mjs`; `cargo fmt --package rustok-blog-admin`; no Cargo compilation was run by request.
 - [x] FBA source-smoke slice: blog comments consumer fallback evidence added `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`, `npm run verify:blog:fba` is now wired, and the verifier checks `CommentService` embedded-native source markers plus typed `rustok_comments::CommentsError` mappings for `hide_comment_form` and `show_cached_thread_snapshot` degraded modes without compiling. Evidence: `npm run verify:blog:fba`; no Cargo compilation was run by request.
 - [x] Sync admin surface for the same helper family where applicable and attach parity evidence.
 - [ ] `cargo xtask module validate blog` / `cargo xtask module test blog` rerun after next slice touching runtime contract.
 
 ## Double documentation verification (current slice)
 
-- [x] Pass #1 (code/docs consistency): blog comments FBA source-smoke evidence, verifier wiring, storefront helper extraction, `slug` route/query key contract, explicit native/GraphQL adapter split, core-owned fetch request, admin save command, admin editor form-state mapping, admin table-row view-model/action presentation mapping, admin action command preparation, admin load/transport issue policy helpers, edit-banner presentation view-model, posts-load normalization, status-badge view-model, memoized form/issue view-model consumption, posts-table envelope, editor-form-copy envelope, and title-input autoslug envelope reflected in tracker and local docs.
-- [x] Pass #2 (cleanup stale wording): stale bootstrap-only wording remains absent; execution checkpoint synchronized with current title-input FFA slice and phase B FFA context.
+- [x] Pass #1 (code/docs consistency): blog comments FBA source-smoke evidence, verifier wiring, storefront helper extraction, `slug` route/query key contract, explicit native/GraphQL adapter split, core-owned fetch request, admin save command, admin editor form-state mapping, admin table-row view-model/action presentation mapping, admin action command preparation, admin load/transport issue policy helpers, edit-banner presentation view-model, posts-load normalization, status-badge view-model, memoized form/issue view-model consumption, posts-table envelope, editor-form-copy envelope, and title-input autoslug envelope, and body-format select option envelope reflected in tracker and local docs.
+- [x] Pass #2 (cleanup stale wording): stale bootstrap-only wording remains absent; execution checkpoint synchronized with current body-format select FFA slice and phase B FFA context.

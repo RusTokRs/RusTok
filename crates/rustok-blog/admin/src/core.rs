@@ -726,6 +726,34 @@ pub fn blog_post_admin_posts_load_view_from_list(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminBodyFormatOptionViewModel {
+    pub value: String,
+    pub label: String,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminBodyFormatSelectViewModel {
+    pub options: Vec<BlogPostAdminBodyFormatOptionViewModel>,
+}
+
+pub fn blog_post_admin_body_format_select_view(
+    selected_format: &str,
+) -> BlogPostAdminBodyFormatSelectViewModel {
+    const BODY_FORMATS: [&str; 2] = ["markdown", "rt_json_v1"];
+    BlogPostAdminBodyFormatSelectViewModel {
+        options: BODY_FORMATS
+            .into_iter()
+            .map(|format| BlogPostAdminBodyFormatOptionViewModel {
+                value: format.to_string(),
+                label: format.to_string(),
+                selected: selected_format.trim().eq_ignore_ascii_case(format),
+            })
+            .collect(),
+    }
+}
+
 pub fn is_markdown_format(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case("markdown")
 }
@@ -1364,6 +1392,19 @@ mod tests {
             blog_post_admin_title_input_view("Changed title".to_string(), "custom-slug");
         assert_eq!(preserved.title, "Changed title");
         assert_eq!(preserved.slug_update, None);
+    }
+
+    #[test]
+    fn body_format_select_view_model_keeps_options_without_ui_runtime() {
+        let selected = blog_post_admin_body_format_select_view(" RT_JSON_V1 ");
+
+        assert_eq!(selected.options.len(), 2);
+        assert_eq!(selected.options[0].value, "markdown");
+        assert_eq!(selected.options[0].label, "markdown");
+        assert!(!selected.options[0].selected);
+        assert_eq!(selected.options[1].value, "rt_json_v1");
+        assert_eq!(selected.options[1].label, "rt_json_v1");
+        assert!(selected.options[1].selected);
     }
 
     #[test]
