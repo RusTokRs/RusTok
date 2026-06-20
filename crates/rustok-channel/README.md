@@ -29,7 +29,7 @@ This crate intentionally ships a minimal v0 model:
 
 Current v0 wiring also includes:
 
-- server-side channel resolution middleware now delegates to the domain-owned pipeline `header -> query -> built-in host slice -> policy seam -> default`, where `default` means the tenant's explicit default channel; runtime keeps active-only resolution semantics across all selectors plus typed `resolution_source + resolution_trace` diagnostics,
+- server-side channel resolution middleware now delegates to the domain-owned pipeline `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`, where `explicit default` means the tenant's explicit default channel and the built-in host fast-path intentionally remains a compatibility/performance layer before policy-only evaluation; runtime keeps active-only resolution semantics across all selectors plus typed `resolution_source + resolution_trace` diagnostics,
 - the first typed domain resolution seam for the final architecture: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, and a `ChannelResolver` that keeps precedence inside `rustok-channel`,
 - persisted tenant-scoped typed resolution policies via `channel_resolution_policy_sets` and `channel_resolution_policy_rules`, with versioned JSON definitions, action-channel foreign keys, and deterministic rule order by `priority`,
 - the first live typed predicate set for policies: `HostEquals`, `HostSuffix`, `OAuthAppEquals`, `SurfaceIs`, and `LocaleEquals`,
@@ -49,6 +49,7 @@ Validated baseline:
 - `cargo test -p rustok-server registry_dependencies_match_runtime_contract --lib`
 - `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`
 - `npm run verify:channel:fba` (no-compile provider registry, static matrix, and source-locked runtime fallback smoke gate)
+- `npm run verify:channel:resolution-contract` (no-compile resolution order and built-in host fast-path decision gate)
 
 It does not yet provide:
 

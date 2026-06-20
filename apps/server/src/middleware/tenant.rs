@@ -6,16 +6,15 @@ use axum::{
     response::Response,
 };
 use loco_rs::app::AppContext;
-use rustok_cache::{CacheInvalidationMessage, CacheService};
+use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
 use rustok_core::tenant_validation::TenantIdentifierValidator;
-use rustok_core::CacheBackend;
 #[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
-use std::collections::HashMap;
+use rustok_core::{CacheBackend, Error as CoreError};
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, Notify, RwLock};
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -96,7 +95,7 @@ pub struct TenantCacheInfrastructure {
     key_builder: TenantCacheKeyBuilder,
     invalidation_publisher: Arc<TenantInvalidationPublisher>,
     invalidation_listener_state: Arc<TenantInvalidationListenerState>,
-    in_flight: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
+    cache_service: CacheService,
 }
 
 #[derive(Debug, Clone)]
@@ -368,7 +367,7 @@ impl TenantCacheInfrastructure {
             key_builder: TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION),
             invalidation_publisher: Arc::new(TenantInvalidationPublisher::new(cache_service)),
             invalidation_listener_state: Arc::new(TenantInvalidationListenerState::new()),
-            in_flight: Arc::new(Mutex::new(HashMap::new())),
+            cache_service: cache_service.clone(),
         }
     }
 
@@ -472,53 +471,32 @@ impl TenantCacheInfrastructure {
     ) -> Result<TenantContext, StatusCode>
     where
         F: FnOnce() -> Fut,
-        Fut: std::future::Future<Output = Result<Option<TenantContext>, StatusCode>>,
+        Fut: std::future::Future<Output = rustok_core::Result<TenantContext>>,
     {
-        loop {
-            let notify = {
-                let mut in_flight = self.in_flight.lock().await;
+        let result = self
+            .cache_service
+            .load_or_fill(
+                Arc::clone(&self.tenant_cache),
+                cache_key,
+                Some(TENANT_CACHE_TTL),
+                || async move {
+                    let context = loader().await?;
+                    serde_json::to_vec(&context).map_err(CoreError::Serialization)
+                },
+            )
+            .await
+            .map_err(cache_load_error_to_status)?;
 
-                if let Some(existing) = in_flight.get(cache_key) {
-                    let notify = existing.clone();
-                    drop(in_flight);
-
-                    self.metrics
-                        .incr("coalesced_requests", &self.metrics.coalesced_requests)
-                        .await;
-
-                    notify.notified().await;
-
-                    if let Some(cached) = self.get_cached_tenant(cache_key).await? {
-                        return Ok(cached);
-                    }
-
-                    continue;
-                }
-
-                let notify = Arc::new(Notify::new());
-                in_flight.insert(cache_key.to_string(), notify.clone());
-                notify
-            };
-
-            let result = loader().await;
-
-            {
-                let mut in_flight = self.in_flight.lock().await;
-                in_flight.remove(cache_key);
-            }
-
-            notify.notify_waiters();
-
-            match result {
-                Ok(Some(context)) => {
-                    self.set_cached_tenant(cache_key.to_string(), &context)
-                        .await?;
-                    return Ok(context);
-                }
-                Ok(None) => return Err(StatusCode::NOT_FOUND),
-                Err(e) => return Err(e),
-            }
+        if result.source == CacheLoadSource::Coalesced {
+            self.metrics
+                .incr("coalesced_requests", &self.metrics.coalesced_requests)
+                .await;
         }
+
+        serde_json::from_slice::<TenantContext>(&result.value).map_err(|error| {
+            tracing::warn!(%error, "Tenant cache load_or_fill deserialization error");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
     }
 }
 
@@ -699,28 +677,34 @@ pub async fn resolve(
             let tenant = match ident_kind {
                 TenantIdentifierKind::Uuid => tenants::Entity::find_by_id(&db, ident_uuid)
                     .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+                    .map_err(CoreError::Database)?,
                 TenantIdentifierKind::Slug => tenants::Entity::find_by_slug(&db, &ident_value)
                     .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+                    .map_err(CoreError::Database)?,
                 TenantIdentifierKind::Host => tenants::Entity::find_by_domain(&db, &ident_value)
                     .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+                    .map_err(CoreError::Database)?,
             };
 
             match tenant_context_from_model(tenant) {
-                Ok(context) => Ok(Some(context)),
+                Ok(context) => Ok(context),
                 Err(CachedTenantMiss::Disabled) => {
                     infra_clone
                         .set_negative(negative_key_clone, CachedTenantMiss::Disabled)
-                        .await?;
-                    Err(StatusCode::FORBIDDEN)
+                        .await
+                        .map_err(|_| {
+                            CoreError::Cache("tenant negative cache write failed".to_string())
+                        })?;
+                    Err(CoreError::Forbidden("tenant disabled".to_string()))
                 }
                 Err(CachedTenantMiss::NotFound) => {
                     infra_clone
                         .set_negative(negative_key_clone, CachedTenantMiss::NotFound)
-                        .await?;
-                    Ok(None)
+                        .await
+                        .map_err(|_| {
+                            CoreError::Cache("tenant negative cache write failed".to_string())
+                        })?;
+                    Err(CoreError::NotFound("tenant not found".to_string()))
                 }
             }
         })
@@ -1007,6 +991,14 @@ async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, val
 
     let payload = format!("{cache_key}|{negative_key}");
     infra.invalidation_publisher.publish(&payload).await;
+}
+
+fn cache_load_error_to_status(error: CoreError) -> StatusCode {
+    match error {
+        CoreError::NotFound(_) => StatusCode::NOT_FOUND,
+        CoreError::Forbidden(_) => StatusCode::FORBIDDEN,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 #[cfg(test)]
