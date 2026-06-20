@@ -371,6 +371,32 @@ if (arg === "forum") {
   if (!Number.isFinite(refreshPolicy.max_age_days) || refreshPolicy.max_age_days > 45) {
     fail(`${arg}: Wave 1 refresh policy max_age_days must be numeric and <= 45`);
   }
+  const parseWaveTimestamp = (value, label) => {
+    if (typeof value !== "string" || value.length === 0) {
+      fail(`${arg}: Wave 1 ${label} must be a non-empty ISO timestamp`);
+    }
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) {
+      fail(`${arg}: Wave 1 ${label} is not a valid ISO timestamp: ${value}`);
+    }
+    return parsed;
+  };
+  const waveCreatedAt = parseWaveTimestamp(forumWave1Evidence.created_at, "created_at");
+  const waveNextDueAt = parseWaveTimestamp(refreshPolicy.next_due_at, "refresh_policy.next_due_at");
+  const maxAgeMs = refreshPolicy.max_age_days * 24 * 60 * 60 * 1000;
+  if (waveNextDueAt <= waveCreatedAt) {
+    fail(`${arg}: Wave 1 refresh_policy.next_due_at must be after created_at`);
+  }
+  if (waveNextDueAt - waveCreatedAt > maxAgeMs) {
+    fail(`${arg}: Wave 1 refresh_policy.next_due_at must not exceed max_age_days from created_at`);
+  }
+  const now = Date.now();
+  if (now - waveCreatedAt > maxAgeMs) {
+    fail(`${arg}: Wave 1 evidence is older than refresh_policy.max_age_days`);
+  }
+  if (now > waveNextDueAt) {
+    fail(`${arg}: Wave 1 evidence is past refresh_policy.next_due_at and must be refreshed before rollout`);
+  }
   for (const requiredSection of [
     "control_plane.audit_trail",
     "fallback.profiles",
