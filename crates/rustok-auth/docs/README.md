@@ -23,7 +23,7 @@ runtime RBAC surface `users:*`.
 - зависит только от `rustok-core` и общих библиотек, без зависимости на `rustok-rbac`;
 - используется `apps/server` для REST, GraphQL, session lifecycle и user-management flow;
 - `apps/server` сверяет registry wiring и GraphQL security hints с `AUTH_USER_PERMISSIONS`, чтобы host-слой не расходился с auth-owned permission surface;
-- не публикует собственный UI и остаётся `ui_classification = "capability_only"`;
+- публикует собственный UI через подпакет `crates/rustok-auth/admin` с `ui_classification = "admin_only"`;
 - email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
 
 ## Поверхность config lifecycle

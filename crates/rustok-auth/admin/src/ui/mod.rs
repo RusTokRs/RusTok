@@ -7,6 +7,7 @@ pub mod security;
 pub mod users;
 pub mod user_details;
 pub mod oauth_apps;
+pub mod auth_admin;
 
 pub use login::Login;
 pub use register::Register;
@@ -16,3 +17,4 @@ pub use security::Security;
 pub use users::Users;
 pub use user_details::UserDetails;
 pub use oauth_apps::OAuthAppsPage;
+pub use auth_admin::AuthAdmin;

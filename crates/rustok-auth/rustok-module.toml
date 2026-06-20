@@ -5,6 +5,18 @@ version = "0.1.0"
 description = "JWT lifecycle, credential hashing, token management."
 ownership = "first_party"
 trust_level = "core"
-ui_classification = "capability_only"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin"]
+
 [crate]
 entry_type = "AuthModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-auth-admin"
+route_segment = "auth"
+nav_label = "Auth"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

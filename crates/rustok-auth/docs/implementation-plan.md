@@ -1,20 +1,19 @@
 # План реализации `rustok-auth`
 
-Статус: core baseline зафиксирован; модуль возвращён в обязательный
-manifest/doc contract path.
+Статус: core baseline зафиксирован; UI модулирован по FFA в `crates/rustok-auth/admin`.
 
 ## Execution checkpoint
 
-- Current phase: integration_hardening
-- Last checkpoint: AuthConfig assembly and RS256 key validation moved behind auth-owned helpers; server bridge now only maps host config and AuthError, docs/tests updated.
-- Next step: Continue reducing host-only auth lifecycle logic by moving the next session or lifecycle primitive behind `rustok-auth` helpers with matching docs and tests.
+- Current phase: ui_modularization_complete
+- Last checkpoint: Auth and user management admin UI surfaces extracted from apps/admin into the new `rustok-auth-admin` crate. Local i18n dynamic mapping registered, routing configured, host legacy pages removed, and workspace compilation fully verified.
+- Next step: Expand unit tests for auth-admin views and helpers.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-20T12:00:00Z
+- Last updated at (UTC): 2026-06-20T16:00:00Z
 
 ## Область работ
 
-- удерживать `rustok-auth` как чистый core capability module без собственного UI;
+- удерживать `rustok-auth-admin` как изолированный UI-пакет, инкапсулирующий все страницы авторизации и пользователей;
 - синхронизировать runtime permission surface, local docs и manifest metadata;
 - не возвращать auth business logic обратно в `apps/server`.
 
@@ -38,12 +37,23 @@ manifest/doc contract path.
 - [x] не выносить auth lifecycle logic в host-слой без обновления module contract;
 - [x] расширять token/config surface только вместе с local docs и runtime tests;
 - [x] явно документировать новые auth-owned flows до их публикации в host runtime.
+- [x] выделить админ-поверхности UI авторизации в отдельный crate `crates/rustok-auth/admin`.
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_applicable`
+- Structural shape: `core_transport_ui`
+- Evidence: auth admin UI pages (Login, Register, ResetPassword, Profile, Security, Users, UserDetails, and OAuthAppsPage) are fully relocated to `crates/rustok-auth/admin`. The package implements its own client-side and server-side request/response models and translation lookup catalog matching `UiRouteContext.locale`. Host application `apps/admin` integrates the module pages dynamically via routing.
 
 ## Проверка
 
 - `cargo xtask module validate auth`
 - `cargo xtask module test auth`
 - targeted auth/RBAC server tests при изменении runtime wiring
+- `cargo check -p rustok-auth-admin`
+- `cargo check -p rustok-admin`
+- `npm run verify:i18n:ui`
 
 ## Правила обновления
 
@@ -56,4 +66,6 @@ manifest/doc contract path.
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [x] Проверить полноту и актуальность `README.md` и локальных docs для permission surface sync.
-- [x] Зафиксировать/обновить verification gates для текущего состояния модуля (без запуска компиляции в этом инкременте по запросу).
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Полностью разбить и вынести UI-слой авторизации в `rustok-auth-admin`.
+
