@@ -12,6 +12,16 @@ manifest/doc contract path.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-05-20T00:00:00Z
 
+
+## FFA/FBA status block
+
+- FFA status: `not_started`
+- FBA status: `in_progress`
+- Structural shape: `no_ui_boundary`
+- Evidence / notes:
+  - capability-only module has no module-owned UI surface, so FFA remains `not_started`;
+  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with typed `PortContext`/`PortError`, deadline semantics, write idempotency semantics, disabled-provider noop preservation and static evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` verified by `npm run verify:email:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
+
 ## Область работ
 
 - удерживать `rustok-email` как capability-only core module без собственного UI;

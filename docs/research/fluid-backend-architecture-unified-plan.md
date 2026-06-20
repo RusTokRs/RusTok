@@ -178,6 +178,8 @@
 
 На 2026-06-20 `outbox` добавлен как provider track для relay worker control boundary: `OutboxRelayPort`/`outbox.relay_control.v1`, registry `crates/rustok-outbox/contracts/outbox-fba-registry.json` и static evidence `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:outbox:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
 
+На 2026-06-20 `email` добавлен как provider track для transactional delivery boundary: `EmailDeliveryPort`/`email.delivery.v1`, registry `crates/rustok-email/contracts/email-fba-registry.json` и static evidence `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:email:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
+
 Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
 имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
 FFA/FBA status block. Теперь `page_builder` и `pages` отражены единообразно: local plan +

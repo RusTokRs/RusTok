@@ -1,10 +1,12 @@
 pub mod config;
 pub mod error;
+pub mod ports;
 pub mod service;
 pub mod template;
 
 pub use config::{EmailConfig, SmtpConfig};
 pub use error::EmailError;
+pub use ports::*;
 pub use service::{
     EmailService, PasswordResetEmail, PasswordResetEmailSender, SmtpEmailSender,
     TransactionalEmailSender,
