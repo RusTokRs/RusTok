@@ -67,29 +67,41 @@ fn default_per_page() -> u32 {
 
 impl ListScriptsQuery {
     pub fn offset(&self) -> u64 {
-        (self.page.saturating_sub(1) as u64) * (self.per_page as u64)
+        (self.page.saturating_sub(1) as u64) * self.limit()
     }
 
     pub fn limit(&self) -> u64 {
-        self.per_page.min(100) as u64
+        self.per_page.clamp(1, 100) as u64
+    }
+
+    pub fn normalized_per_page(&self) -> u32 {
+        self.limit() as u32
     }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListExecutionLogQuery {
-    #[serde(default)]
-    pub script_id: Option<Uuid>,
-    #[serde(default = "default_execution_log_limit")]
-    pub limit: u64,
+    #[serde(default = "default_page")]
+    pub page: u32,
+    #[serde(default = "default_execution_log_per_page")]
+    pub per_page: u32,
 }
 
-fn default_execution_log_limit() -> u64 {
+fn default_execution_log_per_page() -> u32 {
     50
 }
 
 impl ListExecutionLogQuery {
-    pub fn normalized_limit(&self) -> u64 {
-        self.limit.clamp(1, 100)
+    pub fn offset(&self) -> u64 {
+        (self.page.saturating_sub(1) as u64) * self.limit()
+    }
+
+    pub fn limit(&self) -> u64 {
+        self.per_page.clamp(1, 100) as u64
+    }
+
+    pub fn normalized_per_page(&self) -> u32 {
+        self.limit() as u32
     }
 }
 
@@ -325,5 +337,37 @@ mod tests {
         assert_eq!(response.page, 3);
         assert_eq!(response.per_page, 50);
         assert_eq!(response.total_pages, 3);
+    }
+
+    #[test]
+    fn list_scripts_query_clamps_limit_before_offset() {
+        let query = ListScriptsQuery {
+            page: 3,
+            per_page: 250,
+            status: None,
+        };
+
+        assert_eq!(query.limit(), 100);
+        assert_eq!(query.normalized_per_page(), 100);
+        assert_eq!(query.offset(), 200);
+    }
+
+    #[test]
+    fn execution_log_query_defaults_and_clamps_to_operator_contract() {
+        let query = ListExecutionLogQuery {
+            page: 2,
+            per_page: 0,
+        };
+
+        assert_eq!(query.limit(), 1);
+        assert_eq!(query.normalized_per_page(), 1);
+        assert_eq!(query.offset(), 1);
+
+        let oversized = ListExecutionLogQuery {
+            page: 2,
+            per_page: 500,
+        };
+        assert_eq!(oversized.limit(), 100);
+        assert_eq!(oversized.offset(), 100);
     }
 }

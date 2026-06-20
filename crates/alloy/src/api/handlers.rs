@@ -94,7 +94,7 @@ pub async fn list_scripts<S: ScriptRegistry>(
         scripts,
         page.total as usize,
         query.page,
-        query.per_page,
+        query.normalized_per_page(),
     )))
 }
 
@@ -334,7 +334,7 @@ pub async fn run_script_by_name<S: ScriptRegistry>(
 #[instrument(skip(state))]
 pub async fn list_recent_executions<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
-    Query(query): Query<ListScriptsQuery>,
+    Query(query): Query<ListExecutionLogQuery>,
 ) -> ApiResult<Json<ListExecutionLogResponse>> {
     let offset = query.offset();
     let limit = query.limit();
@@ -357,7 +357,7 @@ pub async fn list_recent_executions<S: ScriptRegistry>(
         executions,
         total,
         query.page,
-        query.per_page,
+        query.normalized_per_page(),
     )))
 }
 
@@ -365,7 +365,7 @@ pub async fn list_recent_executions<S: ScriptRegistry>(
 pub async fn list_script_executions<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
     Path(id): Path<Uuid>,
-    Query(query): Query<ListScriptsQuery>,
+    Query(query): Query<ListExecutionLogQuery>,
 ) -> ApiResult<Json<ListExecutionLogResponse>> {
     let offset = query.offset();
     let limit = query.limit();
@@ -388,7 +388,7 @@ pub async fn list_script_executions<S: ScriptRegistry>(
         executions,
         total,
         query.page,
-        query.per_page,
+        query.normalized_per_page(),
     )))
 }
 
