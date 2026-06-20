@@ -3686,6 +3686,7 @@ name = "flex"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "regex",
  "rustok-core",
  "rustok-events",
  "sea-orm",
@@ -9887,6 +9888,7 @@ name = "rustok-cache"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "moka",
  "redis 1.2.4",
  "rustok-core",
