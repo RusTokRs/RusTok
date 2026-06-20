@@ -3,12 +3,13 @@ use crate::core::{
     build_price_list_rule_draft, build_price_list_scope_draft, build_product_admin_href,
     build_product_detail_header_view_model, build_product_list_item_view_model,
     build_resolution_context, build_variant_card_view_model, clear_price_list_rule_draft,
-    empty_price_draft, format_adjustment_preview, format_channel_option_label,
-    format_channel_scope_text, format_effective_context, format_price_list_option_label,
-    format_price_scope, legacy_channel_option_label, normalize_channel_value,
-    normalized_currency_code, normalized_price_list_id, normalized_quantity, normalized_region_id,
-    price_draft_from_price, pricing_product_list_item_class, selected_channel_key,
-    summarize_pricing, text_or_none, GLOBAL_CHANNEL_KEY, LEGACY_CHANNEL_KEY,
+    default_variant_price_editor_currency, empty_price_draft, format_adjustment_preview,
+    format_channel_option_label, format_channel_scope_text, format_effective_context,
+    format_price_list_option_label, format_variant_count_label, format_variant_price_editor_title,
+    legacy_channel_option_label, normalize_channel_value, normalized_currency_code,
+    normalized_price_list_id, normalized_quantity, normalized_region_id, price_draft_from_price,
+    pricing_product_list_item_class, selected_channel_key, summarize_pricing, text_or_none,
+    GLOBAL_CHANNEL_KEY, LEGACY_CHANNEL_KEY,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -749,7 +750,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                             {t(ui_locale_for_detail.as_deref(), "pricing.section.variants", "Variant prices")}
                                         </h4>
                                         <span class="text-xs text-muted-foreground">
-                                            {format!("{} items", detail.variants.len())}
+                                            {format_variant_count_label(ui_locale_for_detail.as_deref(), detail.variants.len())}
                                         </span>
                                     </div>
                                     <div class="mt-4 space-y-3">
@@ -863,15 +864,7 @@ fn VariantPriceEditors(
         .iter()
         .cloned()
         .map(|price| {
-            let title = format!(
-                "{} ({})",
-                t(
-                    locale.as_deref(),
-                    "pricing.edit.updatePrice",
-                    "Update price"
-                ),
-                format_price_scope(locale.as_deref(), price.min_quantity, price.max_quantity)
-            );
+            let title = format_variant_price_editor_title(locale.as_deref(), &price);
             view! {
                 <VariantPriceEditor
                     locale=locale.clone()
@@ -885,14 +878,7 @@ fn VariantPriceEditors(
             }
         })
         .collect_view();
-    let add_currency = default_currency
-        .or_else(|| {
-            variant
-                .prices
-                .first()
-                .map(|price| price.currency_code.clone())
-        })
-        .unwrap_or_default();
+    let add_currency = default_variant_price_editor_currency(&variant, default_currency);
 
     view! {
         <div class="space-y-2 rounded-xl border border-border/70 bg-background/70 p-3">

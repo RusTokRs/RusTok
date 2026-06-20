@@ -266,7 +266,7 @@ function assertInventoryAdminTransportBoundary() {
 
 function assertCommercePublicChannelAvailabilityBoundary() {
   const callerPaths = [
-    "crates/rustok-commerce/src/graphql/mutation.rs",
+    "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
     "crates/rustok-commerce/src/services/checkout.rs",
     "crates/rustok-commerce/src/controllers/store/mod.rs",
   ];

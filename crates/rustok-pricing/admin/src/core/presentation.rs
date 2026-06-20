@@ -313,6 +313,35 @@ pub(crate) fn build_variant_card_view_model(
     }
 }
 
+pub(crate) fn format_variant_price_editor_title(
+    locale: Option<&str>,
+    price: &PricingPrice,
+) -> String {
+    format!(
+        "{} ({})",
+        t(locale, "pricing.edit.updatePrice", "Update price"),
+        format_price_scope(locale, price.min_quantity, price.max_quantity)
+    )
+}
+
+pub(crate) fn default_variant_price_editor_currency(
+    variant: &PricingVariant,
+    default_currency: Option<String>,
+) -> String {
+    default_currency
+        .or_else(|| {
+            variant
+                .prices
+                .first()
+                .map(|price| price.currency_code.clone())
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn format_variant_count_label(locale: Option<&str>, count: usize) -> String {
+    format!("{} {}", count, t(locale, "pricing.common.items", "items"))
+}
+
 pub(crate) fn format_price_list_option_label(
     locale: Option<&str>,
     option: &PricingPriceListOption,
@@ -660,6 +689,28 @@ mod tests {
         assert_eq!(card.profile_line, "profile: fragile");
         assert_eq!(card.effective_price_line, None);
         assert!(card.price_table.contains("USD 10.00"));
+    }
+
+    #[test]
+    fn variant_editor_copy_and_defaults_are_core_owned() {
+        let mut tiered_price = price("USD", false);
+        tiered_price.min_quantity = Some(2);
+        tiered_price.max_quantity = Some(5);
+        let editor_title = format_variant_price_editor_title(Some("en-US"), &tiered_price);
+
+        assert_eq!(editor_title, "Update price (2-5)");
+        assert_eq!(format_variant_count_label(Some("en-US"), 3), "3 items");
+        assert_eq!(
+            default_variant_price_editor_currency(&variant(vec![tiered_price], None), None),
+            "USD"
+        );
+        assert_eq!(
+            default_variant_price_editor_currency(
+                &variant(vec![price("USD", false)], None),
+                Some("EUR".to_string())
+            ),
+            "EUR"
+        );
     }
 
     #[test]
