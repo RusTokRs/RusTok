@@ -42,6 +42,7 @@ pub fn channel_count_label() {}
 pub fn legacy_block_snapshot_label() {}
 pub fn is_save_action_busy() {}
 pub fn is_publish_action_disabled() {}
+pub fn admin_page_list_item_view() {}
 `;
 }
 
@@ -57,6 +58,7 @@ pub fn page_link_href() {}
 pub fn page_status_label() {}
 pub fn selected_page_empty_state() {}
 pub fn load_error_message() {}
+pub fn storefront_page_list_item_view() {}
 `;
 }
 
@@ -72,6 +74,7 @@ pub fn PagesAdmin() {
     let _legacy_block_label = core::legacy_block_snapshot_label;
     let _save_busy = core::is_save_action_busy;
     let _publish_disabled = core::is_publish_action_disabled;
+    let _item_view = core::admin_page_list_item_view;
     ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
     ${rawServiceCall ? "let _service = PageService::new;" : ""}
 }
@@ -86,10 +89,9 @@ use crate::transport;
 pub fn PagesView() {
     let _pages = transport::fetch_pages;
     let _title = core::selected_page_title;
-    let _href = core::page_link_href;
-    let _status = core::page_status_label;
     let _empty = core::selected_page_empty_state;
     let _load_error = core::load_error_message;
+    let _item_view = core::storefront_page_list_item_view;
     ${rawApiCall ? "let _raw = api::fetch_storefront_pages;" : ""}
 }
 `;

@@ -89,10 +89,9 @@
     "test:verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.test.mjs",
     "verify:outbox:fba": "node scripts/verify/verify-outbox-fba.mjs",
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs",
-    "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs"
-    "verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.mjs",
-    "test:verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.test.mjs",
-    "verify:email:fba": "node scripts/verify/verify-email-fba.mjs"
+    "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
+    "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
+    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
