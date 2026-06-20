@@ -115,6 +115,9 @@ pub fn BlogAdmin() -> impl IntoView {
             raw_body_warning_msg.clone(),
         )
     });
+    let body_format_select_view = Memo::new(move |_| {
+        core::blog_post_admin_body_format_select_view(body_format.get().as_str())
+    });
     let issue_banner_view =
         Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
     let form_copy_view = blog_form_copy_view_model(ui_locale.as_deref());
@@ -719,8 +722,18 @@ pub fn BlogAdmin() -> impl IntoView {
                                         prop:value=body_format
                                         on:change=move |ev| set_body_format.set(event_target_value(&ev))
                                     >
-                                        <option value="markdown">"markdown"</option>
-                                        <option value="rt_json_v1">"rt_json_v1"</option>
+                                        {move || {
+                                            body_format_select_view
+                                                .get()
+                                                .options
+                                                .into_iter()
+                                                .map(|option| view! {
+                                                    <option value=option.value.clone() selected=option.selected>
+                                                        {option.label}
+                                                    </option>
+                                                })
+                                                .collect_view()
+                                        }}
                                     </select>
                                 </label>
                             </div>
