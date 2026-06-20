@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "artifact": "page_builder_control_plane_dry_run_contract",
+  "module_slug": "page_builder",
+  "consumer_module_slug": "pages",
+  "builder_contract_version": "1.0",
+  "consumer_min_version": "1.0",
+  "change_set_contract": {
+    "atomic_flag_keys": [
+      "builder.enabled",
+      "builder.preview.enabled",
+      "builder.properties.enabled",
+      "builder.publish.enabled",
+      "builder.legacy_bridge_readonly"
+    ],
+    "required_profiles": [
+      "all_on",
+      "publish_off",
+      "preview_off",
+      "builder_off"
+    ],
+    "required_snapshot_phases": [
+      "before",
+      "after"
+    ],
+    "required_decisions": [
+      "keep",
+      "rollback"
+    ],
+    "required_artifacts": [
+      "trace_id",
+      "tenant_id",
+      "requested_by",
+      "approved_by",
+      "flags_before",
+      "flags_after",
+      "smoke_output",
+      "rollback_decision"
+    ],
+    "waiver_policy": {
+      "owner_signoff_required": true,
+      "expiry_required": true,
+      "forbidden_for_wave1_promotion": true
+    }
+  },
+  "profile_expectations": {
+    "all_on": {
+      "builder.enabled": true,
+      "builder.preview.enabled": true,
+      "builder.properties.enabled": true,
+      "builder.publish.enabled": true,
+      "builder.legacy_bridge_readonly": true,
+      "publish_dry": "pass"
+    },
+    "publish_off": {
+      "builder.enabled": true,
+      "builder.preview.enabled": true,
+      "builder.properties.enabled": true,
+      "builder.publish.enabled": false,
+      "builder.legacy_bridge_readonly": true,
+      "publish_dry": "typed_feature_disabled_error"
+    },
+    "preview_off": {
+      "builder.enabled": true,
+      "builder.preview.enabled": false,
+      "builder.properties.enabled": true,
+      "builder.publish.enabled": false,
+      "builder.legacy_bridge_readonly": true,
+      "publish_dry": "typed_feature_disabled_error"
+    },
+    "builder_off": {
+      "builder.enabled": false,
+      "builder.preview.enabled": false,
+      "builder.properties.enabled": false,
+      "builder.publish.enabled": false,
+      "builder.legacy_bridge_readonly": true,
+      "publish_dry": "typed_feature_disabled_error"
+    }
+  },
+  "read_surface_guarantees": [
+    "admin_list_no_5xx",
+    "admin_read_no_5xx",
+    "storefront_read_no_5xx"
+  ],
+  "source_markers": {
+    "runtime_rollout": "pub struct BuilderControlPlaneChangeSet",
+    "runtime_plan": "Control-plane dry run evidence",
+    "wave1_packet": "draft:pages-wave1-readiness"
+  }
+}
