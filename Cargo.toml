@@ -40,6 +40,7 @@ members = [
     "crates/rustok-search/admin",
     "crates/rustok-search/storefront",
     "crates/rustok-tenant/admin",
+    "crates/rustok-auth/admin",
     "crates/rustok-rbac/admin",
     "crates/rustok-workflow/admin",
     "crates/*",

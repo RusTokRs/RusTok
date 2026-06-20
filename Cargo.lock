@@ -9570,6 +9570,7 @@ dependencies = [
  "reqwest 0.13.2",
  "rustok-ai-admin",
  "rustok-api",
+ "rustok-auth-admin",
  "rustok-blog-admin",
  "rustok-cache",
  "rustok-channel-admin",
@@ -9764,6 +9765,34 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustok-auth-admin"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "gloo-storage",
+ "leptos 0.8.19",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos-hook-form",
+ "leptos-ui",
+ "leptos-use",
+ "leptos_axum",
+ "leptos_router",
+ "loco-rs",
+ "reqwest 0.13.2",
+ "rustok-api",
+ "rustok-auth",
+ "rustok-core",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "uuid",
+ "web-sys",
 ]
 
 [[package]]

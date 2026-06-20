@@ -10,7 +10,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration, then execute the locked live gateway plan against a concrete external adapter.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T14:12:00Z
 
 ## FFA/FBA status
 
@@ -18,6 +18,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA maintenance slice перевёл read-only `read_collection_status` path на shared `PortCallPolicy::read()`, оставив create/reuse write path на idempotent write semantics и не меняя commerce compatibility transport.
   - in-process реализация `PaymentCollectionPort for PaymentService` добавлена в `src/ports.rs`: create/reuse path требует `PortContext::require_write_semantics`, переиспользует reusable cart collection перед созданием новой и мапит `PaymentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `PaymentCollectionPort` и DTO для create/reuse/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `payment collection create/reuse` через `crates/rustok-payment/contracts/payment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
@@ -26,7 +27,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
   - provider registry runtime-mode guardrails теперь side-effect-free проверяют capability support, missing-provider errors и health/degraded-mode mapping до вызова external adapter-а; targeted provider SPI tests фиксируют fallback profile propagation и operation capability rejection без полной компиляции в этой итерации;
   - provider SPI runtime-smoke evidence теперь закреплён в `crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json`, а dedicated live-adapter contract — в `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json`: no-compile packets фиксируют missing-provider lookup, unsupported/unknown operation rejection, degraded fallback propagation, unavailable-provider non-executable mode, registration failure cases, webhook replay guardrails и обязательные live gateway execution cases; `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` проверяет этот packet вместе со static matrix, но статус остаётся ниже `boundary_ready` до live adapter execution;
   - live external gateway execution plan теперь закреплён внутри runtime-smoke packet: verifier требует concrete-adapter evidence для guarded single invocation, typed provider-error mapping без lifecycle persistence, degraded fallback propagation, unavailable-mode adapter blocking и webhook replay delegation;
-  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization and command metadata, `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce maps the owner DTO metadata into native/GraphQL payloads instead of exposing a duplicate payment request builder;
+  - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, command metadata, typed `PaymentCollectionTransportError` mapping and the `create_payment_collection_with_fallback` native/GraphQL fallback facade; `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce maps the owner DTO metadata into native/GraphQL payloads instead of exposing a duplicate payment request builder;
   - fast boundary guardrail `scripts/verify/verify-payment-storefront-boundary.mjs` is wired into `npm run verify:ffa:ui:migration`, self-checks package wiring, and checks the payment-owned core/transport/ui split without long Cargo compilation;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
 - Last verified at (UTC): 2026-06-20T00:00:00Z
@@ -43,7 +44,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - `payment_collections`, `payments`, `PaymentModule` и `PaymentService` уже выделены;
 - модуль не владеет cart/order/customer, а только ссылается на них по identifiers;
 - базовый manual/default payment flow уже зафиксирован;
-- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation и create/reuse command normalization уже принадлежат `rustok-payment/storefront`; compatibility fallback is now MissingServer-only while the temporary commerce adapter remains.
+- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, но storefront payment presentation, create/reuse command normalization и typed native/GraphQL fallback facade уже принадлежат `rustok-payment/storefront`; compatibility fallback is now MissingServer-only while the temporary commerce adapter remains.
 
 ## Этапы
 

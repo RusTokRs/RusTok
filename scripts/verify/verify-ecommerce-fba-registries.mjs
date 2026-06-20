@@ -66,8 +66,8 @@ const assertOperationContextSemantics = ({ module, operation, port, portSource }
   if (body.includes('require_write_semantics()?')) {
     fail(`${module}.${operation} read operation must not require write idempotency semantics`);
   }
-  if (!body.includes('require_deadline_semantics()?')) {
-    fail(`${module}.${operation} read operation must enforce require_deadline_semantics`);
+  if (!body.includes('require_policy(PortCallPolicy::read())?')) {
+    fail(`${module}.${operation} read operation must enforce PortCallPolicy::read()`);
   }
 };
 

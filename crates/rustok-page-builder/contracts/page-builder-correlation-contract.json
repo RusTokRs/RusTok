@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "artifact": "page_builder_correlation_contract",
+  "contract_version": "1.0",
+  "scope": "builder_write_to_pages_publish_to_storefront_read",
+  "required_path": [
+    "builder_write",
+    "pages_publish",
+    "storefront_read"
+  ],
+  "required_trace_samples_per_packet": 2,
+  "required_spans": {
+    "builder_write": [
+      "builder.write.validate"
+    ],
+    "pages_publish": [
+      "pages.publish.dry_run",
+      "pages.publish.feature_disabled"
+    ],
+    "storefront_read": [
+      "storefront.read.render"
+    ]
+  },
+  "accepted_results": [
+    "pass",
+    "typed_feature_disabled_error_without_read_5xx"
+  ],
+  "evidence_packets": [
+    {
+      "module_slug": "pages",
+      "wave": "0",
+      "mode": "dry_run",
+      "path": "crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json"
+    },
+    {
+      "module_slug": "pages",
+      "wave": "1",
+      "mode": "readiness_draft",
+      "path": "crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json"
+    }
+  ],
+  "source_markers": [
+    {
+      "path": "crates/rustok-pages/src/services/page.rs",
+      "markers": [
+        "ensure_builder_publish_capabilities_for_page",
+        "page_uses_builder_capability_for_id"
+      ]
+    },
+    {
+      "path": "crates/rustok-pages/storefront/src/core.rs",
+      "markers": [
+        "storefront_builder_fallback_read_contract",
+        "render_requires_builder_capability: false"
+      ]
+    }
+  ],
+  "docs": [
+    "docs/modules/tiptap-page-builder-implementation-plan.md",
+    "crates/rustok-page-builder/docs/implementation-plan.md",
+    "crates/rustok-pages/docs/implementation-plan.md"
+  ]
+}

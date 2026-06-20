@@ -5,15 +5,19 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "..", "..");
-const evidencePath = path.join(
-  repoRoot,
-  "crates",
-  "rustok-forum",
-  "contracts",
-  "evidence",
-  "forum-wave1-rollout-evidence.json",
-);
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : path.resolve(__dirname, "..", "..");
+const evidencePath = process.env.RUSTOK_FORUM_WAVE_EVIDENCE_PATH
+  ? path.resolve(process.env.RUSTOK_FORUM_WAVE_EVIDENCE_PATH)
+  : path.join(
+      repoRoot,
+      "crates",
+      "rustok-forum",
+      "contracts",
+      "evidence",
+      "forum-wave1-rollout-evidence.json",
+    );
 
 function fail(message) {
   console.error("[verify-forum-wave-evidence-freshness] FAIL");
@@ -63,7 +67,7 @@ if (!Number.isFinite(refreshPolicy.max_age_days) || refreshPolicy.max_age_days >
 
 const createdAt = parseTimestamp(evidence.created_at, "created_at");
 const nextDueAt = parseTimestamp(refreshPolicy.next_due_at, "refresh_policy.next_due_at");
-const now = Date.now();
+const now = process.env.RUSTOK_VERIFY_NOW ? parseTimestamp(process.env.RUSTOK_VERIFY_NOW, "RUSTOK_VERIFY_NOW") : Date.now();
 const maxAgeMs = refreshPolicy.max_age_days * 24 * 60 * 60 * 1000;
 
 if (nextDueAt <= createdAt) {
@@ -77,6 +81,20 @@ if (now - createdAt > maxAgeMs) {
 }
 if (now > nextDueAt) {
   fail("Forum Wave 1 evidence is past refresh_policy.next_due_at and must be refreshed before rollout");
+}
+
+for (const requiredSection of [
+  "control_plane.audit_trail",
+  "fallback.profiles",
+  "observability.metrics",
+  "observability.traces",
+  "rollback.decision",
+  "approvals",
+  "waivers",
+]) {
+  if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
+    fail(`refresh_policy.required_sections missing ${requiredSection}`);
+  }
 }
 
 console.log("[verify-forum-wave-evidence-freshness] PASS");

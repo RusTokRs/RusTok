@@ -11,7 +11,9 @@
     "tool_name": "direct.alloy.run_script",
     "registration_api": "register_alloy_ai_vertical_handlers",
     "validation_helper": "validate_runtime_payload",
-    "execution_policy_api": "alloy_script_execution_policy"
+    "execution_policy_api": "alloy_script_execution_policy",
+    "runtime_operation": "run_script",
+    "transport_owner": "rustok-ai"
   },
   "execution_policy": {
     "script_runtime": "alloy",
@@ -19,7 +21,13 @@
     "sensitive": false,
     "composition_owner": "rustok-ai",
     "domain_owner": "rustok-ai-alloy",
-    "remote_transport": "not_started"
+    "remote_transport": "not_started",
+    "allowed_operations": [
+      "list_scripts",
+      "get_script",
+      "validate_script",
+      "run_script"
+    ]
   },
   "evidence": {
     "local_plan": "crates/rustok-ai-alloy/docs/implementation-plan.md",
@@ -34,11 +42,31 @@
     "cases": [
       {
         "operation": "validate_runtime_payload",
-        "assertions": ["blank_payload_allowed", "json_object_allowed", "json_array_rejected", "invalid_json_rejected"]
+        "assertions": [
+          "blank_payload_allowed",
+          "json_object_allowed",
+          "json_array_rejected",
+          "invalid_json_rejected"
+        ]
       },
       {
         "operation": "alloy_script_execution_policy",
-        "assertions": ["runtime_payload_shape_recorded", "composition_owner_stays_rustok_ai", "domain_owner_stays_rustok_ai_alloy"]
+        "assertions": [
+          "runtime_payload_shape_recorded",
+          "composition_owner_stays_rustok_ai",
+          "domain_owner_stays_rustok_ai_alloy",
+          "remote_transport_not_started",
+          "allowed_operations_recorded"
+        ]
+      },
+      {
+        "operation": "alloy_ai_vertical_descriptor",
+        "assertions": [
+          "task_slug_recorded",
+          "tool_name_recorded",
+          "runtime_operation_recorded",
+          "transport_owner_stays_rustok_ai"
+        ]
       }
     ]
   }

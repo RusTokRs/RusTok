@@ -8,10 +8,10 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_schema_definition_guardrails
-- Last checkpoint: Standalone Flex schema-definition guardrails tightened without compilation: schema create/update validation now rejects malformed field-definition copy/validation shapes, select fields without usable option sets, duplicate/empty option values, unsupported pattern rules, inverted min/max ranges, and default values that fail the core field validator.
+- Last checkpoint: Standalone Flex schema-definition guardrails tightened further without compilation: schema create/update validation now rejects invalid or empty regex patterns before persistence, select options on non-select field types, malformed localized validation error messages and negative field positions.
 - Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared standalone UUID and schema-definition guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, schema-definition shape validation, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` passes for this slice; no compilation/test command was run by request.
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, schema-definition shape validation including regex/options/error-message/position checks, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` should be rerun when compilation/checks are allowed; no compilation/test command was run by request.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
@@ -306,6 +306,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - 2026-06-20 no-compile iteration: nil UUID validation was promoted to a public standalone boundary helper and reused by orchestration and the SeaORM adapter so direct schema/entry service calls reject nil tenant/schema/entry IDs before database access; localized entry map loading also had a duplicate await removed.
   - 2026-06-20 no-compile follow-up: optional `actor_id` validation now uses the same standalone nil UUID guardrail in orchestration and direct SeaORM mutation calls, with targeted boundary tests added but not executed by request.
   - 2026-06-20 no-compile schema-definition follow-up: standalone schema create/update validation now checks field-definition shape before adapter writes: non-empty localized labels/descriptions, select option presence/uniqueness, unsupported pattern rules, inverted min/max ranges, and invalid default values are rejected through targeted contract tests.
+  - 2026-06-20 no-compile schema-definition hardening follow-up: standalone schema validators now also reject invalid/empty regex patterns, options on non-select fields, malformed localized validation error messages and negative field positions; targeted contract tests were added without execution by request.
   - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail/schema-definition fixes и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
