@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -85,18 +85,93 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, providerSource } = 
     },
     promotion_gate: 'does_not_raise_boundary_ready_without_runtime_execution',
   };
+  const runtimeSmoke = {
+    schema_version: 1,
+    module: moduleSlug,
+    packet: 'provider-spi-runtime-mode-smoke',
+    status: 'runtime_mode_smoke_locked',
+    generated_from: 'crates/rustok-payment/contracts/payment-fba-registry.json',
+    runner: 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs',
+    source_contract: 'crates/rustok-payment/src/providers.rs',
+    execution_scope: 'no_compile_static_runtime_contract_evidence',
+    promotion_gate: 'does_not_raise_boundary_ready_without_live_adapter_execution',
+    runtime_mode_cases: [
+      {
+        case: 'missing_provider',
+        expected_error: 'not registered',
+        assertions: [
+          'registry_lookup_before_adapter_invocation',
+          'typed_owner_error_mapping',
+          'no_provider_side_effect',
+        ],
+      },
+      {
+        case: 'unsupported_operation',
+        expected_error: 'does not support',
+        assertions: [
+          'capability_check_before_adapter_invocation',
+          'typed_owner_error_mapping',
+          'no_provider_side_effect',
+        ],
+      },
+      {
+        case: 'unknown_operation',
+        expected_error: 'unknown payment provider operation',
+        assertions: [
+          'operation_allowlist_before_adapter_invocation',
+          'typed_owner_error_mapping',
+          'no_provider_side_effect',
+        ],
+      },
+      {
+        case: 'degraded_provider',
+        expected_can_execute: true,
+        assertions: [
+          'degraded_mode_propagated',
+          'fallback_profile_required',
+          'adapter_invocation_remains_owner_controlled',
+        ],
+      },
+      {
+        case: 'unavailable_provider',
+        expected_can_execute: false,
+        assertions: [
+          'unavailable_maps_to_non_executable',
+          'fallback_profile_required',
+          'adapter_invocation_blocked_by_owner',
+        ],
+      },
+    ],
+    registration_cases: [
+      { case: 'descriptor_id_mismatch', expected_error: 'does not match registration id' },
+      { case: 'adapter_descriptor_mismatch', expected_error: 'does not match descriptor id' },
+      { case: 'duplicate_provider', expected_error: 'already registered' },
+      { case: 'non_ready_without_degraded_mode', expected_error: 'must declare degraded mode' },
+      { case: 'unavailable_default_provider', expected_error: 'cannot be default' },
+    ],
+    webhook_runtime_case: {
+      adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
+      assertions: [
+        'idempotency_key_required_by_contract',
+        'raw_payload_audit_required',
+        'owner_service_replay_guard_required',
+      ],
+    },
+  };
   mutateEvidence?.(evidence);
   write('crates/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
+  write('crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json', `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
   write(
     'crates/rustok-payment/src/providers.rs',
     providerSource ??
       `pub enum PaymentProviderHealth { Ready, Degraded, Unavailable }
 PaymentProviderHealth::Unavailable
 pub struct PaymentProviderDegradedMode { reason: String }
+pub struct PaymentProviderRuntimeMode { provider_id: String }
 pub struct ExternalPaymentProviderRegistration { descriptor: PaymentProviderDescriptor }
 pub struct PaymentProviderRegistry;
-impl PaymentProviderRegistry { pub fn register_external(&mut self, expected_provider_id: &str) { self.providers.contains_key(expected_provider_id); descriptor.provider_id != registration.descriptor.provider_id; } }
+impl PaymentProviderRegistry { pub fn register_external(&mut self, expected_provider_id: &str) { self.providers.contains_key(expected_provider_id); descriptor.provider_id != registration.descriptor.provider_id; } pub fn runtime_mode(&self) { can_execute: registration.health != PaymentProviderHealth::Unavailable; } }
 impl ExternalPaymentProviderRegistration { pub fn validate(&self, expected_provider_id: &str) { self.descriptor.provider_id; self.degraded_mode.is_none(); } }
 `,
   );
@@ -107,6 +182,27 @@ test('verifyEcommerceProviderSpiEvidence accepts matching provider SPI evidence'
   assert.doesNotThrow(() => {
     verifyEcommerceProviderSpiEvidence({ root: createFixtureRoot(), modules: [moduleSlug] });
   });
+});
+
+test('verifyEcommerceProviderSpiEvidence rejects runtime smoke assertion drift', () => {
+  const root = createFixtureRoot();
+  const runtimeSmokePath = new URL(
+    'crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json',
+    root,
+  );
+  const runtimeSmoke = JSON.parse(readFileSync(runtimeSmokePath, 'utf8'));
+  runtimeSmoke.runtime_mode_cases.find((entry) => entry.case === 'unavailable_provider').assertions = [
+    'fallback_profile_required',
+  ];
+  writeFileSync(runtimeSmokePath, `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
+
+  assert.throws(
+    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceProviderSpiEvidenceError.name,
+      message: 'payment runtime smoke case unavailable_provider assertions drift',
+    },
+  );
 });
 
 test('verifyEcommerceProviderSpiEvidence rejects operation assertion drift', () => {
