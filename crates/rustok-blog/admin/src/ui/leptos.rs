@@ -54,11 +54,6 @@ pub fn BlogAdmin() -> impl IntoView {
         "blog.error.loadPosts",
         "Failed to load posts",
     );
-    let form_subtitle = t(
-        ui_locale.as_deref(),
-        "blog.form.subtitle",
-        "The package owns both the list and the form. apps/admin only hosts the module route.",
-    );
     let form_create_new_instead = t(
         ui_locale.as_deref(),
         "blog.form.createNewInstead",
@@ -68,12 +63,6 @@ pub fn BlogAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "blog.form.rawWarning",
         "This exemplar edits non-markdown content as raw serialized payload through the same GraphQL contract.",
-    );
-    let form_tags_label = t(ui_locale.as_deref(), "blog.form.tags", "Tags");
-    let form_tags_placeholder = t(
-        ui_locale.as_deref(),
-        "blog.form.tagsPlaceholder",
-        "news, launch, release",
     );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -128,6 +117,8 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let issue_banner_view =
         Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
+    let form_copy_view = blog_form_copy_view_model(ui_locale.as_deref());
+
     let form_view_locale = ui_locale.clone();
     let form_view_model = Memo::new(move |_| {
         blog_form_view_model(
@@ -580,7 +571,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             </div>
                             <label class="block space-y-2">
                                 <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                    {t(ui_locale.as_deref(), "blog.form.locale", "Locale")}
+                                    {form_copy_view.locale_label.clone()}
                                 </span>
                                 <input
                                     type="text"
@@ -655,7 +646,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             <h2 class="text-lg font-semibold text-card-foreground">
     {move || form_view_model.get().title}
                             </h2>
-                            <p class="text-sm text-muted-foreground">{form_subtitle.clone()}</p>
+                            <p class="text-sm text-muted-foreground">{form_copy_view.subtitle.clone()}</p>
                         </div>
 
                         <Show when=move || editing_banner_view.get().visible>
@@ -675,7 +666,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         <form class="mt-5 space-y-4" on:submit=submit_post>
                             <label class="block space-y-2">
                                 <span class="text-sm font-medium text-card-foreground">
-                                    {t(ui_locale.as_deref(), "blog.form.title", "Title")}
+                                    {form_copy_view.title_label.clone()}
                                 </span>
                                 <input
                                     type="text"
@@ -693,7 +684,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
                             <label class="block space-y-2">
                                 <span class="text-sm font-medium text-card-foreground">
-                                    {t(ui_locale.as_deref(), "blog.form.slug", "Slug")}
+                                    {form_copy_view.slug_label.clone()}
                                 </span>
                                 <input
                                     type="text"
@@ -706,7 +697,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             <div class="grid gap-4 md:grid-cols-2">
                                 <label class="block space-y-2">
                                     <span class="text-sm font-medium text-card-foreground">
-                                        {t(ui_locale.as_deref(), "blog.form.locale", "Locale")}
+                                        {form_copy_view.locale_label.clone()}
                                     </span>
                                     <input
                                         type="text"
@@ -718,7 +709,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
                                 <label class="block space-y-2">
                                     <span class="text-sm font-medium text-card-foreground">
-                                        {t(ui_locale.as_deref(), "blog.form.bodyFormat", "Body format")}
+                                        {form_copy_view.body_format_label.clone()}
                                     </span>
                                     <select
                                         class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -733,7 +724,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
                             <label class="block space-y-2">
                                 <span class="text-sm font-medium text-card-foreground">
-                                    {t(ui_locale.as_deref(), "blog.form.excerpt", "Excerpt")}
+                                    {form_copy_view.excerpt_label.clone()}
                                 </span>
                                 <textarea
                                     class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -744,7 +735,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
                             <label class="block space-y-2">
                                 <span class="text-sm font-medium text-card-foreground">
-                                    {t(ui_locale.as_deref(), "blog.form.body", "Body")}
+                                    {form_copy_view.body_label.clone()}
                                 </span>
                                 <textarea
                                     class="min-h-48 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -761,12 +752,12 @@ pub fn BlogAdmin() -> impl IntoView {
 
                             <label class="block space-y-2">
                                 <span class="text-sm font-medium text-card-foreground">
-                                    {form_tags_label.clone()}
+                                    {form_copy_view.tags_label.clone()}
                                 </span>
                                 <input
                                     type="text"
                                     class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                    placeholder=form_tags_placeholder.clone()
+                                    placeholder=form_copy_view.tags_placeholder.clone()
                                     prop:value=tags_input
                                     on:input=move |ev| set_tags_input.set(event_target_value(&ev))
                                 />
@@ -778,11 +769,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     prop:checked=publish_now
                                     on:change=move |ev| set_publish_now.set(event_target_checked(&ev))
                                 />
-                                {t(
-                                    ui_locale.as_deref(),
-                                    "blog.form.publishNow",
-                                    "Publish immediately",
-                                )}
+                                {form_copy_view.publish_now_label.clone()}
                             </label>
 
                             <Show when=move || issue_banner_view.get().visible>
@@ -853,6 +840,25 @@ fn blog_form_view_model(
             create: t(locale, "blog.form.create", "Create post"),
         },
     )
+}
+
+fn blog_form_copy_view_model(locale: Option<&str>) -> core::BlogPostAdminEditorFormCopyViewModel {
+    core::blog_post_admin_editor_form_copy_view(core::BlogPostAdminEditorFormCopyLabels {
+        subtitle: t(
+            locale,
+            "blog.form.subtitle",
+            "The package owns both the list and the form. apps/admin only hosts the module route.",
+        ),
+        title_label: t(locale, "blog.form.title", "Title"),
+        slug_label: t(locale, "blog.form.slug", "Slug"),
+        locale_label: t(locale, "blog.form.locale", "Locale"),
+        body_format_label: t(locale, "blog.form.bodyFormat", "Body format"),
+        excerpt_label: t(locale, "blog.form.excerpt", "Excerpt"),
+        body_label: t(locale, "blog.form.body", "Body"),
+        tags_label: t(locale, "blog.form.tags", "Tags"),
+        tags_placeholder: t(locale, "blog.form.tagsPlaceholder", "news, launch, release"),
+        publish_now_label: t(locale, "blog.form.publishNow", "Publish immediately"),
+    })
 }
 
 #[component]
