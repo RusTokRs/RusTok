@@ -60,8 +60,10 @@ pub fn normalize_blog_post_body_format() {}
 pub struct BlogPostAdminStatusBadgeViewModel;
 pub fn blog_post_admin_status_badge_view() {}
 pub struct BlogPostAdminEditBannerViewModel;
+pub fn edit_banner_class() {}
 pub fn blog_post_admin_edit_banner_view() {}
 pub struct BlogPostAdminRawBodyWarningViewModel;
+pub fn raw_body_warning_class() {}
 pub fn blog_post_admin_raw_body_warning_view() {}
 pub enum BlogPostAdminPostsLoadViewModel {}
 pub fn blog_post_admin_posts_load_view() {}
