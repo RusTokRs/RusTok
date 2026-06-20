@@ -16,6 +16,7 @@ const central = read('docs/modules/registry.md');
 const cargo = read('crates/rustok-tenant/Cargo.toml');
 const lib = read('crates/rustok-tenant/src/lib.rs');
 const ports = read('crates/rustok-tenant/src/ports.rs');
+const integrationTests = read('crates/rustok-tenant/tests/integration.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'tenant' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
@@ -40,6 +41,10 @@ if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/ver
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
 const registryCase = registry.contract_tests.cases.find((entry) => entry.operation === 'read_tenant');
 const evidenceCase = evidence.cases.find((entry) => entry.operation === 'read_tenant');
-if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('read_tenant evidence case drift');
+if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'runtime_cases_authored_uncompiled' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('read_tenant evidence case drift');
+if (evidence.fallback_smoke.status !== 'runtime_smoke_authored_uncompiled') fail('fallback smoke status drift');
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
+for (const marker of ['tenant_read_port_requires_deadline_and_valid_slug', 'tenant_read_port_preserves_projection_and_inactive_degraded_mode', 'PortErrorKind::Timeout', 'PortErrorKind::Validation', 'PortErrorKind::NotFound', 'include_inactive: true']) {
+  if (!integrationTests.includes(marker)) fail(`integration tests missing ${marker}`);
+}
 console.log('[verify-tenant-fba] Tenant FBA provider metadata, port semantics and static evidence are consistent');
