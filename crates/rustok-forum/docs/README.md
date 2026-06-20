@@ -16,7 +16,7 @@ forum-owned persistence и должен оставаться самостоят�
 - forum-owned storage для categories, topics, replies, votes, solutions, subscriptions и user stats;
 - transport surfaces: GraphQL, REST, Leptos admin/storefront packages;
 - forum widget contract freeze surfaces: `ForumWidgetContractService`, REST endpoints `/api/forum/widgets/catalog` + `/api/forum/widgets/validate`, GraphQL query `forumWidgetCatalog`;
-- forum page-builder consumer evidence: FW-2 static fallback matrix plus live Wave 1 rollout packet with control-plane audit trail, fallback/no-5xx guarantees, complete smoke outcomes, numeric SLO checks, forum-owned observability traces, keep decision and owner approvals;
+- forum page-builder consumer evidence: FW-2 static fallback matrix plus live Wave 1 rollout packet with control-plane audit trail, fallback/no-5xx guarantees, complete smoke outcomes, numeric SLO checks, forum-owned observability traces, keep decision, owner approvals and a monthly refresh policy;
 - tag attachments через `forum_topic_tags` при shared vocabulary в `rustok-taxonomy`;
 - visibility, moderation и user-facing derived fields в forum read/write contracts.
 
