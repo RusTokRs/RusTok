@@ -149,6 +149,22 @@ pub fn should_autofill_slug(current_slug: &str) -> bool {
     !has_non_empty_text(current_slug)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminTitleInputViewModel {
+    pub title: String,
+    pub slug_update: Option<String>,
+}
+
+pub fn blog_post_admin_title_input_view(
+    title: String,
+    current_slug: &str,
+) -> BlogPostAdminTitleInputViewModel {
+    BlogPostAdminTitleInputViewModel {
+        slug_update: should_autofill_slug(current_slug).then(|| slugify(title.as_str())),
+        title,
+    }
+}
+
 pub fn loadable_post_id(post_id: Option<&str>) -> Option<String> {
     post_id
         .map(str::trim)
@@ -1336,6 +1352,18 @@ mod tests {
         assert_eq!(row.publish_label, "Unpublish");
         assert_eq!(row.archive_label, "Archive");
         assert_eq!(row.delete_label, "Delete");
+    }
+
+    #[test]
+    fn title_input_view_model_keeps_autoslug_policy_without_ui_runtime() {
+        let generated = blog_post_admin_title_input_view("Hello RusTok".to_string(), "   ");
+        assert_eq!(generated.title, "Hello RusTok");
+        assert_eq!(generated.slug_update, Some("hello-rustok".to_string()));
+
+        let preserved =
+            blog_post_admin_title_input_view("Changed title".to_string(), "custom-slug");
+        assert_eq!(preserved.title, "Changed title");
+        assert_eq!(preserved.slug_update, None);
     }
 
     #[test]
