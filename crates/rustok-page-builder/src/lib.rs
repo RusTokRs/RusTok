@@ -3,6 +3,7 @@ pub mod health;
 pub mod rollout;
 #[cfg(feature = "server")]
 pub mod service;
+pub mod transport;
 
 #[cfg(feature = "server")]
 use async_trait::async_trait;
@@ -59,18 +60,18 @@ impl MigrationSource for PageBuilderModule {
 mod tests {
     use super::*;
     use crate::dto::{
-        BuilderCapabilityKind, BuilderNodePropertiesInput, PAGE_BUILDER_ERROR_CATALOG,
-        PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderCapabilityRequest,
+        BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderCapabilityRequest,
         PageBuilderCapabilityResponse, PageBuilderContractMetadata, PageBuilderErrorKind,
-        PublishPageBuilderInput, PublishPageBuilderResult,
+        PublishPageBuilderInput, PublishPageBuilderResult, PAGE_BUILDER_ERROR_CATALOG,
+        PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
     };
     use crate::health::{
         ProviderDegradationReason, ProviderHealthEvidence, ProviderHealthSnapshot,
         ProviderHealthState, ProviderSloObservations, ProviderSloStatus, ProviderSloThresholds,
     };
     use crate::rollout::{
-        BuilderCapabilityFlags, BuilderRolloutError, BuilderToggleProfile, ensure_capability,
-        fallback_matrix,
+        ensure_capability, fallback_matrix, BuilderCapabilityFlags, BuilderRolloutError,
+        BuilderToggleProfile,
     };
 
     #[test]
