@@ -10902,6 +10902,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "rust_decimal",
+ "rustok-api",
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-test-utils",
