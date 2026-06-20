@@ -93,21 +93,26 @@ fn PagesShowcase(data: StorefrontPagesData) -> impl IntoView {
 fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let Some(page) = page else {
+        let empty_state = core::selected_page_empty_state(
+            t(
+                locale.as_deref(),
+                "pages.selected.emptyTitle",
+                "Requested page is not published yet",
+            ),
+            t(
+                locale.as_deref(),
+                "pages.selected.emptyBody",
+                "Choose a page from the list below with `?slug=` or publish it from the pages admin package.",
+            ),
+        );
+
         return view! {
             <article class="rounded-2xl border border-dashed border-border p-6">
                 <h3 class="text-lg font-semibold text-card-foreground">
-                    {t(
-                        locale.as_deref(),
-                        "pages.selected.emptyTitle",
-                        "Requested page is not published yet",
-                    )}
+                    {empty_state.title}
                 </h3>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    {t(
-                        locale.as_deref(),
-                        "pages.selected.emptyBody",
-                        "Choose a page from the list below with `?slug=` or publish it from the pages admin package.",
-                    )}
+                    {empty_state.body}
                 </p>
             </article>
         }

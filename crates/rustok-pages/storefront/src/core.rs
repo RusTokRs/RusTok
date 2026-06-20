@@ -91,6 +91,16 @@ pub fn storefront_builder_fallback_read_contract(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectedPageEmptyState {
+    pub title: String,
+    pub body: String,
+}
+
+pub fn selected_page_empty_state(title: String, body: String) -> SelectedPageEmptyState {
+    SelectedPageEmptyState { title, body }
+}
+
 pub fn raw_body_format_summary(format: &str, char_count: usize, template: &str) -> String {
     template
         .replace("{format}", format)
@@ -130,6 +140,17 @@ mod tests {
     fn storefront_link_and_status_helpers_are_core_owned() {
         assert_eq!(page_link_href("/pages", "home"), "/pages?slug=home");
         assert_eq!(page_status_label("published"), "published");
+    }
+
+    #[test]
+    fn selected_page_empty_state_is_core_owned() {
+        let state = selected_page_empty_state(
+            "Requested page is not published yet".to_string(),
+            "Choose a page from the list below".to_string(),
+        );
+
+        assert_eq!(state.title, "Requested page is not published yet");
+        assert_eq!(state.body, "Choose a page from the list below");
     }
 
     #[test]

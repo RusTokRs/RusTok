@@ -55,6 +55,7 @@ pub fn storefront_builder_fallback_read_contract() {}
 pub fn count_label() {}
 pub fn page_link_href() {}
 pub fn page_status_label() {}
+pub fn selected_page_empty_state() {}
 pub fn load_error_message() {}
 `;
 }
@@ -87,6 +88,7 @@ pub fn PagesView() {
     let _title = core::selected_page_title;
     let _href = core::page_link_href;
     let _status = core::page_status_label;
+    let _empty = core::selected_page_empty_state;
     let _load_error = core::load_error_message;
     ${rawApiCall ? "let _raw = api::fetch_storefront_pages;" : ""}
 }
