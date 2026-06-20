@@ -2,61 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Transport-agnostic tenant port context for host/runtime boundary calls.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortContext {
-    pub tenant_id: String,
-    pub correlation_id: String,
-    pub deadline_ms: Option<u64>,
-}
-
-impl PortContext {
-    pub fn require_deadline_semantics(&self) -> Result<(), PortError> {
-        if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(PortError::new(
-                PortErrorKind::Timeout,
-                "port.deadline_required",
-                "tenant read port calls require deadline semantics",
-                true,
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Transport-neutral error returned by tenant owner ports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortError {
-    pub kind: PortErrorKind,
-    pub code: String,
-    pub message: String,
-    pub retryable: bool,
-}
-
-impl PortError {
-    pub fn new(
-        kind: PortErrorKind,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        retryable: bool,
-    ) -> Self {
-        Self {
-            kind,
-            code: code.into(),
-            message: message.into(),
-            retryable,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PortErrorKind {
-    Validation,
-    NotFound,
-    Unavailable,
-    Timeout,
-}
+pub use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 
 /// Transport-neutral selector for tenant resolution/read consumers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,7 +48,7 @@ impl TenantReadPort for crate::TenantService {
         context: PortContext,
         request: TenantReadRequest,
     ) -> Result<TenantReadProjection, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_tenant_read_request(&request)?;
 
         let tenant = match request.selector {
