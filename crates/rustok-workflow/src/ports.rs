@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::{WorkflowError, WorkflowResponse, WorkflowService, WorkflowSummary};
@@ -7,10 +7,8 @@ use crate::{WorkflowError, WorkflowResponse, WorkflowService, WorkflowSummary};
 /// Transport-neutral owner boundary for workflow read projections.
 #[async_trait]
 pub trait WorkflowReadPort: Send + Sync {
-    async fn list_workflows(
-        &self,
-        context: PortContext,
-    ) -> Result<Vec<WorkflowSummary>, PortError>;
+    async fn list_workflows(&self, context: PortContext)
+    -> Result<Vec<WorkflowSummary>, PortError>;
 
     async fn get_workflow(
         &self,
@@ -25,9 +23,11 @@ impl WorkflowReadPort for WorkflowService {
         &self,
         context: PortContext,
     ) -> Result<Vec<WorkflowSummary>, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = workflow_tenant_id(&context)?;
-        self.list(tenant_id).await.map_err(workflow_error_to_port_error)
+        self.list(tenant_id)
+            .await
+            .map_err(workflow_error_to_port_error)
     }
 
     async fn get_workflow(
@@ -35,7 +35,7 @@ impl WorkflowReadPort for WorkflowService {
         context: PortContext,
         workflow_id: Uuid,
     ) -> Result<WorkflowResponse, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = workflow_tenant_id(&context)?;
         self.get(tenant_id, workflow_id)
             .await

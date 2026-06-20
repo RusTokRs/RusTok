@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -103,7 +103,7 @@ impl PaymentCollectionPort for crate::PaymentService {
         context: PortContext,
         request: PaymentCollectionStatusRequest,
     ) -> Result<PaymentCollectionStatusSnapshot, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let response = self
             .get_collection(tenant_id, request.collection_id)

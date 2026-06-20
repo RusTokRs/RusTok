@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 
 /// Transport-neutral request for checking effective permission claims.
@@ -43,7 +43,7 @@ impl RbacPermissionDecisionPort for crate::RbacModule {
         context: PortContext,
         request: RbacPermissionCheckRequest,
     ) -> Result<RbacPermissionCheckResponse, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_permission_request(&request)?;
 
         let claims = context.claims;
@@ -56,7 +56,11 @@ impl RbacPermissionDecisionPort for crate::RbacModule {
         let missing_permissions = request
             .permissions
             .iter()
-            .filter(|permission| !matched_permissions.iter().any(|matched| matched == *permission))
+            .filter(|permission| {
+                !matched_permissions
+                    .iter()
+                    .any(|matched| matched == *permission)
+            })
             .cloned()
             .collect::<Vec<_>>();
         let allowed = match request.mode {
@@ -80,7 +84,11 @@ fn validate_permission_request(request: &RbacPermissionCheckRequest) -> Result<(
             "permission decision port requires at least one permission",
         ));
     }
-    if request.permissions.iter().any(|permission| permission.trim().is_empty()) {
+    if request
+        .permissions
+        .iter()
+        .any(|permission| permission.trim().is_empty())
+    {
         return Err(PortError::new(
             PortErrorKind::Validation,
             "rbac.permission_invalid",
