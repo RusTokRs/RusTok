@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 
 use crate::{TaxCalculationInput, TaxCalculationResult, TaxError};
 
@@ -20,7 +20,7 @@ impl TaxCalculationPort for crate::TaxService {
         context: PortContext,
         request: TaxCalculationInput,
     ) -> Result<TaxCalculationResult, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         self.calculate(request)
             .await
             .map_err(tax_error_to_port_error)

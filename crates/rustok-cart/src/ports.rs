@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -28,7 +28,7 @@ impl CartSnapshotReadPort for crate::CartService {
         context: PortContext,
         request: CartCheckoutSnapshotRequest,
     ) -> Result<CartResponse, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_cart(tenant_id, request.cart_id)
             .await

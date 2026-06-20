@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_core::SecurityContext;
 use uuid::Uuid;
 
@@ -41,7 +41,7 @@ pub trait CommentsThreadPort: Send + Sync {
     ) -> Result<CommentRecord, PortError>;
 
     async fn delete_comment(&self, context: PortContext, comment_id: Uuid)
-        -> Result<(), PortError>;
+    -> Result<(), PortError>;
 }
 
 #[async_trait]
@@ -64,7 +64,7 @@ impl CommentsThreadPort for CommentsService {
         comment_id: Uuid,
         fallback_locale: Option<String>,
     ) -> Result<CommentRecord, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.get_comment(
             tenant_id,
@@ -85,7 +85,7 @@ impl CommentsThreadPort for CommentsService {
         filter: ListCommentsFilter,
         fallback_locale: Option<String>,
     ) -> Result<(Vec<CommentListItem>, u64), PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.list_comments_for_target(
             tenant_id,

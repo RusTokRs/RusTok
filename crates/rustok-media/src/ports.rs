@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::{MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaTranslationItem};
@@ -8,7 +8,7 @@ use crate::{MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaTran
 #[async_trait]
 pub trait MediaAssetReadPort: Send + Sync {
     async fn get_asset(&self, context: PortContext, media_id: Uuid)
-        -> Result<MediaItem, PortError>;
+    -> Result<MediaItem, PortError>;
 
     async fn list_assets(
         &self,
@@ -38,7 +38,7 @@ impl MediaAssetReadPort for MediaService {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<MediaItem, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.get(tenant_id, media_id)
             .await
@@ -51,7 +51,7 @@ impl MediaAssetReadPort for MediaService {
         limit: u64,
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64), PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.list(tenant_id, limit, offset)
             .await
@@ -64,7 +64,7 @@ impl MediaAssetReadPort for MediaService {
         media_id: Uuid,
         alt: Option<String>,
     ) -> Result<Option<MediaImageDescriptor>, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         let item = self
             .get(tenant_id, media_id)
@@ -78,7 +78,7 @@ impl MediaAssetReadPort for MediaService {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<Vec<MediaTranslationItem>, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.get_translations(tenant_id, media_id)
             .await

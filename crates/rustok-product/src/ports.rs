@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -45,7 +45,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context: PortContext,
         request: ProductProjectionRequest,
     ) -> Result<ProductResponse, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         self.get_product_with_locale_fallback(
@@ -63,7 +63,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context: PortContext,
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         self.list_published_products_with_locale_fallback(
