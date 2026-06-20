@@ -570,6 +570,51 @@ pub fn blog_post_admin_posts_table_view_from_items(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminEditorFormCopyViewModel {
+    pub subtitle: String,
+    pub title_label: String,
+    pub slug_label: String,
+    pub locale_label: String,
+    pub body_format_label: String,
+    pub excerpt_label: String,
+    pub body_label: String,
+    pub tags_label: String,
+    pub tags_placeholder: String,
+    pub publish_now_label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminEditorFormCopyLabels {
+    pub subtitle: String,
+    pub title_label: String,
+    pub slug_label: String,
+    pub locale_label: String,
+    pub body_format_label: String,
+    pub excerpt_label: String,
+    pub body_label: String,
+    pub tags_label: String,
+    pub tags_placeholder: String,
+    pub publish_now_label: String,
+}
+
+pub fn blog_post_admin_editor_form_copy_view(
+    labels: BlogPostAdminEditorFormCopyLabels,
+) -> BlogPostAdminEditorFormCopyViewModel {
+    BlogPostAdminEditorFormCopyViewModel {
+        subtitle: labels.subtitle,
+        title_label: labels.title_label,
+        slug_label: labels.slug_label,
+        locale_label: labels.locale_label,
+        body_format_label: labels.body_format_label,
+        excerpt_label: labels.excerpt_label,
+        body_label: labels.body_label,
+        tags_label: labels.tags_label,
+        tags_placeholder: labels.tags_placeholder,
+        publish_now_label: labels.publish_now_label,
+    }
+}
+
 pub fn blog_post_admin_form_view(
     editing_post_id: Option<&str>,
     busy_key: Option<&str>,
@@ -672,7 +717,6 @@ pub fn is_markdown_format(value: &str) -> bool {
 pub fn should_show_raw_body_warning(body_format: &str) -> bool {
     !is_markdown_format(body_format)
 }
-
 
 pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {
     match kind {
@@ -1294,7 +1338,6 @@ mod tests {
         assert_eq!(row.delete_label, "Delete");
     }
 
-
     #[test]
     fn slugify_normalizes_text() {
         assert_eq!(slugify("Hello, Rustok UI!"), "hello-rustok-ui");
@@ -1563,6 +1606,23 @@ mod tests {
         );
         assert!(!hidden_edit_banner.visible);
         assert_eq!(hidden_edit_banner.banner_text, "");
+
+        let form_copy = blog_post_admin_editor_form_copy_view(BlogPostAdminEditorFormCopyLabels {
+            subtitle: "Form subtitle".to_string(),
+            title_label: "Title".to_string(),
+            slug_label: "Slug".to_string(),
+            locale_label: "Locale".to_string(),
+            body_format_label: "Body format".to_string(),
+            excerpt_label: "Excerpt".to_string(),
+            body_label: "Body".to_string(),
+            tags_label: "Tags".to_string(),
+            tags_placeholder: "news, launch".to_string(),
+            publish_now_label: "Publish immediately".to_string(),
+        });
+        assert_eq!(form_copy.subtitle, "Form subtitle");
+        assert_eq!(form_copy.title_label, "Title");
+        assert_eq!(form_copy.tags_placeholder, "news, launch");
+        assert_eq!(form_copy.publish_now_label, "Publish immediately");
 
         let create_form = blog_post_admin_form_view(
             None,
