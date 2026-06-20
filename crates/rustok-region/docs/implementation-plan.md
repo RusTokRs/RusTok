@@ -6,21 +6,22 @@
 
 ## Execution checkpoint
 
-- Current phase: ffa_storefront_native_graphql_parity_guardrail
-- Last checkpoint: FFA slice #40 добавила отдельный storefront boundary verifier и fixture suite для native→GraphQL fallback order, adapter isolation, Leptos-free core и stable error DOM evidence; оба script-а включены в aggregate FFA pipelines.
-- Next step: Собрать runtime/integration evidence для storefront native success, native failure + GraphQL success и double-failure error envelope; до runtime evidence статус остаётся `in_progress`.
+- Current phase: fba_region_read_projection_static_contract
+- Last checkpoint: FBA slice #1 добавил `RegionReadPort` / `region.read_projection.v1`, registry `crates/rustok-region/contracts/region-fba-registry.json`, static matrix `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` и fast gate `npm run verify:region:fba` без долгой компиляции.
+- Next step: Собрать runtime contract/fallback smoke evidence для `RegionReadPort` и storefront native success/native failure + GraphQL success/double-failure error envelope; до runtime evidence статус остаётся `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
-- Last updated at (UTC): 2026-06-13T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
+  - FBA provider slice: `crates/rustok-region/src/ports.rs` declares `RegionReadPort` / `region.read_projection.v1` for region/country read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, locale fallback preservation and read deadline semantics; `crates/rustok-region/contracts/region-fba-registry.json` plus `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:region:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FFA slice #1 вынесла нормализацию admin-формы региона в module-local core и переиспользовала `rustok-api::normalize_ui_text` без изменений транспорта;
   - FFA slice #2 вынесла storefront route segment fallback, tax-provider fallback, country/tax summaries, policy-row formatting и selected-region metric view-model в `storefront/src/core.rs` с unit-тестами без Leptos runtime;
@@ -63,7 +64,7 @@
   - FFA slice #38 усилила verifier self-check: `verify-region-admin-boundary.mjs` теперь проверяет `package.json` wiring для `test:verify:region:admin-boundary` и наличие canonical/docs-sync cases в fixture test file, а fixture suite отвергает отсутствующий package test script;
   - FFA slice #39 подключила `npm run test:verify:region:admin-boundary` в aggregate `test:verify:ffa:ui:migration` и добавила self-check/negative fixture, чтобы region boundary fixture evidence не выпадало из общего FFA UI migration test path.
   - FFA slice #40 добавила `scripts/verify/verify-region-storefront-boundary.mjs` и fixture suite: guardrail фиксирует native-first fallback order, наличие native/GraphQL adapters, transport error evidence, DOM status/locale-key attributes и запрет raw adapter calls из Leptos; scripts подключены к aggregate verify/test pipelines.
-- Last verified at (UTC): 2026-06-18T00:00:00Z
+- Last verified at (UTC): 2026-06-20T00:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
