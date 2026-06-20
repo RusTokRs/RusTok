@@ -248,6 +248,78 @@ for (const row of ownerCloseoutCriteria) {
   );
 }
 
+const unitCoverageInventory = fixtures.unitCoverageInventory ?? [];
+assert(
+  unitCoverageInventory.length >= 4,
+  "Expected D8 unit coverage inventory for normalization, replay, GraphQL and storefront locale checks",
+);
+for (const row of unitCoverageInventory) {
+  assert(row.batch, "D8 unit inventory row misses batch");
+  assert(row.path, `D8 unit inventory row misses path: ${row.batch}`);
+  assert(
+    row.commandWhenCompilationAllowed?.startsWith("cargo test"),
+    `D8 unit inventory must record the future cargo test command: ${row.batch}`,
+  );
+  assert(
+    row.status === "source_locked_pending_execution",
+    `D8 unit inventory must stay pending execution until compilation is allowed: ${row.batch}`,
+  );
+  const source = readFileSync(join(repoRoot, row.path), "utf8");
+  for (const token of row.mustContain ?? []) {
+    assert(source.includes(token), `D8 unit inventory ${row.batch} misses token ${token}`);
+  }
+}
+
+const integrationMatrixPlan = fixtures.integrationMatrixPlan ?? [];
+for (const surface of [
+  "backend_graphql_rest_parity",
+  "outbox_index_pipeline",
+  "next_frontend_runtime",
+  "leptos_storefront_runtime",
+  "media_descriptor_fallback_smoke",
+]) {
+  const row = integrationMatrixPlan.find((item) => item.surface === surface);
+  assert(row, `Missing D8 integration matrix plan surface: ${surface}`);
+  assert(row.pendingCommand, `D8 integration matrix surface misses pending command: ${surface}`);
+  assert(
+    Array.isArray(row.requiredArtifacts) && row.requiredArtifacts.length >= 3,
+    `D8 integration matrix surface misses artifact list: ${surface}`,
+  );
+  assert(
+    Array.isArray(row.blocksCloseoutIf) && row.blocksCloseoutIf.length >= 2,
+    `D8 integration matrix surface misses closeout blockers: ${surface}`,
+  );
+}
+
+const liveArtifactManifestTemplate = fixtures.liveArtifactManifestTemplate ?? {};
+assert(
+  liveArtifactManifestTemplate.status === "template_only_pending_d8_runtime",
+  "Live artifact manifest template must remain pending until D8 runtime evidence is captured",
+);
+for (const requiredFile of [
+  "backend-graphql-rest-parity.json",
+  "outbox-index-before-after-counters.json",
+  "next-runtime-robots-sitemap-metadata.json",
+  "leptos-storefront-page-context-smoke.json",
+  "media-descriptor-fallback-smoke.json",
+  "owner-signoff.md",
+]) {
+  assert(
+    liveArtifactManifestTemplate.requiredFiles?.includes(requiredFile),
+    `Live artifact manifest template misses ${requiredFile}`,
+  );
+}
+for (const counterField of ["pending", "sent", "retry", "failed", "dead_letter", "replay_mode"]) {
+  assert(
+    liveArtifactManifestTemplate.counterFields?.includes(counterField),
+    `Live artifact manifest template misses counter field ${counterField}`,
+  );
+}
+assert(
+  (liveArtifactManifestTemplate.redactionPolicy ?? []).some((rule) => rule.includes("auth tokens")),
+  "Live artifact manifest template must include auth token redaction",
+);
+
 console.log(
   `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, `
     + `${routeRows.length} route rows, ${smokeRows.length} smoke routes, `
@@ -260,5 +332,7 @@ console.log(
     + `${fixtures.semanticErrorParityMatrix.length} semantic-error rows, `
     + `${fixtures.liveEvidenceCaptureTemplate.commands.length} live evidence commands, `
     + `${fixtures.incidentEvidenceTemplates.length} incident templates, `
-    + `${fixtures.ownerCloseoutCriteria.length} owner closeout rows`,
+    + `${fixtures.ownerCloseoutCriteria.length} owner closeout rows, `
+    + `${unitCoverageInventory.length} unit inventory rows, `
+    + `${integrationMatrixPlan.length} integration plan rows`,
 );
