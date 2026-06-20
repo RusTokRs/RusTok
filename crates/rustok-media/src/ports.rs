@@ -8,7 +8,7 @@ use crate::{MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaTran
 #[async_trait]
 pub trait MediaAssetReadPort: Send + Sync {
     async fn get_asset(&self, context: PortContext, media_id: Uuid)
-    -> Result<MediaItem, PortError>;
+        -> Result<MediaItem, PortError>;
 
     async fn list_assets(
         &self,
@@ -38,7 +38,7 @@ impl MediaAssetReadPort for MediaService {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<MediaItem, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
         self.get(tenant_id, media_id)
             .await
@@ -51,7 +51,7 @@ impl MediaAssetReadPort for MediaService {
         limit: u64,
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64), PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
         self.list(tenant_id, limit, offset)
             .await
@@ -64,7 +64,7 @@ impl MediaAssetReadPort for MediaService {
         media_id: Uuid,
         alt: Option<String>,
     ) -> Result<Option<MediaImageDescriptor>, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
         let item = self
             .get(tenant_id, media_id)
@@ -78,12 +78,17 @@ impl MediaAssetReadPort for MediaService {
         context: PortContext,
         media_id: Uuid,
     ) -> Result<Vec<MediaTranslationItem>, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        require_media_read_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
         self.get_translations(tenant_id, media_id)
             .await
             .map_err(media_error_to_port_error)
     }
+}
+
+fn require_media_read_policy(context: &PortContext) -> Result<(), PortError> {
+    context.require_deadline_semantics()?;
+    context.require_policy(PortCallPolicy::read())
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
@@ -132,7 +137,7 @@ mod tests {
     use rustok_api::{PortActor, PortContext, PortErrorKind};
     use uuid::Uuid;
 
-    use super::{media_error_to_port_error, parse_tenant_id};
+    use super::{media_error_to_port_error, parse_tenant_id, require_media_read_policy};
     use crate::MediaError;
 
     fn context(tenant_id: impl Into<String>) -> PortContext {
@@ -143,6 +148,23 @@ mod tests {
             "corr-1",
         )
         .with_deadline(Duration::from_secs(1))
+    }
+
+    #[test]
+    fn require_media_read_policy_requires_deadline_but_not_idempotency() {
+        let without_deadline = PortContext::new(
+            Uuid::new_v4().to_string(),
+            PortActor::service("media-port-test"),
+            "en",
+            "corr-1",
+        );
+
+        let error = require_media_read_policy(&without_deadline)
+            .expect_err("read port calls must carry a deadline");
+        assert_eq!(error.kind, PortErrorKind::Timeout);
+        assert_eq!(error.code, "port.deadline_required");
+
+        assert!(require_media_read_policy(&context(Uuid::new_v4().to_string())).is_ok());
     }
 
     #[test]
