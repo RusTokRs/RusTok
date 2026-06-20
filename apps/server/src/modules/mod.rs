@@ -41,6 +41,7 @@ pub fn build_registry() -> ModuleRegistry {
 #[cfg(test)]
 mod contract_tests {
     use super::{build_registry, ManifestManager};
+    use rustok_auth::AUTH_USER_PERMISSIONS;
     use rustok_core::permissions::{Action, Resource};
     use rustok_core::Permission;
 
@@ -137,7 +138,7 @@ mod contract_tests {
         let alloy = registry.get("alloy").expect("alloy module");
         let flex = registry.get("flex").expect("flex module");
 
-        assert!(auth.permissions().contains(&Permission::USERS_MANAGE));
+        assert_eq!(auth.permissions(), AUTH_USER_PERMISSIONS.to_vec());
         assert!(channel.permissions().is_empty());
         assert!(tenant.permissions().contains(&Permission::TENANTS_MANAGE));
         assert!(tenant.permissions().contains(&Permission::MODULES_MANAGE));

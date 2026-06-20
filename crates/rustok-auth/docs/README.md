@@ -16,14 +16,28 @@ runtime RBAC surface `users:*`.
 - encode/decode helpers для access/reset/invite/email-verification token flows;
 - password hashing, verify и refresh-token helpers;
 - auth-owned migrations;
-- публикация permission surface `users:*` через `RusToKModule::permissions()`.
+- публикация permission surface `users:*` через `AUTH_USER_PERMISSIONS` и `RusToKModule::permissions()`.
 
 ## Интеграция
 
 - зависит только от `rustok-core` и общих библиотек, без зависимости на `rustok-rbac`;
 - используется `apps/server` для REST, GraphQL, session lifecycle и user-management flow;
+- `apps/server` сверяет registry wiring и GraphQL security hints с `AUTH_USER_PERMISSIONS`, чтобы host-слой не расходился с auth-owned permission surface;
 - не публикует собственный UI и остаётся `ui_classification = "capability_only"`;
 - email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
+
+## Runtime-набор permissions
+
+Канонический набор permissions, принадлежащих auth-модулю:
+
+- `users:create`
+- `users:read`
+- `users:update`
+- `users:delete`
+- `users:list`
+- `users:manage`
+
+При добавлении, удалении или переименовании permissions нужно менять `AUTH_USER_PERMISSIONS`, `AuthModule::permissions()`, server registry/security-тесты и этот документ в одном инкременте.
 
 ## Проверка
 
