@@ -157,6 +157,20 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, providerSource } = 
         'owner_service_replay_guard_required',
       ],
     },
+    live_execution_plan: {
+      status: 'planned_contract_locked',
+      promotion_gate: 'requires_concrete_external_adapter_execution',
+      adapter_profile: 'external_gateway_adapter',
+      required_cases: [
+        'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+        'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence',
+        'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
+        'unavailable_mode_blocks_adapter_invocation',
+        'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service',
+      ],
+      adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation,
+      evidence_status: 'runtime_execution_pending',
+    },
   };
   mutateEvidence?.(evidence);
   write('crates/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
@@ -285,6 +299,26 @@ test('verifyEcommerceProviderSpiEvidence rejects missing external registration s
       name: EcommerceProviderSpiEvidenceError.name,
       message:
         'payment provider SPI source lacks external registration marker ExternalPaymentProviderRegistration',
+    },
+  );
+});
+
+test('verifyEcommerceProviderSpiEvidence rejects live execution plan drift', () => {
+  const root = createFixtureRoot();
+  const runtimeSmokePath = new URL(
+    'crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json',
+    root,
+  );
+  const runtimeSmoke = JSON.parse(readFileSync(runtimeSmokePath, 'utf8'));
+  runtimeSmoke.live_execution_plan.required_cases = ['unavailable_mode_blocks_adapter_invocation'];
+  writeFileSync(runtimeSmokePath, `${JSON.stringify(runtimeSmoke, null, 2)}
+`);
+
+  assert.throws(
+    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceProviderSpiEvidenceError.name,
+      message: 'payment live execution plan required cases drift',
     },
   );
 });

@@ -84,5 +84,19 @@
       "raw_payload_audit_required",
       "owner_service_replay_guard_required"
     ]
+  },
+  "live_execution_plan": {
+    "status": "planned_contract_locked",
+    "promotion_gate": "requires_concrete_external_adapter_execution",
+    "adapter_profile": "external_carrier_adapter",
+    "required_cases": [
+      "successful_operation_invokes_adapter_once_after_owner_runtime_guard",
+      "provider_error_maps_to_typed_owner_error_without_lifecycle_persistence",
+      "degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed",
+      "unavailable_mode_blocks_adapter_invocation",
+      "webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service"
+    ],
+    "adapter_operation": "handle_tracking_webhook",
+    "evidence_status": "runtime_execution_pending"
   }
 }
