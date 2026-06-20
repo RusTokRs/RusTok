@@ -8,11 +8,11 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_guardrails
-- Last checkpoint: Standalone Flex orchestration guardrails tightened without compilation: nil schema/entry/entity UUIDs are rejected before service delegation for standalone entry/schema boundary helpers, direct entry commands reject nil schema/entity IDs, and the repo-side multilingual drift gate still passes.
-- Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for new UUID guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
+- Last checkpoint: Standalone Flex service-boundary guardrails tightened without compilation: the public standalone UUID validator is now shared between orchestration and the SeaORM adapter, direct schema/entry service calls reject nil tenant/schema/entry IDs before DB access, and a stray duplicate await in localized entry loading was removed.
+- Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared tenant/schema/entry UUID guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify standalone nil UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs` and `node scripts/verify/verify-flex-multilingual-contract.mjs` pass for this slice.
-- Last updated at (UTC): 2026-06-19T12:00:00Z
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` and `node scripts/verify/verify-flex-multilingual-contract.mjs` pass for this slice.
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -303,6 +303,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - 2026-06-16 no-compile iteration: standalone contract validators now enforce persistence-bound limits before adapter writes: schema slug <= 64, schema name <= 255, entry `entity_type` <= 64, entry `status` <= 32, schema names must not carry surrounding whitespace, and status values must be normalized machine identifiers.
   - 2026-06-19 no-compile iteration: SeaORM standalone adapter now reuses contract validators even for direct service calls, and entry update payloads behave as PATCH merges over the current effective shared + localized values so omitted localized keys are preserved.
   - 2026-06-19 no-compile follow-up: standalone orchestration rejects nil `schema_id`/`entry_id` before service delegation, create-entry commands reject nil `schema_id`/attached `entity_id`, and targeted unit coverage was added without compiling by request.
+  - 2026-06-20 no-compile iteration: nil UUID validation was promoted to a public standalone boundary helper and reused by orchestration and the SeaORM adapter so direct schema/entry service calls reject nil tenant/schema/entry IDs before database access; localized entry map loading also had a duplicate await removed.
   - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail fix и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны

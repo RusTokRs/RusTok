@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use flex::{
-    validate_create_entry_command, validate_create_schema_command, validate_update_entry_command,
-    validate_update_schema_command,
+    validate_create_entry_command, validate_create_schema_command, validate_standalone_uuid,
+    validate_update_entry_command, validate_update_schema_command,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -391,6 +391,7 @@ impl FlexStandaloneSeaOrmService {
 #[async_trait]
 impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn list_schemas(&self, tenant_id: Uuid) -> Result<Vec<flex::FlexSchemaView>, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
         let preferred_locale = self.tenant_default_locale(tenant_id).await?;
         let rows = flex_schemas::Entity::find()
             .filter(flex_schemas::Column::TenantId.eq(tenant_id))
@@ -418,6 +419,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         tenant_id: Uuid,
         schema_id: Uuid,
     ) -> Result<Option<flex::FlexSchemaView>, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
         let preferred_locale = self.tenant_default_locale(tenant_id).await?;
         let row = flex_schemas::Entity::find_by_id(schema_id)
             .filter(flex_schemas::Column::TenantId.eq(tenant_id))
@@ -443,6 +446,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         _actor_id: Option<Uuid>,
         input: flex::CreateFlexSchemaCommand,
     ) -> Result<flex::FlexSchemaView, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
         validate_create_schema_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
         let row = flex_schemas::ActiveModel {
@@ -479,6 +483,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         schema_id: Uuid,
         input: flex::UpdateFlexSchemaCommand,
     ) -> Result<flex::FlexSchemaView, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
         validate_update_schema_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
         let row = self.get_schema_or_not_found(tenant_id, schema_id).await?;
@@ -526,6 +532,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         _actor_id: Option<Uuid>,
         schema_id: Uuid,
     ) -> Result<(), FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
         let row = self.get_schema_or_not_found(tenant_id, schema_id).await?;
 
         flex_schemas::Entity::delete_by_id(row.id)
@@ -541,6 +549,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         tenant_id: Uuid,
         schema_id: Uuid,
     ) -> Result<Vec<flex::FlexEntryView>, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
         let preferred_locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self.get_schema_or_not_found(tenant_id, schema_id).await?;
         let localized_keys = Self::localized_field_keys(&schema.build_custom_fields_schema()?);
@@ -576,6 +586,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         schema_id: Uuid,
         entry_id: Uuid,
     ) -> Result<Option<flex::FlexEntryView>, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
+        validate_standalone_uuid(entry_id, "entry_id")?;
         let preferred_locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self.get_schema_or_not_found(tenant_id, schema_id).await?;
         let localized_keys = Self::localized_field_keys(&schema.build_custom_fields_schema()?);
@@ -611,6 +624,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         _actor_id: Option<Uuid>,
         input: flex::CreateFlexEntryCommand,
     ) -> Result<flex::FlexEntryView, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
         validate_create_entry_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self
@@ -652,6 +666,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         entry_id: Uuid,
         input: flex::UpdateFlexEntryCommand,
     ) -> Result<flex::FlexEntryView, FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
+        validate_standalone_uuid(entry_id, "entry_id")?;
         validate_update_entry_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self.get_schema_or_not_found(tenant_id, schema_id).await?;
@@ -722,6 +739,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         schema_id: Uuid,
         entry_id: Uuid,
     ) -> Result<(), FlexError> {
+        validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_standalone_uuid(schema_id, "schema_id")?;
+        validate_standalone_uuid(entry_id, "entry_id")?;
         let row = flex_entries::Entity::find_by_id(entry_id)
             .filter(flex_entries::Column::TenantId.eq(tenant_id))
             .filter(flex_entries::Column::SchemaId.eq(schema_id))

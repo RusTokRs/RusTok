@@ -95,7 +95,7 @@ pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result
 
 /// Validate standalone entry command before handing it to adapter/service layer.
 pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(), FlexError> {
-    validate_uuid(input.schema_id, "schema_id")?;
+    validate_standalone_uuid(input.schema_id, "schema_id")?;
 
     let relation_shape_ok = (input.entity_type.is_some() && input.entity_id.is_some())
         || (input.entity_type.is_none() && input.entity_id.is_none());
@@ -117,7 +117,7 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
         }
 
         if let Some(entity_id) = input.entity_id {
-            validate_uuid(entity_id, "entity_id")?;
+            validate_standalone_uuid(entity_id, "entity_id")?;
         }
     }
 
@@ -157,6 +157,7 @@ pub async fn list_schemas(
     service: &dyn FlexStandaloneService,
     tenant_id: Uuid,
 ) -> Result<Vec<FlexSchemaView>, FlexError> {
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
     service.list_schemas(tenant_id).await
 }
 
@@ -166,7 +167,8 @@ pub async fn find_schema(
     tenant_id: Uuid,
     schema_id: Uuid,
 ) -> Result<Option<FlexSchemaView>, FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
     service.find_schema(tenant_id, schema_id).await
 }
 
@@ -177,7 +179,8 @@ pub async fn delete_schema(
     actor_id: Option<Uuid>,
     schema_id: Uuid,
 ) -> Result<(), FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
     service.delete_schema(tenant_id, actor_id, schema_id).await
 }
 
@@ -187,7 +190,8 @@ pub async fn list_entries(
     tenant_id: Uuid,
     schema_id: Uuid,
 ) -> Result<Vec<FlexEntryView>, FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
     service.list_entries(tenant_id, schema_id).await
 }
 
@@ -198,8 +202,9 @@ pub async fn find_entry(
     schema_id: Uuid,
     entry_id: Uuid,
 ) -> Result<Option<FlexEntryView>, FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
-    validate_uuid(entry_id, "entry_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(entry_id, "entry_id")?;
     service.find_entry(tenant_id, schema_id, entry_id).await
 }
 
@@ -211,8 +216,9 @@ pub async fn delete_entry(
     schema_id: Uuid,
     entry_id: Uuid,
 ) -> Result<(), FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
-    validate_uuid(entry_id, "entry_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(entry_id, "entry_id")?;
     service
         .delete_entry(tenant_id, actor_id, schema_id, entry_id)
         .await
@@ -225,6 +231,7 @@ pub async fn create_schema(
     actor_id: Option<Uuid>,
     input: CreateFlexSchemaCommand,
 ) -> Result<FlexSchemaView, FlexError> {
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
     validate_create_schema_command(&input)?;
     service.create_schema(tenant_id, actor_id, input).await
 }
@@ -237,7 +244,8 @@ pub async fn update_schema(
     schema_id: Uuid,
     input: UpdateFlexSchemaCommand,
 ) -> Result<FlexSchemaView, FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
     validate_update_schema_command(&input)?;
     service
         .update_schema(tenant_id, actor_id, schema_id, input)
@@ -251,6 +259,7 @@ pub async fn create_entry(
     actor_id: Option<Uuid>,
     input: CreateFlexEntryCommand,
 ) -> Result<FlexEntryView, FlexError> {
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
     validate_create_entry_command(&input)?;
     service.create_entry(tenant_id, actor_id, input).await
 }
@@ -264,8 +273,9 @@ pub async fn update_entry(
     entry_id: Uuid,
     input: UpdateFlexEntryCommand,
 ) -> Result<FlexEntryView, FlexError> {
-    validate_uuid(schema_id, "schema_id")?;
-    validate_uuid(entry_id, "entry_id")?;
+    validate_standalone_uuid(tenant_id, "tenant_id")?;
+    validate_standalone_uuid(schema_id, "schema_id")?;
+    validate_standalone_uuid(entry_id, "entry_id")?;
     validate_update_entry_command(&input)?;
     service
         .update_entry(tenant_id, actor_id, schema_id, entry_id, input)
@@ -461,7 +471,8 @@ fn validate_identifier(value: &str, label: &str, max_len: usize) -> Result<(), F
     Ok(())
 }
 
-fn validate_uuid(value: Uuid, label: &str) -> Result<(), FlexError> {
+/// Validate an id that crosses the standalone Flex service boundary.
+pub fn validate_standalone_uuid(value: Uuid, label: &str) -> Result<(), FlexError> {
     if value.is_nil() {
         return Err(FlexError::InvalidFieldKey(format!(
             "{label} must not be the nil UUID"
@@ -549,9 +560,9 @@ mod tests {
         delete_entry, delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry,
         find_schema, list_entries, list_schemas, update_entry, update_entry_with_event,
         update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
-        validate_update_entry_command, validate_update_schema_command, CreateFlexEntryCommand,
-        CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView, FlexStandaloneService,
-        UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
+        validate_standalone_uuid, validate_update_entry_command, validate_update_schema_command,
+        CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
+        FlexStandaloneService, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
     };
     use async_trait::async_trait;
 
@@ -575,6 +586,12 @@ mod tests {
             position: 0,
             is_active: true,
         }
+    }
+
+    #[test]
+    fn validate_standalone_uuid_rejects_nil_boundary_ids() {
+        assert!(validate_standalone_uuid(Uuid::nil(), "schema_id").is_err());
+        assert!(validate_standalone_uuid(Uuid::new_v4(), "schema_id").is_ok());
     }
 
     #[test]
@@ -1094,6 +1111,31 @@ mod tests {
             Some(Uuid::new_v4()),
             CreateFlexSchemaCommand {
                 slug: "Invalid Slug".to_string(),
+                name: "Landing".to_string(),
+                description: None,
+                fields_config: vec![],
+                settings: None,
+                is_active: None,
+            },
+        )
+        .await;
+
+        assert!(res.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn create_schema_orchestration_skips_service_on_nil_tenant() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut service = mock_service();
+        service.create_schema_calls = calls.clone();
+
+        let res = create_schema(
+            &service,
+            Uuid::nil(),
+            Some(Uuid::new_v4()),
+            CreateFlexSchemaCommand {
+                slug: "landing_page".to_string(),
                 name: "Landing".to_string(),
                 description: None,
                 fields_config: vec![],
