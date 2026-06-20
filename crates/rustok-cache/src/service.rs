@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
 
@@ -338,6 +338,78 @@ impl CacheInvalidationService {
 
     pub fn subscribe_local(&self) -> broadcast::Receiver<CacheInvalidationMessage> {
         self.local.subscribe()
+    }
+
+    /// Consume Redis pub/sub messages for a cache invalidation channel until the
+    /// underlying stream closes or returns an error.
+    ///
+    /// The payload contract matches `publish`: Redis messages carry the invalidated
+    /// key as payload, while the channel name remains the invalidation namespace.
+    /// Callers keep ownership of retry/backoff and domain-specific side effects,
+    /// but no longer need to open Redis pub/sub connections directly.
+    #[cfg(feature = "redis-cache")]
+    pub async fn consume_subscription<F, Fut>(
+        &self,
+        channel: &str,
+        handler: F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(CacheInvalidationMessage) -> Fut,
+        Fut: Future<Output = ()>,
+    {
+        self.consume_subscription_with_ready(channel, || async {}, handler)
+            .await
+    }
+
+    /// Same as `consume_subscription`, but calls `ready` after Redis successfully
+    /// subscribes and before the message stream is consumed. Host listeners use
+    /// this hook to update health state only after subscription is established.
+    #[cfg(feature = "redis-cache")]
+    pub async fn consume_subscription_with_ready<F, Fut, R, ReadyFut>(
+        &self,
+        channel: &str,
+        ready: R,
+        mut handler: F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(CacheInvalidationMessage) -> Fut,
+        Fut: Future<Output = ()>,
+        R: FnOnce() -> ReadyFut,
+        ReadyFut: Future<Output = ()>,
+    {
+        let Some(client) = &self.redis_client else {
+            return Err("redis invalidation subscription is not configured".to_string());
+        };
+
+        let mut pubsub = client
+            .get_async_pubsub()
+            .await
+            .map_err(|error| format!("pubsub connection failed: {error}"))?;
+
+        pubsub
+            .subscribe(channel)
+            .await
+            .map_err(|error| format!("pubsub subscribe failed: {error}"))?;
+
+        ready().await;
+
+        let mut messages = pubsub.on_message();
+        use futures_util::StreamExt;
+
+        while let Some(msg) = messages.next().await {
+            let payload: Result<String, _> = msg.get_payload();
+            let Ok(key) = payload else {
+                tracing::warn!(
+                    channel = channel,
+                    "Ignoring cache invalidation message with non-string payload"
+                );
+                continue;
+            };
+
+            handler(CacheInvalidationMessage::new(channel, key)).await;
+        }
+
+        Err("pubsub stream closed".to_string())
     }
 
     pub async fn publish(&self, message: CacheInvalidationMessage) -> CacheInvalidationOutcome {

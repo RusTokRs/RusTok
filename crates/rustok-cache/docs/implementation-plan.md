@@ -6,11 +6,11 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Добавлен generic `CacheInvalidationService` / `CacheInvalidationMessage` contract для Redis pub/sub publishing с local subscriber fan-out; tenant invalidation publisher переведён на capability-level API вместо прямого Redis PUBLISH.
-- Next step: Подключить generic invalidation subscription API к host/runtime listeners и затем перевести tenant anti-stampede path на `CacheService::load_or_fill` после расширения error contract.
+- Last checkpoint: Generic Redis pub/sub subscription adapter добавлен в `CacheInvalidationService`; tenant listener больше не открывает Redis pub/sub напрямую и использует capability-level consume API.
+- Next step: Перевести tenant anti-stampede path на `CacheService::load_or_fill` после расширения error contract и добавить compile/test evidence при снятии ограничения на компиляции.
 - Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем продолжить anti-stampede helper и Redis pub/sub generalization.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T12:00:00Z
 
 ## Область работ
 
@@ -38,7 +38,7 @@ manifest/doc contract.
 - [x] завершить anti-stampede коалесцинг;
 - [x] завершить circuit breaker для Redis backend на уровне cache factory options;
 - [x] добавить generic Redis pub/sub invalidation publisher и local fan-out contract;
-- [ ] завершить generic subscription/listener adapter для Redis pub/sub invalidation между инстансами.
+- [x] завершить generic subscription/listener adapter для Redis pub/sub invalidation между инстансами;
 
 ### 3. Operability
 
@@ -46,7 +46,7 @@ manifest/doc contract.
 - [x] добавить baseline hit/miss/invalidation/entry stats и health diagnostics в cache factory contract;
 - [ ] покрыть multi-instance и real-Redis сценарии интеграционными тестами;
 - [x] документировать publisher/local fan-out guarantees для generic invalidation contract;
-- [ ] документировать listener/reconnect guarantees после выноса subscription adapter в `rustok-cache`.
+- [x] документировать listener/reconnect guarantees после выноса subscription adapter в `rustok-cache`.
 
 ## Проверка
 
