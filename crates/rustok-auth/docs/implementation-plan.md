@@ -6,8 +6,8 @@ manifest/doc contract path.
 ## Execution checkpoint
 
 - Current phase: integration_hardening
-- Last checkpoint: Runtime `users:*` permission surface centralized in `AUTH_USER_PERMISSIONS` and mirrored by server registry/GraphQL security contract tests.
-- Next step: Extend token/config surface only with matching local docs and runtime tests, or document the next auth-owned flow before publishing it through host runtime.
+- Last checkpoint: Invite token issuance added to the auth-owned JWT surface with strict purpose validation, server bridge export, local docs, and unit-test coverage.
+- Next step: Continue reducing host-only auth lifecycle logic by moving the next token/config primitive behind `rustok-auth` helpers with matching docs and tests.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
@@ -36,8 +36,8 @@ manifest/doc contract path.
 ### 2. Integration hardening
 
 - [ ] не выносить auth lifecycle logic в host-слой без обновления module contract;
-- [ ] расширять token/config surface только вместе с local docs и runtime tests;
-- [ ] явно документировать новые auth-owned flows до их публикации в host runtime.
+- [x] расширять token/config surface только вместе с local docs и runtime tests;
+- [x] явно документировать новые auth-owned flows до их публикации в host runtime.
 
 ## Проверка
 

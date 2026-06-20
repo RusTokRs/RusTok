@@ -19,10 +19,10 @@ pub use config::{AuthConfig, AuthSettingsOverrides, JwtAlgorithm};
 pub use credentials::{generate_refresh_token, hash_password, hash_refresh_token, verify_password};
 pub use error::AuthError;
 pub use jwt::{
+    Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
     decode_access_token, decode_email_verification_token, decode_invite_token,
     decode_password_reset_token, encode_access_token, encode_email_verification_token,
-    encode_oauth_access_token, encode_password_reset_token, Claims, EmailVerificationClaims,
-    InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
+    encode_invite_token, encode_oauth_access_token, encode_password_reset_token,
 };
 
 use async_trait::async_trait;
@@ -88,9 +88,9 @@ impl RusToKModule for AuthModule {
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthModule, AUTH_USER_PERMISSIONS};
-    use rustok_core::module::{ModuleKind, RusToKModule};
+    use super::{AUTH_USER_PERMISSIONS, AuthModule};
     use rustok_core::Permission;
+    use rustok_core::module::{ModuleKind, RusToKModule};
 
     #[test]
     fn auth_module_publishes_exact_users_permission_surface() {

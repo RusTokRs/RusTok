@@ -3,7 +3,7 @@
 ## Purpose
 
 `rustok-auth` owns authentication primitives for RusToK: password hashing, JWT lifecycle,
-refresh-token helpers, auth config, and auth-related migrations.
+refresh-token helpers, invite-token helpers, auth config, and auth-related migrations.
 
 ## Responsibilities
 
@@ -28,6 +28,12 @@ refresh-token helpers, auth config, and auth-related migrations.
 - `Claims`
 - `encode_access_token`
 - `decode_access_token`
+- `encode_password_reset_token`
+- `decode_password_reset_token`
+- `encode_email_verification_token`
+- `decode_email_verification_token`
+- `encode_invite_token`
+- `decode_invite_token`
 - `generate_refresh_token`
 - `hash_password`
 - `verify_password`

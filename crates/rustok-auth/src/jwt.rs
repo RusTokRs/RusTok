@@ -1,11 +1,16 @@
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use rustok_core::UserRole;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::config::{AuthConfig, JwtAlgorithm};
 use crate::error::{AuthError, Result};
+
+const DIRECT_GRANT_TYPE: &str = "direct";
+const PASSWORD_RESET_PURPOSE: &str = "password_reset";
+const EMAIL_VERIFICATION_PURPOSE: &str = "email_verification";
+const INVITE_PURPOSE: &str = "invite";
 
 // ─── Claims ──────────────────────────────────────────────────────────
 
@@ -30,7 +35,7 @@ pub struct Claims {
 }
 
 fn default_grant_type() -> String {
-    "direct".to_string()
+    DIRECT_GRANT_TYPE.to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,7 +95,7 @@ pub fn encode_access_token(
         iat: now.timestamp() as usize,
         client_id: None,
         scopes: Vec::new(),
-        grant_type: "direct".to_string(),
+        grant_type: DIRECT_GRANT_TYPE.to_string(),
     };
 
     encode(&jwt_header(config), &claims, &encoding_key(config)?)
@@ -154,7 +159,7 @@ pub fn encode_password_reset_token(
     let claims = PasswordResetClaims {
         sub: email.to_lowercase(),
         tenant_id,
-        purpose: "password_reset".to_string(),
+        purpose: PASSWORD_RESET_PURPOSE.to_string(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
         exp: exp.timestamp() as usize,
@@ -175,7 +180,7 @@ pub fn decode_password_reset_token(
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidResetToken)?;
 
-    if claims.purpose != "password_reset" {
+    if claims.purpose != PASSWORD_RESET_PURPOSE {
         return Err(AuthError::InvalidResetToken);
     }
 
@@ -194,7 +199,7 @@ pub fn encode_email_verification_token(
     let claims = EmailVerificationClaims {
         sub: email.to_lowercase(),
         tenant_id,
-        purpose: "email_verification".to_string(),
+        purpose: EMAIL_VERIFICATION_PURPOSE.to_string(),
         iss: config.issuer.clone(),
         aud: config.audience.clone(),
         exp: exp.timestamp() as usize,
@@ -215,11 +220,36 @@ pub fn decode_email_verification_token(
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidVerificationToken)?;
 
-    if claims.purpose != "email_verification" {
+    if claims.purpose != EMAIL_VERIFICATION_PURPOSE {
         return Err(AuthError::InvalidVerificationToken);
     }
 
     Ok(claims)
+}
+
+pub fn encode_invite_token(
+    config: &AuthConfig,
+    tenant_id: Uuid,
+    email: &str,
+    role: UserRole,
+    ttl_seconds: u64,
+) -> Result<String> {
+    let now = Utc::now();
+    let exp = now + Duration::seconds(ttl_seconds as i64);
+
+    let claims = InviteClaims {
+        sub: email.to_lowercase(),
+        tenant_id,
+        role,
+        purpose: INVITE_PURPOSE.to_string(),
+        iss: config.issuer.clone(),
+        aud: config.audience.clone(),
+        exp: exp.timestamp() as usize,
+        iat: now.timestamp() as usize,
+    };
+
+    encode(&jwt_header(config), &claims, &encoding_key(config)?)
+        .map_err(|_| AuthError::TokenEncodingFailed)
 }
 
 pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {
@@ -229,7 +259,7 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
         .map(|data| data.claims)
         .map_err(|_| AuthError::InvalidInviteToken)?;
 
-    if claims.purpose != "invite" {
+    if claims.purpose != INVITE_PURPOSE {
         return Err(AuthError::InvalidInviteToken);
     }
 
@@ -436,6 +466,18 @@ xwIDAQAB
         let verification_claims =
             decode_email_verification_token(&config, &verification_token).unwrap();
         assert_eq!(verification_claims.sub, "user@example.com");
+
+        let invite_token = encode_invite_token(
+            &config,
+            tenant_id,
+            "INVITED@example.com",
+            UserRole::Admin,
+            900,
+        )
+        .unwrap();
+        let invite_claims = decode_invite_token(&config, &invite_token).unwrap();
+        assert_eq!(invite_claims.sub, "invited@example.com");
+        assert_eq!(invite_claims.role, UserRole::Admin);
     }
 
     #[test]
@@ -521,6 +563,37 @@ xwIDAQAB
             decode_access_token(&wrong_config, &token).is_err(),
             "Wrong signature MUST be rejected"
         );
+    }
+
+    #[test]
+    fn invite_token_round_trips_with_expected_purpose_and_role() {
+        let config = test_config();
+        let tenant_id = Uuid::new_v4();
+
+        let token = encode_invite_token(
+            &config,
+            tenant_id,
+            "NewUser@Example.COM",
+            UserRole::Manager,
+            1_800,
+        )
+        .unwrap();
+
+        let claims = decode_invite_token(&config, &token).unwrap();
+        assert_eq!(claims.sub, "newuser@example.com");
+        assert_eq!(claims.tenant_id, tenant_id);
+        assert_eq!(claims.role, UserRole::Manager);
+        assert_eq!(claims.purpose, INVITE_PURPOSE);
+        assert_eq!(claims.exp - claims.iat, 1_800);
+    }
+
+    #[test]
+    fn invite_decoder_rejects_other_special_token_purposes() {
+        let config = test_config();
+        let token =
+            encode_password_reset_token(&config, Uuid::new_v4(), "user@example.com", 900).unwrap();
+
+        assert!(decode_invite_token(&config, &token).is_err());
     }
 
     #[test]
