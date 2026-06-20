@@ -6,10 +6,10 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Added route/schema-level execution-history contract constants and assertions for Loco REST, generic Axum REST and GraphQL public query names without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then replace lightweight route/schema contract assertions with executable router/schema integration checks where host test fixtures permit.
+- Last checkpoint: Split REST execution-history pagination into a dedicated query contract, normalized `page`/`per_page` before DB offset/limit and response metadata, and documented the 1..100 operator page-size envelope without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then replace lightweight route/schema/pagination contract assertions with executable router/schema integration checks where host test fixtures permit.
 - Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации добавлены lightweight assertions для route/schema-level execution-history contracts без запуска compiler/test gates. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации REST execution-history endpoints переведены на dedicated pagination query с normalized response metadata и lightweight assertions без запуска compiler/test gates. `rustfmt --edition 2024` выполнен только для изменённых Alloy файлов; обычный `rustfmt` без edition падает на Rust 2015 default для async fn. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
