@@ -12,6 +12,12 @@ use crate::model::{
 use rustok_fulfillment_storefront::transport::{
     select_shipping_option_with_fallback, ShippingSelectionTransportError,
 };
+use rustok_order_storefront::transport::{
+    complete_checkout_with_fallback, CheckoutCompletionTransportError,
+};
+use rustok_payment_storefront::transport::{
+    create_payment_collection_with_fallback, PaymentCollectionTransportError,
+};
 
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,
@@ -28,13 +34,21 @@ pub async fn fetch_storefront_commerce(
 pub async fn create_storefront_payment_collection(
     request: PaymentCollectionCommandRequest,
 ) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    match native_server_adapter::create_storefront_payment_collection(request.clone()).await {
-        Ok(collection) => Ok(collection),
-        Err(error) if should_fallback_to_graphql(&error) => {
-            graphql_adapter::create_storefront_payment_collection(request).await
-        }
-        Err(error) => Err(error),
-    }
+    create_payment_collection_with_fallback(
+        request,
+        |owner_request| async move {
+            native_server_adapter::create_storefront_payment_collection(owner_request)
+                .await
+                .map_err(PaymentCollectionTransportError::from)
+        },
+        |owner_request| async move {
+            graphql_adapter::create_storefront_payment_collection(owner_request)
+                .await
+                .map_err(PaymentCollectionTransportError::from)
+        },
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 #[allow(dead_code)]
@@ -65,13 +79,21 @@ pub async fn select_storefront_shipping_option(
 pub async fn complete_storefront_checkout(
     request: CheckoutCompletionCommandRequest,
 ) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    match native_server_adapter::complete_storefront_checkout(request.clone()).await {
-        Ok(completion) => Ok(completion),
-        Err(error) if should_fallback_to_graphql(&error) => {
-            graphql_adapter::complete_storefront_checkout(request).await
-        }
-        Err(error) => Err(error),
-    }
+    complete_checkout_with_fallback(
+        request,
+        |owner_request| async move {
+            native_server_adapter::complete_storefront_checkout(owner_request)
+                .await
+                .map_err(CheckoutCompletionTransportError::from)
+        },
+        |owner_request| async move {
+            graphql_adapter::complete_storefront_checkout(owner_request)
+                .await
+                .map_err(CheckoutCompletionTransportError::from)
+        },
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 fn should_fallback_to_graphql(error: &ApiError) -> bool {
@@ -84,6 +106,46 @@ impl From<ApiError> for ShippingSelectionTransportError {
             ApiError::Graphql(message) => Self::Graphql(message),
             ApiError::ServerFn(message) => Self::ServerFn(message),
             ApiError::Validation(message) => Self::Validation(message),
+        }
+    }
+}
+
+impl From<ApiError> for PaymentCollectionTransportError {
+    fn from(value: ApiError) -> Self {
+        match value {
+            ApiError::Graphql(message) => Self::Graphql(message),
+            ApiError::ServerFn(message) => Self::ServerFn(message),
+            ApiError::Validation(message) => Self::Validation(message),
+        }
+    }
+}
+
+impl From<PaymentCollectionTransportError> for ApiError {
+    fn from(value: PaymentCollectionTransportError) -> Self {
+        match value {
+            PaymentCollectionTransportError::Graphql(message) => Self::Graphql(message),
+            PaymentCollectionTransportError::ServerFn(message) => Self::ServerFn(message),
+            PaymentCollectionTransportError::Validation(message) => Self::Validation(message),
+        }
+    }
+}
+
+impl From<ApiError> for CheckoutCompletionTransportError {
+    fn from(value: ApiError) -> Self {
+        match value {
+            ApiError::Graphql(message) => Self::Graphql(message),
+            ApiError::ServerFn(message) => Self::ServerFn(message),
+            ApiError::Validation(message) => Self::Validation(message),
+        }
+    }
+}
+
+impl From<CheckoutCompletionTransportError> for ApiError {
+    fn from(value: CheckoutCompletionTransportError) -> Self {
+        match value {
+            CheckoutCompletionTransportError::Graphql(message) => Self::Graphql(message),
+            CheckoutCompletionTransportError::ServerFn(message) => Self::ServerFn(message),
+            CheckoutCompletionTransportError::Validation(message) => Self::Validation(message),
         }
     }
 }
