@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "module": "ai-alloy",
+  "crate": "rustok-ai-alloy",
+  "role": "domain_support_adapter",
+  "status": "in_progress",
+  "consumer_profile": "alloy_script_descriptor",
+  "support_adapter": {
+    "source": "crates/rustok-ai-alloy/src/lib.rs",
+    "task_slug": "alloy_code",
+    "tool_name": "direct.alloy.run_script",
+    "registration_api": "register_alloy_ai_vertical_handlers",
+    "validation_helper": "validate_runtime_payload",
+    "execution_policy_api": "alloy_script_execution_policy"
+  },
+  "execution_policy": {
+    "script_runtime": "alloy",
+    "runtime_payload_json": "absent_blank_or_json_object",
+    "sensitive": false,
+    "composition_owner": "rustok-ai",
+    "domain_owner": "rustok-ai-alloy",
+    "remote_transport": "not_started"
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-ai-alloy/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-alloy-policy.mjs",
+    "static_matrix": "crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json"
+  },
+  "contract_tests": {
+    "status": "source_policy_locked",
+    "source": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+    "runner": "scripts/verify/verify-ai-alloy-policy.mjs",
+    "cases": [
+      {
+        "operation": "validate_runtime_payload",
+        "assertions": ["blank_payload_allowed", "json_object_allowed", "json_array_rejected", "invalid_json_rejected"]
+      },
+      {
+        "operation": "alloy_script_execution_policy",
+        "assertions": ["runtime_payload_shape_recorded", "composition_owner_stays_rustok_ai", "domain_owner_stays_rustok_ai_alloy"]
+      }
+    ]
+  }
+}

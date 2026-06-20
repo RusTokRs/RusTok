@@ -10,11 +10,28 @@ pub struct AlloyAiVerticalDescriptor {
     pub sensitive: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlloyScriptExecutionPolicy {
+    pub script_runtime: &'static str,
+    pub runtime_payload_json_shape: &'static str,
+    pub composition_owner: &'static str,
+    pub domain_owner: &'static str,
+    pub sensitive: bool,
+}
+
 pub const ALLOY_AI_VERTICALS: &[AlloyAiVerticalDescriptor] = &[AlloyAiVerticalDescriptor {
     task_slug: ALLOY_CODE_TASK_SLUG,
     tool_name: ALLOY_CODE_TOOL_NAME,
     sensitive: false,
 }];
+
+pub const ALLOY_SCRIPT_EXECUTION_POLICY: AlloyScriptExecutionPolicy = AlloyScriptExecutionPolicy {
+    script_runtime: "alloy",
+    runtime_payload_json_shape: "absent_blank_or_json_object",
+    composition_owner: "rustok-ai",
+    domain_owner: "rustok-ai-alloy",
+    sensitive: false,
+};
 
 pub fn alloy_ai_verticals() -> &'static [AlloyAiVerticalDescriptor] {
     ALLOY_AI_VERTICALS
@@ -30,6 +47,10 @@ pub fn register_alloy_ai_vertical_handlers(
     for vertical in alloy_ai_verticals() {
         register(vertical);
     }
+}
+
+pub fn alloy_script_execution_policy() -> &'static AlloyScriptExecutionPolicy {
+    &ALLOY_SCRIPT_EXECUTION_POLICY
 }
 
 pub fn validate_runtime_payload(payload: Option<&str>) -> Result<(), String> {

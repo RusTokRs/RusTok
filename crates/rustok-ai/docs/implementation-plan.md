@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ai_domain_vertical_ownership_slice_complete
-- Last checkpoint: Hardened parity/evidence after media/alloy extraction by adding local implementation plans for `rustok-ai-media` and `rustok-ai-alloy`, linking them from the central module index, syncing the implementation-plan registry, and tightening `rustok-ai-order` generated payload validation for blank analytics array items plus null ops prefill.
-- Next step: Continue parity/evidence hardening without moving executable runtime composition out of `rustok-ai`.
+- Last checkpoint: Hardened parity/evidence after media/alloy extraction by adding ai-media runtime fallback source-smoke evidence and ai-alloy script execution policy registry/static matrix, while keeping executable runtime composition in `rustok-ai`.
+- Next step: Continue executable targeted tests/evidence when compilation is allowed, without moving executable runtime composition out of `rustok-ai`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-19T06:15:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Состояние на 2026-04-04
 

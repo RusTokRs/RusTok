@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+  "status": "source_smoke_locked",
+  "scope": "no_compile_runtime_fallback_smoke",
+  "profile": "embedded_native",
+  "degraded_mode": "skip_asset_enrichment",
+  "consumer_profile": "ai_asset_descriptor",
+  "cases": [
+    {
+      "operation": "get_image_descriptor",
+      "provider_unavailable_behavior": "return generated image descriptor without media asset enrichment",
+      "assertions": [
+        "descriptor_task_slug_preserved",
+        "descriptor_tool_name_preserved",
+        "typed_port_error_mapping_planned",
+        "degraded_skip_asset_enrichment_recorded"
+      ]
+    },
+    {
+      "operation": "get_asset",
+      "provider_unavailable_behavior": "skip optional asset bytes lookup and preserve normalized image size contract",
+      "assertions": [
+        "normalize_image_size_stays_media_owned",
+        "typed_port_error_mapping_planned",
+        "degraded_skip_asset_enrichment_recorded"
+      ]
+    }
+  ],
+  "verification": {
+    "runner": "scripts/verify/verify-ai-media-fba.mjs",
+    "compilation_required": false
+  }
+}

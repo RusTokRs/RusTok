@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+  "status": "source_policy_locked",
+  "cases": [
+    {
+      "operation": "validate_runtime_payload",
+      "assertions": ["blank_payload_allowed", "json_object_allowed", "json_array_rejected", "invalid_json_rejected"]
+    },
+    {
+      "operation": "alloy_script_execution_policy",
+      "assertions": ["runtime_payload_shape_recorded", "composition_owner_stays_rustok_ai", "domain_owner_stays_rustok_ai_alloy"]
+    }
+  ]
+}
