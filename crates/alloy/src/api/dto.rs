@@ -67,7 +67,11 @@ fn default_per_page() -> u32 {
 
 impl ListScriptsQuery {
     pub fn offset(&self) -> u64 {
-        (self.page.saturating_sub(1) as u64) * self.limit()
+        (self.normalized_page().saturating_sub(1) as u64) * self.limit()
+    }
+
+    pub fn normalized_page(&self) -> u32 {
+        self.page.max(1)
     }
 
     pub fn limit(&self) -> u64 {
@@ -93,7 +97,11 @@ fn default_execution_log_per_page() -> u32 {
 
 impl ListExecutionLogQuery {
     pub fn offset(&self) -> u64 {
-        (self.page.saturating_sub(1) as u64) * self.limit()
+        (self.normalized_page().saturating_sub(1) as u64) * self.limit()
+    }
+
+    pub fn normalized_page(&self) -> u32 {
+        self.page.max(1)
     }
 
     pub fn limit(&self) -> u64 {
@@ -206,7 +214,7 @@ impl ListExecutionLogResponse {
         per_page: u32,
     ) -> Self {
         let total_pages = if per_page > 0 {
-            ((total as f64) / (per_page as f64)).ceil() as u32
+            ((total as u64).div_ceil(per_page as u64)).min(u32::MAX as u64) as u32
         } else {
             0
         };
@@ -232,7 +240,7 @@ pub struct ListScriptsResponse {
 impl ListScriptsResponse {
     pub fn new(scripts: Vec<ScriptResponse>, total: usize, page: u32, per_page: u32) -> Self {
         let total_pages = if per_page > 0 {
-            ((total as f64) / (per_page as f64)).ceil() as u32
+            ((total as u64).div_ceil(per_page as u64)).min(u32::MAX as u64) as u32
         } else {
             0
         };
@@ -347,9 +355,18 @@ mod tests {
             status: None,
         };
 
+        assert_eq!(query.normalized_page(), 3);
         assert_eq!(query.limit(), 100);
         assert_eq!(query.normalized_per_page(), 100);
         assert_eq!(query.offset(), 200);
+
+        let zero_page = ListScriptsQuery {
+            page: 0,
+            per_page: 20,
+            status: None,
+        };
+        assert_eq!(zero_page.normalized_page(), 1);
+        assert_eq!(zero_page.offset(), 0);
     }
 
     #[test]
@@ -359,9 +376,17 @@ mod tests {
             per_page: 0,
         };
 
+        assert_eq!(query.normalized_page(), 2);
         assert_eq!(query.limit(), 1);
         assert_eq!(query.normalized_per_page(), 1);
         assert_eq!(query.offset(), 1);
+
+        let zero_page = ListExecutionLogQuery {
+            page: 0,
+            per_page: 50,
+        };
+        assert_eq!(zero_page.normalized_page(), 1);
+        assert_eq!(zero_page.offset(), 0);
 
         let oversized = ListExecutionLogQuery {
             page: 2,

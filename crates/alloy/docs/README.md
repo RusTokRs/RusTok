@@ -77,7 +77,7 @@ availability из побочных эффектов регистрации.
    `scriptExecutions(scriptId, limit)`, HTTP/Loco
    `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` или
    generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
-   Все ответы основаны на `SeaOrmExecutionLog`, нормализуют `page`/`per_page` в диапазон 1..100 перед DB-level offset/limit
+   Все ответы основаны на `SeaOrmExecutionLog`, нормализуют `page >= 1` и `per_page` в диапазон 1..100 перед DB-level offset/limit
    pagination, применяют tenant filter до offset, возвращают exact scoped total
    metadata из базы данных и сортируются newest-first.
    Ответы возвращают canonical fields: execution id, script id/name, phase,
