@@ -8,3 +8,10 @@ trust_level = "core"
 ui_classification = "capability_only"
 [crate]
 entry_type = "EmailModule"
+
+[fba.provider]
+registry = "contracts/email-fba-registry.json"
+contract_version = "email.delivery.v1"
+runtime_profile = "embedded_native"
+fallback_profiles = ["embedded_disabled_noop", "embedded_smtp"]
+degraded_modes = ["skip_disabled_provider", "surface_delivery_retry_needed"]

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "module": "outbox",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-outbox/contracts/outbox-fba-registry.json",
+  "runner": "scripts/verify/verify-outbox-fba.mjs",
+  "contract_version": "outbox.relay_control.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "process_pending_once",
+      "execution_status": "runtime_cases_planned_uncompiled",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_preserved", "relay_metrics_projection_preserved"]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "planned_uncompiled",
+    "profiles": ["embedded_native"],
+    "degraded_modes": ["pause_relay_worker", "surface_dlq_retry_needed"]
+  }
+}

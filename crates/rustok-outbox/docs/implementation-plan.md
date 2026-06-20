@@ -15,12 +15,13 @@ manifest/doc contract.
 ## FFA/FBA status block
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence / notes:
   - admin UI имеет явный FFA split: `admin/src/lib.rs` только wiring/re-export, `admin/src/core.rs` содержит Leptos-free DTO/view-model helpers, `admin/src/transport/` владеет native server-function facade, `admin/src/ui/leptos.rs` владеет Leptos rendering;
   - GraphQL/REST fallback не добавлялся в этом срезе, потому что legacy outbox admin surface был native-only read-only bootstrap; это temporary single-adapter state до появления headless parity requirement для operator UI;
-  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build).
+  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build);
+  - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with typed `PortContext`/`PortError`, deadline semantics, write idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
 
 ## Область работ
 

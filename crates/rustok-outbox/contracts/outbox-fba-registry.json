@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "module": "outbox",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "outbox.relay_control.v1",
+  "ports": [
+    {
+      "name": "OutboxRelayPort",
+      "owner": "outbox",
+      "operations": ["process_pending_once"],
+      "context": "crates/rustok-outbox/src/ports.rs::PortContext",
+      "error": "crates/rustok-outbox/src/ports.rs::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "server-hosts",
+      "profile": "outbox_relay_worker_control",
+      "degraded_modes": ["pause_relay_worker", "surface_dlq_retry_needed"],
+      "fallback_profiles": ["embedded_native"]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-outbox/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-outbox-fba.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "OutboxRelay",
+    "source": "crates/rustok-outbox/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-outbox/contracts/outbox-fba-registry.json",
+    "runner": "scripts/verify/verify-outbox-fba.mjs",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "operation": "process_pending_once",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_preserved", "relay_metrics_projection_preserved"]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["pause_relay_worker", "surface_dlq_retry_needed"]
+    }
+  }
+}
