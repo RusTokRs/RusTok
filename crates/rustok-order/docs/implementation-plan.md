@@ -7,11 +7,11 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 ## Execution checkpoint
 
 - Current phase: ffa_storefront_complete_request_boundary
-- Last checkpoint: Aggregate storefront complete-checkout transport handoff hardened the compatibility window: commerce still hosts the async native/GraphQL adapter, but the owner `CompleteCheckoutRequest` alias is preserved and compatibility fallback is now MissingServer-only instead of retrying validation/domain failures through GraphQL. `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` locks this until the adapter moves behind `rustok-order/storefront`.
+- Last checkpoint: Aggregate storefront complete-checkout transport handoff hardened the compatibility window: commerce still hosts the async native/GraphQL adapter, but the owner `CompleteCheckoutRequest` alias is preserved and `rustok-order/storefront` now owns typed `CheckoutCompletionTransportError` mapping plus the `complete_checkout_with_fallback` facade, so compatibility fallback is now MissingServer-only instead of retrying validation/domain failures through GraphQL. `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` locks this until the adapter moves fully behind `rustok-order/storefront`.
 - Next step: Continue returns/refund/exchange/claim UI policy slices or move the async complete-checkout native/GraphQL transport behind `rustok-order/storefront` when host routing is ready, without changing the existing GraphQL order contract.
 - Open blockers: серверный OpenAPI contract test под default features ранее упирался в существующие compile errors вне order/commerce (`rustok-pages-admin`, server build service/module lifecycle/graphql mutations); targeted order lifecycle и `rustok-commerce` check остаются основным gate для этого среза.
 - Hand-off notes for next agent: После каждого returns/refund/exchange/claim инкремента обновлять FFA evidence и FBA placeholder, README/admin docs и central registry в том же PR.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-06-20T14:12:00Z
 
 ## FFA/FBA status
 
@@ -19,6 +19,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA maintenance slice перевёл read-only checkout result/status paths на shared `PortCallPolicy::read()`, оставив complete-checkout write path на idempotent write semantics и не меняя temporary commerce transport handoff.
   - `src/ports.rs` теперь экспортирует `CheckoutCompletionPort` и DTO для complete/result/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `checkout completion/result` через `crates/rustok-order/contracts/order-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - registry теперь фиксирует `contract_tests.status = planned_cases_locked`: для каждой port operation задана in-process/remote-adapter-placeholder case matrix, baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) и исправленный `write_idempotency_required` только для `complete_checkout`; read-only result/status cases больше не требуют write idempotency; fallback smoke profile set; static evidence packet `crates/rustok-order/contracts/evidence/order-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates) and `npm run verify:ecommerce:fba-contract-evidence`; это закрывает metadata/evidence anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
@@ -42,7 +43,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
   из cart без metadata-only fallback;
 - write-side lifecycle и order events уже закреплены внутри модуля;
 - product/variant связи хранятся как snapshot references, без cross-module FK;
-- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, while complete-checkout command normalization is order-owned and compatibility fallback is now MissingServer-only during the temporary adapter window;
+- async transport adapters по-прежнему публикуются фасадом `rustok-commerce`, while complete-checkout command normalization and typed native/GraphQL fallback facade are order-owned and compatibility fallback is now MissingServer-only during the temporary adapter window;
 - `rustok-order/admin` публикует module-owned route для order list/detail/lifecycle с `admin/src/core/` request defaults, `admin/src/transport/mod.rs` facade и явным `admin/src/ui/leptos.rs` render adapter.
 
 ## Этапы

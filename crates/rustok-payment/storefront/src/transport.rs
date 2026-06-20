@@ -25,6 +25,50 @@ pub struct PaymentCollectionCreateRequest {
     pub metadata: PaymentCollectionCommandMetadata,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PaymentCollectionTransportError {
+    Graphql(String),
+    ServerFn(String),
+    Validation(String),
+}
+
+impl PaymentCollectionTransportError {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Graphql(message) | Self::ServerFn(message) | Self::Validation(message) => message,
+        }
+    }
+
+    pub fn should_fallback_to_graphql(&self) -> bool {
+        match self {
+            Self::ServerFn(server_error) => {
+                server_error.contains("MissingServer")
+                    || server_error.contains("missing server")
+                    || server_error.contains("not available on this target")
+            }
+            _ => false,
+        }
+    }
+}
+
+pub async fn create_payment_collection_with_fallback<T, N, NFut, G, GFut>(
+    request: PaymentCollectionCreateRequest,
+    native: N,
+    graphql: G,
+) -> Result<T, PaymentCollectionTransportError>
+where
+    N: FnOnce(PaymentCollectionCreateRequest) -> NFut,
+    NFut: std::future::Future<Output = Result<T, PaymentCollectionTransportError>>,
+    G: FnOnce(PaymentCollectionCreateRequest) -> GFut,
+    GFut: std::future::Future<Output = Result<T, PaymentCollectionTransportError>>,
+{
+    match native(request.clone()).await {
+        Ok(collection) => Ok(collection),
+        Err(error) if error.should_fallback_to_graphql() => graphql(request).await,
+        Err(error) => Err(error),
+    }
+}
+
 pub fn build_payment_collection_create_request(cart_id: String) -> PaymentCollectionCreateRequest {
     PaymentCollectionCreateRequest {
         cart_id: normalize_required(cart_id),
@@ -54,5 +98,23 @@ mod tests {
             request.metadata.command,
             "create_or_reuse_payment_collection"
         );
+    }
+
+    #[test]
+    fn server_function_missing_error_can_fallback_to_graphql() {
+        assert!(
+            PaymentCollectionTransportError::ServerFn("MissingServerFunction".into())
+                .should_fallback_to_graphql()
+        );
+        assert!(PaymentCollectionTransportError::ServerFn(
+            "server function is not available on this target".into()
+        )
+        .should_fallback_to_graphql());
+        assert!(
+            !PaymentCollectionTransportError::Validation("bad cart".into())
+                .should_fallback_to_graphql()
+        );
+        assert!(!PaymentCollectionTransportError::Graphql("network".into())
+            .should_fallback_to_graphql());
     }
 }

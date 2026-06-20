@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "module": "channel",
+  "status": "source_locked_runtime_fallback_smoke",
+  "generated_from": "crates/rustok-channel/contracts/channel-fba-registry.json",
+  "runner": "scripts/verify/verify-channel-fba.mjs",
+  "contract_version": "channel.read_projection.v1",
+  "profiles": [
+    "embedded_native",
+    "rest_compatibility",
+    "unresolved_context"
+  ],
+  "execution_note": "No Rust compilation is required for this packet; the verifier locks source-level runtime/fallback markers until executable CI smoke can promote the module to boundary_ready.",
+  "smoke_cases": [
+    {
+      "profile": "embedded_native",
+      "operation": "read_channel",
+      "execution_status": "source_locked_runtime_pending",
+      "assertions": [
+        "in_process_channel_service_impl_exported",
+        "deadline_required_before_lookup",
+        "tenant_scope_preserved_for_id_selector",
+        "inactive_channel_filtered_when_include_inactive_false",
+        "selector_validation_before_lookup"
+      ]
+    },
+    {
+      "profile": "embedded_native",
+      "operation": "list_channels_for_tenant",
+      "execution_status": "source_locked_runtime_pending",
+      "assertions": [
+        "in_process_channel_service_impl_exported",
+        "deadline_required_before_lookup",
+        "tenant_scope_preserved_by_list_service",
+        "inactive_channels_filtered_when_include_inactive_false"
+      ]
+    },
+    {
+      "profile": "rest_compatibility",
+      "operation": "admin_transport_fallback",
+      "execution_status": "source_locked_runtime_pending",
+      "assertions": [
+        "module_owned_transport_facade_present",
+        "native_server_adapter_present",
+        "rest_adapter_present",
+        "ui_uses_facade_not_raw_rest"
+      ]
+    },
+    {
+      "profile": "unresolved_context",
+      "operation": "read_channel",
+      "execution_status": "source_locked_runtime_pending",
+      "assertions": [
+        "invalid_tenant_context_maps_to_validation",
+        "missing_deadline_maps_to_timeout",
+        "empty_slug_selector_maps_to_validation",
+        "empty_host_target_selector_maps_to_validation"
+      ]
+    }
+  ]
+}

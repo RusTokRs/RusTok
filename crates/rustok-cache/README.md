@@ -11,7 +11,7 @@ in-memory cache implementations.
 - Own `CacheService`, `CacheBackendOptions`, and backend selection logic.
 - Expose cache health information and lightweight hit/miss/invalidation statistics to server runtime wiring.
 - Provide `CacheService::load_or_fill` as the generic per-key loader/coalescing contract for anti-stampede protection.
-- Provide `CacheService::publish_invalidation` / `CacheInvalidationService` for namespaced cache invalidation publishing with Redis pub/sub plus local fan-out.
+- Provide `CacheService::publish_invalidation` / `CacheInvalidationService` for namespaced cache invalidation publishing with Redis pub/sub, local fan-out, and a reusable Redis pub/sub subscription adapter for host/runtime listeners.
 - Keep Redis circuit breaker configuration centralized at the cache factory boundary.
 
 ## Interactions
@@ -35,3 +35,7 @@ in-memory cache implementations.
 
 - [Module docs](./docs/README.md)
 - [Platform docs index](../../docs/index.md)
+
+## Invalidation listener contract
+
+With the `redis-cache` feature enabled, `CacheInvalidationService::consume_subscription(channel, handler)` owns Redis pub/sub connection/subscription setup for one channel and invokes the supplied handler for each invalidation message. Host runtimes keep their domain-specific retry loop, health status, and telemetry around this adapter; without Redis, `subscribe_local()` remains the single-instance/test fan-out contract.

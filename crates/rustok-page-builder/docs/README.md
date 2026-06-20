@@ -24,6 +24,7 @@
 - `src/lib.rs` — runtime metadata и permission surface;
 - `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` и typed error catalog (`validation/sanitize/runtime/feature-disabled`) для contract package без привязки к transport adapters;
 - `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, feature-flag guard и server-side handler seam с RBAC permission checks;
+- `src/transport.rs` — canonical transport bridge для GraphQL, Leptos `#[server]` и future mobile adapters поверх `AuthorizedPageBuilderHandlers::handle`;
 - `src/health.rs` — типизированные provider health states, degradation reasons, `ProviderHealthEvidence` и evaluator pilot SLO thresholds для release-gate evidence;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
@@ -40,6 +41,8 @@
 Baseline DTO package теперь содержит `PageBuilderContractMetadata::BASELINE` с canonical provider slug `page_builder`, contract `grapesjs_v1`, `builder_contract_version = 1.0`, `consumer_min_version = 1.0` и capability set `preview/tree/properties/publish`. Это минимальный publish-ready marker для adapters: GraphQL, Leptos server functions и future mobile codegen должны брать имена capability из contract metadata/registry, а не вводить transport-local aliases.
 
 `PageBuilderCapabilityRequest` и `PageBuilderCapabilityResponse` задают tagged-envelope для transport adapters: GraphQL resolvers, Leptos `#[server]` functions и future mobile bridge могут принимать один canonical request envelope и dispatch через `AuthorizedPageBuilderHandlers::handle`. Такой seam удерживает RBAC, rollout guard и write-semantics enforcement в одном месте и не позволяет transport layer повторно изобретать имена capability или локальные error envelopes.
+
+Первый transport bridge slice добавил `PageBuilderTransportKind`, `PageBuilderTransportSuccess`, `PageBuilderTransportError`, `dispatch_transport_envelope`, `dispatch_graphql_envelope` и `dispatch_leptos_server_function_envelope`. GraphQL/server-function adapters должны вызывать эти dispatch helpers, а затем маппить success/error envelope в свой framework-specific result; `PageBuilderTransportError` берёт `kind` и `stable_code` из `PageBuilderServiceError::kind()` / `stable_code()`, поэтому transport не владеет отдельным error catalog.
 
 ## Provider health and SLO baseline
 
@@ -79,6 +82,7 @@ Runtime provider-а фиксирует baseline fallback-профили в `src/
 - `cargo xtask module validate page_builder` — проверка publish-readiness и manifest/docs contracts;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs pages` — anti-drift проверка machine-readable registry против provider/consumer manifests, включая provider health states и degradation reasons.
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs` — проверка Wave 0 evidence packet, включая SLO thresholds/evaluation и correlation trace samples.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs` — no-compile guardrail для canonical GraphQL/server-function transport bridge markers.
 
 ## Связанные документы
 

@@ -530,7 +530,7 @@ Notes: <known deviations or waivers>
 - [x] В `rustok-pages` metadata зафиксировать dependency profile на внешний builder provider (без локального ownership fallback).
 - [x] Внедрить fallback-matrix для admin/storefront сценариев (`builder_off`, `publish_off`, `preview_off`) и подтвердить отсутствие 5xx в read/list.
 - [x] Добавить publish gating contract: typed runtime error + UX guidance вместо аварийного падения publish flow.
-- [ ] Свести observability correlation: один trace/correlation-id на путь `builder write -> pages publish -> storefront read`.
+- [x] Свести observability correlation: один trace/correlation-id на путь `builder write -> pages publish -> storefront read` закреплён machine-readable contract `crates/rustok-page-builder/contracts/page-builder-correlation-contract.json` и no-compile gate `verify-page-builder-correlation-evidence.mjs`; фактические tenant traces остаются Wave evidence.
 
 **Выход итерации:** `pages` подтверждён как эталонный FBA-consumer, пригодный как шаблон для `content`-подобных модулей.
 
@@ -752,7 +752,7 @@ Notes: <known deviations or waivers>
    - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `preview_off`, `builder_off` на одном internal tenant;
    - [ ] приложить краткий отчёт с фактами по `admin list/read`, `storefront read`, `publish(dry)`.
 3. **Observability wiring check**
-   - [ ] подтвердить наличие correlation-id в цепочке `builder write -> pages publish -> storefront read`;
+   - [x] подтвердить наличие correlation-id в цепочке `builder write -> pages publish -> storefront read` на уровне Wave 0/Wave 1 evidence packets и source/doc markers (`verify-page-builder-correlation-evidence.mjs`);
    - [ ] зафиксировать baseline-значения `preview p95`, `publish p95`, sanitize failure rate.
 4. **Go/No-Go prep draft**
    - [x] подготовить черновик Wave 1 readiness packet по шаблону 12.6 (`crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json`, проверка `verify-page-builder-wave1-readiness-draft.mjs`);
@@ -805,7 +805,7 @@ Notes: <known deviations or waivers>
 3. **Operational integrity**
    - [ ] есть complete audit trail (`before/after`, smoke, decision log) по toggle change-set.
 4. **Observability integrity**
-   - [ ] подтверждены SLO-границы (`preview p95`, `publish p95`, sanitize failure rate) и есть correlation trace examples.
+   - [~] подтверждены SLO-границы (`preview p95`, `publish p95`, sanitize failure rate) и есть correlation trace examples: static/draft examples закреплены no-compile gate, фактические tenant SLO остаются блокером Wave 1.
 5. **Ownership integrity**
    - [ ] есть явный sign-off Platform + Builder + Pages + Frontend owners.
 

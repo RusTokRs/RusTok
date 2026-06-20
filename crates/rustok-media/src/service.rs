@@ -42,6 +42,24 @@ pub struct MediaStorageCleanupReport {
     pub retry_later: u64,
 }
 
+impl MediaStorageCleanupReport {
+    pub fn is_empty(&self) -> bool {
+        self.inspected == 0
+    }
+
+    pub fn changed_records(&self) -> u64 {
+        self.deleted_records
+    }
+
+    pub fn completed_without_retry(&self) -> bool {
+        self.retry_later == 0
+    }
+
+    pub fn should_retry(&self) -> bool {
+        self.retry_later > 0
+    }
+}
+
 fn classify_cleanup_probe(
     result: &std::result::Result<bytes::Bytes, StorageError>,
 ) -> MediaStorageCleanupDecision {
@@ -82,7 +100,10 @@ mod tests {
     use bytes::Bytes;
     use uuid::Uuid;
 
-    use super::{classify_cleanup_probe, validate_upload_policy, MediaStorageCleanupDecision};
+    use super::{
+        classify_cleanup_probe, validate_upload_policy, MediaStorageCleanupDecision,
+        MediaStorageCleanupReport,
+    };
     use crate::{
         dto::{UploadInput, DEFAULT_MAX_SIZE},
         error::MediaError,
@@ -97,6 +118,27 @@ mod tests {
             content_type: content_type.to_string(),
             data: Bytes::from(vec![0_u8; data_len]),
         }
+    }
+
+    #[test]
+    fn cleanup_report_helpers_expose_operability_state() {
+        let empty = MediaStorageCleanupReport::default();
+        assert!(empty.is_empty());
+        assert!(empty.completed_without_retry());
+        assert!(!empty.should_retry());
+        assert_eq!(empty.changed_records(), 0);
+
+        let report = MediaStorageCleanupReport {
+            inspected: 3,
+            deleted_records: 1,
+            kept_records: 1,
+            retry_later: 1,
+        };
+
+        assert!(!report.is_empty());
+        assert_eq!(report.changed_records(), 1);
+        assert!(!report.completed_without_retry());
+        assert!(report.should_retry());
     }
 
     #[test]

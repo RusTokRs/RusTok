@@ -15,7 +15,8 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 - storage для `channel_resolution_policy_sets` и `channel_resolution_policy_rules`;
 - domain-owned resolution layer: `RequestFacts`, `ResolutionDecision`, `ResolutionTraceStep`, `ChannelResolver`;
 - tenant-scoped typed resolution policies и explicit default channel semantics;
-- module-owned Leptos admin UI package `rustok-channel-admin` с operator flow для policy authoring/edit/reorder/enable-disable и native-first `#[server]` + REST fallback transport parity.
+- module-owned Leptos admin UI package `rustok-channel-admin` с operator flow для policy authoring/edit/reorder/enable-disable и native-first `#[server]` + REST fallback transport parity;
+- FBA provider boundary `ChannelReadPort` / `channel.read_projection.v1` для channel/default/host-target read projections, где `npm run verify:channel:fba` без компиляции фиксирует registry, static matrix и source-locked runtime fallback smoke (`embedded_native`, `rest_compatibility`, `unresolved_context`).
 
 ## Интеграция
 
@@ -29,6 +30,7 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 - `cargo xtask module validate channel`
 - `cargo xtask module test channel`
 - targeted server middleware tests для resolution order и explicit default semantics
+- `npm run verify:channel:fba` для no-compile FBA registry/static-matrix/runtime-fallback-smoke guardrail
 
 ## Связанные документы
 

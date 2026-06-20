@@ -12,7 +12,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then execute the locked live carrier plan against a concrete external adapter.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T14:12:00Z
 
 ## FFA/FBA status
 
@@ -20,6 +20,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA maintenance slice перевёл read-only `list_seller_shipping_options` path на shared `PortCallPolicy::read()`, оставив select/write path на idempotent write semantics и сохранив existing FBA metadata без runtime surface changes.
   - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует `PortContext::require_write_semantics` и мапит `FulfillmentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `ShippingSelectionPort` и DTO для seller-aware shipping options/selection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
