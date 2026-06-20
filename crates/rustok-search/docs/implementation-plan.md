@@ -10,7 +10,7 @@
 - Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths и заменить source-locked runtime fallback smoke для `SearchQueryPort`/`SearchSuggestionPort` на executable runtime contract/fallback smoke до повышения FBA выше `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T14:12:00Z
 
 
 ## FFA/FBA status
@@ -19,6 +19,7 @@
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA slice #3 перевёл `SearchQueryPort` и `SearchSuggestionPort` с ad-hoc deadline check на shared `PortCallPolicy::read()`, сохранив locale propagation и typed `PortError` mapping без изменения native/GraphQL transport.
   - module plan синхронизирован с central FFA/FBA readiness board;
   - FBA provider registry `crates/rustok-search/contracts/search-fba-registry.json` объявляет `SearchQueryPort`/`SearchSuggestionPort` (`search.query.v1`) для storefront/admin consumers с typed `PortContext`/`PortError`, read deadline semantics, degraded modes и fallback profiles;
   - static evidence `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`, source-locked runtime fallback smoke `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json` и fast verifier `scripts/verify/verify-search-fba.mjs` удерживают metadata/port/source drift без долгой компиляции; статус остаётся ниже `boundary_ready` до executable runtime contract/fallback smoke;

@@ -24,6 +24,7 @@
 - transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`), typed provider error catalog (`PageBuilderErrorKind`, `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE`) и typed Wave health evidence (`ProviderHealthEvidence`) заведены как publish-ready contract markers;
 - transport-neutral tagged request/response envelope и `AuthorizedPageBuilderHandlers::handle` добавлены как entrypoint seam для будущих GraphQL/server-function adapters;
 - transport bridge slice добавил `src/transport.rs` с `dispatch_graphql_envelope` / `dispatch_leptos_server_function_envelope` и canonical success/error envelope поверх `AuthorizedPageBuilderHandlers::handle`;
+- machine-readable correlation contract `contracts/page-builder-correlation-contract.json` фиксирует evidence chain `builder write -> pages publish -> storefront read` и source markers для no-compile gate;
 - capability handlers пока в статусе planned на уровне real persistence/rendering provider (Phase 1).
 
 
@@ -35,7 +36,7 @@
 - Evidence:
   - модуль существует как самостоятельный reference provider для `preview/tree/properties/publish`;
   - machine-readable registry фиксирует provider/consumer versions, fallback profiles, health states, degradation reasons и SLO thresholds;
-  - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet и Wave 1 readiness draft;
+  - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet, Wave 1 readiness draft и correlation evidence `builder write -> pages publish -> storefront read`;
   - runtime health contract фиксирует `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds и typed SLO evaluation evidence в коде;
   - первый migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext` и enforce write semantics для `publish` без изменения DTO contract.
   - server-side handler seam добавил permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` с `pages:manage` override и registry/manifest anti-drift проверкой.
@@ -48,6 +49,8 @@
 
 1. Подключить реальные GraphQL/server-function endpoints к `dispatch_graphql_envelope` и `dispatch_leptos_server_function_envelope`, не добавляя transport-local capability/error aliases.
 2. Удерживать `verify-page-builder-transport-bridge.mjs`, `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync и Wave evidence формы.
+1. Подключить `AuthorizedPageBuilderHandlers::handle` к реальным GraphQL/server-function adapters, используя `PageBuilderCapabilityRequest/Response`, `PageBuilderServiceError::kind()` и `stable_code()` как canonical transport bridge.
+2. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs`, `verify-page-builder-correlation-evidence.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync, Wave evidence формы и correlation chain `builder write -> pages publish -> storefront read`.
 3. Описать sunset path для legacy block-driven compatibility.
 
 ## Область работ
@@ -61,6 +64,7 @@
 
 - `cargo xtask module validate page_builder`
 - `cargo test -p rustok-page-builder --lib`
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs pages` (no-compile baseline gate for contract/evidence/fallback source markers; does not replace Cargo checks when compilations are allowed)
 
 ## Правила обновления
 

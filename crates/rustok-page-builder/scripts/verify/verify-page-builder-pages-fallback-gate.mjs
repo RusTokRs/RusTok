@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,28 +14,22 @@ function fail(message) {
   process.exit(1);
 }
 
-const serviceArgs = [
-  "test",
-  "-p",
-  "rustok-pages",
-  "--test",
-  "page_service_kind_guard",
-  "pages_builder_fallback",
-];
-
-console.log(
-  `[verify-page-builder-pages-fallback-gate] running service fallback profiles: cargo ${serviceArgs.join(" ")}`,
-);
-const serviceRun = spawnSync("cargo", serviceArgs, {
-  cwd: repoRoot,
-  stdio: "inherit",
-});
-
-if (serviceRun.status !== 0) {
-  fail("rustok-pages service fallback profile tests failed");
-}
+const serviceFallbackCheck = {
+  label: "rustok-pages service fallback profile tests",
+  file: "crates/rustok-pages/tests/page_service_kind_guard.rs",
+  tokens: [
+    "pages_builder_fallback_all_on_allows_publish_and_keeps_read_list_paths",
+    "pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_read_list_paths",
+    "pages_builder_fallback_preview_off_blocks_preview_publish_but_keeps_read_list_paths",
+    "pages_builder_fallback_builder_off_keeps_read_and_list_paths",
+    "FeatureDisabled",
+    ".list(tenant_id",
+    ".get(tenant_id",
+  ],
+};
 
 const hostChecks = [
+  serviceFallbackCheck,
   {
     label: "rustok-pages-admin host fallback helpers",
     file: "crates/rustok-pages/admin/src/core.rs",
