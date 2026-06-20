@@ -45,13 +45,15 @@ const nativePath = "crates/rustok-commerce/storefront/src/transport/native_serve
 const graphqlPath = "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
 const paymentTransportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const orderTransportPath = "crates/rustok-order/storefront/src/transport.rs";
+const fulfillmentTransportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
 const commercePlanPath = "crates/rustok-commerce/docs/implementation-plan.md";
 const paymentPlanPath = "crates/rustok-payment/docs/implementation-plan.md";
 const orderPlanPath = "crates/rustok-order/docs/implementation-plan.md";
+const fulfillmentPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [requestsPath, transportPath, nativePath, graphqlPath, paymentTransportPath, orderTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, registryPath, packagePath]) {
+for (const filePath of [requestsPath, transportPath, nativePath, graphqlPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected storefront transport handoff file`);
 }
 
@@ -61,9 +63,11 @@ const nativeAdapter = readRepo(nativePath);
 const graphqlAdapter = readRepo(graphqlPath);
 const paymentTransport = readRepo(paymentTransportPath);
 const orderTransport = readRepo(orderTransportPath);
+const fulfillmentTransport = readRepo(fulfillmentTransportPath);
 const commercePlan = readRepo(commercePlanPath);
 const paymentPlan = readRepo(paymentPlanPath);
 const orderPlan = readRepo(orderPlanPath);
+const fulfillmentPlan = readRepo(fulfillmentPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
 
@@ -116,6 +120,7 @@ for (const marker of [
 for (const [ownerTransport, ownerPath, fallbackFn, errorType] of [
   [paymentTransport, paymentTransportPath, "create_payment_collection_with_fallback", "PaymentCollectionTransportError"],
   [orderTransport, orderTransportPath, "complete_checkout_with_fallback", "CheckoutCompletionTransportError"],
+  [fulfillmentTransport, fulfillmentTransportPath, "select_shipping_option_with_fallback", "ShippingSelectionTransportError"],
 ]) {
   assertContains(ownerTransport, `pub enum ${errorType}`, `${ownerPath}: owner transport must expose typed fallback error ${errorType}`);
   assertContains(ownerTransport, `pub async fn ${fallbackFn}`, `${ownerPath}: owner transport must expose fallback facade ${fallbackFn}`);
@@ -136,6 +141,7 @@ for (const [operation, requestType] of [
 assertContains(commercePlan, "verify-commerce-storefront-transport-handoff.mjs", `${commercePlanPath}: commerce plan must mention transport handoff guardrail`);
 assertContains(paymentPlan, "compatibility fallback is now MissingServer-only", `${paymentPlanPath}: payment plan must document narrowed fallback policy`);
 assertContains(orderPlan, "compatibility fallback is now MissingServer-only", `${orderPlanPath}: order plan must document narrowed fallback policy`);
+assertContains(fulfillmentPlan, "compatibility fallback is now MissingServer-only", `${fulfillmentPlanPath}: fulfillment plan must document narrowed fallback policy`);
 assertContains(registry, "verify-commerce-storefront-transport-handoff.mjs", `${registryPath}: central registry must mention transport handoff guardrail`);
 assertContains(packageJson, "verify:commerce:storefront-transport-handoff", `${packagePath}: expected transport handoff script`);
 assertContains(packageJson, "npm run verify:commerce:storefront-transport-handoff", `${packagePath}: aggregate FFA migration verification must include transport handoff guardrail`);
