@@ -7,12 +7,12 @@ SPI и post-order delivery changes ещё остаются в активном b
 
 ## Execution checkpoint
 
-- Current phase: provider_spi_registration_contract
+- Current phase: provider_spi_runtime_mode_guardrails
 - Last checkpoint: No-compile provider SPI registration slice added fulfillment-owned external carrier registration DTOs, an in-memory `FulfillmentProviderRegistry` composition seam with descriptor-id/adapter-id validation, duplicate registration guards, health/degraded-mode guards and static verifier source locks, while keeping lifecycle persistence and tracking webhook replay ownership in `FulfillmentService`.
 - Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then replace static provider SPI evidence with runtime contract execution.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-19T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## FFA/FBA status
 
@@ -25,10 +25,11 @@ SPI и post-order delivery changes ещё остаются в активном b
   - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - registry теперь фиксирует `contract_tests.status = planned_cases_locked`: для каждой port operation задана in-process/remote-adapter-placeholder case matrix, baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) с явным deadline enforcement для read path и `write_idempotency_required` только на write operations; fallback smoke profile set; static evidence packet `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates) and `npm run verify:ecommerce:fba-contract-evidence`; это закрывает metadata/evidence anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
   - provider SPI evidence теперь закреплён в `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`: manual/remote-placeholder cases для `quote_rates`/`create_label`/`cancel` проверяют typed provider error mapping, idempotency-key preservation и запрет persistence в adapter layer, tracking webhook replay contract фиксирует idempotent duplicate delivery и делегирование lifecycle transition в `FulfillmentService`, а `src/providers.rs` содержит external carrier registration contract (`ExternalFulfillmentProviderRegistration`, health/degraded-mode DTOs, descriptor-id validation, `FulfillmentProviderRegistry`) с source markers, которые проверяет `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`; packet не повышает FBA статус без runtime execution;
+  - provider registry runtime-mode guardrails теперь side-effect-free проверяют capability support, missing-provider errors и health/degraded-mode mapping до вызова carrier adapter-а; targeted provider SPI tests фиксируют fallback profile propagation и operation capability rejection без полной компиляции в этой итерации;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
   - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs`, `storefront/src/transport.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation/normalization plus native-first/GraphQL fallback policy consumed by commerce checkout orchestration; fast guardrail `scripts/verify/verify-fulfillment-storefront-boundary.mjs` validates the owner UI/core/transport split and aggregate package wiring while commerce temporarily retains the SSR endpoint body.
-- Last verified at (UTC): 2026-06-19T00:00:00Z
+- Last verified at (UTC): 2026-06-20T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 
 ## Область работ
@@ -73,6 +74,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - [x] добавить static provider SPI contract matrix и tracking webhook ingress/replay contract;
 - [x] зафиксировать external carrier registration contract без provider-specific carrier logic в базовом fulfillment lifecycle contract.
 - [x] добавить fulfillment-owned provider registry seam для host/carrier composition без lifecycle persistence в adapter layer.
+- [x] добавить side-effect-free runtime-mode guardrails для capability checks и degraded-mode fallback mapping до invocation external carrier adapter-а.
 - [ ] заменить static provider SPI/source evidence runtime contract execution.
 
 ### 3. Operability

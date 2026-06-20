@@ -5,7 +5,7 @@ use rustok_payment::providers::{
     ExternalPaymentProviderRegistration, ManualPaymentProvider, PaymentProvider,
     PaymentProviderCapabilities, PaymentProviderDegradedMode, PaymentProviderDescriptor,
     PaymentProviderHealth, PaymentProviderOperationRequest, PaymentProviderOperationResult,
-    PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
+    PaymentProviderRegistry, PaymentProviderWebhookRequest, PaymentProviderWebhookResult,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -245,4 +245,53 @@ fn test_external_payment_provider_registration_contract() {
 
     assert!(registration.validate("mock-gateway").is_ok());
     assert!(registration.validate("other-gateway").is_err());
+}
+
+#[test]
+fn test_payment_provider_runtime_mode_maps_degraded_and_capability_guards() {
+    let mut registry = PaymentProviderRegistry::with_manual_provider();
+    let descriptor = PaymentProviderDescriptor {
+        provider_id: "slow-gateway".to_string(),
+        display_name: "Slow Gateway".to_string(),
+        capabilities: PaymentProviderCapabilities {
+            authorize: true,
+            capture: true,
+            refund: false,
+            cancel: true,
+            webhook_ingress: true,
+        },
+        default_for_new_collections: false,
+    };
+    let provider = MockPaymentProvider {
+        descriptor: descriptor.clone(),
+        should_fail: false,
+        error_message: String::new(),
+    };
+    registry
+        .register_external(
+            "slow-gateway",
+            std::sync::Arc::new(provider),
+            ExternalPaymentProviderRegistration {
+                descriptor,
+                health: PaymentProviderHealth::Degraded,
+                degraded_mode: Some(PaymentProviderDegradedMode {
+                    reason: "gateway_timeout".to_string(),
+                    fallback_profile: "manual_review".to_string(),
+                }),
+            },
+        )
+        .unwrap();
+
+    let mode = registry.runtime_mode("slow-gateway", "authorize").unwrap();
+    assert!(mode.can_execute);
+    assert_eq!(
+        mode.degraded_mode.unwrap().fallback_profile,
+        "manual_review"
+    );
+
+    assert!(registry.runtime_mode("slow-gateway", "refund").is_err());
+    assert!(registry.runtime_mode("slow-gateway", "unknown").is_err());
+    assert!(registry
+        .runtime_mode("missing-gateway", "authorize")
+        .is_err());
 }

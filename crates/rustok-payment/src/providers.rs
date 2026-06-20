@@ -69,6 +69,15 @@ pub struct PaymentProviderDegradedMode {
     pub fallback_profile: String,
 }
 
+/// Runtime decision for checkout/payment orchestration before a provider side effect is invoked.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PaymentProviderRuntimeMode {
+    pub provider_id: String,
+    pub operation: String,
+    pub can_execute: bool,
+    pub degraded_mode: Option<PaymentProviderDegradedMode>,
+}
+
 /// External provider registration contract. The adapter remains side-effect-only:
 /// lifecycle persistence and replay/idempotency decisions stay in `PaymentService`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -185,6 +194,51 @@ impl PaymentProviderRegistry {
             .collect::<Vec<_>>();
         descriptors.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
         descriptors
+    }
+
+    /// Resolve runtime execution mode for an operation without invoking the adapter.
+    ///
+    /// This is intentionally side-effect-free: callers use it to map unavailable or
+    /// degraded external providers into explicit fallback/degraded checkout modes,
+    /// while lifecycle persistence remains in `PaymentService`.
+    pub fn runtime_mode(
+        &self,
+        provider_id: &str,
+        operation: &str,
+    ) -> PaymentResult<PaymentProviderRuntimeMode> {
+        let registration = self.registrations.get(provider_id).ok_or_else(|| {
+            PaymentError::Validation(format!(
+                "payment provider `{}` is not registered",
+                provider_id
+            ))
+        })?;
+        let supported = match operation {
+            "authorize" => registration.descriptor.capabilities.authorize,
+            "capture" => registration.descriptor.capabilities.capture,
+            "refund" => registration.descriptor.capabilities.refund,
+            "cancel" => registration.descriptor.capabilities.cancel,
+            "webhook_ingress" => registration.descriptor.capabilities.webhook_ingress,
+            other => {
+                return Err(PaymentError::Validation(format!(
+                    "unknown payment provider operation `{}`",
+                    other
+                )))
+            }
+        };
+
+        if !supported {
+            return Err(PaymentError::Validation(format!(
+                "payment provider `{}` does not support `{}`",
+                provider_id, operation
+            )));
+        }
+
+        Ok(PaymentProviderRuntimeMode {
+            provider_id: provider_id.to_string(),
+            operation: operation.to_string(),
+            can_execute: registration.health != PaymentProviderHealth::Unavailable,
+            degraded_mode: registration.degraded_mode.clone(),
+        })
     }
 }
 

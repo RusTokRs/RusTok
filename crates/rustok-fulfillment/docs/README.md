@@ -18,7 +18,8 @@
 - `ship_fulfillment` и `deliver_fulfillment` теперь принимают item-level quantity adjustments, сохраняют только language-agnostic audit events в metadata fulfillment/item'ов и поддерживают partial post-order delivery progress без отдельного OMS слоя; `delivered_note` остаётся typed-полем fulfillment;
 - explicit `reopen_fulfillment` и `reship_fulfillment` теперь тоже живут в этом boundary, так что post-order delivery recovery не требует неявных status hacks и не возвращает language-dependent бизнес-текст в metadata;
 - admin REST/admin GraphQL и module-owned `rustok-fulfillment/admin` UI уже потребляют этот shipping-option contract как typed operator surface поверх `FulfillmentService`, включая deactivate/reactivate lifecycle поверх флага `active`;
-- встроенный manual/default fulfillment flow без внешних carrier providers на текущем этапе.
+- встроенный manual/default fulfillment flow на текущем этапе;
+- fulfillment-owned provider SPI registry для external carrier composition: descriptor/adapter id validation, health/degraded-mode registration guards и side-effect-free runtime-mode checks до invocation adapter-а.
 
 ## Зона ответственности
 

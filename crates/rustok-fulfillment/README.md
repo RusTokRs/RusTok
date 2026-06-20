@@ -11,7 +11,8 @@
 - Track per-item `shipped_quantity` and `delivered_quantity` inside `fulfillment_items` for partial delivery progress.
 - Prepare a stable shipping boundary for checkout orchestration.
 - Keep shipment lifecycle transitions isolated from the ecommerce umbrella.
-- Provide a built-in manual/default fulfillment flow for the current stage, without external carrier providers.
+- Provide a built-in manual/default fulfillment flow for the current stage.
+- Expose a fulfillment-owned provider SPI registry with external carrier registration validation and side-effect-free runtime-mode guardrails before adapter invocation.
 - Own storefront shipping handoff and seller-aware shipping selection presentation through `rustok-fulfillment/storefront`; commerce may still provide the transitional aggregate checkout SSR endpoint/body adapter until the full fulfillment-owned endpoint cutover lands.
 - Normalize first-class `allowed_shipping_profile_slugs` on shipping-option contracts into the temporary metadata-backed compatibility shape.
 - Provide create/update/lifecycle read-side service operations for shipping-option management that the commerce facade exposes over admin REST and GraphQL.
@@ -33,6 +34,7 @@
 
 - `FulfillmentModule`
 - `FulfillmentService`
+- `providers::*`
 - `admin::FulfillmentAdmin` (publishable Leptos package)
 - `dto::*`
 - `entities::*`

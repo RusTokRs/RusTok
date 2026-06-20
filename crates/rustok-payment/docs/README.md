@@ -8,7 +8,8 @@
 - схема `payments`;
 - `PaymentModule` и `PaymentService`;
 - payment boundary для checkout-цепочки `cart -> payment -> order`;
-- встроенный manual/default payment flow без внешних провайдеров на текущем этапе.
+- встроенный manual/default payment flow на текущем этапе;
+- payment-owned provider SPI registry для external provider composition: descriptor/adapter id validation, health/degraded-mode registration guards и side-effect-free runtime-mode checks до invocation adapter-а.
 
 ## Зона ответственности
 
@@ -19,8 +20,10 @@
 
 ## Интеграция
 
-- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella ustok-commerce;
-- transport, GraphQL и UI-поверхности публикуются через ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
+- модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
+- transport, GraphQL и UI-поверхности публикуются через `rustok-commerce`, пока для домена не зафиксирован отдельный module-owned surface;
+- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
+ustok-commerce, пока для домена не зафиксирован отдельный module-owned surface;
 - изменения cross-module контракта нужно синхронизировать с ustok-commerce и соседними split-модулями.
 
 ## Проверка
