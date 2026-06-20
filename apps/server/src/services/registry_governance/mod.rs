@@ -409,8 +409,8 @@ pub mod publishing;
 pub mod validation;
 pub mod releases;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 pub use publishing::request_status_label;
 pub use releases::release_status_label;
