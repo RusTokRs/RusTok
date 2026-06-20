@@ -11,20 +11,21 @@ post-v0 rollout policy lifecycle и runtime integration parity.
 
 ## Execution checkpoint
 
-- Current phase: ffa_admin_leptos_adapter_directory_split
-- Last checkpoint: Flat `admin/src/ui/leptos.rs` was split into `ui/leptos/` with a stable `mod.rs` entry point and focused `runtime_context.rs`, `policy_workbench.rs`, `policy_set_card.rs` and `channel_card.rs` render modules; `ChannelAdmin` remains the only public adapter entry point.
-- Next step: Собрать полный `cargo check`/`cargo test` evidence для `rustok-channel-admin` в CI или в сессии без короткого execution limit, затем переводить channel admin row к `phase_b_ready`.
+- Current phase: fba_channel_read_projection_static_contract
+- Last checkpoint: FBA slice #1 добавил `ChannelReadPort` / `channel.read_projection.v1`, registry `crates/rustok-channel/contracts/channel-fba-registry.json`, static matrix `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` и fast gate `npm run verify:channel:fba` без долгой компиляции.
+- Next step: Собрать runtime contract/fallback smoke evidence для `ChannelReadPort` и полный `cargo check`/`cargo test` evidence для `rustok-channel-admin` в CI или в сессии без короткого execution limit; до runtime evidence FBA остаётся `in_progress`.
 - Open blockers: targeted `cargo check -p rustok-channel-admin --lib` дважды превысил безопасный 20-секундный лимит и был остановлен; compile evidence отсутствует, поэтому FFA status остаётся `in_progress`. Compile-free evidence проходит: channel boundary fixture suite 13/13, aggregate source-level `verify:ffa:ui:migration` PASS.
 - Hand-off notes for next agent: Держать вызовы channel admin UI за `transport`, а route-selection policy — в `core` или shared route helpers; не возвращать raw transport calls в `ui/leptos/`.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## FFA/FBA readiness
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - `crates/rustok-channel/admin/src/lib.rs` теперь является composition/re-export слоем для module-owned admin surface.
+  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and read deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:channel:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`.
   - `crates/rustok-channel/admin/src/core.rs` содержит Leptos-free selection policy для очистки URL-owned channel selection.
   - `ChannelPolicySelectionCleanup` / `channel_policy_selection_cleanup` централизуют trim, policy-set lookup и stale rule cleanup; Leptos route effect больше не владеет этой decision logic.
   - `PolicyRuleFormState` и create/edit builders владеют приоритетом по умолчанию, fallback action channel и predicate-to-form mapping; Leptos применяет подготовленное состояние только к signals.

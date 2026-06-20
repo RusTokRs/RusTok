@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "module": "channel",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-channel/contracts/channel-fba-registry.json",
+  "runner": "scripts/verify/verify-channel-fba.mjs",
+  "contract_version": "channel.read_projection.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "read_channel",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_channel_degraded_mode", "selector_validation"]
+    },
+    {
+      "operation": "list_channels_for_tenant",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_channel_filter_preserved"]
+    }
+  ],
+  "fallback_smoke": {
+    "profiles": ["embedded_native", "rest_compatibility", "unresolved_context"],
+    "execution_status": "planned_runtime_pending"
+  }
+}
