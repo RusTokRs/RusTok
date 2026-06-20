@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "module": "region",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "region.read_projection.v1",
+  "ports": [
+    {
+      "name": "RegionReadPort",
+      "contract_version": "region.read_projection.v1",
+      "operations": ["read_region", "list_regions_for_tenant"],
+      "context": "crates/rustok-region/src/ports.rs::PortContext",
+      "error": "crates/rustok-region/src/ports.rs::PortError",
+      "deadline_required": true,
+      "idempotency_required": false,
+      "semantics": "read_only"
+    }
+  ],
+  "consumers": [
+    {
+      "module": "commerce",
+      "profiles": ["region_tax_provider_lookup", "region_country_resolution"],
+      "degraded_modes": ["use_cart_channel_tax_provider_fallback", "hide_region_selector"]
+    },
+    {
+      "module": "storefront-host",
+      "profiles": ["region_selector", "country_region_lookup"],
+      "degraded_modes": ["show_cached_region_snapshot", "hide_region_selector"]
+    }
+  ],
+  "fallback_profiles": ["embedded_native", "graphql_compatibility", "cached_snapshot"],
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "operation": "read_region",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "locale_fallback_preserved", "country_selector_validation"],
+        "write_idempotency_required": false
+      },
+      {
+        "operation": "list_regions_for_tenant",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "locale_fallback_preserved"],
+        "write_idempotency_required": false
+      }
+    ],
+    "fallback_smoke": {
+      "profiles": ["embedded_native", "graphql_compatibility", "cached_snapshot"],
+      "status": "planned_runtime_pending"
+    }
+  }
+}

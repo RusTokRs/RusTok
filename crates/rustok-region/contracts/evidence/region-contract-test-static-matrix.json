@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "module": "region",
+  "status": "static_matrix_locked",
+  "generated_from": "crates/rustok-region/contracts/region-fba-registry.json",
+  "runner": "scripts/verify/verify-region-fba.mjs",
+  "contract_version": "region.read_projection.v1",
+  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "cases": [
+    {
+      "operation": "read_region",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "locale_fallback_preserved", "country_selector_validation"]
+    },
+    {
+      "operation": "list_regions_for_tenant",
+      "execution_status": "static_locked_runtime_pending",
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "locale_fallback_preserved"]
+    }
+  ],
+  "fallback_smoke": {
+    "profiles": ["embedded_native", "graphql_compatibility", "cached_snapshot"],
+    "execution_status": "planned_runtime_pending"
+  }
+}

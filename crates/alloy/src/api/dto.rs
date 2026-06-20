@@ -256,4 +256,74 @@ pub struct ScheduledJobInfo {
     pub running: bool,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
 
+    fn execution_entry(phase: ExecutionPhase) -> ExecutionLogEntry {
+        ExecutionLogEntry {
+            id: Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap(),
+            script_id: Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap(),
+            script_name: "canonical_transport_mapping".to_string(),
+            phase,
+            outcome: "success".to_string(),
+            duration_ms: 123,
+            error: Some("operator-visible error".to_string()),
+            user_id: Some("operator-7".to_string()),
+            tenant_id: Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap()),
+            created_at: Utc.with_ymd_and_hms(2026, 6, 19, 12, 0, 0).unwrap(),
+        }
+    }
+
+    #[test]
+    fn execution_log_response_preserves_canonical_transport_fields() {
+        let entry = execution_entry(ExecutionPhase::OnCommit);
+        let response = ExecutionLogResponse::from(entry);
+
+        assert_eq!(response.id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        assert_eq!(
+            response.script_id,
+            Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap()
+        );
+        assert_eq!(response.script_name, "canonical_transport_mapping");
+        assert_eq!(response.phase, "on_commit");
+        assert_eq!(response.outcome, "success");
+        assert_eq!(response.duration_ms, 123);
+        assert_eq!(response.error.as_deref(), Some("operator-visible error"));
+        assert_eq!(response.user_id.as_deref(), Some("operator-7"));
+        assert_eq!(
+            response.tenant_id,
+            Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap())
+        );
+        assert_eq!(response.created_at, "2026-06-19T12:00:00+00:00");
+    }
+
+    #[test]
+    fn execution_phase_names_match_rest_contract() {
+        let phases = [
+            (ExecutionPhase::Before, "before"),
+            (ExecutionPhase::After, "after"),
+            (ExecutionPhase::OnCommit, "on_commit"),
+            (ExecutionPhase::Manual, "manual"),
+            (ExecutionPhase::Scheduled, "scheduled"),
+        ];
+
+        for (phase, expected) in phases {
+            assert_eq!(
+                ExecutionLogResponse::from(execution_entry(phase)).phase,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn execution_log_response_reports_exact_total_pages() {
+        let response = ListExecutionLogResponse::new(Vec::new(), 101, 3, 50);
+
+        assert_eq!(response.total, 101);
+        assert_eq!(response.page, 3);
+        assert_eq!(response.per_page, 50);
+        assert_eq!(response.total_pages, 3);
+    }
+}
