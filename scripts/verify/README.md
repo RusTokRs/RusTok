@@ -438,13 +438,14 @@ npm run verify:ffa:ui:migration
 ---
 
 ### `verify-page-builder-consumer-readiness.mjs`
-**Page Builder FBA baseline** — Consumer readiness check
+**Page Builder FBA baseline** — проверка готовности consumer-модуля
 
 Что проверяет:
 - наличие `rustok-module.toml` и `docs/implementation-plan.md` для модуля-consumer;
 - наличие marker-ов dependency/consumer contract (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
 - наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan;
-- для `pages`: manifest/docs rollout policy markers для `control_plane_builder_wave_audit`, before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers, pilot smoke `preview -> properties -> publish(dry)` и rollback target <= 10 минут без redeploy.
+- для `pages`: marker-ы rollout policy в manifest/docs для `control_plane_builder_wave_audit`, before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers, pilot smoke `preview -> properties -> publish(dry)` и rollback target <= 10 минут без redeploy;
+- для `forum`: FW-2 fallback matrix, FW-4/Wave 1 rollout evidence, numeric SLO metrics, forum-owned trace keys, approvals/waivers, monthly refresh policy и проверку актуальности по срокам (`created_at`, `next_due_at`, `max_age_days`) перед builder-consumer rollout.
 
 Поддерживаемые slug:
 - `pages`
@@ -454,6 +455,19 @@ npm run verify:ffa:ui:migration
   - deny nested imports внутренних модулей без явного разрешения
 
 **Severity:** CRITICAL. Модуль вне registry = не проходит health check.
+
+---
+
+### `verify-forum-wave-evidence-freshness.mjs`
+**Forum Page Builder consumer freshness** — сфокусированный no-compile gate для live Wave 1 evidence
+
+Что проверяет:
+- `forum-wave1-rollout-evidence.json` относится к `forum`, `wave=1`, `mode=live`;
+- monthly refresh policy закрепляет `npm run verify:page-builder:consumer:forum`;
+- stale evidence блокирует rollout до refresh evidence;
+- `next_due_at` позже `created_at`, укладывается в `max_age_days` и не находится в прошлом на момент запуска gate.
+
+**Severity:** GATE для forum builder-consumer rollout. Скрипт не запускает Rust/Leptos компиляцию.
 
 ---
 

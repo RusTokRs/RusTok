@@ -6,8 +6,8 @@
 ## Execution checkpoint
 
 - Current phase: phase_d_rollout_hardened
-- Last checkpoint: FW-7 (steady-state evidence refresh guardrail) закрепил machine-readable refresh policy в live Wave 1 evidence и расширил static gate `npm run verify:page-builder:consumer:forum`: gate теперь требует monthly refresh cadence, max-age <= 45 days, обязательные секции audit/fallback/metrics/traces/rollback/approvals/waivers и rollout-block action для stale evidence.
-- Next step: Steady-state maintenance: refresh Wave evidence by the pinned monthly policy, keep no-compile gate green, and integrate only compatible platform features
+- Last checkpoint: FW-8 (time-bound freshness guardrail) сделал monthly policy исполняемой: `npm run verify:page-builder:consumer:forum` теперь сравнивает `created_at`, `refresh_policy.next_due_at`, `max_age_days` и текущий момент, а отдельный fast gate `npm run verify:forum:wave-evidence-freshness` даёт явную no-compile проверку stale evidence перед rollout.
+- Next step: Steady-state maintenance: refresh Wave evidence before `refresh_policy.next_due_at`, keep no-compile gates green, and integrate only compatible platform features
 - Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
@@ -16,7 +16,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, stale evidence blocks rollout until refreshed).
+- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, `next_due_at` after `created_at`, stale evidence blocks rollout until refreshed); `npm run verify:forum:wave-evidence-freshness` выделяет проверку актуальности по срокам в отдельный быстрый gate.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
@@ -142,3 +142,10 @@
 - [x] Зафиксировать machine-readable refresh policy прямо в `forum-wave1-rollout-evidence.json`: monthly cadence, `max_age_days <= 45`, next due timestamp, owner, required gate and stale-evidence rollout block action.
 - [x] Расширить `npm run verify:page-builder:consumer:forum` так, чтобы no-compile gate проверял обязательные refresh sections: audit trail, fallback profiles, observability metrics/traces, rollback decision, approvals and waivers.
 - [x] Синхронизировать local/central docs: steady-state maintenance теперь означает evidence refresh по policy, а не prose-only напоминание.
+
+
+### FW-8 — Ограниченный по времени steady-state gate актуальности
+
+- [x] Расширить `npm run verify:page-builder:consumer:forum`: live Wave 1 evidence считается валидным только если `refresh_policy.next_due_at` позже `created_at`, не выходит за `max_age_days`, текущий момент не старше `max_age_days` и не прошёл `next_due_at`.
+- [x] Добавить сфокусированный no-compile gate `npm run verify:forum:wave-evidence-freshness` для явной проверки stale evidence перед builder-consumer rollout без запуска Rust/Leptos компиляции.
+- [x] Синхронизировать local/central docs так, чтобы steady-state maintenance ссылался на исполняемый gate актуальности по срокам, а не только на наличие policy в JSON.
