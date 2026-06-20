@@ -83,7 +83,7 @@
     "verify:ai-alloy:policy": "node scripts/verify/verify-ai-alloy-policy.mjs",
     "verify:region:fba": "node scripts/verify/verify-region-fba.mjs",
     "verify:page-builder:wave1-readiness-draft": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave1-readiness-draft.mjs",
-    "verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.mjs"
+    "verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.mjs",
     "verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.mjs"
   },
   "dependencies": {

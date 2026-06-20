@@ -106,9 +106,11 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
     const evidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-static-matrix.json`;
     const runtimeSmokePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-runtime-smoke.json`;
+    const liveAdapterContractPath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-contract.json`;
     const registry = readJson(root, registryPath);
     const evidence = readJson(root, evidencePath);
     const runtimeSmoke = readJson(root, runtimeSmokePath);
+    const liveAdapterContract = readJson(root, liveAdapterContractPath);
     const providerSpi = registry.provider_spi;
     const providerSource = readText(root, `crates/rustok-${module}/src/providers.rs`);
 
@@ -253,6 +255,55 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     }
     if (liveExecutionPlan.evidence_status !== 'runtime_execution_pending') {
       fail(`${module} live execution plan evidence status drift`);
+    }
+
+    if (liveAdapterContract.schema_version !== 1) fail(`${module} live adapter contract schema_version must be 1`);
+    if (liveAdapterContract.module !== module) fail(`${module} live adapter contract module drift`);
+    if (liveAdapterContract.packet !== 'provider-spi-live-adapter-execution-contract') {
+      fail(`${module} live adapter contract packet drift`);
+    }
+    if (liveAdapterContract.status !== 'live_adapter_contract_locked') {
+      fail(`${module} live adapter contract status drift`);
+    }
+    if (liveAdapterContract.generated_from !== runtimeSmokePath) {
+      fail(`${module} live adapter contract source drift`);
+    }
+    if (liveAdapterContract.runner !== 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs') {
+      fail(`${module} live adapter contract runner drift`);
+    }
+    if (liveAdapterContract.execution_scope !== 'contract_locked_runtime_execution_pending') {
+      fail(`${module} live adapter contract execution scope drift`);
+    }
+    if (liveAdapterContract.adapter_profile !== expectedAdapterProfile) {
+      fail(`${module} live adapter contract profile drift`);
+    }
+    if (liveAdapterContract.promotion_gate !== 'requires_concrete_external_adapter_execution_before_boundary_ready') {
+      fail(`${module} live adapter contract promotion gate drift`);
+    }
+    if (liveAdapterContract.evidence_status !== 'runtime_execution_pending') {
+      fail(`${module} live adapter contract evidence status drift`);
+    }
+    if (!Array.isArray(liveAdapterContract.required_cases)) {
+      fail(`${module} live adapter contract lacks required cases`);
+    }
+    for (const requiredCase of requiredLiveExecutionCases) {
+      const contractCase = liveAdapterContract.required_cases.find((entry) => entry.case === requiredCase);
+      if (!contractCase) fail(`${module} live adapter contract lacks case ${requiredCase}`);
+      if (!Array.isArray(contractCase.assertions) || contractCase.assertions.length < 3) {
+        fail(`${module} live adapter contract case ${requiredCase} assertions drift`);
+      }
+    }
+    const successCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard');
+    const unavailableLiveCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'unavailable_mode_blocks_adapter_invocation');
+    const degradedLiveCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed');
+    const webhookLiveCase = liveAdapterContract.required_cases.find((entry) => entry.case === 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service');
+    if (successCase?.expected_adapter_invocations !== 1) fail(`${module} live adapter success invocation count drift`);
+    if (unavailableLiveCase?.expected_adapter_invocations !== 0 || unavailableLiveCase?.expected_can_execute !== false) {
+      fail(`${module} live adapter unavailable blocking drift`);
+    }
+    if (degradedLiveCase?.expected_can_execute !== true) fail(`${module} live adapter degraded mode drift`);
+    if (webhookLiveCase?.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
+      fail(`${module} live adapter webhook operation drift`);
     }
 
     const registrationType =

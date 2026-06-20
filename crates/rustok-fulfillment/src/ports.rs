@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -64,7 +64,7 @@ impl ShippingSelectionPort for crate::FulfillmentService {
         context: PortContext,
         request: ListSellerShippingOptionsRequest,
     ) -> Result<SellerShippingOptionsSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
+        context.require_deadline_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let options = self
             .list_shipping_options(tenant_id, Some(&context.locale), Some(&context.locale))
