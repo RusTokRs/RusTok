@@ -1,5 +1,11 @@
+use std::time::Duration;
+
+use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_customer::dto::{CreateCustomerInput, ListCustomersInput, UpdateCustomerInput};
 use rustok_customer::error::CustomerError;
+use rustok_customer::ports::{
+    CustomerListProjectionRequest, CustomerProjectionRequest, CustomerReadPort,
+};
 use rustok_customer::services::CustomerService;
 use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
 use rustok_profiles::services::ProfileService;
@@ -12,6 +18,16 @@ async fn setup() -> CustomerService {
     let db = setup_test_db().await;
     support::ensure_customer_schema(&db).await;
     CustomerService::new(db)
+}
+
+fn customer_port_context(tenant_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("commerce-checkout"),
+        "en",
+        "customer-read-port-test",
+    )
+    .with_deadline(Duration::from_secs(3))
 }
 
 fn create_input() -> CreateCustomerInput {
@@ -277,4 +293,153 @@ async fn customer_bridge_returns_none_when_profile_is_missing() {
 
     assert_eq!(bridged.customer.id, customer.id);
     assert!(bridged.profile.is_none());
+}
+
+#[tokio::test]
+async fn customer_read_port_requires_deadline_semantics() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let customer = service
+        .create_customer(tenant_id, create_input())
+        .await
+        .unwrap();
+
+    let error = service
+        .read_customer_projection(
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::service("commerce-checkout"),
+                "en",
+                "customer-read-port-missing-deadline",
+            ),
+            CustomerProjectionRequest {
+                customer_id: customer.id,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.kind, PortErrorKind::Timeout);
+    assert_eq!(error.code, "port.deadline_required");
+    assert!(error.retryable);
+}
+
+#[tokio::test]
+async fn customer_read_port_maps_invalid_tenant_to_validation_error() {
+    let service = setup().await;
+
+    let error = service
+        .list_customer_projections(
+            PortContext::new(
+                "not-a-uuid",
+                PortActor::service("order"),
+                "en",
+                "customer-read-port-invalid-tenant",
+            )
+            .with_deadline(Duration::from_secs(3)),
+            CustomerListProjectionRequest {
+                search: None,
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.kind, PortErrorKind::Validation);
+    assert_eq!(error.code, "customer.tenant_id_invalid");
+    assert!(!error.retryable);
+}
+
+#[tokio::test]
+async fn customer_read_port_maps_missing_customer_to_typed_not_found() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let missing_customer_id = Uuid::new_v4();
+
+    let error = service
+        .read_customer_projection(
+            customer_port_context(tenant_id),
+            CustomerProjectionRequest {
+                customer_id: missing_customer_id,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.kind, PortErrorKind::NotFound);
+    assert_eq!(error.code, "customer.customer_not_found");
+    assert!(error.message.contains(&missing_customer_id.to_string()));
+    assert!(!error.retryable);
+}
+
+#[tokio::test]
+async fn customer_read_port_lists_tenant_scoped_projections_for_checkout_fallback() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                email: "fallback-alpha@example.com".to_string(),
+                first_name: Some("Fallback".to_string()),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(Uuid::new_v4()),
+                email: "fallback-beta@example.com".to_string(),
+                first_name: Some("Fallback".to_string()),
+                last_name: Some("Checkout".to_string()),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .create_customer(
+            other_tenant_id,
+            CreateCustomerInput {
+                user_id: Some(Uuid::new_v4()),
+                email: "fallback-other@example.com".to_string(),
+                first_name: Some("Fallback".to_string()),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let response = service
+        .list_customer_projections(
+            customer_port_context(tenant_id),
+            CustomerListProjectionRequest {
+                search: Some("fallback".to_string()),
+                page: 1,
+                per_page: 10,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.total, 2);
+    assert_eq!(response.items.len(), 2);
+    assert!(
+        response
+            .items
+            .iter()
+            .all(|customer| customer.email.ends_with("@example.com"))
+    );
+    assert!(
+        !response
+            .items
+            .iter()
+            .any(|customer| customer.email == "fallback-other@example.com")
+    );
 }

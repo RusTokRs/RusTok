@@ -9,7 +9,8 @@
 - module-owned admin UI пакет `rustok-customer/admin`;
 - customer profile boundary, отделённый от platform/admin user;
 - optional linkage на `user_id` для сценариев `store/customers/me`;
-- optional service-level bridge `customer -> user -> profile`, который может вернуть customer вместе с `ProfileSummary`.
+- optional service-level bridge `customer -> user -> profile`, который может вернуть customer вместе с `ProfileSummary`;
+- FBA provider boundary `CustomerReadPort` для read-projection сценариев commerce checkout и order customer snapshots.
 
 ## Зона ответственности
 
@@ -23,7 +24,8 @@
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
 - storefront transport и GraphQL по-прежнему публикуются через `rustok-commerce`, но admin UI-поверхность уже зафиксирована как отдельный module-owned surface в `rustok-customer/admin`;
-- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
+- изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями;
+- `CustomerReadPort` использует общий `PortContext`/`PortError`, требует read deadline semantics и мапит invalid tenant / not found в typed port errors; no-compile runtime smoke зафиксирован в `contracts/evidence/customer-read-projection-runtime-smoke.json`, но FBA status остаётся `in_progress` до фактического compiled runtime execution.
 
 ## Разделение FFA для admin
 
@@ -34,6 +36,7 @@
 - cargo xtask module validate customer
 - cargo xtask module test customer
 - targeted commerce tests для customer-домена при изменении runtime wiring
+- targeted customer port tests для `CustomerReadPort` deadline/error/fallback smoke перед повышением FBA статуса
 
 ## Связанные документы
 
