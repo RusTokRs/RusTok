@@ -14,7 +14,7 @@ conversion contracts, на которые опираются доменные м
 
 - `ContentOrchestrationService`, orchestration audit/idempotency и canonical URL state;
 - shared rich-text и locale fallback helpers;
-- conversion flows `topic <-> post`, split/merge topic и canonical URL policy;
+- conversion flows `topic <-> post`, split/merge topic и canonical URL policy, включая запрет cross-target canonical collisions и alias shadowing;
 - orchestration tables, audit trail и domain events;
 - отсутствие product-owned CRUD/runtime adapters для blog/forum/pages.
 

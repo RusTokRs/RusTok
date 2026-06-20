@@ -94,6 +94,11 @@ check(
   'retired canonical targets must be atomically retired and redirected',
 );
 check(
+  'canonical mutation helper rejects canonical/alias route collisions',
+  includesAll(service, ['ensure_canonical_route_available', 'ensure_alias_route_available', 'already belongs to another content target', 'would shadow another target canonical URL']),
+  'canonical URL changes must reject cross-target route collisions before mutating mappings',
+);
+check(
   'canonical mutation helper publishes URL outbox events',
   includesAll(service, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
   'canonical URL changes must emit both URL events when aliases are present',
