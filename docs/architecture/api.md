@@ -81,7 +81,8 @@ Leptos `#[server]` functions — это internal host/UI contract, а не за�
   correlation/causation, trace context, idempotency key и deadline semantics;
 - `PortError` и `PortErrorKind` задают transport-agnostic доменную error envelope до mapping
   в GraphQL/REST/gRPC;
-- write-порты должны проверять idempotency key и deadline до обращения к owner storage
+- `PortCallPolicy` и `PortOperationKind` задают reusable enforcement для read/write/event-replay/best-effort операций без module-specific behavior;
+- read-порты должны проверять deadline semantics; write и event-replay порты должны проверять idempotency key и deadline до обращения к owner storage
   или remote adapter.
 
 Эти types не являются application service layer и не должны содержать module-specific

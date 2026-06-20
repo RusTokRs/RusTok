@@ -40,6 +40,31 @@ impl PortContext {
         }
     }
 
+    pub fn with_claim(mut self, claim: impl Into<String>) -> Self {
+        self.claims.push(claim.into());
+        self
+    }
+
+    pub fn with_role(mut self, role: impl Into<String>) -> Self {
+        self.roles.push(role.into());
+        self
+    }
+
+    pub fn with_channel(mut self, channel: impl Into<String>) -> Self {
+        self.channel = Some(channel.into());
+        self
+    }
+
+    pub fn with_causation_id(mut self, causation_id: impl Into<String>) -> Self {
+        self.causation_id = Some(causation_id.into());
+        self
+    }
+
+    pub fn with_traceparent(mut self, traceparent: impl Into<String>) -> Self {
+        self.traceparent = Some(traceparent.into());
+        self
+    }
+
     pub fn with_idempotency_key(mut self, key: impl Into<String>) -> Self {
         self.idempotency_key = Some(key.into());
         self
@@ -60,6 +85,10 @@ impl PortContext {
         Ok(())
     }
 
+    pub fn require_read_semantics(&self) -> Result<(), PortError> {
+        self.require_deadline_semantics()
+    }
+
     pub fn require_write_semantics(&self) -> Result<(), PortError> {
         if self
             .idempotency_key
@@ -74,6 +103,67 @@ impl PortContext {
         }
         self.require_deadline_semantics()
     }
+
+    pub fn require_policy(&self, policy: PortCallPolicy) -> Result<(), PortError> {
+        if policy.requires_idempotency_key {
+            self.require_write_semantics()
+        } else if policy.requires_deadline {
+            self.require_read_semantics()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Shared enforcement policy for module-owned port operations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortCallPolicy {
+    pub operation: PortOperationKind,
+    pub requires_deadline: bool,
+    pub requires_idempotency_key: bool,
+}
+
+impl PortCallPolicy {
+    pub const fn read() -> Self {
+        Self {
+            operation: PortOperationKind::Read,
+            requires_deadline: true,
+            requires_idempotency_key: false,
+        }
+    }
+
+    pub const fn write() -> Self {
+        Self {
+            operation: PortOperationKind::Write,
+            requires_deadline: true,
+            requires_idempotency_key: true,
+        }
+    }
+
+    pub const fn event_replay() -> Self {
+        Self {
+            operation: PortOperationKind::EventReplay,
+            requires_deadline: true,
+            requires_idempotency_key: true,
+        }
+    }
+
+    pub const fn best_effort_read() -> Self {
+        Self {
+            operation: PortOperationKind::BestEffortRead,
+            requires_deadline: false,
+            requires_idempotency_key: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PortOperationKind {
+    Read,
+    Write,
+    EventReplay,
+    BestEffortRead,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +184,13 @@ impl PortActor {
         Self {
             kind: PortActorKind::Service,
             id: id.into(),
+        }
+    }
+
+    pub fn system() -> Self {
+        Self {
+            kind: PortActorKind::System,
+            id: "system".to_string(),
         }
     }
 }
@@ -125,6 +222,22 @@ impl PortError {
 
     pub fn unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(PortErrorKind::Unavailable, code, message, true)
+    }
+
+    pub fn not_found(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(PortErrorKind::NotFound, code, message, false)
+    }
+
+    pub fn conflict(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(PortErrorKind::Conflict, code, message, false)
+    }
+
+    pub fn forbidden(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(PortErrorKind::Forbidden, code, message, false)
+    }
+
+    pub fn invariant_violation(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(PortErrorKind::InvariantViolation, code, message, false)
     }
 
     pub fn new(
@@ -187,10 +300,73 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_errors_are_retryable() {
-        let error = PortError::unavailable("inventory.remote_unavailable", "try later");
+    fn policy_enforcement_distinguishes_read_write_and_best_effort() {
+        let context = PortContext::new("tenant-a", PortActor::service("pricing"), "ru", "corr-a");
 
-        assert_eq!(error.kind, PortErrorKind::Unavailable);
-        assert!(error.retryable);
+        assert_eq!(
+            context
+                .require_policy(PortCallPolicy::read())
+                .unwrap_err()
+                .kind,
+            PortErrorKind::Timeout
+        );
+        assert!(
+            context
+                .clone()
+                .with_deadline(Duration::from_secs(3))
+                .require_policy(PortCallPolicy::read())
+                .is_ok()
+        );
+        assert_eq!(
+            context
+                .clone()
+                .with_deadline(Duration::from_secs(3))
+                .require_policy(PortCallPolicy::write())
+                .unwrap_err()
+                .kind,
+            PortErrorKind::Validation
+        );
+        assert!(
+            context
+                .require_policy(PortCallPolicy::best_effort_read())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn context_builders_preserve_cross_transport_metadata() {
+        let context = PortContext::new("tenant-a", PortActor::system(), "ru", "corr-a")
+            .with_claim("catalog:read")
+            .with_role("operator")
+            .with_channel("web")
+            .with_causation_id("event-a")
+            .with_traceparent("00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01");
+
+        assert_eq!(context.actor.kind, PortActorKind::System);
+        assert_eq!(context.claims, vec!["catalog:read"]);
+        assert_eq!(context.roles, vec!["operator"]);
+        assert_eq!(context.channel.as_deref(), Some("web"));
+        assert_eq!(context.causation_id.as_deref(), Some("event-a"));
+        assert!(context.traceparent.is_some());
+    }
+
+    #[test]
+    fn typed_error_constructors_preserve_retry_policy() {
+        let not_found = PortError::not_found("catalog.not_found", "missing");
+        let conflict = PortError::conflict("catalog.conflict", "duplicate");
+        let forbidden = PortError::forbidden("catalog.forbidden", "denied");
+        let invariant = PortError::invariant_violation("catalog.invariant", "broken");
+        let unavailable = PortError::unavailable("inventory.remote_unavailable", "try later");
+
+        assert_eq!(not_found.kind, PortErrorKind::NotFound);
+        assert_eq!(conflict.kind, PortErrorKind::Conflict);
+        assert_eq!(forbidden.kind, PortErrorKind::Forbidden);
+        assert_eq!(invariant.kind, PortErrorKind::InvariantViolation);
+        assert!(!not_found.retryable);
+        assert!(!conflict.retryable);
+        assert!(!forbidden.retryable);
+        assert!(!invariant.retryable);
+        assert_eq!(unavailable.kind, PortErrorKind::Unavailable);
+        assert!(unavailable.retryable);
     }
 }
