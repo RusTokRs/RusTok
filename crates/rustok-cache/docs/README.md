@@ -15,7 +15,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 - Redis lifecycle, configurable circuit breaker settings, fallback semantics и cache health reporting;
 - lightweight backend instrumentation через `CacheBackend::stats()` для hits/misses/invalidations/entries;
 - generic anti-stampede helper `CacheService::load_or_fill`, который коалесцирует concurrent misses по cache key и возвращает источник результата (`Hit`, `Filled`, `Coalesced`);
-- generic invalidation publisher `CacheService::publish_invalidation` / `CacheInvalidationService`, который публикует namespaced invalidation messages в Redis pub/sub при включённом backend и всегда fan-out-ит сообщение local subscribers в текущем процессе;
+- generic invalidation publisher/subscriber `CacheService::publish_invalidation` / `CacheInvalidationService`, который публикует namespaced invalidation messages в Redis pub/sub при включённом backend, всегда fan-out-ит сообщение local subscribers в текущем процессе и даёт host/runtime listener-ам единый `consume_subscription` adapter для Redis pub/sub без прямого Redis wiring;
 - tenant-aware cache namespace и invalidation contract;
 - отсутствие собственной RBAC vocabulary и UI surface.
 
@@ -37,3 +37,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 - [README crate](../README.md)
 - [План реализации](./implementation-plan.md)
 - [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+
+## Listener/reconnect guarantees
+
+`CacheInvalidationService::consume_subscription(channel, handler)` держит один Redis pub/sub stream до закрытия или ошибки и отдаёт каждое сообщение в domain handler как `CacheInvalidationMessage`. Retry/backoff остаются за host/runtime listener-ом, чтобы каждый домен мог публиковать собственный health status и reconnect telemetry; `apps/server` tenant listener использует этот adapter внутри существующего retry-loop. В non-Redis сборке subscription adapter недоступен, а local fan-out через `subscribe_local()` остаётся baseline contract для single-instance runtime и тестов.

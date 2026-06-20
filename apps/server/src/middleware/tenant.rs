@@ -6,16 +6,14 @@ use axum::{
     response::Response,
 };
 use loco_rs::app::AppContext;
-#[cfg(feature = "redis-cache")]
-use redis::AsyncCommands;
 use rustok_cache::{CacheInvalidationMessage, CacheService};
+use rustok_core::tenant_validation::TenantIdentifierValidator;
 use rustok_core::CacheBackend;
 #[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
-use rustok_core::tenant_validation::TenantIdentifierValidator;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, Notify, RwLock};
 use tokio::task::JoinHandle;
@@ -551,7 +549,10 @@ async fn spawn_invalidation_listener(
 ) -> Option<JoinHandle<()>> {
     #[cfg(feature = "redis-cache")]
     {
-        let client = _cache_service.redis_client()?.clone();
+        if !_cache_service.has_redis() {
+            return None;
+        }
+        let invalidations = _cache_service.invalidations();
         let listener_state = _infra.invalidation_listener_state.clone();
         let task = tokio::spawn(async move {
             let runtime = EventConsumerRuntime::new("tenant_invalidation_listener");
@@ -562,7 +563,7 @@ async fn spawn_invalidation_listener(
                 listener_state.mark_starting().await;
 
                 if let Err(error) = consume_tenant_invalidation_messages(
-                    &client,
+                    invalidations.clone(),
                     _infra.clone(),
                     listener_state.clone(),
                 )
@@ -601,44 +602,37 @@ async fn spawn_invalidation_listener(
 
 #[cfg(feature = "redis-cache")]
 async fn consume_tenant_invalidation_messages(
-    client: &redis::Client,
+    invalidations: rustok_cache::CacheInvalidationService,
     infra: Arc<TenantCacheInfrastructure>,
     listener_state: Arc<TenantInvalidationListenerState>,
 ) -> Result<(), String> {
-    let mut pubsub = client
-        .get_async_pubsub()
+    invalidations
+        .consume_subscription_with_ready(
+            TENANT_INVALIDATION_CHANNEL,
+            {
+                let listener_state = listener_state.clone();
+                move || async move {
+                    listener_state.mark_healthy().await;
+                }
+            },
+            move |message| {
+                let infra = infra.clone();
+                async move {
+                    let Some((cache_key, negative_key)) = parse_invalidation_payload(&message.key)
+                    else {
+                        tracing::warn!(
+                            channel = %message.channel,
+                            payload = %message.key,
+                            "Ignoring malformed tenant invalidation payload"
+                        );
+                        return;
+                    };
+
+                    infra.invalidate_pair(cache_key, negative_key).await;
+                }
+            },
+        )
         .await
-        .map_err(|error| format!("pubsub connection failed: {error}"))?;
-
-    pubsub
-        .subscribe(TENANT_INVALIDATION_CHANNEL)
-        .await
-        .map_err(|error| format!("pubsub subscribe failed: {error}"))?;
-
-    listener_state.mark_healthy().await;
-
-    let mut messages = pubsub.on_message();
-    use futures_util::StreamExt;
-
-    while let Some(msg) = messages.next().await {
-        let payload: Result<String, _> = msg.get_payload();
-        let Ok(payload) = payload else {
-            continue;
-        };
-
-        let Some((cache_key, negative_key)) = parse_invalidation_payload(&payload) else {
-            tracing::warn!(
-                channel = TENANT_INVALIDATION_CHANNEL,
-                payload = %payload,
-                "Ignoring malformed tenant invalidation payload"
-            );
-            continue;
-        };
-
-        infra.invalidate_pair(cache_key, negative_key).await;
-    }
-
-    Err("pubsub stream closed".to_string())
 }
 
 #[cfg(feature = "redis-cache")]
@@ -1017,14 +1011,14 @@ async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, val
 
 #[cfg(test)]
 mod invalidation_tests {
-    use super::{
-        CachedTenantMiss, resolve_identifier, should_bypass_tenant_resolution,
-        subdomain_identifier, tenant_context_from_model,
-    };
     #[cfg(feature = "redis-cache")]
     use super::{
-        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
-        parse_invalidation_payload,
+        parse_invalidation_payload, TenantInvalidationListenerState,
+        TenantInvalidationListenerStatus,
+    };
+    use super::{
+        resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
+        tenant_context_from_model, CachedTenantMiss,
     };
     use crate::common::{RustokSettings, TenantFallbackMode};
     use crate::models::tenants;
