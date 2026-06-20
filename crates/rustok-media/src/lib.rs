@@ -12,8 +12,8 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    MediaImageDescriptor, MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
-    ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
+    MediaImageDeliveryProfile, MediaImageDescriptor, MediaItem, MediaTranslationItem, UploadInput,
+    UpsertTranslationInput, ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
 };
 pub use entities::*;
 pub use error::{MediaError, Result};

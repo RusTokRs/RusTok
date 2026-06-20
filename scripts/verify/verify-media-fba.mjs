@@ -47,7 +47,7 @@ for (const op of port.read_operations) {
   if (idx === -1) fail(`ports.rs missing read operation ${op}`);
   const next = implPorts.indexOf('\n    async fn ', idx + 1);
   const body = implPorts.slice(idx, next === -1 ? implPorts.length : next);
-  if (!body.includes('context.require_deadline_semantics()?')) fail(`${op} does not require deadline semantics`);
+  if (!body.includes('context.require_deadline_semantics()?') && !body.includes('require_media_read_policy(&context)?')) fail(`${op} does not require deadline semantics`);
   if (body.includes('context.require_write_semantics()?')) fail(`${op} unexpectedly requires write semantics`);
 }
 
@@ -55,7 +55,7 @@ for (const mode of fallbackSmoke.degraded_modes) {
   if (!mode.source_marker || !mode.consumer_contract) fail(`fallback mode ${mode.name} is missing source marker/consumer contract`);
   if (!ports.includes(mode.source_marker) && !dto.includes(mode.source_marker)) fail(`fallback source marker not found for ${mode.name}`);
 }
-hasAll(dto, ['pub struct MediaImageDescriptor', 'pub fn from_parts', 'pub fn from_media_item', 'fn infer_mime_type', 'fn normalize_dimension'], 'dto.rs');
+hasAll(dto, ['pub enum MediaImageDeliveryProfile', 'pub struct MediaImageDescriptor', 'pub fn from_parts', 'pub fn from_media_item', 'pub fn delivery_profile', 'pub fn is_publicly_addressable', 'fn infer_mime_type', 'fn normalize_dimension'], 'dto.rs');
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
@@ -82,6 +82,7 @@ for (const mapping of portErrorMatrix.error_mappings) {
   if (!ports.includes(mapping.code)) fail(`ports.rs missing port error code ${mapping.code}`);
 }
 if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid tenant context guard');
+if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_deadline_semantics()?')) fail('ports.rs missing explicit media read deadline guard helper');
 
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json'], 'local plan');

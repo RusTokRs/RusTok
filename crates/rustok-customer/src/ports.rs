@@ -47,6 +47,7 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
+        context.require_deadline_semantics()?;
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_customer(tenant_id, request.customer_id)
@@ -59,6 +60,7 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError> {
+        context.require_deadline_semantics()?;
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let (items, total) = self

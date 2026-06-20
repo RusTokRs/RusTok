@@ -45,7 +45,8 @@
   "evidence": {
     "local_plan": "crates/rustok-customer/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "runtime_fallback_smoke": "crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json"
   },
   "in_process_provider_impl": {
     "service": "CustomerService",
@@ -94,6 +95,21 @@
         "use_checkout_customer_snapshot",
         "show_customer_refresh_required",
         "use_order_customer_snapshot"
+      ]
+    },
+    "runtime_smoke": {
+      "status": "source_locked_live_runtime_pending",
+      "source": "crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
+      "source_tests": "crates/rustok-customer/tests/customer_service_test.rs",
+      "promotion_allowed": false,
+      "covered_operations": [
+        "read_customer_projection",
+        "list_customer_projections"
+      ],
+      "assertions": [
+        "tenant_scope_preserved",
+        "deadline_policy_enforced",
+        "typed_port_error_mapping"
       ]
     }
   }

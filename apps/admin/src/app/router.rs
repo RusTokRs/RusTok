@@ -6,11 +6,13 @@ use leptos_router::path;
 
 use crate::pages::{
     cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage, events::EventsPage,
-    installer::InstallerPage, login::Login, module_admin::ModuleAdminPage, modules::Modules,
-    not_found::NotFound, oauth_apps::OAuthAppsPage, profile::Profile, register::Register,
-    reset::ResetPassword, roles::RolesPage, security::Security, user_details::UserDetails,
-    users::Users, workflow_detail::WorkflowDetailPage, workflows::Workflows,
+    installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules,
+    not_found::NotFound, roles::RolesPage, workflow_detail::WorkflowDetailPage, workflows::Workflows,
 };
+use rustok_auth_admin::{
+    Login, Register, ResetPassword, Profile, Security, Users, UserDetails, OAuthAppsPage,
+};
+use crate::shared::ui::LanguageToggle;
 use crate::widgets::app_shell::AppLayout;
 use crate::I18nContextProvider;
 
@@ -21,15 +23,15 @@ pub fn App() -> impl IntoView {
             <AuthProvider>
                 <Router>
                     <Routes fallback=|| view! { <NotFound /> }>
-                        <Route path=path!("/login") view=Login />
-                        <Route path=path!("/register") view=Register />
-                        <Route path=path!("/reset") view=ResetPassword />
+                        <Route path=path!("/login") view=|| view! { <Login language_toggle=|| view! { <LanguageToggle /> } /> } />
+                        <Route path=path!("/register") view=|| view! { <Register language_toggle=|| view! { <LanguageToggle /> } /> } />
+                        <Route path=path!("/reset") view=|| view! { <ResetPassword language_toggle=|| view! { <LanguageToggle /> } /> } />
                         <Route path=path!("/install") view=InstallerPage />
 
                         <ParentRoute path=path!("") view=ProtectedRoute>
                             <ParentRoute path=path!("") view=AppLayout>
                                 <Route path=path!("/dashboard") view=Dashboard />
-                                <Route path=path!("/profile") view=Profile />
+                                <Route path=path!("/profile") view=|| view! { <Profile language_toggle=|| view! { <LanguageToggle /> } /> } />
                                 <Route path=path!("/security") view=Security />
                                 <Route path=path!("/modules/:module_slug") view=ModuleAdminPage />
                                 <Route
