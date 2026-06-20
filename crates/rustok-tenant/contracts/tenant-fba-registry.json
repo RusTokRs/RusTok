@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "module": "tenant",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "tenant.read_projection.v1",
+  "ports": [
+    {
+      "name": "TenantReadPort",
+      "owner": "tenant",
+      "operations": ["read_tenant"],
+      "context": "crates/rustok-tenant/src/ports.rs::PortContext",
+      "error": "crates/rustok-tenant/src/ports.rs::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "server-hosts",
+      "profile": "tenant_resolution_read_projection",
+      "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"],
+      "fallback_profiles": ["embedded_native"]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-tenant/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-tenant-fba.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "TenantService",
+    "source": "crates/rustok-tenant/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
+    "runner": "scripts/verify/verify-tenant-fba.mjs",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "operation": "read_tenant",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_tenant_degraded_mode_preserved"]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native"],
+      "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"]
+    }
+  }
+}
