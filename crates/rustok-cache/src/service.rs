@@ -77,12 +77,13 @@ impl CacheService {
         let redis_client = redis_url
             .as_ref()
             .and_then(|u| redis::Client::open(u.as_str()).ok());
+        let invalidations = CacheInvalidationService::new(redis_client.clone());
         Self {
             redis_url,
             redis_client,
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
-            invalidations: CacheInvalidationService::new(redis_client.clone()),
+            invalidations,
         }
     }
 

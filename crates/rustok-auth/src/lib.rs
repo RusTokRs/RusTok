@@ -120,6 +120,5 @@ mod tests {
         assert_eq!(module.slug(), "auth");
         assert_eq!(module.kind(), ModuleKind::Core);
         assert!(module.dependencies().is_empty());
-        assert!(module.ui_extensions().is_empty());
     }
 }

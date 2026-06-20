@@ -13,6 +13,7 @@ pub mod content;
 pub mod error;
 pub mod flex;
 pub mod migrations;
+pub mod models;
 pub mod ports;
 pub mod product;
 pub mod search;

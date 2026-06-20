@@ -743,8 +743,8 @@ fn trim_to_option(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_sitemap_generation_enabled, SeoAdminBusyKey, SeoAdminTab, SeoBulkActionForm,
-        SeoBulkFilterForm, SeoIndexReplayForm, SeoSettingsForm,
+        build_seo_settings_snapshot_items, validate_sitemap_generation_enabled, SeoAdminBusyKey,
+        SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm, SeoSettingsForm,
     };
     use rustok_seo::{
         seo_builtin_slug, SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings,
