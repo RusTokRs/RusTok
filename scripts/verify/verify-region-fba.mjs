@@ -24,13 +24,14 @@ if (!port || port.name !== 'RegionReadPort') fail('RegionReadPort missing');
 for (const op of ['read_region', 'list_regions_for_tenant']) {
   if (!port.operations.includes(op)) fail(`port lacks ${op}`);
 }
-if (port.context !== 'crates/rustok-region/src/ports.rs::PortContext' || port.error !== 'crates/rustok-region/src/ports.rs::PortError') fail('context/error drift');
+if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false || port.semantics !== 'read_only') fail('region read projection must be read-only with deadline semantics');
-if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/region-fba-registry.json"') || !manifest.includes('contract_version = "region.read_projection.v1"')) fail('manifest metadata drift');
+if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/region-fba-registry.json"') || !manifest.includes('contract_version = "region.read_projection.v1"') || !manifest.includes('context = "rustok_api::ports::PortContext"') || !manifest.includes('error = "rustok_api::ports::PortError"')) fail('manifest metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::RegionService', 'context.require_deadline_semantics()?', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'region.country_code_empty', 'region.tenant_id_invalid', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
+for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::RegionService', 'context.require_policy(PortCallPolicy::read())?', 'RegionReadRequest', 'RegionListRequest', 'RegionReadProjection', 'region.country_code_empty', 'region.tenant_id_invalid', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
+if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError};')) fail('region port must import shared rustok-api primitives');
 if (ports.includes('require_write_semantics()?')) fail('region read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('region FBA DTOs must be serializable');
 if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');

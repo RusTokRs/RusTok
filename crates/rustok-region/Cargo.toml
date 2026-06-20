@@ -9,6 +9,7 @@ description = "Region domain module extracted from rustok-commerce/pricing"
 async-trait.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
+rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-commerce-foundation.workspace = true
 sea-orm.workspace = true
