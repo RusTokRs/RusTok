@@ -11,6 +11,7 @@ in-memory cache implementations.
 - Own `CacheService`, `CacheBackendOptions`, and backend selection logic.
 - Expose cache health information and lightweight hit/miss/invalidation statistics to server runtime wiring.
 - Provide `CacheService::load_or_fill` as the generic per-key loader/coalescing contract for anti-stampede protection.
+- Provide `CacheService::publish_invalidation` / `CacheInvalidationService` for namespaced cache invalidation publishing with Redis pub/sub plus local fan-out.
 - Keep Redis circuit breaker configuration centralized at the cache factory boundary.
 
 ## Interactions
@@ -28,6 +29,7 @@ in-memory cache implementations.
 - `CacheHealthReport`
 - `CacheBackendOptions`
 - `CacheLoadResult` / `CacheLoadSource`
+- `CacheInvalidationMessage` / `CacheInvalidationOutcome` / `CacheInvalidationService`
 
 ## Docs
 

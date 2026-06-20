@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use tokio::sync::broadcast;
 
 use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
 #[cfg(feature = "redis-cache")]
@@ -21,6 +22,7 @@ pub struct CacheService {
     redis_client: Option<redis::Client>,
     default_backend_options: CacheBackendOptions,
     loaders: Arc<CacheLoadCoordinator>,
+    invalidations: CacheInvalidationService,
 }
 
 /// Backend construction options used by `CacheService`.
@@ -80,6 +82,7 @@ impl CacheService {
             redis_client,
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
+            invalidations: CacheInvalidationService::new(redis_client.clone()),
         }
     }
 
@@ -88,6 +91,7 @@ impl CacheService {
         Self {
             default_backend_options: options,
             loaders: Arc::new(CacheLoadCoordinator::default()),
+            invalidations: CacheInvalidationService::new(),
         }
     }
 
@@ -218,6 +222,25 @@ impl CacheService {
             .await
     }
 
+    /// Returns the generic cache invalidation coordination service.
+    ///
+    /// Hosts and modules should use this capability for cross-instance cache invalidation
+    /// instead of opening Redis pub/sub clients directly at each call site.
+    pub fn invalidations(&self) -> CacheInvalidationService {
+        self.invalidations.clone()
+    }
+
+    /// Publish a cache invalidation message on a namespaced channel.
+    ///
+    /// With Redis enabled this publishes to Redis pub/sub; in all builds it also notifies
+    /// local subscribers so tests and single-instance runtimes use the same contract.
+    pub async fn publish_invalidation(
+        &self,
+        message: CacheInvalidationMessage,
+    ) -> CacheInvalidationOutcome {
+        self.invalidations.publish(message).await
+    }
+
     /// Returns currently tracked in-flight loader keys.
     ///
     /// This is primarily an operability/debugging signal; entries are removed once a fill
@@ -265,6 +288,80 @@ impl CacheService {
         }
 
         report
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheInvalidationMessage {
+    pub channel: String,
+    pub key: String,
+}
+
+impl CacheInvalidationMessage {
+    pub fn new(channel: impl Into<String>, key: impl Into<String>) -> Self {
+        Self {
+            channel: channel.into(),
+            key: key.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheInvalidationOutcome {
+    pub local_subscribers: usize,
+    pub redis_published: bool,
+}
+
+#[derive(Clone)]
+pub struct CacheInvalidationService {
+    #[cfg(feature = "redis-cache")]
+    redis_client: Option<redis::Client>,
+    local: broadcast::Sender<CacheInvalidationMessage>,
+}
+
+impl CacheInvalidationService {
+    #[cfg(feature = "redis-cache")]
+    fn new(redis_client: Option<redis::Client>) -> Self {
+        let (local, _) = broadcast::channel(256);
+        Self {
+            redis_client,
+            local,
+        }
+    }
+
+    #[cfg(not(feature = "redis-cache"))]
+    fn new() -> Self {
+        let (local, _) = broadcast::channel(256);
+        Self { local }
+    }
+
+    pub fn subscribe_local(&self) -> broadcast::Receiver<CacheInvalidationMessage> {
+        self.local.subscribe()
+    }
+
+    pub async fn publish(&self, message: CacheInvalidationMessage) -> CacheInvalidationOutcome {
+        let mut outcome = CacheInvalidationOutcome {
+            local_subscribers: 0,
+            redis_published: false,
+        };
+
+        outcome.local_subscribers = self.local.send(message.clone()).unwrap_or(0);
+
+        #[cfg(feature = "redis-cache")]
+        {
+            if let Some(client) = &self.redis_client {
+                if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
+                    let published: redis::RedisResult<i64> = redis::cmd("PUBLISH")
+                        .arg(&message.channel)
+                        .arg(&message.key)
+                        .query_async(&mut conn)
+                        .await;
+                    outcome.redis_published = published.is_ok();
+                }
+            }
+        }
+
+        outcome
     }
 }
 
@@ -564,6 +661,22 @@ mod tests {
 
         assert_eq!(result.value, b"ready".to_vec());
         assert_eq!(result.source, CacheLoadSource::Hit);
+    }
+
+    #[tokio::test]
+    async fn invalidation_service_notifies_local_subscribers_without_redis() {
+        let service = CacheService::from_url(None);
+        let mut subscriber = service.invalidations().subscribe_local();
+
+        let outcome = service
+            .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
+            .await;
+        let message = subscriber.recv().await.unwrap();
+
+        assert_eq!(message.channel, "cache.test");
+        assert_eq!(message.key, "key-1");
+        assert_eq!(outcome.local_subscribers, 1);
+        assert!(!outcome.redis_published);
     }
 
     #[tokio::test]

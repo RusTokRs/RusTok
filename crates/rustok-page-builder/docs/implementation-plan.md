@@ -22,7 +22,8 @@
 - server feature wiring (`mod-page-builder`) подключён;
 - typed provider health/SLO evaluator добавлен в runtime baseline для Wave evidence;
 - transport-neutral DTO metadata (`PageBuilderContractMetadata::BASELINE`), typed provider error catalog (`PageBuilderErrorKind`, `PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE`) и typed Wave health evidence (`ProviderHealthEvidence`) заведены как publish-ready contract markers;
-- capability handlers пока в статусе planned (Phase 1).
+- transport-neutral tagged request/response envelope и `AuthorizedPageBuilderHandlers::handle` добавлены как entrypoint seam для будущих GraphQL/server-function adapters;
+- capability handlers пока в статусе planned на уровне real persistence/rendering provider (Phase 1).
 
 
 ## FFA/FBA status
@@ -43,7 +44,7 @@
 
 ## Ближайшие шаги
 
-1. Подключить server-side handler seam к реальным transport adapters после выбора GraphQL/server-function entrypoints, используя `PageBuilderServiceError::kind()` и `stable_code()` как canonical error bridge.
+1. Подключить `AuthorizedPageBuilderHandlers::handle` к реальным GraphQL/server-function adapters, используя `PageBuilderCapabilityRequest/Response`, `PageBuilderServiceError::kind()` и `stable_code()` как canonical transport bridge.
 2. Удерживать `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync и Wave evidence формы.
 3. Описать sunset path для legacy block-driven compatibility.
 

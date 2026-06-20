@@ -23,7 +23,7 @@
   `requested_locale`, `effective_locale`, and `available_locales`.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
 - Publish the forum widget contract-freeze catalog/validation surfaces (`ForumWidgetContractService`, `/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`).
-- Maintain page-builder consumer evidence for FW-2 fallback hardening and the live Wave 1 rollout packet, including static no-compile verification of fallback profiles, smoke outcomes, read-path no-5xx guarantees, numeric SLO thresholds, forum-owned observability traces, rollback decision, owner approvals, and waiver-free evidence.
+- Maintain page-builder consumer evidence for FW-2 fallback hardening and the live Wave 1 rollout packet, including static no-compile verification of fallback profiles, smoke outcomes, read-path no-5xx guarantees, numeric SLO thresholds, forum-owned observability traces, rollback decision, owner approvals, waiver-free evidence, and monthly refresh/stale-rollout-block policy.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
 - Publish the typed RBAC surface for `forum_categories:*`, `forum_topics:*`,

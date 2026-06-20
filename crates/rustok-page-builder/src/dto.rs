@@ -171,3 +171,43 @@ pub struct PublishPageBuilderResult {
     pub revision_id: String,
     pub published: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "capability", content = "input", rename_all = "snake_case")]
+pub enum PageBuilderCapabilityRequest {
+    Preview(PreviewPageBuilderInput),
+    Tree(BuilderTreeInput),
+    Properties(BuilderNodePropertiesInput),
+    Publish(PublishPageBuilderInput),
+}
+
+impl PageBuilderCapabilityRequest {
+    pub const fn capability(&self) -> BuilderCapabilityKind {
+        match self {
+            Self::Preview(_) => BuilderCapabilityKind::Preview,
+            Self::Tree(_) => BuilderCapabilityKind::Tree,
+            Self::Properties(_) => BuilderCapabilityKind::Properties,
+            Self::Publish(_) => BuilderCapabilityKind::Publish,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "capability", content = "result", rename_all = "snake_case")]
+pub enum PageBuilderCapabilityResponse {
+    Preview(PreviewPageBuilderResult),
+    Tree(BuilderTreeResult),
+    Properties(BuilderNodePropertiesResult),
+    Publish(PublishPageBuilderResult),
+}
+
+impl PageBuilderCapabilityResponse {
+    pub const fn capability(&self) -> BuilderCapabilityKind {
+        match self {
+            Self::Preview(_) => BuilderCapabilityKind::Preview,
+            Self::Tree(_) => BuilderCapabilityKind::Tree,
+            Self::Properties(_) => BuilderCapabilityKind::Properties,
+            Self::Publish(_) => BuilderCapabilityKind::Publish,
+        }
+    }
+}

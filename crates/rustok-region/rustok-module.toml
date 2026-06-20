@@ -37,4 +37,6 @@ registry = "contracts/region-fba-registry.json"
 contract_version = "region.read_projection.v1"
 status = "in_progress"
 port = "RegionReadPort"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
 profiles = ["embedded_native", "graphql_compatibility", "cached_snapshot"]

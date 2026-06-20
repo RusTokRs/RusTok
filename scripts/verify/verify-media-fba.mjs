@@ -13,14 +13,17 @@ function sameSet(actual, expected, label) {
 const registryPath = 'crates/rustok-media/contracts/media-fba-registry.json';
 const evidencePath = 'crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json';
 const fallbackSmokePath = 'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
+const portErrorMatrixPath = 'crates/rustok-media/contracts/evidence/media-port-error-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const fallbackSmoke = json(fallbackSmokePath);
+const portErrorMatrix = json(portErrorMatrixPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'media' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
 if (registry.contract_version !== 'media.asset_read.v1') fail('contract_version drift');
 if (registry.evidence?.runtime_fallback_smoke !== fallbackSmokePath) fail('runtime fallback smoke evidence drift');
+if (registry.evidence?.port_error_matrix !== portErrorMatrixPath) fail('port error matrix evidence drift');
 const port = registry.ports?.[0];
 if (!port || port.name !== 'MediaAssetReadPort') fail('port name drift');
 sameSet(port.operations, ['get_asset', 'list_assets', 'get_image_descriptor', 'get_translations'], 'port operations');
@@ -63,8 +66,25 @@ if (registry.contract_tests.fallback_smoke.source !== fallbackSmokePath || evide
 if (fallbackSmoke.generated_from !== registryPath || fallbackSmoke.profile !== 'embedded_native' || fallbackSmoke.operation !== 'get_image_descriptor') fail('runtime fallback smoke header drift');
 sameSet(fallbackSmoke.degraded_modes.map(mode => mode.name), registry.contract_tests.fallback_smoke.degraded_modes, 'runtime fallback degraded modes');
 
+if (registry.contract_tests.port_error_matrix?.status !== 'source_locked' || registry.contract_tests.port_error_matrix?.source !== portErrorMatrixPath) fail('port error matrix registry drift');
+if (portErrorMatrix.generated_from !== registryPath || portErrorMatrix.port !== 'MediaAssetReadPort' || portErrorMatrix.source !== 'crates/rustok-media/src/ports.rs') fail('port error matrix header drift');
+sameSet(portErrorMatrix.error_mappings.map(mapping => mapping.code), [
+  'media.not_found',
+  'media.forbidden',
+  'media.unsupported_mime_type',
+  'media.file_too_large',
+  'media.invalid_locale',
+  'media.storage',
+  'media.database',
+], 'port error mapping codes');
+sameSet(portErrorMatrix.context_guards.map(guard => guard.code), ['media.invalid_tenant_id', 'port.deadline_required'], 'port context guard codes');
+for (const mapping of portErrorMatrix.error_mappings) {
+  if (!ports.includes(mapping.code)) fail(`ports.rs missing port error code ${mapping.code}`);
+}
+if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid tenant context guard');
+
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');

@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use flex::{
-    validate_create_entry_command, validate_create_schema_command, validate_standalone_uuid,
-    validate_update_entry_command, validate_update_schema_command,
+    validate_create_entry_command, validate_create_schema_command,
+    validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
+    validate_update_schema_command,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -443,10 +444,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn create_schema(
         &self,
         tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
         input: flex::CreateFlexSchemaCommand,
     ) -> Result<flex::FlexSchemaView, FlexError> {
         validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
         validate_create_schema_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
         let row = flex_schemas::ActiveModel {
@@ -479,11 +481,12 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn update_schema(
         &self,
         tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
         schema_id: Uuid,
         input: flex::UpdateFlexSchemaCommand,
     ) -> Result<flex::FlexSchemaView, FlexError> {
         validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
         validate_standalone_uuid(schema_id, "schema_id")?;
         validate_update_schema_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
@@ -529,10 +532,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn delete_schema(
         &self,
         tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
         schema_id: Uuid,
     ) -> Result<(), FlexError> {
         validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
         validate_standalone_uuid(schema_id, "schema_id")?;
         let row = self.get_schema_or_not_found(tenant_id, schema_id).await?;
 
@@ -621,10 +625,11 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn create_entry(
         &self,
         tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
         input: flex::CreateFlexEntryCommand,
     ) -> Result<flex::FlexEntryView, FlexError> {
         validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
         validate_create_entry_command(&input)?;
         let locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self
@@ -661,12 +666,13 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn update_entry(
         &self,
         tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
         schema_id: Uuid,
         entry_id: Uuid,
         input: flex::UpdateFlexEntryCommand,
     ) -> Result<flex::FlexEntryView, FlexError> {
         validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
         validate_standalone_uuid(schema_id, "schema_id")?;
         validate_standalone_uuid(entry_id, "entry_id")?;
         validate_update_entry_command(&input)?;
@@ -735,11 +741,12 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
     async fn delete_entry(
         &self,
         tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
         schema_id: Uuid,
         entry_id: Uuid,
     ) -> Result<(), FlexError> {
         validate_standalone_uuid(tenant_id, "tenant_id")?;
+        validate_optional_standalone_uuid(actor_id, "actor_id")?;
         validate_standalone_uuid(schema_id, "schema_id")?;
         validate_standalone_uuid(entry_id, "entry_id")?;
         let row = flex_entries::Entity::find_by_id(entry_id)

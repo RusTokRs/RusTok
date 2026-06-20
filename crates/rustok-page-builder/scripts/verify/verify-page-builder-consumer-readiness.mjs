@@ -355,6 +355,36 @@ if (arg === "forum") {
     }
   }
 
+  const refreshPolicy = forumWave1Evidence.refresh_policy ?? {};
+  if (refreshPolicy.cadence !== "monthly") {
+    fail(`${arg}: Wave 1 refresh policy must require monthly evidence refresh`);
+  }
+  if (refreshPolicy.required_gate !== "npm run verify:page-builder:consumer:forum") {
+    fail(`${arg}: Wave 1 refresh policy must pin the forum consumer gate`);
+  }
+  if (refreshPolicy.refresh_evidence_required !== true) {
+    fail(`${arg}: Wave 1 refresh policy must require refreshed evidence`);
+  }
+  if (refreshPolicy.stale_evidence_action !== "block_builder_consumer_rollout_until_refreshed") {
+    fail(`${arg}: Wave 1 refresh policy must block rollout when evidence is stale`);
+  }
+  if (!Number.isFinite(refreshPolicy.max_age_days) || refreshPolicy.max_age_days > 45) {
+    fail(`${arg}: Wave 1 refresh policy max_age_days must be numeric and <= 45`);
+  }
+  for (const requiredSection of [
+    "control_plane.audit_trail",
+    "fallback.profiles",
+    "observability.metrics",
+    "observability.traces",
+    "rollback.decision",
+    "approvals",
+    "waivers",
+  ]) {
+    if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
+      fail(`${arg}: Wave 1 refresh policy missing required section '${requiredSection}'`);
+    }
+  }
+
   if (forumWave1Evidence.observability?.slo_evaluation?.overall !== "pass") {
     fail(`${arg}: Wave 1 evidence must record passing overall SLO evaluation`);
   }
