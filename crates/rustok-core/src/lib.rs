@@ -60,10 +60,11 @@ pub use error::{
     ValidationErrorBuilder,
 };
 pub use events::{
-    event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventConsumerRuntime,
-    EventDispatcher, EventEnvelope, EventHandler, EventSchema, EventTransport, FieldSchema,
-    HandlerBuilder, HandlerResult, MemoryTransport, ReliabilityLevel, RunningDispatcher,
-    EVENT_SCHEMAS,
+    event_schema, BackpressureConfig, BackpressureController, BackpressureError,
+    BackpressureMetrics, BackpressureState, DispatcherConfig, DomainEvent, EventBus, EventBusStats,
+    EventConsumerRuntime, EventDispatcher, EventEnvelope, EventHandler, EventSchema,
+    EventTransport, FieldSchema, HandlerBuilder, HandlerResult, MemoryTransport, ReliabilityLevel,
+    RunningDispatcher, EVENT_SCHEMAS,
 };
 pub use field_schema::{
     create_field_definitions_table, drop_field_definitions_table, is_valid_field_key,
@@ -124,10 +125,11 @@ pub mod prelude {
     pub use crate::domain_err;
     pub use crate::error::{Error, Result};
     pub use crate::events::{
-        event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventConsumerRuntime,
-        EventDispatcher, EventEnvelope, EventHandler, EventSchema, EventTransport, FieldSchema,
-        HandlerBuilder, HandlerResult, MemoryTransport, ReliabilityLevel, RunningDispatcher,
-        EVENT_SCHEMAS,
+        event_schema, BackpressureConfig, BackpressureController, BackpressureError,
+        BackpressureMetrics, BackpressureState, DispatcherConfig, DomainEvent, EventBus,
+        EventBusStats, EventConsumerRuntime, EventDispatcher, EventEnvelope, EventHandler,
+        EventSchema, EventTransport, FieldSchema, HandlerBuilder, HandlerResult, MemoryTransport,
+        ReliabilityLevel, RunningDispatcher, EVENT_SCHEMAS,
     };
     pub use crate::field_schema::{
         CustomFieldsSchema, FieldDefinition, FieldType, HasCustomFields,
