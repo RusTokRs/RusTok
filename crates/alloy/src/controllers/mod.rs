@@ -23,6 +23,9 @@ use crate::{
     utils::{dynamic_to_json, json_to_dynamic},
 };
 
+pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] =
+    &["/executions", "/scripts/{id}/executions"];
+
 fn script_error(error: ScriptError) -> Error {
     match error {
         ScriptError::NotFound { .. } => Error::NotFound,
@@ -359,15 +362,31 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/alloy")
         .add("/scripts", get(list_scripts).post(create_script))
-        .add("/executions", get(list_recent_executions))
+        .add(LOCO_EXECUTION_HISTORY_ROUTES[0], get(list_recent_executions))
         .add("/scripts/validate", post(validate_script))
         .add(
             "/scripts/{id}",
             get(get_script).put(update_script).delete(delete_script),
         )
         .add("/scripts/{id}/run", post(run_script))
-        .add("/scripts/{id}/executions", get(list_script_executions))
+        .add(
+            LOCO_EXECUTION_HISTORY_ROUTES[1],
+            get(list_script_executions),
+        )
         .add("/scripts/name/{name}/run", post(run_script_by_name))
         .add("/scripts/{id}/activate", post(activate_script))
         .add("/scripts/{id}/pause", post(pause_script))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LOCO_EXECUTION_HISTORY_ROUTES;
+
+    #[test]
+    fn loco_execution_history_routes_match_operator_contract() {
+        assert_eq!(
+            LOCO_EXECUTION_HISTORY_ROUTES,
+            &["/executions", "/scripts/{id}/executions"]
+        );
+    }
 }
