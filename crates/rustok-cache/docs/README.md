@@ -11,8 +11,9 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 
 ## Зона ответственности
 
-- `CacheService` и backend selection logic;
-- Redis lifecycle, fallback semantics и cache health reporting;
+- `CacheService`, `CacheBackendOptions` и backend selection logic;
+- Redis lifecycle, configurable circuit breaker settings, fallback semantics и cache health reporting;
+- lightweight backend instrumentation через `CacheBackend::stats()` для hits/misses/invalidations/entries;
 - tenant-aware cache namespace и invalidation contract;
 - отсутствие собственной RBAC vocabulary и UI surface.
 
@@ -27,7 +28,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для cache backend selection и health semantics при изменении wiring
+- targeted runtime tests для cache backend selection, stats instrumentation, circuit breaker options и health semantics при изменении wiring
 
 ## Связанные документы
 
