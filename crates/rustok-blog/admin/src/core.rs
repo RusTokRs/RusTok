@@ -738,17 +738,44 @@ pub struct BlogPostAdminBodyFormatSelectViewModel {
     pub options: Vec<BlogPostAdminBodyFormatOptionViewModel>,
 }
 
+pub fn supported_blog_post_body_formats() -> &'static [&'static str] {
+    &["markdown", "rt_json_v1"]
+}
+
+pub fn normalize_blog_post_body_format(value: &str) -> String {
+    supported_blog_post_body_formats()
+        .iter()
+        .copied()
+        .find(|format| value.trim().eq_ignore_ascii_case(format))
+        .unwrap_or("markdown")
+        .to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlogPostAdminBodyFormatChangeViewModel {
+    pub body_format: String,
+}
+
+pub fn blog_post_admin_body_format_change_view(
+    selected_format: String,
+) -> BlogPostAdminBodyFormatChangeViewModel {
+    BlogPostAdminBodyFormatChangeViewModel {
+        body_format: normalize_blog_post_body_format(selected_format.as_str()),
+    }
+}
+
 pub fn blog_post_admin_body_format_select_view(
     selected_format: &str,
 ) -> BlogPostAdminBodyFormatSelectViewModel {
-    const BODY_FORMATS: [&str; 2] = ["markdown", "rt_json_v1"];
+    let selected_format = normalize_blog_post_body_format(selected_format);
     BlogPostAdminBodyFormatSelectViewModel {
-        options: BODY_FORMATS
+        options: supported_blog_post_body_formats()
             .into_iter()
+            .copied()
             .map(|format| BlogPostAdminBodyFormatOptionViewModel {
                 value: format.to_string(),
                 label: format.to_string(),
-                selected: selected_format.trim().eq_ignore_ascii_case(format),
+                selected: selected_format.eq(format),
             })
             .collect(),
     }
@@ -1405,6 +1432,15 @@ mod tests {
         assert_eq!(selected.options[1].value, "rt_json_v1");
         assert_eq!(selected.options[1].label, "rt_json_v1");
         assert!(selected.options[1].selected);
+
+        let fallback = blog_post_admin_body_format_select_view("unknown");
+        assert!(fallback.options[0].selected);
+
+        let changed = blog_post_admin_body_format_change_view(" RT_JSON_V1 ".to_string());
+        assert_eq!(changed.body_format, "rt_json_v1");
+
+        let unknown = blog_post_admin_body_format_change_view("unknown".to_string());
+        assert_eq!(unknown.body_format, "markdown");
     }
 
     #[test]
