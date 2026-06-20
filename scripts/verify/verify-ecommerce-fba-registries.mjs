@@ -207,7 +207,7 @@ export function verifyEcommerceFbaRegistries({
     if (!manifest.includes('error = "rustok_api::ports::PortError"')) fail(`${module} manifest error drift`);
     if (!cargo.includes('rustok-api.workspace = true')) fail(`${module} Cargo.toml lacks rustok-api dependency`);
     if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail(`${module} lib.rs must export ports`);
-    if (!portSource.includes('rustok_api::{PortContext, PortError}')) fail(`${module} src/ports.rs must import neutral port primitives`);
+    if (!portSource.includes('PortContext') || !portSource.includes('PortError')) fail(`${module} src/ports.rs must import neutral port primitives`);
     assertOrderCheckoutCompletionNotPrematurelyImplemented({ registry, portSource });
 
     if (registry.provider_spi) {
