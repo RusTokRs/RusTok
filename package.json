@@ -80,7 +80,7 @@
     "verify:ai-media:fba": "node scripts/verify/verify-ai-media-fba.mjs",
     "verify:ai-alloy:policy": "node scripts/verify/verify-ai-alloy-policy.mjs",
     "verify:region:fba": "node scripts/verify/verify-region-fba.mjs",
-    "verify:workflow:fba": "node scripts/verify/verify-workflow-fba.mjs"
+    "verify:page-builder:wave1-readiness-draft": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave1-readiness-draft.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

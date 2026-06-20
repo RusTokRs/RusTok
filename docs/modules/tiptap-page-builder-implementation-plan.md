@@ -688,7 +688,7 @@ Notes: <known deviations or waivers>
 ### 12.3 Sprint 3 (до 2026-07-15): Wave 0/Wave 1 readiness
 
 - [ ] Автоматизировать control-plane dry-run change-set для профилей `all_on/publish_off/preview_off/builder_off`.
-- [~] Собрать обязательный Wave 1 readiness packet: metadata, smoke, observability, rollback note (draft packet `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json` создан; фактические tenant snapshots/sign-off остаются блокером Wave 1).
+- [~] Собрать обязательный Wave 1 readiness packet: metadata, smoke, observability, rollback note (draft packet `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json` создан; no-compile guardrail `verify-page-builder-wave1-readiness-draft.mjs` теперь закрепляет pending tenant, draft change-set namespace, pending metric/sign-off markers, hold rollback reason и отсутствие waivers; фактические tenant snapshots/sign-off остаются блокером Wave 1).
 - [ ] Провести совместный Go/No-Go review: Platform + Builder owners + Pages owners.
 
 **Артефакты Sprint 3:**
@@ -696,7 +696,7 @@ Notes: <known deviations or waivers>
 - dry-run consistency verify report (baseline command: `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs`);
 - SLO отчёт (`preview p95`, `publish p95`, sanitize failure rate);
 - подписанный протокол Go/No-Go для pilot tenants.
-- unified baseline gate report (command: `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`, включает `verify-page-builder-wave1-readiness-draft.mjs`).
+- unified baseline gate report (command: `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`, включает `verify-page-builder-wave1-readiness-draft.mjs`; targeted script: `npm run verify:page-builder:wave1-readiness-draft`).
 
 ### 12.4 Как масштабировать после `pages` (дальше по плану)
 
@@ -816,7 +816,7 @@ Notes: <known deviations or waivers>
 Чтобы зафиксировать измеримый результат, к **2026-07-31** ожидается минимальный outcome:
 
 - [ ] `pages` прошёл Wave 0 с полным evidence packet и без блокирующих `R1/R2`.
-- [~] Wave 1 readiness packet подготовлен как draft и ждёт фактических tenant snapshots/SLO/sign-off owner-групп.
+- [~] Wave 1 readiness packet подготовлен как draft и ждёт фактических tenant snapshots/SLO/sign-off owner-групп; draft-only invariants закреплены no-compile gate, поэтому случайное снятие hold-маркеров блокируется до реального rollout evidence.
 - [ ] Для `blog` и `forum` создан стартовый migration backlog по тому же шаблону (`contract/fallback/observability/rollback`).
 - [ ] В `docs/modules/registry.md` отражён актуальный maturity-state по `builder/pages` треку.
 
