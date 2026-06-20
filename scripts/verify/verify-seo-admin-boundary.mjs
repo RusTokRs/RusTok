@@ -66,8 +66,8 @@ for (const marker of [
   "build_input",
   "validate_sitemap_generation_enabled",
   "format_index_repair_replay_result",
-  "SeoDefaultsPaneCopy",
-  "build_seo_defaults_pane_copy",
+  "SeoSettingsSnapshotItem",
+  "build_seo_settings_snapshot_items",
 ]) {
   assertContains(core, marker, `${corePath}: core must own ${marker} policy/helper`);
 }
@@ -88,7 +88,7 @@ assertContains(nativeAdapter, "persist_seo_settings", `${nativeAdapterPath}: nat
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_redirects", `${uiPath}: Leptos adapter must call module-owned transport facade`);
 assertContains(ui, "transport::queue_bulk_apply", `${uiPath}: Leptos adapter must call bulk mutations through transport facade`);
-assertContains(defaultsSection, "build_seo_defaults_pane_copy", `${defaultsSectionPath}: defaults section must consume core-owned copy/view-model policy`);
+assertContains(defaultsSection, "build_seo_settings_snapshot_items", `${defaultsSectionPath}: defaults section must consume core-owned settings snapshot view-model policy`);
 for (const marker of ["native_server_adapter::", "seo_redirects_native", "seo_index_repair_replay_native"]) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw native endpoints (${marker})`);
 }

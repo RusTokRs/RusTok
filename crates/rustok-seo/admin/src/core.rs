@@ -23,31 +23,6 @@ pub const ROBOT_DIRECTIVE_PRESETS: &[&str] = &[
     "max-image-preview:large",
 ];
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SeoDefaultsPaneCopy {
-    pub title: String,
-    pub subtitle: String,
-    pub sitemap_generation_label: &'static str,
-    pub sitemap_generation_help: &'static str,
-    pub default_robots_title: &'static str,
-    pub default_robots_help: &'static str,
-}
-
-pub fn build_seo_defaults_pane_copy(locale: Option<&str>) -> SeoDefaultsPaneCopy {
-    SeoDefaultsPaneCopy {
-        title: crate::i18n::t(locale, "seo.defaults.title", "Defaults"),
-        subtitle: crate::i18n::t(
-            locale,
-            "seo.defaults.subtitle",
-            "Tenant-scoped SEO defaults are persisted through the shared module settings contract. This pane does not own page, product, blog, or forum metadata editing.",
-        ),
-        sitemap_generation_label: "Sitemap generation",
-        sitemap_generation_help: "Disabling this turns `robots.txt` into a sitemap-free response and blocks manual generation from the control plane.",
-        default_robots_title: "Default robots directives",
-        default_robots_help: "Directives are stored as a normalized token list. Preset chips are shortcuts only; arbitrary directives are still allowed.",
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeoAdminBusyKey {
     SaveRedirect,
@@ -527,6 +502,85 @@ pub struct SeoSettingsForm {
     pub template_overrides_json: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SeoSettingsSnapshotItem {
+    pub label: &'static str,
+    pub value: String,
+}
+
+pub fn build_seo_settings_snapshot_items(
+    settings: &SeoModuleSettings,
+) -> Vec<SeoSettingsSnapshotItem> {
+    vec![
+        SeoSettingsSnapshotItem {
+            label: "Default robots",
+            value: join_or_fallback(settings.default_robots.as_slice(), "n/a"),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Sitemap enabled",
+            value: settings.sitemap_enabled.to_string(),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Allowed redirect hosts",
+            value: join_or_fallback(settings.allowed_redirect_hosts.as_slice(), "none"),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Allowed canonical hosts",
+            value: join_or_fallback(settings.allowed_canonical_hosts.as_slice(), "none"),
+        },
+        SeoSettingsSnapshotItem {
+            label: "x-default locale",
+            value: settings
+                .x_default_locale
+                .clone()
+                .unwrap_or_else(|| "unset".to_string()),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Template title",
+            value: settings
+                .template_defaults
+                .title
+                .clone()
+                .unwrap_or_else(|| "unset".to_string()),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Template description",
+            value: settings
+                .template_defaults
+                .meta_description
+                .clone()
+                .unwrap_or_else(|| "unset".to_string()),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Template canonical",
+            value: settings
+                .template_defaults
+                .canonical_url
+                .clone()
+                .unwrap_or_else(|| "unset".to_string()),
+        },
+        SeoSettingsSnapshotItem {
+            label: "Template override targets",
+            value: join_or_fallback(
+                &settings
+                    .template_overrides
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                "none",
+            ),
+        },
+    ]
+}
+
+fn join_or_fallback(values: &[String], fallback: &str) -> String {
+    if values.is_empty() {
+        fallback.to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
 impl SeoSettingsForm {
     pub fn from_settings(settings: &SeoModuleSettings) -> Self {
         Self {
@@ -754,6 +808,26 @@ mod tests {
             "Sitemap generation is disabled in SEO defaults"
         );
         assert!(validate_sitemap_generation_enabled(None).is_ok());
+    }
+
+    #[test]
+    fn settings_snapshot_items_apply_display_fallbacks() {
+        let settings = SeoModuleSettings::default();
+
+        let items = build_seo_settings_snapshot_items(&settings);
+
+        assert!(items
+            .iter()
+            .any(|item| item.label == "Default robots" && item.value == "n/a"));
+        assert!(items
+            .iter()
+            .any(|item| item.label == "Allowed redirect hosts" && item.value == "none"));
+        assert!(items
+            .iter()
+            .any(|item| item.label == "x-default locale" && item.value == "unset"));
+        assert!(items
+            .iter()
+            .any(|item| item.label == "Template override targets" && item.value == "none"));
     }
 
     #[test]
