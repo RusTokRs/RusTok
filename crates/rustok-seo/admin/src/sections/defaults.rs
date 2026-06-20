@@ -2,8 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use rustok_seo::SeoModuleSettings;
 
-use crate::core::{SeoSettingsForm, ROBOT_DIRECTIVE_PRESETS};
-use crate::i18n::t;
+use crate::core::{build_seo_defaults_pane_copy, SeoSettingsForm, ROBOT_DIRECTIVE_PRESETS};
 use crate::transport::ApiError;
 
 #[component]
@@ -15,26 +14,21 @@ pub fn SeoDefaultsPane(
     on_save: Callback<SubmitEvent>,
 ) -> impl IntoView {
     let busy = Signal::derive(move || busy_key.get().is_some());
-    let title = t(ui_locale.as_deref(), "seo.defaults.title", "Defaults");
-    let subtitle = t(
-        ui_locale.as_deref(),
-        "seo.defaults.subtitle",
-        "Tenant-scoped SEO defaults are persisted through the shared module settings contract. This pane does not own page, product, blog, or forum metadata editing.",
-    );
+    let copy = build_seo_defaults_pane_copy(ui_locale.as_deref());
 
     view! {
         <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
             <form class="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-sm" on:submit=move |ev| on_save.run(ev)>
                 <div class="space-y-2">
-                    <h2 class="text-lg font-semibold text-card-foreground">{title}</h2>
-                    <p class="text-sm text-muted-foreground">{subtitle}</p>
+                    <h2 class="text-lg font-semibold text-card-foreground">{copy.title.clone()}</h2>
+                    <p class="text-sm text-muted-foreground">{copy.subtitle.clone()}</p>
                 </div>
 
                 <label class="flex items-center justify-between gap-4 rounded-xl border border-border/80 bg-background/60 px-4 py-3">
                     <div class="space-y-1">
-                        <div class="text-sm font-medium text-foreground">"Sitemap generation"</div>
+                        <div class="text-sm font-medium text-foreground">{copy.sitemap_generation_label}</div>
                         <p class="text-sm text-muted-foreground">
-                            "Disabling this turns `robots.txt` into a sitemap-free response and blocks manual generation from the control plane."
+                            {copy.sitemap_generation_help}
                         </p>
                     </div>
                     <input
@@ -47,9 +41,9 @@ pub fn SeoDefaultsPane(
 
                 <div class="space-y-3 rounded-xl border border-border/80 bg-background/60 px-4 py-4">
                     <div class="space-y-1">
-                        <h3 class="text-sm font-semibold text-foreground">"Default robots directives"</h3>
+                        <h3 class="text-sm font-semibold text-foreground">{copy.default_robots_title}</h3>
                         <p class="text-sm text-muted-foreground">
-                            "Directives are stored as a normalized token list. Preset chips are shortcuts only; arbitrary directives are still allowed."
+                            {copy.default_robots_help}
                         </p>
                     </div>
 

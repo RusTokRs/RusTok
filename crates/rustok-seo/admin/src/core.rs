@@ -23,6 +23,31 @@ pub const ROBOT_DIRECTIVE_PRESETS: &[&str] = &[
     "max-image-preview:large",
 ];
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SeoDefaultsPaneCopy {
+    pub title: String,
+    pub subtitle: String,
+    pub sitemap_generation_label: &'static str,
+    pub sitemap_generation_help: &'static str,
+    pub default_robots_title: &'static str,
+    pub default_robots_help: &'static str,
+}
+
+pub fn build_seo_defaults_pane_copy(locale: Option<&str>) -> SeoDefaultsPaneCopy {
+    SeoDefaultsPaneCopy {
+        title: crate::i18n::t(locale, "seo.defaults.title", "Defaults"),
+        subtitle: crate::i18n::t(
+            locale,
+            "seo.defaults.subtitle",
+            "Tenant-scoped SEO defaults are persisted through the shared module settings contract. This pane does not own page, product, blog, or forum metadata editing.",
+        ),
+        sitemap_generation_label: "Sitemap generation",
+        sitemap_generation_help: "Disabling this turns `robots.txt` into a sitemap-free response and blocks manual generation from the control plane.",
+        default_robots_title: "Default robots directives",
+        default_robots_help: "Directives are stored as a normalized token list. Preset chips are shortcuts only; arbitrary directives are still allowed.",
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeoAdminBusyKey {
     SaveRedirect,

@@ -31,10 +31,11 @@ const corePath = "crates/rustok-seo/admin/src/core.rs";
 const transportModPath = "crates/rustok-seo/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-seo/admin/src/transport/native_server_adapter.rs";
 const uiPath = "crates/rustok-seo/admin/src/ui/leptos.rs";
+const defaultsSectionPath = "crates/rustok-seo/admin/src/sections/defaults.rs";
 const localPlanPath = "crates/rustok-seo/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
-for (const filePath of [libPath, corePath, transportModPath, nativeAdapterPath, uiPath, localPlanPath, registryPath]) {
+for (const filePath of [libPath, corePath, transportModPath, nativeAdapterPath, uiPath, defaultsSectionPath, localPlanPath, registryPath]) {
   assertExists(filePath, `${filePath}: expected SEO admin FFA boundary file`);
 }
 assertMissing("crates/rustok-seo/admin/src/transport.rs", "crates/rustok-seo/admin/src/transport.rs: monolithic pre-split transport facade must stay removed");
@@ -44,6 +45,7 @@ const core = readRepo(corePath);
 const transportMod = readRepo(transportModPath);
 const nativeAdapter = readRepo(nativeAdapterPath);
 const ui = readRepo(uiPath);
+const defaultsSection = readRepo(defaultsSectionPath);
 const localPlan = readRepo(localPlanPath);
 const registry = readRepo(registryPath);
 
@@ -64,6 +66,8 @@ for (const marker of [
   "build_input",
   "validate_sitemap_generation_enabled",
   "format_index_repair_replay_result",
+  "SeoDefaultsPaneCopy",
+  "build_seo_defaults_pane_copy",
 ]) {
   assertContains(core, marker, `${corePath}: core must own ${marker} policy/helper`);
 }
@@ -84,6 +88,7 @@ assertContains(nativeAdapter, "persist_seo_settings", `${nativeAdapterPath}: nat
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_redirects", `${uiPath}: Leptos adapter must call module-owned transport facade`);
 assertContains(ui, "transport::queue_bulk_apply", `${uiPath}: Leptos adapter must call bulk mutations through transport facade`);
+assertContains(defaultsSection, "build_seo_defaults_pane_copy", `${defaultsSectionPath}: defaults section must consume core-owned copy/view-model policy`);
 for (const marker of ["native_server_adapter::", "seo_redirects_native", "seo_index_repair_replay_native"]) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw native endpoints (${marker})`);
 }
