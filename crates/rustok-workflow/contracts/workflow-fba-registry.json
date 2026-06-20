@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "module": "workflow",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "workflow.read_projection.v1",
+  "ports": [
+    {
+      "name": "WorkflowReadPort",
+      "owner": "workflow",
+      "operations": ["list_workflows", "get_workflow"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true
+    }
+  ],
+  "consumers": [
+    {
+      "module": "admin-hosts",
+      "profile": "workflow_admin_read_projection",
+      "degraded_modes": ["show_cached_workflow_list", "disable_workflow_detail_open"],
+      "fallback_profiles": ["embedded_native", "graphql_compat"]
+    }
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-workflow/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-workflow-fba.mjs"
+  },
+  "in_process_provider_impl": {
+    "service": "WorkflowService",
+    "source": "crates/rustok-workflow/src/ports.rs",
+    "status": "implemented"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-workflow/contracts/workflow-fba-registry.json",
+    "runner": "scripts/verify/verify-workflow-fba.mjs",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "operation": "list_workflows",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved"]
+      },
+      {
+        "operation": "get_workflow",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved"]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "planned",
+      "profiles": ["embedded_native", "graphql_compat"],
+      "degraded_modes": ["show_cached_workflow_list", "disable_workflow_detail_open"]
+    }
+  }
+}

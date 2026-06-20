@@ -2,9 +2,11 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod integration;
+pub mod ports;
 pub mod services;
 
 pub use error::RbacError;
+pub use ports::*;
 pub use integration::{
     RbacIntegrationEventKind, RbacRoleAssignmentEvent, RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED,
     RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED, RBAC_EVENT_USER_ROLE_ASSIGNMENT_REMOVED,

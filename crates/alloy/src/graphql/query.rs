@@ -168,21 +168,25 @@ impl AlloyQuery {
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
 
-        let mut entries = state
+        let entries = state
             .execution_log
             .list_for_script_for_tenant_paginated(
                 script_id,
                 state.tenant_id,
                 offset as u64,
-                (limit + 1) as u64,
+                limit as u64,
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .into_iter()
             .map(GqlExecutionLogEntry::from)
             .collect::<Vec<_>>();
-        let has_next = entries.len() > limit as usize;
-        entries.truncate(limit as usize);
+        let total = state
+            .execution_log
+            .count_for_script_for_tenant(script_id, state.tenant_id)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            as i64;
 
         metrics::record_read_path_budget(
             "graphql",
@@ -193,11 +197,7 @@ impl AlloyQuery {
         );
 
         Ok(GqlExecutionLogConnection {
-            page_info: PageInfo::new(
-                offset + entries.len() as i64 + if has_next { 1 } else { 0 },
-                offset,
-                limit,
-            ),
+            page_info: PageInfo::new(total, offset, limit),
             items: entries,
         })
     }
@@ -212,16 +212,20 @@ impl AlloyQuery {
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
 
-        let mut entries = state
+        let entries = state
             .execution_log
-            .list_recent_for_tenant_paginated(state.tenant_id, offset as u64, (limit + 1) as u64)
+            .list_recent_for_tenant_paginated(state.tenant_id, offset as u64, limit as u64)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?
             .into_iter()
             .map(GqlExecutionLogEntry::from)
             .collect::<Vec<_>>();
-        let has_next = entries.len() > limit as usize;
-        entries.truncate(limit as usize);
+        let total = state
+            .execution_log
+            .count_recent_for_tenant(state.tenant_id)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?
+            as i64;
 
         metrics::record_read_path_budget(
             "graphql",
@@ -232,11 +236,7 @@ impl AlloyQuery {
         );
 
         Ok(GqlExecutionLogConnection {
-            page_info: PageInfo::new(
-                offset + entries.len() as i64 + if has_next { 1 } else { 0 },
-                offset,
-                limit,
-            ),
+            page_info: PageInfo::new(total, offset, limit),
             items: entries,
         })
     }
