@@ -656,8 +656,17 @@ pub fn blog_post_admin_form_view(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostAdminEditBannerViewModel {
     pub visible: bool,
+    pub class: &'static str,
     pub banner_text: String,
     pub create_new_label: String,
+}
+
+pub fn edit_banner_class(visible: bool) -> &'static str {
+    if visible {
+        "mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3"
+    } else {
+        "hidden"
+    }
 }
 
 pub fn blog_post_admin_edit_banner_view(
@@ -665,8 +674,10 @@ pub fn blog_post_admin_edit_banner_view(
     editing_template: &str,
     create_new_label: String,
 ) -> BlogPostAdminEditBannerViewModel {
+    let visible = is_editing_mode(editing_post_id);
     BlogPostAdminEditBannerViewModel {
-        visible: is_editing_mode(editing_post_id),
+        visible,
+        class: edit_banner_class(visible),
         banner_text: label_with_optional_id(editing_template, editing_post_id),
         create_new_label,
     }
@@ -675,15 +686,26 @@ pub fn blog_post_admin_edit_banner_view(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogPostAdminRawBodyWarningViewModel {
     pub visible: bool,
+    pub class: &'static str,
     pub message: String,
+}
+
+pub fn raw_body_warning_class(visible: bool) -> &'static str {
+    if visible {
+        "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+    } else {
+        "hidden"
+    }
 }
 
 pub fn blog_post_admin_raw_body_warning_view(
     body_format: &str,
     warning_message: String,
 ) -> BlogPostAdminRawBodyWarningViewModel {
+    let visible = should_show_raw_body_warning(body_format);
     BlogPostAdminRawBodyWarningViewModel {
-        visible: should_show_raw_body_warning(body_format),
+        visible,
+        class: raw_body_warning_class(visible),
         message: warning_message,
     }
 }
@@ -1042,10 +1064,15 @@ mod tests {
     fn admin_warning_and_posts_load_views_keep_adapter_policy_in_core() {
         let markdown = blog_post_admin_raw_body_warning_view("markdown", "warn".to_string());
         assert!(!markdown.visible);
+        assert_eq!(markdown.class, "hidden");
         assert_eq!(markdown.message, "warn");
 
         let raw = blog_post_admin_raw_body_warning_view("rt_json_v1", "warn".to_string());
         assert!(raw.visible);
+        assert_eq!(
+            raw.class,
+            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        );
 
         let loaded = blog_post_admin_posts_load_view(
             Ok((vec![sample_list_item("post-1")], 1)),
@@ -1701,6 +1728,10 @@ mod tests {
             "Create new instead".to_string(),
         );
         assert!(edit_banner.visible);
+        assert_eq!(
+            edit_banner.class,
+            "mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3"
+        );
         assert_eq!(edit_banner.banner_text, "Editing post post-1");
         assert_eq!(edit_banner.create_new_label, "Create new instead");
 
@@ -1710,6 +1741,7 @@ mod tests {
             "Create new instead".to_string(),
         );
         assert!(!hidden_edit_banner.visible);
+        assert_eq!(hidden_edit_banner.class, "hidden");
         assert_eq!(hidden_edit_banner.banner_text, "");
 
         let form_copy = blog_post_admin_editor_form_copy_view(BlogPostAdminEditorFormCopyLabels {

@@ -654,13 +654,9 @@ pub fn BlogAdmin() -> impl IntoView {
 
                         <Show when=move || editing_banner_view.get().visible>
                             <BlogEditBanner
-                                banner_text=Signal::derive({
+                                banner_view=Signal::derive({
                                     let editing_banner_view = editing_banner_view;
-                                    move || editing_banner_view.get().banner_text
-                                })
-                                create_new_label=Signal::derive({
-                                    let editing_banner_view = editing_banner_view;
-                                    move || editing_banner_view.get().create_new_label
+                                    move || editing_banner_view.get()
                                 })
                                 on_reset=reset_current_post
                             />
@@ -767,7 +763,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             </label>
 
                             <Show when=move || raw_body_warning_view.get().visible>
-                                <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                <div class=move || raw_body_warning_view.get().class>
                                     {move || raw_body_warning_view.get().message}
                                 </div>
                             </Show>
@@ -885,21 +881,20 @@ fn blog_form_copy_view_model(locale: Option<&str>) -> core::BlogPostAdminEditorF
 
 #[component]
 fn BlogEditBanner(
-    banner_text: Signal<String>,
-    create_new_label: Signal<String>,
+    banner_view: Signal<core::BlogPostAdminEditBannerViewModel>,
     on_reset: Callback<()>,
 ) -> impl IntoView {
     view! {
-        <div class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+        <div class=move || banner_view.get().class>
             <div class="text-sm text-muted-foreground">
-                {move || banner_text.get()}
+                {move || banner_view.get().banner_text}
             </div>
             <button
                 type="button"
                 class="text-xs font-medium text-primary hover:underline"
                 on:click=move |_| on_reset.run(())
             >
-                {move || create_new_label.get()}
+                {move || banner_view.get().create_new_label}
             </button>
         </div>
     }
