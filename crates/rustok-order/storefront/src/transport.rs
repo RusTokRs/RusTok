@@ -27,6 +27,50 @@ pub struct CompleteCheckoutRequest {
     pub metadata: CheckoutCompletionCommandMetadata,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckoutCompletionTransportError {
+    Graphql(String),
+    ServerFn(String),
+    Validation(String),
+}
+
+impl CheckoutCompletionTransportError {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Graphql(message) | Self::ServerFn(message) | Self::Validation(message) => message,
+        }
+    }
+
+    pub fn should_fallback_to_graphql(&self) -> bool {
+        match self {
+            Self::ServerFn(server_error) => {
+                server_error.contains("MissingServer")
+                    || server_error.contains("missing server")
+                    || server_error.contains("not available on this target")
+            }
+            _ => false,
+        }
+    }
+}
+
+pub async fn complete_checkout_with_fallback<T, N, NFut, G, GFut>(
+    request: CompleteCheckoutRequest,
+    native: N,
+    graphql: G,
+) -> Result<T, CheckoutCompletionTransportError>
+where
+    N: FnOnce(CompleteCheckoutRequest) -> NFut,
+    NFut: std::future::Future<Output = Result<T, CheckoutCompletionTransportError>>,
+    G: FnOnce(CompleteCheckoutRequest) -> GFut,
+    GFut: std::future::Future<Output = Result<T, CheckoutCompletionTransportError>>,
+{
+    match native(request.clone()).await {
+        Ok(completion) => Ok(completion),
+        Err(error) if error.should_fallback_to_graphql() => graphql(request).await,
+        Err(error) => Err(error),
+    }
+}
+
 pub fn build_complete_checkout_request(cart_id: String) -> CompleteCheckoutRequest {
     CompleteCheckoutRequest {
         cart_id: normalize_required(cart_id),
@@ -54,5 +98,23 @@ mod tests {
         assert_eq!(request.metadata.owner_module, "rustok-order");
         assert_eq!(request.metadata.command, "complete_checkout");
         assert!(request.metadata.create_fulfillment);
+    }
+
+    #[test]
+    fn server_function_missing_error_can_fallback_to_graphql() {
+        assert!(
+            CheckoutCompletionTransportError::ServerFn("MissingServerFunction".into())
+                .should_fallback_to_graphql()
+        );
+        assert!(CheckoutCompletionTransportError::ServerFn(
+            "server function is not available on this target".into()
+        )
+        .should_fallback_to_graphql());
+        assert!(
+            !CheckoutCompletionTransportError::Validation("bad cart".into())
+                .should_fallback_to_graphql()
+        );
+        assert!(!CheckoutCompletionTransportError::Graphql("network".into())
+            .should_fallback_to_graphql());
     }
 }
