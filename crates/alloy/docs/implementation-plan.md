@@ -6,10 +6,10 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Added GraphQL and REST DTO canonical field-mapping assertions for execution-history transports without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then extend transport assertions from DTO conversion coverage to route/schema-level integration coverage.
+- Last checkpoint: Added route/schema-level execution-history contract constants and assertions for Loco REST, generic Axum REST and GraphQL public query names without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then replace lightweight route/schema contract assertions with executable router/schema integration checks where host test fixtures permit.
 - Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации добавлены только transport mapping assertions для GraphQL/REST DTO. `cargo fmt --check` также упирается в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации добавлены lightweight assertions для route/schema-level execution-history contracts без запуска compiler/test gates. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
