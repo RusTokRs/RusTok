@@ -27,6 +27,7 @@ const checks = [
   "verify-page-builder-leptos-admin-parity.mjs",
   "verify-page-builder-flutter-parity.mjs",
   "verify-page-builder-toggle-profiles-consistency.mjs",
+  "verify-page-builder-control-plane-dry-run.mjs",
   "verify-page-builder-transport-bridge.mjs",
   "verify-page-builder-terminology.mjs",
 ];

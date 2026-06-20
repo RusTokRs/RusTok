@@ -7,11 +7,11 @@
 ## Execution checkpoint
 
 - Current phase: lifecycle_hardening
-- Last checkpoint: no-compile инкремент: simulated remote/embedded ack tokens вынесены в canonical metadata helper, чтобы real SDK adapter work не дублировал formatting в transport tests.
-- Next step: связать metadata и ack override с реальным SDK subscriber path, затем заменить no-compile evidence фактическими targeted tests.
+- Last checkpoint: no-compile инкремент: добавлен `ConnectorAckToken` как единый simulated/real Iggy SDK ack seam; remote/embedded subscribers теперь source-level валидируют stream/topic/partition scope перед ack, а `verify-iggy-connector-source.mjs` фиксирует guardrail без компиляции.
+- Next step: подключить `ConnectorAckToken::iggy_sdk` к фактическому SDK subscriber receive/commit path и заменить source-level evidence targeted cargo tests при разрешённых компиляциях.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Проверить object-safety/async_trait compile gate для default trait methods; затем реализовать real SDK metadata extraction and ack override поверх canonical metadata helper.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Hand-off notes for next agent: Сохранить opaque-token contract для transport consumers; при wiring real SDK извлекать offset/consumer cursor в `ConnectorAckToken::iggy_sdk`, не протаскивая retry/DLQ/replay policy в connector crate.
+- Last updated at (UTC): 2026-06-20T14:30:00Z
 
 ## Область работ
 
@@ -41,6 +41,7 @@
   - [x] добавить subscriber metadata для offset/ack/retry без transport policy;
   - [x] добавить explicit ack override seam для remote/embedded subscriber adapters;
   - [x] централизовать simulated ack token builder для remote/embedded metadata;
+  - [x] добавить `ConnectorAckToken` seam для simulated и real Iggy SDK ack cursor с source-level scope validation;
 - [ ] покрывать batching, TLS и real connection failure cases targeted tests;
 - [ ] удерживать simulation mode как явный documented compatibility path.
 
@@ -69,4 +70,5 @@
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены unit assertions для subscriber metadata/message builders (запуск отложен без компиляций).
 - [x] Проверить полноту и актуальность `README.md` и локальных docs: README/docs/CRATE_API описывают metadata surface.
 - [x] Зафиксировать source-level assertions для canonical simulated ack tokens (запуск отложен без компиляций).
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля: `node scripts/verify/verify-iggy-connector-source.mjs` (no-compile) и `cargo test -p rustok-iggy-connector --lib` при разрешённых компиляциях.
+- [ ] Подключить real SDK subscriber receive/ack path к `ConnectorAckToken::iggy_sdk` и заменить source-level guardrail фактическими targeted tests.

@@ -6,8 +6,8 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Generic Redis pub/sub subscription adapter добавлен в `CacheInvalidationService`; tenant listener больше не открывает Redis pub/sub напрямую и использует capability-level consume API.
-- Next step: Перевести tenant anti-stampede path на `CacheService::load_or_fill` после расширения error contract и добавить compile/test evidence при снятии ограничения на компиляции.
+- Last checkpoint: Tenant anti-stampede path переведён на `CacheService::load_or_fill`; cache capability теперь экспортирует service-level Prometheus gauges для Redis health/configuration, metrics toggle и in-flight loaders.
+- Next step: Добавить compile/test evidence при снятии ограничения на компиляции и расширить real-Redis/multi-instance интеграционные сценарии.
 - Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем продолжить anti-stampede helper и Redis pub/sub generalization.
 - Last updated at (UTC): 2026-06-20T12:00:00Z
@@ -42,7 +42,7 @@ manifest/doc contract.
 
 ### 3. Operability
 
-- [ ] довести Prometheus metrics export до production-ready слоя;
+- [x] довести Prometheus metrics export до production-ready service-level слоя;
 - [x] добавить baseline hit/miss/invalidation/entry stats и health diagnostics в cache factory contract;
 - [ ] покрыть multi-instance и real-Redis сценарии интеграционными тестами;
 - [x] документировать publisher/local fan-out guarantees для generic invalidation contract;
@@ -52,7 +52,7 @@ manifest/doc contract.
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для backend selection, fallback, `load_or_fill` coalescing и health semantics
+- targeted runtime tests для backend selection, fallback, `load_or_fill` coalescing, Prometheus formatting и health semantics
 
 ## Правила обновления
 

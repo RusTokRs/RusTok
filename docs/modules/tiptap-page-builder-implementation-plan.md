@@ -687,13 +687,13 @@ Notes: <known deviations or waivers>
 
 ### 12.3 Sprint 3 (до 2026-07-15): Wave 0/Wave 1 readiness
 
-- [ ] Автоматизировать control-plane dry-run change-set для профилей `all_on/publish_off/preview_off/builder_off`.
+- [~] Автоматизировать control-plane dry-run change-set для профилей `all_on/publish_off/preview_off/builder_off` (runtime seam `BuilderControlPlaneChangeSet::dry_run`, machine-readable contract `crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json` и no-compile gate `verify-page-builder-control-plane-dry-run.mjs` добавлены; фактический tenant execution packet остаётся блокером).
 - [~] Собрать обязательный Wave 1 readiness packet: metadata, smoke, observability, rollback note (draft packet `crates/rustok-page-builder/contracts/evidence/pages-wave1-readiness-draft.json` создан; no-compile guardrail `verify-page-builder-wave1-readiness-draft.mjs` теперь закрепляет pending tenant, draft change-set namespace, pending metric/sign-off markers, hold rollback reason и отсутствие waivers; фактические tenant snapshots/sign-off остаются блокером Wave 1).
 - [ ] Провести совместный Go/No-Go review: Platform + Builder owners + Pages owners.
 
 **Артефакты Sprint 3:**
 - audit trail с before/after snapshots;
-- dry-run consistency verify report (baseline command: `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs`);
+- dry-run consistency verify report (baseline commands: `node crates/rustok-page-builder/scripts/verify/verify-page-builder-toggle-profiles-consistency.mjs` и `node crates/rustok-page-builder/scripts/verify/verify-page-builder-control-plane-dry-run.mjs`);
 - SLO отчёт (`preview p95`, `publish p95`, sanitize failure rate);
 - подписанный протокол Go/No-Go для pilot tenants.
 - unified baseline gate report (command: `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`, включает `verify-page-builder-wave1-readiness-draft.mjs`; targeted script: `npm run verify:page-builder:wave1-readiness-draft`).
@@ -749,7 +749,7 @@ Notes: <known deviations or waivers>
    - [x] создать/обновить machine-readable запись `builder_contract_version=1.0` для provider и `consumer_min_version=1.0` для `rustok-pages`;
    - [x] добавить ссылку на запись в `docs/modules/registry.md` и локальный implementation-plan `crates/rustok-pages/docs/implementation-plan.md`.
 2. **Fallback smoke baseline**
-   - [ ] выполнить smoke по профилям `all_on`, `publish_off`, `preview_off`, `builder_off` на одном internal tenant;
+   - [~] выполнить smoke по профилям `all_on`, `publish_off`, `preview_off`, `builder_off` на одном internal tenant (contract/source gate готов, реальные tenant smoke outputs ещё pending);
    - [ ] приложить краткий отчёт с фактами по `admin list/read`, `storefront read`, `publish(dry)`.
 3. **Observability wiring check**
    - [x] подтвердить наличие correlation-id в цепочке `builder write -> pages publish -> storefront read` на уровне Wave 0/Wave 1 evidence packets и source/doc markers (`verify-page-builder-correlation-evidence.mjs`);

@@ -26,6 +26,7 @@ use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot,
 };
+use rustok_cache::CacheService;
 use rustok_telemetry::metrics::update_queue_depth;
 use tracing::warn;
 
@@ -49,6 +50,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             sync_rate_limit_metrics(&ctx).await;
             let mut payload = handle.render();
             payload.push('\n');
+            payload.push_str(&render_cache_service_metrics(&ctx).await);
             payload.push_str(&render_tenant_cache_metrics(&ctx).await);
             payload.push_str(&render_tenant_activity_metrics(&ctx).await);
             payload.push_str(&render_tenant_locale_cache_metrics(&ctx).await);
@@ -90,6 +92,18 @@ async fn sync_rate_limit_metrics(ctx: &AppContext) {
         if let Err(error) = shared.0.sync_runtime_metrics().await {
             warn!(error = %error, "failed to sync oauth rate-limit metrics");
         }
+    }
+}
+
+async fn render_cache_service_metrics(ctx: &AppContext) -> String {
+    match ctx.shared_store.get::<CacheService>() {
+        Some(cache) => cache.prometheus_metrics().await,
+        None => String::from(
+            "rustok_cache_redis_configured 0\n\
+rustok_cache_redis_healthy 0\n\
+rustok_cache_metrics_enabled 0\n\
+rustok_cache_in_flight_loads 0\n",
+        ),
     }
 }
 
@@ -658,6 +672,17 @@ mod tests {
         assert!(payload.contains("rustok_outbox_backlog_size 11"));
         assert!(payload.contains("rustok_outbox_dlq_total 2"));
         assert!(payload.contains("rustok_outbox_retries_total 7"));
+    }
+
+    #[tokio::test]
+    async fn cache_service_metrics_include_runtime_lifecycle_gauges() {
+        let cache = CacheService::from_url(None);
+        let payload = cache.prometheus_metrics().await;
+
+        assert_metric_line(&payload, "rustok_cache_redis_configured");
+        assert_metric_line(&payload, "rustok_cache_redis_healthy");
+        assert_metric_line(&payload, "rustok_cache_metrics_enabled");
+        assert_metric_line(&payload, "rustok_cache_in_flight_loads");
     }
 
     #[test]

@@ -27,6 +27,7 @@
     "test:verify:ffa:ui:migration": "node scripts/verify/verify-ffa-ui-migration-contract.test.mjs && npm run test:verify:ffa:ui:migration:boundary-sweep && npm run test:verify:ffa:ui:migration:transport-profile && npm run test:verify:channel:admin-boundary && npm run test:verify:tenant:admin-boundary && npm run test:verify:rbac:admin-boundary && npm run test:verify:comments:admin-boundary && npm run test:verify:region:admin-boundary && npm run test:verify:blog:admin-boundary && npm run test:verify:pages:ui-boundary && npm run test:verify:fulfillment:admin-boundary && npm run test:verify:product:admin-boundary && npm run test:verify:product:storefront-boundary && npm run test:verify:forum:admin-boundary && npm run test:verify:forum:storefront-boundary && npm run test:verify:search:ui-boundary && npm run test:verify:forum:wave-evidence-freshness",
     "verify:channel:admin-boundary": "node scripts/verify/verify-channel-admin-boundary.mjs",
     "verify:channel:fba": "node scripts/verify/verify-channel-fba.mjs",
+    "verify:channel:resolution-contract": "node scripts/verify/verify-channel-resolution-contract.mjs",
     "verify:index:fba": "node scripts/verify/verify-index-fba.mjs",
     "test:verify:channel:admin-boundary": "node scripts/verify/verify-channel-admin-boundary.test.mjs",
     "verify:ai:admin-boundary": "node scripts/verify/verify-ai-admin-boundary.mjs",
@@ -89,10 +90,9 @@
     "test:verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.test.mjs",
     "verify:outbox:fba": "node scripts/verify/verify-outbox-fba.mjs",
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs",
-    "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs"
-    "verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.mjs",
-    "test:verify:outbox:admin-boundary": "node scripts/verify/verify-outbox-admin-boundary.test.mjs",
-    "verify:email:fba": "node scripts/verify/verify-email-fba.mjs"
+    "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
+    "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
+    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
