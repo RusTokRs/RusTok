@@ -7,11 +7,11 @@
 
 ## Execution checkpoint
 
-- Current phase: phase5_standalone_guardrails
-- Last checkpoint: Standalone Flex service-boundary guardrails tightened without compilation: optional actor IDs are now validated at the shared orchestration boundary and in the SeaORM adapter before mutation DB access, extending nil UUID guardrails beyond tenant/schema/entry IDs.
-- Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared tenant/schema/entry UUID guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
+- Current phase: phase5_standalone_schema_definition_guardrails
+- Last checkpoint: Standalone Flex schema-definition guardrails tightened without compilation: schema create/update validation now rejects malformed field-definition copy/validation shapes, select fields without usable option sets, duplicate/empty option values, unsupported pattern rules, inverted min/max ranges, and default values that fail the core field validator.
+- Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared standalone UUID and schema-definition guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` passes for this slice; no compilation/test command was run by request.
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, schema-definition shape validation, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` passes for this slice; no compilation/test command was run by request.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
@@ -305,7 +305,8 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - 2026-06-19 no-compile follow-up: standalone orchestration rejects nil `schema_id`/`entry_id` before service delegation, create-entry commands reject nil `schema_id`/attached `entity_id`, and targeted unit coverage was added without compiling by request.
   - 2026-06-20 no-compile iteration: nil UUID validation was promoted to a public standalone boundary helper and reused by orchestration and the SeaORM adapter so direct schema/entry service calls reject nil tenant/schema/entry IDs before database access; localized entry map loading also had a duplicate await removed.
   - 2026-06-20 no-compile follow-up: optional `actor_id` validation now uses the same standalone nil UUID guardrail in orchestration and direct SeaORM mutation calls, with targeted boundary tests added but not executed by request.
-  - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail fix и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
+  - 2026-06-20 no-compile schema-definition follow-up: standalone schema create/update validation now checks field-definition shape before adapter writes: non-empty localized labels/descriptions, select option presence/uniqueness, unsupported pattern rules, inverted min/max ranges, and invalid default values are rejected through targeted contract tests.
+  - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail/schema-definition fixes и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
   - Rollout / governance contract для standalone surface задокументирован как completed
