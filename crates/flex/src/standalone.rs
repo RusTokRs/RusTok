@@ -9,7 +9,9 @@ use crate::events::{
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use rustok_core::field_schema::{is_valid_field_key, FieldDefinition, FlexError};
+use rustok_core::field_schema::{
+    is_valid_field_key, CustomFieldsSchema, FieldDefinition, FlexError,
+};
 use rustok_events::EventEnvelope;
 
 const FLEX_ENTRY_ENTITY_TYPE: &str = "flex_entry";
@@ -381,11 +383,119 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
     let mut unique = std::collections::HashSet::new();
     for def in definitions {
         validate_identifier(&def.field_key, "field key in fields_config", 128)?;
+        validate_definition_shape(def)?;
 
         if !unique.insert(def.field_key.as_str()) {
             return Err(FlexError::DuplicateFieldKey(def.field_key.clone()));
         }
     }
+    Ok(())
+}
+
+fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexError> {
+    if definition.label.is_empty() {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "field '{}' must have at least one localized label",
+            definition.field_key
+        )));
+    }
+
+    for (locale, label) in &definition.label {
+        if locale.trim().is_empty() || label.trim().is_empty() {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' labels must have non-empty locale keys and values",
+                definition.field_key
+            )));
+        }
+    }
+
+    if let Some(description) = &definition.description {
+        for (locale, value) in description {
+            if locale.trim().is_empty() || value.trim().is_empty() {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' descriptions must have non-empty locale keys and values",
+                    definition.field_key
+                )));
+            }
+        }
+    }
+
+    if let Some(validation) = &definition.validation {
+        if let (Some(min), Some(max)) = (validation.min, validation.max) {
+            if min > max {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' validation min must not exceed max",
+                    definition.field_key
+                )));
+            }
+        }
+
+        if validation.pattern.is_some() && !definition.field_type.supports_pattern() {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' type does not support pattern validation",
+                definition.field_key
+            )));
+        }
+
+        if definition.field_type.requires_options() {
+            let options = validation
+                .options
+                .as_ref()
+                .filter(|options| !options.is_empty());
+            let Some(options) = options else {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' type requires non-empty select options",
+                    definition.field_key
+                )));
+            };
+
+            let mut option_values = std::collections::HashSet::new();
+            for option in options {
+                if option.value.trim().is_empty() {
+                    return Err(FlexError::InvalidFieldKey(format!(
+                        "field '{}' select option values must not be empty",
+                        definition.field_key
+                    )));
+                }
+
+                if !option_values.insert(option.value.as_str()) {
+                    return Err(FlexError::InvalidFieldKey(format!(
+                        "field '{}' select option values must be unique",
+                        definition.field_key
+                    )));
+                }
+
+                if option.label.is_empty()
+                    || option
+                        .label
+                        .iter()
+                        .any(|(locale, label)| locale.trim().is_empty() || label.trim().is_empty())
+                {
+                    return Err(FlexError::InvalidFieldKey(format!(
+                        "field '{}' select option labels must not be empty",
+                        definition.field_key
+                    )));
+                }
+            }
+        }
+    } else if definition.field_type.requires_options() {
+        return Err(FlexError::InvalidFieldKey(format!(
+            "field '{}' type requires select options",
+            definition.field_key
+        )));
+    }
+
+    if let Some(default_value) = &definition.default_value {
+        let schema = CustomFieldsSchema::new(vec![definition.clone()]);
+        let metadata = serde_json::json!({ definition.field_key.clone(): default_value.clone() });
+        if let Some(error) = schema.validate(&metadata).into_iter().next() {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' default value is invalid: {}",
+                definition.field_key, error.message
+            )));
+        }
+    }
+
     Ok(())
 }
 
@@ -585,7 +695,9 @@ mod tests {
     };
     use async_trait::async_trait;
 
-    use rustok_core::field_schema::{FieldDefinition, FieldType, FlexError};
+    use rustok_core::field_schema::{
+        FieldDefinition, FieldType, FlexError, SelectOption, ValidationRule,
+    };
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -607,6 +719,35 @@ mod tests {
         }
     }
 
+    fn select_definition(key: &str, values: &[&str]) -> FieldDefinition {
+        FieldDefinition {
+            field_key: key.to_string(),
+            field_type: FieldType::Select,
+            label: HashMap::from([("en".to_string(), "Label".to_string())]),
+            description: None,
+            is_localized: false,
+            is_required: false,
+            default_value: None,
+            validation: Some(ValidationRule {
+                min: None,
+                max: None,
+                pattern: None,
+                options: Some(
+                    values
+                        .iter()
+                        .map(|value| SelectOption {
+                            value: (*value).to_string(),
+                            label: HashMap::from([("en".to_string(), (*value).to_string())]),
+                        })
+                        .collect(),
+                ),
+                error_message: None,
+            }),
+            position: 0,
+            is_active: true,
+        }
+    }
+
     #[test]
     fn validate_standalone_uuid_rejects_nil_boundary_ids() {
         assert!(validate_standalone_uuid(Uuid::nil(), "schema_id").is_err());
@@ -618,6 +759,93 @@ mod tests {
         assert!(validate_optional_standalone_uuid(None, "actor_id").is_ok());
         assert!(validate_optional_standalone_uuid(Some(Uuid::new_v4()), "actor_id").is_ok());
         assert!(validate_optional_standalone_uuid(Some(Uuid::nil()), "actor_id").is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_invalid_field_definition_shape() {
+        let missing_label = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                label: HashMap::new(),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&missing_label).is_err());
+
+        let select_without_options = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                field_type: FieldType::Select,
+                validation: None,
+                ..sample_definition("status")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&select_without_options).is_err());
+
+        let duplicate_option_values = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![select_definition("status", &["draft", "draft"])],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&duplicate_option_values).is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_invalid_default_value_and_rule_shape() {
+        let invalid_default = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                default_value: Some(json!("not an integer")),
+                field_type: FieldType::Integer,
+                ..sample_definition("sort_order")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&invalid_default).is_err());
+
+        let unsupported_pattern = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                field_type: FieldType::Integer,
+                validation: Some(ValidationRule {
+                    pattern: Some("^[0-9]+$".to_string()),
+                    ..Default::default()
+                }),
+                ..sample_definition("sort_order")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&unsupported_pattern).is_err());
+
+        let inverted_range = UpdateFlexSchemaCommand {
+            fields_config: Some(vec![FieldDefinition {
+                validation: Some(ValidationRule {
+                    min: Some(10.0),
+                    max: Some(1.0),
+                    ..Default::default()
+                }),
+                ..sample_definition("title")
+            }]),
+            ..Default::default()
+        };
+        assert!(validate_update_schema_command(&inverted_range).is_err());
     }
 
     #[test]
