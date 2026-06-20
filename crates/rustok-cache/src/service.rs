@@ -250,6 +250,16 @@ impl CacheService {
         self.loaders.in_flight().await
     }
 
+    /// Render capability-level Prometheus metrics for the cache runtime.
+    ///
+    /// Backend-specific hit/miss counters remain exposed by each host-owned backend via
+    /// `CacheBackend::stats()`. These service metrics cover central lifecycle signals that
+    /// are not tied to a single backend instance: Redis health/configuration, default
+    /// instrumentation state, and in-flight anti-stampede loaders.
+    pub async fn prometheus_metrics(&self) -> String {
+        format_cache_service_prometheus_metrics(&self.health().await, self.in_flight_loads().await)
+    }
+
     /// Health check: verify Redis connectivity (if configured).
     pub async fn health(&self) -> CacheHealthReport {
         let mut report = CacheHealthReport {
@@ -535,6 +545,21 @@ impl CacheLoadCoordinator {
     async fn in_flight(&self) -> usize {
         self.locks.lock().await.len()
     }
+}
+
+pub fn format_cache_service_prometheus_metrics(
+    report: &CacheHealthReport,
+    in_flight_loads: usize,
+) -> String {
+    format!(
+        "rustok_cache_redis_configured {redis_configured}\n\
+rustok_cache_redis_healthy {redis_healthy}\n\
+rustok_cache_metrics_enabled {metrics_enabled}\n\
+rustok_cache_in_flight_loads {in_flight_loads}\n",
+        redis_configured = if report.redis_configured { 1 } else { 0 },
+        redis_healthy = if report.redis_healthy { 1 } else { 0 },
+        metrics_enabled = if report.metrics_enabled { 1 } else { 0 },
+    )
 }
 
 #[derive(Debug, Clone)]
