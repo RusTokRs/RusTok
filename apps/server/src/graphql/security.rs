@@ -351,6 +351,33 @@ mod tests {
         );
     }
 
+    #[test]
+    fn sensitive_user_fields_map_to_auth_module_permission_surface() {
+        let auth_permissions = rustok_auth::AUTH_USER_PERMISSIONS;
+
+        for (field, required_permission) in [
+            (SensitiveGraphqlField::User, Permission::USERS_READ),
+            (SensitiveGraphqlField::Users, Permission::USERS_LIST),
+            (SensitiveGraphqlField::CreateUser, Permission::USERS_CREATE),
+            (SensitiveGraphqlField::UpdateUser, Permission::USERS_UPDATE),
+            (SensitiveGraphqlField::DisableUser, Permission::USERS_MANAGE),
+            (SensitiveGraphqlField::DeleteUser, Permission::USERS_MANAGE),
+        ] {
+            assert!(
+                auth_permissions.contains(&required_permission),
+                "auth module must publish {} for {:?}",
+                required_permission,
+                field
+            );
+            assert!(
+                field.allows(&[required_permission]),
+                "{:?} should allow {}",
+                field,
+                required_permission
+            );
+        }
+    }
+
     #[tokio::test]
     async fn blocks_sensitive_query_without_auth_context() {
         let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)

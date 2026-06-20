@@ -9,7 +9,7 @@ refresh-token helpers, auth config, and auth-related migrations.
 
 - Provide `AuthModule` metadata for the runtime registry.
 - Expose auth primitives used by `apps/server` transport adapters and lifecycle services.
-- Publish the typed `users:*` RBAC surface through `RusToKModule::permissions()`.
+- Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
 
 ## Interactions
 
@@ -18,10 +18,12 @@ refresh-token helpers, auth config, and auth-related migrations.
 - Declares permissions via `rustok-core::Permission`.
 - `apps/server` enforces those permissions through `RbacService`; `rustok-auth` itself does not depend on `rustok-rbac`.
 - Human-readable RBAC ownership for the auth module is `users:*`.
+- `apps/server` has registry and GraphQL security contract tests that compare host wiring against `AUTH_USER_PERMISSIONS`.
 
 ## Entry points
 
 - `AuthModule`
+- `AUTH_USER_PERMISSIONS`
 - `AuthConfig`
 - `Claims`
 - `encode_access_token`

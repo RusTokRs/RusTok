@@ -5,12 +5,12 @@ manifest/doc contract path.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: integration_hardening
+- Last checkpoint: Runtime `users:*` permission surface centralized in `AUTH_USER_PERMISSIONS` and mirrored by server registry/GraphQL security contract tests.
+- Next step: Extend token/config surface only with matching local docs and runtime tests, or document the next auth-owned flow before publishing it through host runtime.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -31,7 +31,7 @@ manifest/doc contract path.
 
 - [x] вернуть `rustok-module.toml` и локальные module docs в scoped audit path;
 - [x] выровнять root README с обязательными разделами и ссылкой на local docs;
-- [ ] удерживать sync между runtime permission surface и server integration tests.
+- [x] удерживать sync между runtime permission surface и server integration tests (`AUTH_USER_PERMISSIONS` + server registry/GraphQL contract checks).
 
 ### 2. Integration hardening
 
@@ -55,5 +55,5 @@ manifest/doc contract path.
 ## Quality backlog
 
 - [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs для permission surface sync.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля (без запуска компиляции в этом инкременте по запросу).

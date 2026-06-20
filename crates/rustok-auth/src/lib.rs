@@ -28,6 +28,19 @@ pub use jwt::{
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use rustok_core::permissions::Permission;
+
+/// Canonical auth-owned RBAC surface published by the module.
+///
+/// Keep this list in sync with server integration tests and docs whenever
+/// the `users:*` runtime contract changes.
+pub const AUTH_USER_PERMISSIONS: [Permission; 6] = [
+    Permission::USERS_CREATE,
+    Permission::USERS_READ,
+    Permission::USERS_UPDATE,
+    Permission::USERS_DELETE,
+    Permission::USERS_LIST,
+    Permission::USERS_MANAGE,
+];
 use sea_orm_migration::MigrationTrait;
 
 /// Core auth module — JWT lifecycle, credential hashing, token management.
@@ -65,17 +78,45 @@ impl RusToKModule for AuthModule {
     }
 
     fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::USERS_CREATE,
-            Permission::USERS_READ,
-            Permission::USERS_UPDATE,
-            Permission::USERS_DELETE,
-            Permission::USERS_LIST,
-            Permission::USERS_MANAGE,
-        ]
+        AUTH_USER_PERMISSIONS.to_vec()
     }
 
     async fn health(&self) -> HealthStatus {
         HealthStatus::Healthy
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthModule, AUTH_USER_PERMISSIONS};
+    use rustok_core::module::{ModuleKind, RusToKModule};
+    use rustok_core::Permission;
+
+    #[test]
+    fn auth_module_publishes_exact_users_permission_surface() {
+        let module = AuthModule;
+
+        assert_eq!(
+            module.permissions(),
+            vec![
+                Permission::USERS_CREATE,
+                Permission::USERS_READ,
+                Permission::USERS_UPDATE,
+                Permission::USERS_DELETE,
+                Permission::USERS_LIST,
+                Permission::USERS_MANAGE,
+            ]
+        );
+        assert_eq!(module.permissions(), AUTH_USER_PERMISSIONS.to_vec());
+    }
+
+    #[test]
+    fn auth_module_contract_stays_core_capability_only() {
+        let module = AuthModule;
+
+        assert_eq!(module.slug(), "auth");
+        assert_eq!(module.kind(), ModuleKind::Core);
+        assert!(module.dependencies().is_empty());
+        assert!(module.ui_extensions().is_empty());
     }
 }
