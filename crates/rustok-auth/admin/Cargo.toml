@@ -1,0 +1,49 @@
+[package]
+name = "rustok-auth-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-auth module"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+csr = []
+ssr = [
+  "leptos/ssr",
+  "dep:leptos_axum",
+  "dep:loco-rs",
+  "dep:rustok-core",
+  "dep:rustok-auth",
+  "dep:sea-orm",
+  "dep:reqwest",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth.workspace = true
+loco-rs = { workspace = true, optional = true }
+rustok-api = { workspace = true, default-features = false }
+rustok-core = { workspace = true, optional = true }
+rustok-auth = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+base64.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+leptos_router.workspace = true
+leptos-ui.workspace = true
+leptos-hook-form.workspace = true
+leptos-use.workspace = true
+leptos-graphql.workspace = true
+gloo-storage = { workspace = true }
+reqwest = { workspace = true, optional = true }
+serde_urlencoded.workspace = true
+web-sys = { version = "0.3", features = ["MouseEvent"] }
+
+

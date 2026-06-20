@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "module": "customer",
+  "packet": "customer-read-projection-runtime-smoke",
+  "status": "source_locked_live_runtime_pending",
+  "generated_from": "crates/rustok-customer/contracts/customer-fba-registry.json",
+  "contract_version": "customer.read_projection.v1",
+  "promotion_allowed": false,
+  "source_tests": "crates/rustok-customer/tests/customer_service_test.rs",
+  "profiles": [
+    "embedded_native",
+    "graphql_checkout_compat"
+  ],
+  "covered_operations": [
+    "read_customer_projection",
+    "list_customer_projections"
+  ],
+  "typed_error_matrix": [
+    {
+      "case": "missing_deadline",
+      "expected_kind": "timeout",
+      "expected_code": "port.deadline_required",
+      "retryable": true
+    },
+    {
+      "case": "invalid_tenant_id",
+      "expected_kind": "validation",
+      "expected_code": "customer.tenant_id_invalid",
+      "retryable": false
+    },
+    {
+      "case": "missing_customer",
+      "expected_kind": "not_found",
+      "expected_code": "customer.customer_not_found",
+      "retryable": false
+    }
+  ],
+  "fallback_smoke": {
+    "status": "source_locked_live_runtime_pending",
+    "degraded_modes": [
+      "use_checkout_customer_snapshot",
+      "show_customer_refresh_required",
+      "use_order_customer_snapshot"
+    ],
+    "assertions": [
+      "tenant_scope_preserved",
+      "deadline_policy_enforced",
+      "typed_port_error_mapping",
+      "does_not_promote_boundary_ready_without_compiled_runtime_execution"
+    ]
+  }
+}

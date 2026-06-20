@@ -64,7 +64,7 @@
         "trait MediaAssetReadPort",
         "async fn get_image_descriptor",
         "Result<Option<MediaImageDescriptor>, PortError>",
-        "context.require_deadline_semantics()?",
+        "context.require_policy(PortCallPolicy::read())?",
         "MediaImageDescriptor::from_media_item(&item, alt)"
       ]
     },
