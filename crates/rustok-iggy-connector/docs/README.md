@@ -13,11 +13,12 @@ low-level message I/O, не забирая у `rustok-iggy` transport-level sema
 ## Зона ответственности
 
 - `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`;
-- `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorError`;
+- `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorAckToken`, `ConnectorError`;
 - connection lifecycle, mode abstraction и low-level publish/subscribe contracts;
 - optional Iggy SDK integration через feature flag;
 - отсутствие ownership над transport-level serialization, DLQ, replay и topology policy;
-- connector metadata включает только low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) и не задаёт retry/DLQ/replay правила.
+- connector metadata включает только low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) и не задаёт retry/DLQ/replay правила;
+- `ConnectorAckToken` централизует simulated token и real Iggy SDK cursor token seam, а remote/embedded subscribers проверяют scope token перед ack без добавления transport policy.
 
 ## Интеграция
 
@@ -30,7 +31,8 @@ low-level message I/O, не забирая у `rustok-iggy` transport-level sema
 
 - targeted compile/tests для connector configuration, mode switching, request building и error handling;
 - integration tests нужны при изменении реального SDK/lifecycle path;
-- structural verification для boundary между connector и transport crate.
+- structural verification для boundary между connector и transport crate;
+- no-compile guardrail для текущего lifecycle seam: `node scripts/verify/verify-iggy-connector-source.mjs`.
 
 ## Связанные документы
 
