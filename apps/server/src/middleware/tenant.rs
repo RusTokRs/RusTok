@@ -8,14 +8,14 @@ use axum::{
 use loco_rs::app::AppContext;
 #[cfg(feature = "redis-cache")]
 use redis::AsyncCommands;
-use rustok_cache::CacheService;
-use rustok_core::tenant_validation::TenantIdentifierValidator;
+use rustok_cache::{CacheInvalidationMessage, CacheService};
 use rustok_core::CacheBackend;
 #[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
+use rustok_core::tenant_validation::TenantIdentifierValidator;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, Notify, RwLock};
 use tokio::task::JoinHandle;
@@ -29,7 +29,6 @@ use crate::context::{TenantContext, TenantContextExtension};
 use crate::models::tenants;
 
 const TENANT_CACHE_VERSION: &str = "v1";
-#[cfg(feature = "redis-cache")]
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
 const TENANT_CACHE_TTL: Duration = Duration::from_secs(300);
 const TENANT_NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -152,29 +151,24 @@ impl TenantIdentifierKind {
 
 #[derive(Clone)]
 struct TenantInvalidationPublisher {
-    #[cfg(feature = "redis-cache")]
-    redis_client: Option<redis::Client>,
+    cache_service: CacheService,
 }
 
 impl TenantInvalidationPublisher {
     fn new(_cache_service: &CacheService) -> Self {
         Self {
-            #[cfg(feature = "redis-cache")]
-            redis_client: _cache_service.redis_client().cloned(),
+            cache_service: _cache_service.clone(),
         }
     }
 
     async fn publish(&self, _cache_key: &str) {
-        #[cfg(feature = "redis-cache")]
-        if let Some(client) = &self.redis_client {
-            if let Ok(mut conn) = client.get_multiplexed_async_connection().await {
-                let _: redis::RedisResult<()> = redis::cmd("PUBLISH")
-                    .arg(TENANT_INVALIDATION_CHANNEL)
-                    .arg(_cache_key)
-                    .query_async(&mut conn)
-                    .await;
-            }
-        }
+        let _ = self
+            .cache_service
+            .publish_invalidation(CacheInvalidationMessage::new(
+                TENANT_INVALIDATION_CHANNEL,
+                _cache_key,
+            ))
+            .await;
     }
 }
 
@@ -1023,14 +1017,14 @@ async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, val
 
 #[cfg(test)]
 mod invalidation_tests {
+    use super::{
+        CachedTenantMiss, resolve_identifier, should_bypass_tenant_resolution,
+        subdomain_identifier, tenant_context_from_model,
+    };
     #[cfg(feature = "redis-cache")]
     use super::{
-        parse_invalidation_payload, TenantInvalidationListenerState,
-        TenantInvalidationListenerStatus,
-    };
-    use super::{
-        resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
-        tenant_context_from_model, CachedTenantMiss,
+        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
+        parse_invalidation_payload,
     };
     use crate::common::{RustokSettings, TenantFallbackMode};
     use crate::models::tenants;
