@@ -212,7 +212,7 @@ pub struct GqlExecutionResult {
     pub changes: Option<async_graphql::Json<serde_json::Value>>,
 }
 
-#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
 #[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
 pub enum GqlExecutionPhase {
     Before,
@@ -353,4 +353,68 @@ pub struct UpdateScriptInput {
 pub struct RunScriptInput {
     pub script_name: String,
     pub params: Option<async_graphql::Json<serde_json::Value>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    fn execution_entry(phase: ExecutionPhase) -> ExecutionLogEntry {
+        ExecutionLogEntry {
+            id: Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap(),
+            script_id: Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap(),
+            script_name: "canonical_graphql_mapping".to_string(),
+            phase,
+            outcome: "failed".to_string(),
+            duration_ms: 321,
+            error: Some("sandbox timeout".to_string()),
+            user_id: Some("operator-9".to_string()),
+            tenant_id: Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap()),
+            created_at: Utc.with_ymd_and_hms(2026, 6, 19, 13, 30, 0).unwrap(),
+        }
+    }
+
+    #[test]
+    fn gql_execution_log_entry_preserves_canonical_transport_fields() {
+        let gql = GqlExecutionLogEntry::from(execution_entry(ExecutionPhase::Scheduled));
+
+        assert_eq!(
+            gql.id,
+            Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap()
+        );
+        assert_eq!(
+            gql.script_id,
+            Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap()
+        );
+        assert_eq!(gql.script_name, "canonical_graphql_mapping");
+        assert_eq!(gql.phase, GqlExecutionPhase::Scheduled);
+        assert_eq!(gql.outcome, "failed");
+        assert_eq!(gql.duration_ms, 321);
+        assert_eq!(gql.error.as_deref(), Some("sandbox timeout"));
+        assert_eq!(gql.user_id.as_deref(), Some("operator-9"));
+        assert_eq!(
+            gql.tenant_id,
+            Some(Uuid::parse_str("cccccccc-cccc-cccc-cccc-cccccccccccc").unwrap())
+        );
+        assert_eq!(
+            gql.created_at,
+            Utc.with_ymd_and_hms(2026, 6, 19, 13, 30, 0).unwrap()
+        );
+    }
+
+    #[test]
+    fn gql_execution_phase_mapping_covers_runtime_phases() {
+        let phases = [
+            (ExecutionPhase::Before, GqlExecutionPhase::Before),
+            (ExecutionPhase::After, GqlExecutionPhase::After),
+            (ExecutionPhase::OnCommit, GqlExecutionPhase::OnCommit),
+            (ExecutionPhase::Manual, GqlExecutionPhase::Manual),
+            (ExecutionPhase::Scheduled, GqlExecutionPhase::Scheduled),
+        ];
+
+        for (phase, expected) in phases {
+            assert_eq!(GqlExecutionPhase::from(phase), expected);
+        }
+    }
 }
