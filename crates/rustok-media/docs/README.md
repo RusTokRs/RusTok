@@ -14,6 +14,7 @@
 
 - `MediaService`, media entities/DTOs и контракт обновления переводов с нормализацией locale/text на runtime boundary;
 - типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers);
+- FBA provider-контракт `MediaAssetReadPort` / `media.asset_read.v1` с source-locked evidence для deadline/context guards и typed `PortError` retryability;
 - GraphQL- и REST-адаптеры модуля;
 - валидацию загрузок по size/MIME policy и tenant isolation до обращения к storage;
 - модульный admin UI package `rustok-media-admin` с FFA-разделением `core`/`transport`/`ui/leptos`;
@@ -27,7 +28,8 @@
 - `apps/server` остаётся composition root и wiring-слоем для media routes/graphql;
 - runtime guard опирается на tenant-scoped module enablement для публичных поверхностей;
 - загрузка остаётся REST-first path, GraphQL сохраняется для read/mutation flows без multipart-расширения, а Leptos admin adapter вызывает transport facade вместо raw API module; transport facade внутри admin package разделяет native server functions, GraphQL fallback и REST upload adapters, а upload/detail presentation state остаётся в Leptos-free `admin/src/core.rs`;
-- `rustok-seo` и owner SEO providers потребляют `MediaImageDescriptor` как единственную image boundary для OG/Twitter/schema fallback; descriptor normalization покрывает explicit MIME, invalid dimensions и query/fragment cleanup.
+- `rustok-seo` и owner SEO providers потребляют `MediaImageDescriptor` как единственную image boundary для OG/Twitter/schema fallback; descriptor normalization покрывает explicit MIME, invalid dimensions и query/fragment cleanup;
+- `MediaAssetReadPort` требует deadline semantics, UUID tenant context и возвращает typed `PortError`: validation/access/not-found ошибки non-retryable, storage/database failures retryable unavailable.
 
 ## Проверка
 

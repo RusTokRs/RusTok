@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "module": "media",
+  "role": "provider",
+  "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
+  "status": "source_locked_no_compile",
+  "port": "MediaAssetReadPort",
+  "source": "crates/rustok-media/src/ports.rs",
+  "context_guards": [
+    {
+      "condition": "tenant_id is not a UUID",
+      "kind": "validation",
+      "code": "media.invalid_tenant_id",
+      "retryable": false
+    },
+    {
+      "condition": "deadline_ms missing or zero before any read operation",
+      "kind": "timeout",
+      "code": "port.deadline_required",
+      "retryable": true
+    }
+  ],
+  "error_mappings": [
+    {
+      "source": "MediaError::NotFound",
+      "kind": "not_found",
+      "code": "media.not_found",
+      "retryable": false
+    },
+    {
+      "source": "MediaError::Forbidden",
+      "kind": "forbidden",
+      "code": "media.forbidden",
+      "retryable": false
+    },
+    {
+      "source": "MediaError::UnsupportedMimeType",
+      "kind": "validation",
+      "code": "media.unsupported_mime_type",
+      "retryable": false
+    },
+    {
+      "source": "MediaError::FileTooLarge",
+      "kind": "validation",
+      "code": "media.file_too_large",
+      "retryable": false
+    },
+    {
+      "source": "MediaError::InvalidLocale",
+      "kind": "validation",
+      "code": "media.invalid_locale",
+      "retryable": false
+    },
+    {
+      "source": "MediaError::Storage",
+      "kind": "unavailable",
+      "code": "media.storage",
+      "retryable": true
+    },
+    {
+      "source": "MediaError::Db",
+      "kind": "unavailable",
+      "code": "media.database",
+      "retryable": true
+    }
+  ],
+  "assertions": [
+    "all read operations require PortContext deadline semantics before tenant parsing and service access",
+    "tenant context parsing rejects non-UUID tenant identifiers as non-retryable validation errors",
+    "domain validation/access errors are non-retryable typed PortError values",
+    "storage and database failures are retryable unavailable typed PortError values"
+  ],
+  "runtime_execution": "pending_compile_allowed_iteration"
+}
