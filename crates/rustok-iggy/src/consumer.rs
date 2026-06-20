@@ -37,6 +37,31 @@ impl ConsumedEvent {
         self.connector_metadata.offset
     }
 
+    /// Validates that connector metadata belongs to the consumed stream/topic/partition.
+    ///
+    /// Real SDK ack implementations commit offsets by opaque connector token. This
+    /// guard prevents transport code from acknowledging a token captured from a
+    /// different backend cursor after DLQ/replay movement or manual tests mutate
+    /// metadata.
+    pub fn validate_connector_metadata(&self) -> Result<()> {
+        if self.connector_metadata.stream != self.stream
+            || self.connector_metadata.topic != self.topic
+            || self.connector_metadata.partition != self.partition
+        {
+            return Err(rustok_core::Error::External(format!(
+                "Consumed event {} connector metadata mismatch: expected {}/{}/{} got {}/{}/{}",
+                self.envelope.id,
+                self.stream,
+                self.topic,
+                self.partition,
+                self.connector_metadata.stream,
+                self.connector_metadata.topic,
+                self.connector_metadata.partition
+            )));
+        }
+        Ok(())
+    }
+
     /// Returns the opaque connector acknowledgement token when one is available.
     pub fn ack_token(&self) -> Option<&str> {
         self.connector_metadata.ack_token.as_deref()
@@ -151,6 +176,7 @@ impl ConsumerGroupManager {
         connector: &dyn IggyConnector,
         consumed: &ConsumedEvent,
     ) -> Result<()> {
+        consumed.validate_connector_metadata()?;
         let ack_token = consumed.ack_token().ok_or_else(|| {
             rustok_core::Error::External(format!(
                 "Consumed event {} has no connector ack token",
@@ -281,6 +307,66 @@ mod tests {
             consumed.connector_metadata.ack_token.as_deref(),
             Some("fake-ack-42")
         );
+        assert!(consumed.validate_connector_metadata().is_ok());
+    }
+
+    #[tokio::test]
+    async fn consumed_event_rejects_ack_metadata_from_different_cursor() {
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            DomainEvent::NodeCreated {
+                node_id: Uuid::new_v4(),
+                kind: "post".to_string(),
+                author_id: None,
+            },
+        );
+        let consumed = ConsumedEvent {
+            stream: "rustok".to_string(),
+            topic: "domain".to_string(),
+            partition: 1,
+            envelope,
+            connector_metadata: SubscriberMessageMetadata::new("rustok", "other", 1)
+                .with_offset(42)
+                .with_ack_token("fake-ack-42"),
+        };
+
+        let result = consumed.validate_connector_metadata();
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("connector metadata mismatch"));
+    }
+
+    #[tokio::test]
+    async fn ack_consumed_rejects_metadata_mismatch_before_subscribing() {
+        let envelope = EventEnvelope::new(
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            DomainEvent::NodeCreated {
+                node_id: Uuid::new_v4(),
+                kind: "post".to_string(),
+                author_id: None,
+            },
+        );
+        let consumed = ConsumedEvent {
+            stream: "rustok".to_string(),
+            topic: "domain".to_string(),
+            partition: 1,
+            envelope,
+            connector_metadata: SubscriberMessageMetadata::new("wrong", "domain", 1)
+                .with_offset(42)
+                .with_ack_token("fake-ack-42"),
+        };
+        let manager = ConsumerGroupManager::new();
+
+        let result = manager
+            .ack_consumed(&FakeConnector::new(None), &consumed)
+            .await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]
