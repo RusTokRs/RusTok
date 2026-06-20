@@ -6,8 +6,8 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Добавлены `CacheBackendOptions`, per-call backend construction options, Redis circuit breaker override path и instrumented backend stats для всех backend factory results.
-- Next step: Реализовать generic cache loader/coalescing contract поверх `CacheBackend` без размазывания anti-stampede logic по host-слою.
+- Last checkpoint: Добавлен generic `CacheService::load_or_fill` / `CacheLoadResult` contract с per-key coalescing поверх `CacheBackend`, in-flight diagnostics и unit coverage для hit/coalesced paths.
+- Next step: Подключить anti-stampede helper в host/runtime cache call sites и продолжить Redis pub/sub invalidation generalization.
 - Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем продолжить anti-stampede helper и Redis pub/sub generalization.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
@@ -35,7 +35,7 @@ manifest/doc contract.
 
 ### 2. Runtime hardening
 
-- [ ] завершить anti-stampede коалесцинг;
+- [x] завершить anti-stampede коалесцинг;
 - [x] завершить circuit breaker для Redis backend на уровне cache factory options;
 - [ ] завершить Redis pub/sub invalidation между инстансами.
 
@@ -50,7 +50,7 @@ manifest/doc contract.
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для backend selection, fallback и health semantics
+- targeted runtime tests для backend selection, fallback, `load_or_fill` coalescing и health semantics
 
 ## Правила обновления
 

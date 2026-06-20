@@ -10,6 +10,7 @@ in-memory cache implementations.
 - Provide `CacheModule` metadata for the runtime registry.
 - Own `CacheService`, `CacheBackendOptions`, and backend selection logic.
 - Expose cache health information and lightweight hit/miss/invalidation statistics to server runtime wiring.
+- Provide `CacheService::load_or_fill` as the generic per-key loader/coalescing contract for anti-stampede protection.
 - Keep Redis circuit breaker configuration centralized at the cache factory boundary.
 
 ## Interactions
@@ -26,6 +27,7 @@ in-memory cache implementations.
 - `CacheService`
 - `CacheHealthReport`
 - `CacheBackendOptions`
+- `CacheLoadResult` / `CacheLoadSource`
 
 ## Docs
 

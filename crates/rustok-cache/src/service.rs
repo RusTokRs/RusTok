@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -5,6 +7,7 @@ use std::time::Duration;
 use rustok_core::{CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
 #[cfg(feature = "redis-cache")]
 use rustok_core::{CircuitBreakerConfig, RedisCacheBackend};
+use tokio::sync::Mutex;
 
 /// Shared cache service providing backend creation from a centralized Redis connection.
 ///
@@ -17,6 +20,7 @@ pub struct CacheService {
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
     default_backend_options: CacheBackendOptions,
+    loaders: Arc<CacheLoadCoordinator>,
 }
 
 /// Backend construction options used by `CacheService`.
@@ -75,6 +79,7 @@ impl CacheService {
             redis_url,
             redis_client,
             default_backend_options: options,
+            loaders: Arc::new(CacheLoadCoordinator::default()),
         }
     }
 
@@ -82,6 +87,7 @@ impl CacheService {
     pub fn from_url_with_options(_url: Option<&str>, options: CacheBackendOptions) -> Self {
         Self {
             default_backend_options: options,
+            loaders: Arc::new(CacheLoadCoordinator::default()),
         }
     }
 
@@ -191,6 +197,35 @@ impl CacheService {
         }
     }
 
+    /// Load a cache entry with per-key request coalescing.
+    ///
+    /// The first caller for a missing key runs `loader`; concurrent callers for the same key
+    /// wait for that fill and then read the populated backend. This keeps anti-stampede logic
+    /// at the cache capability boundary instead of duplicating it in host modules.
+    pub async fn load_or_fill<F, Fut>(
+        &self,
+        backend: Arc<dyn CacheBackend>,
+        key: impl Into<String>,
+        ttl: Option<Duration>,
+        loader: F,
+    ) -> rustok_core::Result<CacheLoadResult>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = rustok_core::Result<Vec<u8>>>,
+    {
+        self.loaders
+            .load_or_fill(backend, key.into(), ttl, loader)
+            .await
+    }
+
+    /// Returns currently tracked in-flight loader keys.
+    ///
+    /// This is primarily an operability/debugging signal; entries are removed once a fill
+    /// completes and waiters have re-read the backend.
+    pub async fn in_flight_loads(&self) -> usize {
+        self.loaders.in_flight().await
+    }
+
     /// Health check: verify Redis connectivity (if configured).
     pub async fn health(&self) -> CacheHealthReport {
         let mut report = CacheHealthReport {
@@ -230,6 +265,105 @@ impl CacheService {
         }
 
         report
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheLoadSource {
+    /// Value was already present before this call.
+    Hit,
+    /// This call executed the loader and stored the result.
+    Filled,
+    /// Another concurrent caller filled the key while this call waited.
+    Coalesced,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheLoadResult {
+    pub value: Vec<u8>,
+    pub source: CacheLoadSource,
+}
+
+#[derive(Default)]
+struct CacheLoadCoordinator {
+    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+}
+
+impl CacheLoadCoordinator {
+    async fn load_or_fill<F, Fut>(
+        &self,
+        backend: Arc<dyn CacheBackend>,
+        key: String,
+        ttl: Option<Duration>,
+        loader: F,
+    ) -> rustok_core::Result<CacheLoadResult>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = rustok_core::Result<Vec<u8>>>,
+    {
+        if let Some(value) = backend.get(&key).await? {
+            return Ok(CacheLoadResult {
+                value,
+                source: CacheLoadSource::Hit,
+            });
+        }
+
+        let gate = self.gate_for(&key).await;
+        let _guard = gate.lock().await;
+
+        if let Some(value) = backend.get(&key).await? {
+            self.remove_gate(&key, &gate).await;
+            return Ok(CacheLoadResult {
+                value,
+                source: CacheLoadSource::Coalesced,
+            });
+        }
+
+        let value = match loader().await {
+            Ok(value) => value,
+            Err(err) => {
+                self.remove_gate(&key, &gate).await;
+                return Err(err);
+            }
+        };
+
+        let store_result = match ttl {
+            Some(ttl) => backend.set_with_ttl(key.clone(), value.clone(), ttl).await,
+            None => backend.set(key.clone(), value.clone()).await,
+        };
+        if let Err(err) = store_result {
+            self.remove_gate(&key, &gate).await;
+            return Err(err);
+        }
+
+        self.remove_gate(&key, &gate).await;
+        Ok(CacheLoadResult {
+            value,
+            source: CacheLoadSource::Filled,
+        })
+    }
+
+    async fn gate_for(&self, key: &str) -> Arc<Mutex<()>> {
+        let mut locks = self.locks.lock().await;
+        Arc::clone(
+            locks
+                .entry(key.to_string())
+                .or_insert_with(|| Arc::new(Mutex::new(()))),
+        )
+    }
+
+    async fn remove_gate(&self, key: &str, gate: &Arc<Mutex<()>>) {
+        let mut locks = self.locks.lock().await;
+        if locks
+            .get(key)
+            .is_some_and(|current| Arc::ptr_eq(current, gate) && Arc::strong_count(current) <= 2)
+        {
+            locks.remove(key);
+        }
+    }
+
+    async fn in_flight(&self) -> usize {
+        self.locks.lock().await.len()
     }
 }
 
@@ -337,6 +471,7 @@ fn resolve_redis_url() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
 
     #[tokio::test]
     async fn instrumented_backend_tracks_hits_misses_and_invalidations() {
@@ -359,6 +494,76 @@ mod tests {
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.evictions, 1);
         assert_eq!(stats.entries, 0);
+    }
+
+    #[tokio::test]
+    async fn load_or_fill_coalesces_concurrent_misses() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let first = {
+            let service = service.clone();
+            let backend = Arc::clone(&backend);
+            let calls = Arc::clone(&calls);
+            tokio::spawn(async move {
+                service
+                    .load_or_fill(backend, "shared", None, move || async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                        Ok(b"filled".to_vec())
+                    })
+                    .await
+                    .unwrap()
+            })
+        };
+
+        tokio::time::sleep(Duration::from_millis(1)).await;
+
+        let second = {
+            let service = service.clone();
+            let backend = Arc::clone(&backend);
+            let calls = Arc::clone(&calls);
+            tokio::spawn(async move {
+                service
+                    .load_or_fill(backend, "shared", None, move || async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(b"duplicate".to_vec())
+                    })
+                    .await
+                    .unwrap()
+            })
+        };
+
+        let first = first.await.unwrap();
+        let second = second.await.unwrap();
+
+        assert_eq!(first.value, b"filled".to_vec());
+        assert_eq!(second.value, b"filled".to_vec());
+        assert_eq!(first.source, CacheLoadSource::Filled);
+        assert_eq!(second.source, CacheLoadSource::Coalesced);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(service.in_flight_loads().await, 0);
+    }
+
+    #[tokio::test]
+    async fn load_or_fill_reports_existing_hit_without_loader() {
+        let service = CacheService::from_url(None);
+        let backend = service.memory_backend(Duration::from_secs(60), 16);
+        backend
+            .set("cached".to_string(), b"ready".to_vec())
+            .await
+            .unwrap();
+
+        let result = service
+            .load_or_fill(Arc::clone(&backend), "cached", None, || async {
+                Ok(b"should-not-run".to_vec())
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.value, b"ready".to_vec());
+        assert_eq!(result.source, CacheLoadSource::Hit);
     }
 
     #[tokio::test]
