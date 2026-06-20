@@ -6,17 +6,17 @@
 ## Execution checkpoint
 
 - Current phase: phase_d_rollout_hardened
-- Last checkpoint: FW-6 (Wave 1 evidence hardening) расширил static gate `npm run verify:page-builder:consumer:forum`: помимо live mode/wave, audit trail, fallback profiles, no-5xx read guarantees, SLO pass, keep decision, approvals и waiver-free evidence, gate теперь проверяет smoke-key completeness, допустимые degraded outcomes, numeric live metrics against thresholds и forum-owned observability trace keys без `pages` drift.
-- Next step: Steady-state maintenance, periodic evidence refresh and integration with new platform features
+- Last checkpoint: FW-7 (steady-state evidence refresh guardrail) закрепил machine-readable refresh policy в live Wave 1 evidence и расширил static gate `npm run verify:page-builder:consumer:forum`: gate теперь требует monthly refresh cadence, max-age <= 45 days, обязательные секции audit/fallback/metrics/traces/rollback/approvals/waivers и rollout-block action для stale evidence.
+- Next step: Steady-state maintenance: refresh Wave evidence by the pinned monthly policy, keep no-compile gate green, and integrate only compatible platform features
 - Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-19T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback and approvals.
+- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, stale evidence blocks rollout until refreshed).
 - Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
@@ -25,7 +25,7 @@
   - storefront FFA slice добавил `storefront/src/core.rs` для framework-agnostic href/status/rich-content policy, count/slug label rendering, category/topic card view-model mapping, accent/class/status badge policy, `storefront/src/transport.rs` facade поверх existing native-first + GraphQL fallback API и explicit Leptos adapter `storefront/src/ui/leptos.rs`; `storefront/src/lib.rs` теперь только wires modules и re-export `ForumView`;
   - admin FFA slice добавил `admin/src/core.rs` для framework-agnostic tag parsing, category-filter normalization, selected category filter label policy, count/status helpers, collection empty/ready/error classification, category/topic form snapshots, submit validation и category/topic card view-model mapping, category sidebar mapping, reply-stack view-model mapping, page-level header selection, loaded-result metric count policy, route/query intent policy, category matrix/composer-form labels, topic stream/inspector-form labels, reply preview labels, `admin/src/transport/graphql_adapter.rs` для GraphQL-first admin CRUD/read path, `admin/src/transport.rs` facade с REST fallback и explicit Leptos adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `ForumAdmin`;
   - parity evidence: storefront native+GraphQL contracts не затронуты; admin transport profile закрывает прежний REST-only gap через GraphQL-first adapter plus REST fallback; server GraphQL contract расширен admin detail/read fields (`forumCategory`, `forumTopic`, `contentJson`, category `parentId`/`position`/`moderated`) и category update/delete mutations; admin pure-core coverage расширено unit-тестами для selected category filter label policy, collection state classification, category/topic form snapshots, submit validation и card view-model mapping, category sidebar mapping, reply-stack view-model mapping, header selection, loaded-result counting и route/query intents, typed busy-key construction, form/transport error message policy, topic form/sidebar presentation helpers, tag-chip/position parsing, sidebar/status CSS class policy, title envelope policy, placeholder policy, SEO copy mapping, delete outcome policy, exact item-id matching для busy/deleted-selection state, category matrix/composer-form labels, topic stream/inspector-form labels, reply preview labels, moderator-note/sidebar copy envelopes, metric accent policy и action-button style policy, storefront count/slug label policy, category/topic card class policy, accent fallback и status badge mapping, а fast boundary guardrails `scripts/verify/verify-forum-admin-boundary.mjs` и `scripts/verify/verify-forum-storefront-boundary.mjs` закрепляют admin/storefront core/transport/ui split без долгой компиляции, а `scripts/verify/verify-forum-admin-boundary.test.mjs` и `scripts/verify/verify-forum-storefront-boundary.test.mjs` фиксируют negative fixtures и включение forum boundary fixtures в aggregate FFA test script; `npm run verify:page-builder:consumer:forum` теперь дополнительно фиксирует FW-2 fallback contract markers (`builder_off`, `publish_off`, `readonly`, `degraded`, `hidden`, no-5xx forum routes) и валидирует `contracts/evidence/fw2-fallback-static-matrix.json` с source-marker assertions для read/moderation paths без запуска компиляции; `cargo check -p rustok-forum-admin` является targeted gate для admin package;
-- Last verified at (UTC): 2026-06-19T00:00:00Z
+- Last verified at (UTC): 2026-06-20T00:00:00Z
 - Owner: `rustok-forum` module team
 
 ## Область работ
@@ -135,3 +135,10 @@
 - [x] Расширить no-compile gate для Wave 1 evidence: smoke-профили обязаны содержать `list/open/preview/save_draft/publish_dry`, read smoke должен проходить, а degraded outcomes ограничены typed feature-disabled/readonly fallback.
 - [x] Валидировать `live_wave1_actual:*` метрики как числа и сравнивать их с SLO thresholds внутри evidence packet.
 - [x] Зафиксировать forum-owned observability trace keys (`builder_write_to_forum_publish`, `forum_publish_to_storefront_read`) и запрещать pages-owned drift в forum evidence.
+
+
+### FW-7 — Steady-state evidence refresh policy
+
+- [x] Зафиксировать machine-readable refresh policy прямо в `forum-wave1-rollout-evidence.json`: monthly cadence, `max_age_days <= 45`, next due timestamp, owner, required gate and stale-evidence rollout block action.
+- [x] Расширить `npm run verify:page-builder:consumer:forum` так, чтобы no-compile gate проверял обязательные refresh sections: audit trail, fallback profiles, observability metrics/traces, rollback decision, approvals and waivers.
+- [x] Синхронизировать local/central docs: steady-state maintenance теперь означает evidence refresh по policy, а не prose-only напоминание.

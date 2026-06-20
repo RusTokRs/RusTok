@@ -10,6 +10,12 @@ use super::{
     GqlScriptStatus, require_admin, runtime_from_graphql_ctx,
 };
 
+pub const EXECUTION_HISTORY_GRAPHQL_FIELDS: &[&str] = &[
+    "scriptExecutions",
+    "scriptExecutionHistory",
+    "recentScriptExecutions",
+];
+
 #[derive(Default)]
 pub struct AlloyQuery;
 
@@ -239,5 +245,22 @@ impl AlloyQuery {
             page_info: PageInfo::new(total, offset, limit),
             items: entries,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EXECUTION_HISTORY_GRAPHQL_FIELDS;
+
+    #[test]
+    fn execution_history_graphql_fields_match_public_schema_contract() {
+        assert_eq!(
+            EXECUTION_HISTORY_GRAPHQL_FIELDS,
+            &[
+                "scriptExecutions",
+                "scriptExecutionHistory",
+                "recentScriptExecutions",
+            ]
+        );
     }
 }

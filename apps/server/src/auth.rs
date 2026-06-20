@@ -9,8 +9,6 @@ use loco_rs::app::AppContext;
 use crate::error::{Error, Result};
 use serde::Deserialize;
 
-const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30;
-
 // ─── Loco bridge ─────────────────────────────────────────────────────
 // Thin wrappers that convert `rustok_auth::AuthError` → `loco_rs::Error`.
 // All server code imports from `crate::auth`, never directly from `rustok_auth`.
@@ -40,58 +38,7 @@ fn auth_config_from_parts(
     access_expiration: u64,
     auth_settings: AuthSettingsOverrides,
 ) -> Result<AuthConfig> {
-    let refresh_expiration = auth_settings
-        .refresh_expiration
-        .unwrap_or(DEFAULT_REFRESH_EXPIRATION_SECS);
-
-    let mut config = AuthConfig::new(secret).with_expiration(access_expiration, refresh_expiration);
-
-    if let Some(issuer) = auth_settings.issuer {
-        config = config.with_issuer(issuer);
-    }
-    if let Some(audience) = auth_settings.audience {
-        config = config.with_audience(audience);
-    }
-    if let Some(algorithm) = auth_settings.algorithm {
-        config.algorithm = algorithm;
-    }
-
-    config.rsa_private_key_pem = resolve_key_material(
-        auth_settings.rsa_private_key_pem,
-        auth_settings.rsa_private_key_env,
-    )?;
-    config.rsa_public_key_pem = resolve_key_material(
-        auth_settings.rsa_public_key_pem,
-        auth_settings.rsa_public_key_env,
-    )?;
-
-    validate_auth_config(&config)?;
-    Ok(config)
-}
-
-fn resolve_key_material(
-    inline_pem: Option<String>,
-    env_name: Option<String>,
-) -> Result<Option<String>> {
-    if let Some(env_name) = env_name.filter(|name| !name.trim().is_empty()) {
-        let value = std::env::var(&env_name).map_err(|_| Error::InternalServerError)?;
-        if value.trim().is_empty() {
-            return Err(Error::InternalServerError);
-        }
-        return Ok(Some(value));
-    }
-
-    Ok(inline_pem.filter(|pem| !pem.trim().is_empty()))
-}
-
-fn validate_auth_config(config: &AuthConfig) -> Result<()> {
-    if config.algorithm == JwtAlgorithm::RS256
-        && (config.rsa_private_key_pem.is_none() || config.rsa_public_key_pem.is_none())
-    {
-        return Err(Error::InternalServerError);
-    }
-
-    Ok(())
+    rustok_auth::build_auth_config(secret, access_expiration, auth_settings).map_err(auth_err)
 }
 
 // ─── Token functions ─────────────────────────────────────────────────
@@ -242,7 +189,7 @@ mod tests {
 
         assert_eq!(config.algorithm, JwtAlgorithm::HS256);
         assert_eq!(config.access_expiration, 900);
-        assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
+        assert_eq!(config.refresh_expiration, 60 * 60 * 24 * 30);
         assert!(config.rsa_private_key_pem.is_none());
         assert!(config.rsa_public_key_pem.is_none());
     }

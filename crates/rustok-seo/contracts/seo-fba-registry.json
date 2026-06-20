@@ -10,10 +10,21 @@
       "registry": "crates/rustok-media/contracts/media-fba-registry.json",
       "contract_version": "media.asset_read.v1",
       "port": "MediaAssetReadPort",
-      "operations": ["get_image_descriptor", "get_asset"],
-      "required_profiles": ["in_process", "remote_adapter_placeholder"],
-      "fallback_profiles": ["embedded_native"],
-      "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image"],
+      "operations": [
+        "get_image_descriptor",
+        "get_asset"
+      ],
+      "required_profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "omit_image_metadata",
+        "keep_existing_seo_image"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError"
     }
@@ -22,29 +33,49 @@
     "local_plan": "crates/rustok-seo/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-seo-fba.mjs",
-    "static_matrix": "crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json"
+    "static_matrix": "crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json",
+    "provider_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
     "source": "crates/rustok-seo/contracts/seo-fba-registry.json",
     "runner": "scripts/verify/verify-seo-fba.mjs",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
       {
         "provider": "media",
         "operation": "get_image_descriptor",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "seo_descriptor_normalization_preserved", "degraded_omit_image_metadata_on_unavailable"]
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "seo_descriptor_normalization_preserved",
+          "degraded_omit_image_metadata_on_unavailable"
+        ]
       },
       {
         "provider": "media",
         "operation": "get_asset",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "degraded_keep_existing_seo_image_on_unavailable"]
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "degraded_keep_existing_seo_image_on_unavailable"
+        ]
       }
     ],
     "fallback_smoke": {
-      "status": "planned",
-      "profiles": ["embedded_native"],
-      "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image"]
+      "status": "source_locked_pending_consumer_runtime",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "omit_image_metadata",
+        "keep_existing_seo_image"
+      ],
+      "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+      "consumer_runtime_evidence": "pending"
     }
   }
 }

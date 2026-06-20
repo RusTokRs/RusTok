@@ -12,7 +12,7 @@ runtime RBAC surface `users:*`.
 
 ## Зона ответственности
 
-- конфигурация auth и JWT-алгоритмов;
+- конфигурация auth, JWT-алгоритмов и host-provided override assembly/validation;
 - encode/decode helpers для access/reset/invite/email-verification token flows;
 - password hashing, verify и refresh-token helpers;
 - auth-owned migrations;
@@ -25,6 +25,14 @@ runtime RBAC surface `users:*`.
 - `apps/server` сверяет registry wiring и GraphQL security hints с `AUTH_USER_PERMISSIONS`, чтобы host-слой не расходился с auth-owned permission surface;
 - не публикует собственный UI и остаётся `ui_classification = "capability_only"`;
 - email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
+
+## Поверхность config lifecycle
+
+Каноническая сборка `AuthConfig` выполняется через `build_auth_config` /
+`build_auth_config_with_env`: host передаёт Loco/другой framework config, а
+`rustok-auth` применяет defaults, `AuthSettingsOverrides`, RS256 env key
+resolution и validation. `apps/server` не должен дублировать эти правила, а
+только маппить `AuthError` в transport-specific error type.
 
 ## Поверхность token lifecycle
 

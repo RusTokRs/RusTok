@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "module": "payment",
+  "packet": "provider-spi-runtime-mode-smoke",
+  "status": "runtime_mode_smoke_locked",
+  "generated_from": "crates/rustok-payment/contracts/payment-fba-registry.json",
+  "runner": "scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
+  "source_contract": "crates/rustok-payment/src/providers.rs",
+  "execution_scope": "no_compile_static_runtime_contract_evidence",
+  "promotion_gate": "does_not_raise_boundary_ready_without_live_adapter_execution",
+  "runtime_mode_cases": [
+    {
+      "case": "missing_provider",
+      "expected_error": "not registered",
+      "assertions": [
+        "registry_lookup_before_adapter_invocation",
+        "typed_owner_error_mapping",
+        "no_provider_side_effect"
+      ]
+    },
+    {
+      "case": "unsupported_operation",
+      "expected_error": "does not support",
+      "assertions": [
+        "capability_check_before_adapter_invocation",
+        "typed_owner_error_mapping",
+        "no_provider_side_effect"
+      ]
+    },
+    {
+      "case": "unknown_operation",
+      "expected_error": "unknown payment provider operation",
+      "assertions": [
+        "operation_allowlist_before_adapter_invocation",
+        "typed_owner_error_mapping",
+        "no_provider_side_effect"
+      ]
+    },
+    {
+      "case": "degraded_provider",
+      "expected_can_execute": true,
+      "assertions": [
+        "degraded_mode_propagated",
+        "fallback_profile_required",
+        "adapter_invocation_remains_owner_controlled"
+      ]
+    },
+    {
+      "case": "unavailable_provider",
+      "expected_can_execute": false,
+      "assertions": [
+        "unavailable_maps_to_non_executable",
+        "fallback_profile_required",
+        "adapter_invocation_blocked_by_owner"
+      ]
+    }
+  ],
+  "registration_cases": [
+    {
+      "case": "descriptor_id_mismatch",
+      "expected_error": "does not match registration id"
+    },
+    {
+      "case": "adapter_descriptor_mismatch",
+      "expected_error": "does not match descriptor id"
+    },
+    {
+      "case": "duplicate_provider",
+      "expected_error": "already registered"
+    },
+    {
+      "case": "non_ready_without_degraded_mode",
+      "expected_error": "must declare degraded mode"
+    },
+    {
+      "case": "unavailable_default_provider",
+      "expected_error": "cannot be default"
+    }
+  ],
+  "webhook_runtime_case": {
+    "adapter_operation": "handle_webhook",
+    "assertions": [
+      "idempotency_key_required_by_contract",
+      "raw_payload_audit_required",
+      "owner_service_replay_guard_required"
+    ]
+  }
+}

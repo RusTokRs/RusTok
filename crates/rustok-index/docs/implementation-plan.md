@@ -5,22 +5,23 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_in_progress
-- Last checkpoint: Admin overview переведён на FFA shape: Leptos-free `core.rs`, native-only `transport/` facade и явный `ui/leptos.rs` adapter.
-- Next step: Расширить operator flows для health/rebuild control и добавить GraphQL/REST fallback только если такой remote/headless admin contract будет утверждён.
+- Current phase: phase_b_in_progress + fba_provider_static_evidence
+- Last checkpoint: Admin overview переведён на FFA shape: Leptos-free `core.rs`, native-only `transport/` facade и явный `ui/leptos.rs` adapter; FBA slice #1 добавил `IndexReadModelPort` / `IndexRebuildPort`, registry `crates/rustok-index/contracts/index-fba-registry.json`, static matrix `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` и fast gate `npm run verify:index:fba` без долгой компиляции.
+- Next step: Закрыть runtime contract execution/fallback smoke для `IndexReadModelPort` / `IndexRebuildPort` и только затем рассматривать повышение выше `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-08T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - admin package split introduced `admin/src/core.rs` for Leptos-free view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-index` had no legacy GraphQL/REST operator contract for this overview;
-  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`.
+  - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
+  - FBA provider slice: `crates/rustok-index/src/ports.rs` declares `IndexReadModelPort` / `index.read_model.v1` for indexed document reads and `IndexRebuildPort` / `index.rebuild.v1` for operator rebuild orchestration with typed `PortContext`/`PortError`, tenant-scope preservation, read deadline semantics and write idempotency tracing for rebuilds; `crates/rustok-index/contracts/index-fba-registry.json` plus `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:index:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`.
 
 ## Область работ
 
