@@ -8,34 +8,54 @@
     {
       "name": "MediaAssetReadPort",
       "owner": "media",
-      "operations": ["get_asset", "list_assets", "get_image_descriptor", "get_translations"],
+      "operations": [
+        "get_asset",
+        "list_assets",
+        "get_image_descriptor",
+        "get_translations"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": false,
       "deadline_required": true,
       "write_operations": [],
-      "read_operations": ["get_asset", "list_assets", "get_image_descriptor", "get_translations"]
+      "read_operations": [
+        "get_asset",
+        "list_assets",
+        "get_image_descriptor",
+        "get_translations"
+      ]
     }
   ],
   "consumers": [
     {
       "module": "seo",
       "profile": "seo_image_descriptor",
-      "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image"],
-      "fallback_profiles": ["embedded_native"]
+      "degraded_modes": [
+        "omit_image_metadata",
+        "keep_existing_seo_image"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     },
     {
       "module": "ai-media",
       "profile": "ai_asset_descriptor",
-      "degraded_modes": ["skip_asset_enrichment"],
-      "fallback_profiles": ["embedded_native"]
+      "degraded_modes": [
+        "skip_asset_enrichment"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     }
   ],
   "evidence": {
     "local_plan": "crates/rustok-media/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-media-fba.mjs",
-    "static_matrix": "crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json"
+    "static_matrix": "crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
   },
   "in_process_provider_impl": {
     "service": "MediaService",
@@ -46,17 +66,69 @@
     "status": "planned_cases_locked",
     "source": "crates/rustok-media/contracts/media-fba-registry.json",
     "runner": "scripts/verify/verify-media-fba.mjs",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
-      {"operation": "get_asset", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
-      {"operation": "list_assets", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
-      {"operation": "get_image_descriptor", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "seo_descriptor_normalization_preserved"]},
-      {"operation": "get_translations", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "locale_fallback_input_preserved"]}
+      {
+        "operation": "get_asset",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "list_assets",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "get_image_descriptor",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "seo_descriptor_normalization_preserved"
+        ]
+      },
+      {
+        "operation": "get_translations",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "locale_fallback_input_preserved"
+        ]
+      }
     ],
     "fallback_smoke": {
-      "status": "planned",
-      "profiles": ["embedded_native"],
-      "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image", "skip_asset_enrichment"]
+      "status": "source_locked",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "omit_image_metadata",
+        "keep_existing_seo_image",
+        "skip_asset_enrichment"
+      ],
+      "source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
     }
   }
 }
