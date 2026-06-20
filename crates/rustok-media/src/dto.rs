@@ -84,6 +84,14 @@ pub struct MediaTranslationItem {
     pub caption: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+pub enum MediaImageDeliveryProfile {
+    AbsolutePublicUrl,
+    RootRelativePublicUrl,
+    StorageRelativePath,
+    OpaqueReference,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct MediaImageDescriptor {
     pub url: String,
@@ -154,6 +162,31 @@ impl MediaImageDescriptor {
     pub fn file_extension(&self) -> Option<String> {
         file_extension(self.url.as_str())
     }
+
+    pub fn delivery_profile(&self) -> MediaImageDeliveryProfile {
+        delivery_profile(self.url.as_str())
+    }
+
+    pub fn is_publicly_addressable(&self) -> bool {
+        matches!(
+            self.delivery_profile(),
+            MediaImageDeliveryProfile::AbsolutePublicUrl
+                | MediaImageDeliveryProfile::RootRelativePublicUrl
+        )
+    }
+}
+
+fn delivery_profile(url: &str) -> MediaImageDeliveryProfile {
+    let trimmed = url.trim();
+    if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+        MediaImageDeliveryProfile::AbsolutePublicUrl
+    } else if trimmed.starts_with('/') {
+        MediaImageDeliveryProfile::RootRelativePublicUrl
+    } else if trimmed.contains('/') {
+        MediaImageDeliveryProfile::StorageRelativePath
+    } else {
+        MediaImageDeliveryProfile::OpaqueReference
+    }
 }
 
 fn normalize_string(value: Option<String>) -> Option<String> {
@@ -189,7 +222,7 @@ pub const DEFAULT_MAX_SIZE: u64 = 50 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests {
-    use super::{MediaImageDescriptor, UpsertTranslationInput};
+    use super::{MediaImageDeliveryProfile, MediaImageDescriptor, UpsertTranslationInput};
 
     #[test]
     fn upsert_translation_input_normalizes_locale_and_optional_text() {
@@ -291,6 +324,39 @@ mod tests {
         assert_eq!(descriptor.file_extension().as_deref(), Some("png"));
         assert_eq!(descriptor.pixel_count(), Some(51200));
         assert_eq!(descriptor.aspect_ratio(), Some(2.0));
+        assert_eq!(
+            descriptor.delivery_profile(),
+            MediaImageDeliveryProfile::AbsolutePublicUrl
+        );
+        assert!(descriptor.is_publicly_addressable());
+    }
+
+    #[test]
+    fn media_image_descriptor_classifies_public_and_storage_delivery_profiles() {
+        let root_relative =
+            MediaImageDescriptor::from_parts("/media/hero.jpg", None, None, None, None)
+                .expect("root-relative URL should create descriptor");
+        let storage_relative =
+            MediaImageDescriptor::from_parts("tenant/object.webp", None, None, None, None)
+                .expect("storage path should create descriptor");
+        let opaque = MediaImageDescriptor::from_parts("asset-key", None, None, None, None)
+            .expect("opaque key should create descriptor");
+
+        assert_eq!(
+            root_relative.delivery_profile(),
+            MediaImageDeliveryProfile::RootRelativePublicUrl
+        );
+        assert!(root_relative.is_publicly_addressable());
+        assert_eq!(
+            storage_relative.delivery_profile(),
+            MediaImageDeliveryProfile::StorageRelativePath
+        );
+        assert!(!storage_relative.is_publicly_addressable());
+        assert_eq!(
+            opaque.delivery_profile(),
+            MediaImageDeliveryProfile::OpaqueReference
+        );
+        assert!(!opaque.is_publicly_addressable());
     }
 
     #[test]

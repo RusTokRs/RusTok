@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: FBA media asset read provider metadata
-- Last checkpoint: no-compile FBA port-error slice locked `MediaAssetReadPort` / `media.asset_read.v1` typed error evidence in `crates/rustok-media/contracts/evidence/media-port-error-matrix.json`, added source-level tests for tenant context parsing and `MediaError -> PortError` retryability, and extended the fast guardrail script `npm run verify:media:fba` without compilation. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
-- Next step: когда компиляции снова разрешены, запустить executable runtime contract/fallback smoke для `MediaAssetReadPort` и затем добрать DB-backed integration tests для `cleanup_storage_orphans` без изменения transport parity.
+- Current phase: FBA media asset read provider metadata + public URL policy helpers
+- Last checkpoint: no-compile media slice added explicit read deadline guard helper for `MediaAssetReadPort`, delivery profile helpers on `MediaImageDescriptor`, cleanup report operability helpers, source-level tests, and extended `npm run verify:media:fba` static coverage without compilation. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
+- Next step: когда компиляции снова разрешены, запустить executable runtime contract/fallback smoke для `MediaAssetReadPort`, затем добрать DB-backed integration tests для `cleanup_storage_orphans` и подтвердить новые delivery profile/report helpers компиляцией.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
-- Last updated at (UTC): 2026-06-19T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## FFA/FBA status
 
@@ -37,7 +37,7 @@
 - media metadata хранится в module-owned tables, а бинарные файлы остаются в `rustok-storage`;
 - upload остаётся REST-first path, GraphQL покрывает read/write flows без multipart semantics;
 - module-owned admin UI и observability surface уже входят в модульный contract;
-- typed `MediaImageDescriptor` введён как cross-module boundary для SEO image payload (`url/alt/size/mime` + derived helpers) и покрыт edge-case normalization tests для explicit MIME, invalid dimensions, query/fragment cleanup.
+- typed `MediaImageDescriptor` введён как cross-module boundary для SEO image payload (`url/alt/size/mime` + derived helpers), дополнен delivery profile policy (`absolute/root-relative public URL`, `storage-relative path`, `opaque reference`) и покрыт edge-case normalization tests для explicit MIME, invalid dimensions, query/fragment cleanup.
 
 ## Этапы
 

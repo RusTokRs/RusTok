@@ -8,6 +8,8 @@ manifest/doc contract.
 - Current phase: ffa_admin_slice
 - Last checkpoint: Добавлен no-compile FFA boundary verifier `verify-outbox-admin-boundary.mjs` и fixture suite для read-only admin split; guardrail фиксирует отсутствие raw server-function/transport calls в UI, Leptos-free core и native-only transport facade.
 - Next step: Расширить relay/backlog/DLQ evidence без долгой full-workspace компиляции и затем заменить static FBA evidence живым runtime contract/fallback smoke, когда компиляции снова разрешены.
+- Last checkpoint: Добавлен быстрый boundary verifier `npm run verify:outbox:admin-boundary`, который закрепляет отсутствие raw server-function/transport reach-through в UI и Leptos/server-function leakage в core layer.
+- Next step: Расширить relay/backlog evidence и runtime contract smoke без долгой full-workspace компиляции.
 - Open blockers: None.
 - Hand-off notes for next agent: Сохранять read-only admin UI поверх module-owned transport facade; не переносить relay/runtime ownership в host UI.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
@@ -21,6 +23,8 @@ manifest/doc contract.
   - admin UI имеет явный FFA split: `admin/src/lib.rs` только wiring/re-export, `admin/src/core.rs` содержит Leptos-free DTO/view-model helpers, `admin/src/transport/` владеет native server-function facade, `admin/src/ui/leptos.rs` владеет Leptos rendering;
   - GraphQL/REST fallback не добавлялся в этом срезе, потому что legacy outbox admin surface был native-only read-only bootstrap; это temporary single-adapter state до появления headless parity requirement для operator UI;
   - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build), `node scripts/verify/verify-outbox-admin-boundary.mjs`, `node scripts/verify/verify-outbox-admin-boundary.test.mjs`;
+  - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build);
+  - compile-free FFA evidence: `npm run verify:outbox:admin-boundary` validates that UI uses only the module-owned transport facade, `core.rs` remains Leptos/server-function free, generated native server functions stay private to `transport/native_server_adapter.rs`, and host-provided `UiRouteContext.locale` remains the locale source;
   - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with typed `PortContext`/`PortError`, deadline semantics, write idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
 
 ## Область работ
@@ -43,6 +47,7 @@ manifest/doc contract.
 - [x] выровнять root README, local docs и manifest metadata под единый standard path;
 - [x] зафиксировать transactional publishing как основной bounded-context contract;
 - [x] выделить FFA `core/transport/ui` boundary для read-only admin visibility surface;
+- [x] добавить compile-free FFA boundary verifier для read-only admin visibility surface;
 - [ ] удерживать sync между public crate API и server event-runtime tests;
 - [ ] контрактные тесты покрывают все публичные use-case для transactional publishing, relay, retry и DLQ semantics.
 
@@ -61,6 +66,9 @@ manifest/doc contract.
 
 ## Проверка
 
+- `npm run verify:outbox:admin-boundary`
+- `npm run test:verify:outbox:admin-boundary`
+- `npm run verify:outbox:fba`
 - `cargo xtask module validate outbox`
 - `cargo xtask module test outbox`
 - `node scripts/verify/verify-outbox-admin-boundary.mjs`

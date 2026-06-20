@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["csr"]
-csr = ["leptos/csr", "leptos_i18n/csr", "rustok-workflow-admin/csr"]
+csr = ["leptos/csr", "leptos_i18n/csr", "rustok-workflow-admin/csr", "rustok-auth-admin/csr"]
 hydrate = [
   "leptos/hydrate",
   "leptos_i18n/hydrate",
@@ -34,6 +34,7 @@ hydrate = [
   "rustok-search-admin/hydrate",
   "rustok-tenant-admin/hydrate",
   "rustok-workflow-admin/hydrate",
+  "rustok-auth-admin/hydrate",
 ]
 ssr = [
   "leptos/ssr",
@@ -73,6 +74,7 @@ ssr = [
   "rustok-search-admin/ssr",
   "rustok-tenant-admin/ssr",
   "rustok-workflow-admin/ssr",
+  "rustok-auth-admin/ssr",
 ]
 
 [dependencies]
@@ -146,6 +148,7 @@ rustok-search-admin = { path = "../../crates/rustok-search/admin", default-featu
 rustok-seo-admin = { path = "../../crates/rustok-seo/admin", default-features = false }
 rustok-tenant-admin = { path = "../../crates/rustok-tenant/admin", default-features = false }
 rustok-workflow-admin = { path = "../../crates/rustok-workflow/admin", default-features = false }
+rustok-auth-admin = { path = "../../crates/rustok-auth/admin", default-features = false }
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
@@ -205,4 +208,5 @@ normal = [
   "rustok-search-admin",
   "rustok-tenant-admin",
   "rustok-workflow-admin",
+  "rustok-auth-admin",
 ]

@@ -388,6 +388,13 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
         if !unique.insert(def.field_key.as_str()) {
             return Err(FlexError::DuplicateFieldKey(def.field_key.clone()));
         }
+
+        if def.position < 0 {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' position must not be negative",
+                def.field_key
+            )));
+        }
     }
     Ok(())
 }
@@ -421,6 +428,17 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
     }
 
     if let Some(validation) = &definition.validation {
+        if let Some(error_message) = &validation.error_message {
+            for (locale, value) in error_message {
+                if locale.trim().is_empty() || value.trim().is_empty() {
+                    return Err(FlexError::InvalidFieldKey(format!(
+                        "field '{}' validation error messages must have non-empty locale keys and values",
+                        definition.field_key
+                    )));
+                }
+            }
+        }
+
         if let (Some(min), Some(max)) = (validation.min, validation.max) {
             if min > max {
                 return Err(FlexError::InvalidFieldKey(format!(
@@ -430,11 +448,27 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
             }
         }
 
-        if validation.pattern.is_some() && !definition.field_type.supports_pattern() {
-            return Err(FlexError::InvalidFieldKey(format!(
-                "field '{}' type does not support pattern validation",
-                definition.field_key
-            )));
+        if let Some(pattern) = &validation.pattern {
+            if pattern.trim().is_empty() {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' pattern validation must not be empty",
+                    definition.field_key
+                )));
+            }
+
+            if !definition.field_type.supports_pattern() {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' type does not support pattern validation",
+                    definition.field_key
+                )));
+            }
+
+            if let Err(error) = regex::Regex::new(pattern) {
+                return Err(FlexError::InvalidFieldKey(format!(
+                    "field '{}' pattern validation is not a valid regular expression: {}",
+                    definition.field_key, error
+                )));
+            }
         }
 
         if definition.field_type.requires_options() {
@@ -477,6 +511,11 @@ fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexErr
                     )));
                 }
             }
+        } else if validation.options.is_some() {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' type does not support select options",
+                definition.field_key
+            )));
         }
     } else if definition.field_type.requires_options() {
         return Err(FlexError::InvalidFieldKey(format!(
@@ -846,6 +885,92 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_update_schema_command(&inverted_range).is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_invalid_pattern_and_non_select_options() {
+        let invalid_pattern = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                validation: Some(ValidationRule {
+                    pattern: Some("[".to_string()),
+                    ..Default::default()
+                }),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&invalid_pattern).is_err());
+
+        let empty_pattern = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                validation: Some(ValidationRule {
+                    pattern: Some("   ".to_string()),
+                    ..Default::default()
+                }),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&empty_pattern).is_err());
+
+        let non_select_options = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                validation: Some(ValidationRule {
+                    options: Some(vec![SelectOption {
+                        value: "featured".to_string(),
+                        label: HashMap::from([("en".to_string(), "Featured".to_string())]),
+                    }]),
+                    ..Default::default()
+                }),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&non_select_options).is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_position_and_error_message_shape() {
+        let negative_position = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                position: -1,
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&negative_position).is_err());
+
+        let empty_error_message = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![FieldDefinition {
+                validation: Some(ValidationRule {
+                    error_message: Some(HashMap::from([("en".to_string(), "   ".to_string())])),
+                    ..Default::default()
+                }),
+                ..sample_definition("title")
+            }],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&empty_error_message).is_err());
     }
 
     #[test]
