@@ -298,7 +298,7 @@ impl SubscriberMessageMetadata {
         partition: u32,
         offset: u64,
     ) -> String {
-        format!("{mode}:{stream}:{topic}:{partition}:{offset}")
+        ConnectorAckToken::simulated(mode, stream, topic, partition, offset).encode()
     }
 
     /// Attaches the canonical simulated acknowledgement token for this metadata.
@@ -311,6 +311,146 @@ impl SubscriberMessageMetadata {
             offset,
         ));
         self
+    }
+}
+
+/// Connector-owned acknowledgement token scope.
+///
+/// Tokens stay opaque to transport users, but connector implementations keep a
+/// structured builder/parser internally so simulated and real SDK subscribers
+/// validate stream/topic/partition/offset scope before acknowledging.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectorAckToken {
+    /// Canonical no-SDK simulation token used by embedded/remote compatibility subscribers.
+    Simulated {
+        mode: String,
+        stream: String,
+        topic: String,
+        partition: u32,
+        offset: u64,
+    },
+    /// Canonical real Iggy SDK cursor token.
+    ///
+    /// The consumer id is intentionally opaque connector state; higher layers must
+    /// not inspect it for retry/DLQ/replay policy decisions.
+    IggySdk {
+        stream: String,
+        topic: String,
+        partition: u32,
+        offset: u64,
+        consumer_id: String,
+    },
+}
+
+impl ConnectorAckToken {
+    const SIMULATED_PREFIX: &'static str = "sim";
+    const IGGY_SDK_PREFIX: &'static str = "iggy-sdk";
+
+    pub fn simulated(mode: &str, stream: &str, topic: &str, partition: u32, offset: u64) -> Self {
+        Self::Simulated {
+            mode: mode.to_string(),
+            stream: stream.to_string(),
+            topic: topic.to_string(),
+            partition,
+            offset,
+        }
+    }
+
+    pub fn iggy_sdk(
+        stream: &str,
+        topic: &str,
+        partition: u32,
+        offset: u64,
+        consumer_id: &str,
+    ) -> Self {
+        Self::IggySdk {
+            stream: stream.to_string(),
+            topic: topic.to_string(),
+            partition,
+            offset,
+            consumer_id: consumer_id.to_string(),
+        }
+    }
+
+    pub fn encode(&self) -> String {
+        match self {
+            Self::Simulated {
+                mode,
+                stream,
+                topic,
+                partition,
+                offset,
+            } => {
+                format!(
+                    "{}:{mode}:{stream}:{topic}:{partition}:{offset}",
+                    Self::SIMULATED_PREFIX
+                )
+            }
+            Self::IggySdk {
+                stream,
+                topic,
+                partition,
+                offset,
+                consumer_id,
+            } => {
+                format!(
+                    "{}:{stream}:{topic}:{partition}:{offset}:{consumer_id}",
+                    Self::IGGY_SDK_PREFIX
+                )
+            }
+        }
+    }
+
+    pub fn decode(token: &str) -> Result<Self, ConnectorError> {
+        let parts: Vec<&str> = token.split(':').collect();
+        match parts.as_slice() {
+            [Self::SIMULATED_PREFIX, mode, stream, topic, partition, offset] => {
+                Ok(Self::simulated(
+                    mode,
+                    stream,
+                    topic,
+                    partition.parse().map_err(|_| {
+                        ConnectorError::Config("invalid simulated ack partition".to_string())
+                    })?,
+                    offset.parse().map_err(|_| {
+                        ConnectorError::Config("invalid simulated ack offset".to_string())
+                    })?,
+                ))
+            }
+            [Self::IGGY_SDK_PREFIX, stream, topic, partition, offset, consumer_id] => {
+                Ok(Self::iggy_sdk(
+                    stream,
+                    topic,
+                    partition.parse().map_err(|_| {
+                        ConnectorError::Config("invalid SDK ack partition".to_string())
+                    })?,
+                    offset.parse().map_err(|_| {
+                        ConnectorError::Config("invalid SDK ack offset".to_string())
+                    })?,
+                    consumer_id,
+                ))
+            }
+            _ => Err(ConnectorError::Config(
+                "unsupported connector ack token".to_string(),
+            )),
+        }
+    }
+
+    pub fn matches_scope(&self, stream: &str, topic: &str, partition: u32) -> bool {
+        match self {
+            Self::Simulated {
+                stream: token_stream,
+                topic: token_topic,
+                partition: token_partition,
+                ..
+            }
+            | Self::IggySdk {
+                stream: token_stream,
+                topic: token_topic,
+                partition: token_partition,
+                ..
+            } => token_stream == stream && token_topic == topic && *token_partition == partition,
+        }
     }
 }
 
@@ -648,6 +788,12 @@ impl MessageSubscriber for RemoteMessageSubscriber {
     }
 
     async fn ack(&mut self, ack_token: &str) -> Result<(), ConnectorError> {
+        let token = ConnectorAckToken::decode(ack_token)?;
+        if !token.matches_scope(&self.stream, &self.topic, self.partition) {
+            return Err(ConnectorError::Config(
+                "ack token scope does not match remote subscriber".to_string(),
+            ));
+        }
         tracing::debug!(
             mode = "remote",
             stream = %self.stream,
@@ -843,6 +989,12 @@ impl MessageSubscriber for EmbeddedMessageSubscriber {
     }
 
     async fn ack(&mut self, ack_token: &str) -> Result<(), ConnectorError> {
+        let token = ConnectorAckToken::decode(ack_token)?;
+        if !token.matches_scope(&self.stream, &self.topic, self.partition) {
+            return Err(ConnectorError::Config(
+                "ack token scope does not match embedded subscriber".to_string(),
+            ));
+        }
         tracing::debug!(
             mode = "embedded",
             stream = %self.stream,
@@ -1054,7 +1206,7 @@ mod tests {
             .with_offset(99)
             .with_simulated_ack_token("remote", 99);
 
-        assert_eq!(token, "remote:stream1:topic1:3:99");
+        assert_eq!(token, "sim:remote:stream1:topic1:3:99");
         assert_eq!(metadata.ack_token.as_deref(), Some(token.as_str()));
     }
 
@@ -1068,11 +1220,11 @@ mod tests {
 
         assert_eq!(
             remote.ack_token.as_deref(),
-            Some("remote:stream1:topic1:3:99")
+            Some("sim:remote:stream1:topic1:3:99")
         );
         assert_eq!(
             embedded.ack_token.as_deref(),
-            Some("embedded:stream1:topic1:3:99")
+            Some("sim:embedded:stream1:topic1:3:99")
         );
     }
 
@@ -1083,6 +1235,35 @@ mod tests {
 
         assert_eq!(message.payload, vec![1, 2, 3]);
         assert_eq!(message.metadata, metadata);
+    }
+
+    #[test]
+    fn test_connector_ack_token_roundtrip_and_scope() {
+        let simulated = ConnectorAckToken::simulated("remote", "stream1", "topic1", 3, 99);
+        let encoded = simulated.encode();
+        assert_eq!(encoded, "sim:remote:stream1:topic1:3:99");
+        assert_eq!(ConnectorAckToken::decode(&encoded).unwrap(), simulated);
+        assert!(simulated.matches_scope("stream1", "topic1", 3));
+        assert!(!simulated.matches_scope("stream2", "topic1", 3));
+
+        let sdk = ConnectorAckToken::iggy_sdk("stream1", "topic1", 3, 100, "consumer-a");
+        let sdk_encoded = sdk.encode();
+        assert_eq!(sdk_encoded, "iggy-sdk:stream1:topic1:3:100:consumer-a");
+        assert_eq!(ConnectorAckToken::decode(&sdk_encoded).unwrap(), sdk);
+        assert!(sdk.matches_scope("stream1", "topic1", 3));
+    }
+
+    #[tokio::test]
+    async fn test_subscriber_ack_rejects_wrong_scope() {
+        let mut subscriber =
+            RemoteMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
+        let wrong_scope =
+            ConnectorAckToken::simulated("remote", "stream2", "topic1", 1, 99).encode();
+
+        assert!(matches!(
+            subscriber.ack(&wrong_scope).await,
+            Err(ConnectorError::Config(_))
+        ));
     }
 
     #[test]
