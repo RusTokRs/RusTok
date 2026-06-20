@@ -2,7 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use rustok_seo::SeoModuleSettings;
 
-use crate::core::{SeoSettingsForm, ROBOT_DIRECTIVE_PRESETS};
+use crate::core::{build_seo_settings_snapshot_items, SeoSettingsForm, ROBOT_DIRECTIVE_PRESETS};
 use crate::i18n::t;
 use crate::transport::ApiError;
 
@@ -216,31 +216,14 @@ pub fn SeoDefaultsPane(
                     {move || match settings.get() {
                         Some(Ok(settings)) => view! {
                             <dl class="grid gap-3 text-sm">
-                                <SettingsValueCard label="Default robots".to_string() value=if settings.default_robots.is_empty() {
-                                    "n/a".to_string()
-                                } else {
-                                    settings.default_robots.join(", ")
-                                } />
-                                <SettingsValueCard label="Sitemap enabled".to_string() value=settings.sitemap_enabled.to_string() />
-                                <SettingsValueCard label="Allowed redirect hosts".to_string() value=if settings.allowed_redirect_hosts.is_empty() {
-                                    "none".to_string()
-                                } else {
-                                    settings.allowed_redirect_hosts.join(", ")
-                                } />
-                                <SettingsValueCard label="Allowed canonical hosts".to_string() value=if settings.allowed_canonical_hosts.is_empty() {
-                                    "none".to_string()
-                                } else {
-                                    settings.allowed_canonical_hosts.join(", ")
-                                } />
-                                <SettingsValueCard label="x-default locale".to_string() value=settings.x_default_locale.unwrap_or_else(|| "unset".to_string()) />
-                                <SettingsValueCard label="Template title".to_string() value=settings.template_defaults.title.unwrap_or_else(|| "unset".to_string()) />
-                                <SettingsValueCard label="Template description".to_string() value=settings.template_defaults.meta_description.unwrap_or_else(|| "unset".to_string()) />
-                                <SettingsValueCard label="Template canonical".to_string() value=settings.template_defaults.canonical_url.unwrap_or_else(|| "unset".to_string()) />
-                                <SettingsValueCard label="Template override targets".to_string() value=if settings.template_overrides.is_empty() {
-                                    "none".to_string()
-                                } else {
-                                    settings.template_overrides.keys().cloned().collect::<Vec<_>>().join(", ")
-                                } />
+                                {build_seo_settings_snapshot_items(&settings)
+                                    .into_iter()
+                                    .map(|item| {
+                                        view! {
+                                            <SettingsValueCard label=item.label.to_string() value=item.value />
+                                        }
+                                    })
+                                    .collect_view()}
                             </dl>
                         }.into_any(),
                         Some(Err(err)) => view! { <p class="text-sm text-destructive">{err.to_string()}</p> }.into_any(),
