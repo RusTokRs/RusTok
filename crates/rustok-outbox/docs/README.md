@@ -27,6 +27,9 @@ infrastructure для event runtime платформы.
 
 - `cargo xtask module validate outbox`
 - `cargo xtask module test outbox`
+- `node scripts/verify/verify-outbox-admin-boundary.mjs`
+- `node scripts/verify/verify-outbox-admin-boundary.test.mjs`
+- `npm run verify:outbox:fba`
 - targeted event-runtime tests для transactional publish, relay и backlog semantics
 
 ## Связанные документы
