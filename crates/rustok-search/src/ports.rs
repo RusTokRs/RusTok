@@ -4,7 +4,7 @@ use rustok_core::Error;
 
 use crate::{
     PgSearchEngine, SearchEngine, SearchQuery, SearchResult, SearchSuggestion,
-    SearchSuggestionQuery,
+    SearchSuggestionQuery, SearchSuggestionService,
 };
 
 /// Transport-neutral owner boundary for search execution and suggestions.
@@ -40,6 +40,21 @@ pub trait SearchSuggestionPort: Send + Sync {
         context: PortContext,
         request: SearchSuggestionQuery,
     ) -> Result<Vec<SearchSuggestion>, PortError>;
+}
+
+#[async_trait]
+impl SearchSuggestionPort for PgSearchEngine {
+    async fn suggest(
+        &self,
+        context: PortContext,
+        mut request: SearchSuggestionQuery,
+    ) -> Result<Vec<SearchSuggestion>, PortError> {
+        context.require_deadline_semantics()?;
+        request.locale.get_or_insert_with(|| context.locale.clone());
+        SearchSuggestionService::suggestions(self.connection(), request)
+            .await
+            .map_err(search_error_to_port_error)
+    }
 }
 
 fn search_error_to_port_error(error: Error) -> PortError {

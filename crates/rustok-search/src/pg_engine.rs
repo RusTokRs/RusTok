@@ -16,6 +16,10 @@ impl PgSearchEngine {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
+
+    pub(crate) fn connection(&self) -> &DatabaseConnection {
+        &self.db
+    }
 }
 
 #[async_trait]

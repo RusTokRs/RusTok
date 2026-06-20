@@ -9,12 +9,12 @@
   "cases": [
     {
       "operation": "read_tenant",
-      "execution_status": "static_locked_runtime_pending",
+      "execution_status": "runtime_cases_authored_uncompiled",
       "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_tenant_degraded_mode_preserved"]
     }
   ],
   "fallback_smoke": {
-    "status": "planned",
+    "status": "runtime_smoke_authored_uncompiled",
     "profiles": ["embedded_native"],
     "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"]
   }

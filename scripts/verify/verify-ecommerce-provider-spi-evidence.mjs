@@ -93,6 +93,14 @@ const requiredRegistrationCases = [
   'unavailable_default_provider',
 ];
 
+const requiredLiveExecutionCases = [
+  'successful_operation_invokes_adapter_once_after_owner_runtime_guard',
+  'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence',
+  'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed',
+  'unavailable_mode_blocks_adapter_invocation',
+  'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service',
+];
+
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
@@ -223,6 +231,28 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       ])
     ) {
       fail(`${module} runtime smoke webhook assertions drift`);
+    }
+
+    const liveExecutionPlan = runtimeSmoke.live_execution_plan;
+    if (!liveExecutionPlan) fail(`${module} runtime smoke lacks live execution plan`);
+    if (liveExecutionPlan.status !== 'planned_contract_locked') {
+      fail(`${module} live execution plan status drift`);
+    }
+    if (liveExecutionPlan.promotion_gate !== 'requires_concrete_external_adapter_execution') {
+      fail(`${module} live execution plan must require concrete external adapter execution`);
+    }
+    const expectedAdapterProfile = module === 'payment' ? 'external_gateway_adapter' : 'external_carrier_adapter';
+    if (liveExecutionPlan.adapter_profile !== expectedAdapterProfile) {
+      fail(`${module} live execution plan adapter profile drift`);
+    }
+    if (!sameSet(liveExecutionPlan.required_cases, requiredLiveExecutionCases)) {
+      fail(`${module} live execution plan required cases drift`);
+    }
+    if (liveExecutionPlan.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
+      fail(`${module} live execution plan adapter operation drift`);
+    }
+    if (liveExecutionPlan.evidence_status !== 'runtime_execution_pending') {
+      fail(`${module} live execution plan evidence status drift`);
     }
 
     const registrationType =

@@ -14,17 +14,16 @@ use uuid::Uuid;
 use crate::{
     ScriptError, ScriptRegistry,
     api::{
-        CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogResponse,
-        ListScriptsQuery, ListScriptsResponse, RunScriptRequest, RunScriptResponse, ScriptResponse,
-        UpdateScriptRequest,
+        CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
+        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
+        RunScriptResponse, ScriptResponse, UpdateScriptRequest,
     },
     model::{EntityProxy, Script, ScriptStatus},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic},
 };
 
-pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] =
-    &["/executions", "/scripts/{id}/executions"];
+pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{id}/executions"];
 
 fn script_error(error: ScriptError) -> Error {
     match error {
@@ -69,7 +68,7 @@ pub async fn list_scripts(
         scripts,
         page.total as usize,
         query.page,
-        query.per_page,
+        query.normalized_per_page(),
     )))
 }
 
@@ -210,7 +209,7 @@ pub async fn run_script_by_name(
 pub async fn list_recent_executions(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    Query(query): Query<ListScriptsQuery>,
+    Query(query): Query<ListExecutionLogQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
     let offset = query.offset();
@@ -234,7 +233,7 @@ pub async fn list_recent_executions(
         executions,
         total,
         query.page,
-        query.per_page,
+        query.normalized_per_page(),
     )))
 }
 
@@ -242,7 +241,7 @@ pub async fn list_script_executions(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
-    Query(query): Query<ListScriptsQuery>,
+    Query(query): Query<ListExecutionLogQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
     let offset = query.offset();
@@ -266,7 +265,7 @@ pub async fn list_script_executions(
         executions,
         total,
         query.page,
-        query.per_page,
+        query.normalized_per_page(),
     )))
 }
 
@@ -362,7 +361,10 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/alloy")
         .add("/scripts", get(list_scripts).post(create_script))
-        .add(LOCO_EXECUTION_HISTORY_ROUTES[0], get(list_recent_executions))
+        .add(
+            LOCO_EXECUTION_HISTORY_ROUTES[0],
+            get(list_recent_executions),
+        )
         .add("/scripts/validate", post(validate_script))
         .add(
             "/scripts/{id}",
