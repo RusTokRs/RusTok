@@ -174,6 +174,8 @@
 
 На 2026-06-20 `channel` добавлен как provider track для channel/default/host-target read-projection boundary: `ChannelReadPort`/`channel.read_projection.v1`, registry `crates/rustok-channel/contracts/channel-fba-registry.json` и static evidence `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:channel:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
 
+На 2026-06-20 `index` добавлен как provider track для indexed read-model/rebuild boundary: `IndexReadModelPort`/`index.read_model.v1` и `IndexRebuildPort`/`index.rebuild.v1`, registry `crates/rustok-index/contracts/index-fba-registry.json` и static evidence `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:index:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
+
 Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
 имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
 FFA/FBA status block. Теперь `page_builder` и `pages` отражены единообразно: local plan +

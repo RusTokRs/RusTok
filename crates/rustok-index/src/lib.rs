@@ -13,11 +13,13 @@ pub mod content;
 pub mod error;
 pub mod flex;
 pub mod migrations;
+pub mod ports;
 pub mod product;
 pub mod search;
 pub mod traits;
 
 pub use error::{IndexError, IndexResult};
+pub use ports::*;
 pub use traits::{Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer};
 
 pub struct IndexModule;
