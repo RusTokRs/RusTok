@@ -11,6 +11,7 @@
     "verify:page-builder:consumer:pages": "node scripts/verify/verify-page-builder-consumer-readiness.mjs pages",
     "verify:page-builder:consumer:forum": "node scripts/verify/verify-page-builder-consumer-readiness.mjs forum",
     "verify:flex:contract": "node scripts/verify/verify-flex-multilingual-contract.mjs",
+    "verify:content:orchestration": "node scripts/verify/verify-content-orchestration-contract.mjs",
     "verify:i18n:ui": "node scripts/verify/verify-ui-i18n-parity.mjs",
     "verify:i18n:contract": "node scripts/verify/verify-i18n-contract.mjs",
     "verify:storefront:routes": "node scripts/verify/verify-storefront-module-routes.mjs",
@@ -78,7 +79,8 @@
     "verify:seo:admin-boundary": "node scripts/verify/verify-seo-admin-boundary.mjs",
     "verify:ai-media:fba": "node scripts/verify/verify-ai-media-fba.mjs",
     "verify:ai-alloy:policy": "node scripts/verify/verify-ai-alloy-policy.mjs",
-    "verify:region:fba": "node scripts/verify/verify-region-fba.mjs"
+    "verify:region:fba": "node scripts/verify/verify-region-fba.mjs",
+    "verify:page-builder:wave1-readiness-draft": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave1-readiness-draft.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

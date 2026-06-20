@@ -39,6 +39,8 @@
 
 Baseline DTO package теперь содержит `PageBuilderContractMetadata::BASELINE` с canonical provider slug `page_builder`, contract `grapesjs_v1`, `builder_contract_version = 1.0`, `consumer_min_version = 1.0` и capability set `preview/tree/properties/publish`. Это минимальный publish-ready marker для adapters: GraphQL, Leptos server functions и future mobile codegen должны брать имена capability из contract metadata/registry, а не вводить transport-local aliases.
 
+`PageBuilderCapabilityRequest` и `PageBuilderCapabilityResponse` задают tagged-envelope для transport adapters: GraphQL resolvers, Leptos `#[server]` functions и future mobile bridge могут принимать один canonical request envelope и dispatch через `AuthorizedPageBuilderHandlers::handle`. Такой seam удерживает RBAC, rollout guard и write-semantics enforcement в одном месте и не позволяет transport layer повторно изобретать имена capability или локальные error envelopes.
+
 ## Provider health and SLO baseline
 
 Machine-readable provider metadata включает health states `ready/degraded/unavailable`, degradation reasons (`capability_disabled`, `provider_unhealthy`, `sanitize_backpressure`, `publish_backlog`) и pilot SLO thresholds: `preview_p95_ms <= 1500`, `publish_p95_ms <= 3000`, `sanitize_failure_rate <= 0.01`, `runtime_error_rate <= 0.01`. Runtime-код exposes тот же baseline через `ProviderHealthState`, `ProviderDegradationReason`, `ProviderSloThresholds::PILOT`, `ProviderHealthSnapshot::evaluate` и `ProviderHealthEvidence::from_observations`, чтобы Wave evidence можно было формировать без transport-specific adapters. Registry и Wave evidence packet gates должны держать эти thresholds синхронизированными до Wave 1 promotion.

@@ -6,7 +6,7 @@ Operational procedures for `rustok-content` in production and staging environmen
 
 ## Verification gate
 
-Run `npm run verify:content:orchestration` after any change to orchestration commands, canonical URL mapping, route resolution, local docs, or the central content registry row. The gate is compile-free and checks RBAC/idempotency/audit/outbox invariants, alias-first redirects, shared locale fallback usage, and documentation sync.
+Run `npm run verify:content:orchestration` after any change to orchestration commands, canonical URL mapping, route resolution, local docs, or the central content registry row. The gate is compile-free and checks RBAC/idempotency/audit/outbox invariants, canonical/alias collision guards, alias-first redirects, shared locale fallback usage, and documentation sync.
 
 ---
 
@@ -34,6 +34,15 @@ tables safely. Rollback is safe only when no in-flight orchestration operations 
 3. Run `sea-orm-cli migrate down` or the equivalent migration runner command.
 
 ---
+
+## Canonical URL collision and reindex drift
+
+`ContentOrchestrationService` must reject cross-target route ownership conflicts before it mutates `content_canonical_urls`, `content_url_aliases`, or publishes outbox events. Treat either of these validation errors as a route ownership incident, not as a DB uniqueness failure:
+
+- `canonical_url` already belongs to another target or collides with another target alias.
+- `alias_url` would shadow another target canonical URL.
+
+**Recovery:** choose a new canonical route or retire the previous target through the typed bridge output (`retired_targets`) so the old canonical can be converted into an alias for the new target atomically. After correction, replay the orchestration command with the same idempotency key only if no orchestration record was persisted; otherwise issue a new audited correction operation and trigger the affected domain reindex flow.
 
 ## Reindex procedure
 

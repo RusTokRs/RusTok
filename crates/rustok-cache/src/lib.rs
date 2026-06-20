@@ -1,7 +1,8 @@
 mod service;
 
 pub use service::{
-    CacheBackendOptions, CacheHealthReport, CacheLoadResult, CacheLoadSource, CacheService,
+    CacheBackendOptions, CacheHealthReport, CacheInvalidationMessage, CacheInvalidationOutcome,
+    CacheInvalidationService, CacheLoadResult, CacheLoadSource, CacheService,
 };
 
 use async_trait::async_trait;

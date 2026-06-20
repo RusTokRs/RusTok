@@ -7,6 +7,8 @@
 - `pub trait RusToKModule` — базовый контракт модуля платформы.
 - `pub struct AppContext` — общий runtime-контекст приложения.
 - `pub enum DomainEvent`, `pub struct EventEnvelope` — события домена и обёртка для транспорта.
+- `pub struct EventBus`, `pub struct EventBusStats`, `pub struct MemoryTransport` — foundation-surface событий для in-memory транспорта и observability-счётчиков.
+- `pub struct BackpressureController`, `pub struct BackpressureMetrics`, `pub enum BackpressureState` — guardrails глубины очереди и observability backpressure для событий.
 - `pub trait EventTransport` — транспорт событий.
 - `pub enum Error`, `pub type Result<T>` — unified error model.
 - `pub struct ModuleRegistry` — реестр модулей и зависимостей.
@@ -40,6 +42,7 @@
 ### События / outbox-побочные эффекты
 - Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
 - Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+- EventBus/backpressure metrics являются observability contract: счётчики publish/drop/accepted/rejected и depth/state не должны ломаться без обновления тестов и документации.
 
 ### Ошибки / коды отказов
 - Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.

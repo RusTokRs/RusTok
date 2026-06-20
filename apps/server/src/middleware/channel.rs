@@ -285,7 +285,10 @@ mod tests {
         request::ResolvedRequestLocale,
     };
     use rustok_channel::{
-        migrations, ChannelResolver, ChannelService, CreateChannelInput, CreateChannelTargetInput,
+        migrations, ChannelResolutionRuleDefinition, ChannelResolver, ChannelService,
+        CreateChannelInput, CreateChannelResolutionPolicySetInput,
+        CreateChannelResolutionRuleInput, CreateChannelTargetInput, ResolutionAction,
+        ResolutionPredicate,
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -382,6 +385,70 @@ mod tests {
             )
             .await
             .expect("host target should be created");
+    }
+
+    async fn add_locale_policy_rule(
+        service: &ChannelService,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        locale: &str,
+    ) {
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: format!("locale-{locale}"),
+                name: format!("Locale {locale}"),
+                is_active: true,
+            })
+            .await
+            .expect("locale policy set should be created");
+
+        service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::LocaleEquals(locale.to_string())],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("locale policy rule should be created");
+    }
+
+    async fn add_oauth_policy_rule(
+        service: &ChannelService,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        oauth_app_id: Uuid,
+    ) {
+        let policy_set = service
+            .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
+                tenant_id,
+                slug: format!("oauth-{oauth_app_id}"),
+                name: format!("OAuth {oauth_app_id}"),
+                is_active: true,
+            })
+            .await
+            .expect("oauth policy set should be created");
+
+        service
+            .create_resolution_rule(
+                policy_set.id,
+                CreateChannelResolutionRuleInput {
+                    priority: 10,
+                    is_active: true,
+                    definition: ChannelResolutionRuleDefinition {
+                        predicates: vec![ResolutionPredicate::OAuthAppEquals(oauth_app_id)],
+                        action: ResolutionAction::ResolveToChannel { channel_id },
+                    },
+                },
+            )
+            .await
+            .expect("oauth policy rule should be created");
     }
 
     fn test_settings() -> RustokSettings {
@@ -644,6 +711,88 @@ mod tests {
         assert_eq!(selected.0.channel.id, host_channel_id);
         assert_eq!(selected.0.channel.slug, "host-channel");
         assert_eq!(selected.1, ChannelResolutionSource::Host);
+    }
+
+    #[tokio::test]
+    async fn runtime_locale_extension_can_select_policy_channel() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+
+        let default_channel_id = create_channel(&service, tenant_id, "default").await;
+        let locale_channel_id = create_channel(&service, tenant_id, "locale-ru").await;
+        add_locale_policy_rule(&service, tenant_id, locale_channel_id, "ru-by").await;
+
+        let mut extensions = Extensions::new();
+        extensions.insert(ResolvedRequestLocale {
+            requested_locale: Some("ru".to_string()),
+            effective_locale: "RU_BY".to_string(),
+        });
+
+        let resolver = ChannelResolver::new(db);
+        let selected = resolved_detail_source_and_trace(
+            resolver
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &HeaderMap::new(),
+                    None,
+                    None,
+                    &test_settings(),
+                    &extensions,
+                ))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("locale policy channel should resolve");
+
+        assert_eq!(selected.0.channel.id, locale_channel_id);
+        assert_ne!(selected.0.channel.id, default_channel_id);
+        assert_eq!(selected.1, ChannelResolutionSource::Policy);
+    }
+
+    #[tokio::test]
+    async fn runtime_oauth_extension_can_select_policy_channel() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        let client_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant").await;
+        let service = ChannelService::new(db.clone());
+
+        let default_channel_id = create_channel(&service, tenant_id, "default").await;
+        let oauth_channel_id = create_channel(&service, tenant_id, "oauth-app").await;
+        add_oauth_policy_rule(&service, tenant_id, oauth_channel_id, client_id).await;
+
+        let mut extensions = Extensions::new();
+        extensions.insert(AuthContextExtension(AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: Vec::new(),
+            client_id: Some(client_id),
+            scopes: vec!["catalog:read".to_string()],
+            grant_type: "client_credentials".to_string(),
+        }));
+
+        let resolver = ChannelResolver::new(db);
+        let selected = resolved_detail_source_and_trace(
+            resolver
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &HeaderMap::new(),
+                    None,
+                    None,
+                    &test_settings(),
+                    &extensions,
+                ))
+                .await
+                .expect("resolution should succeed"),
+        )
+        .expect("oauth policy channel should resolve");
+
+        assert_eq!(selected.0.channel.id, oauth_channel_id);
+        assert_ne!(selected.0.channel.id, default_channel_id);
+        assert_eq!(selected.1, ChannelResolutionSource::Policy);
     }
 
     #[tokio::test]
