@@ -6,11 +6,11 @@ manifest/doc contract path.
 ## Execution checkpoint
 
 - Current phase: integration_hardening
-- Last checkpoint: Invite token issuance added to the auth-owned JWT surface with strict purpose validation, server bridge export, local docs, and unit-test coverage.
-- Next step: Continue reducing host-only auth lifecycle logic by moving the next token/config primitive behind `rustok-auth` helpers with matching docs and tests.
+- Last checkpoint: AuthConfig assembly and RS256 key validation moved behind auth-owned helpers; server bridge now only maps host config and AuthError, docs/tests updated.
+- Next step: Continue reducing host-only auth lifecycle logic by moving the next session or lifecycle primitive behind `rustok-auth` helpers with matching docs and tests.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T12:00:00Z
 
 ## Область работ
 
@@ -21,7 +21,7 @@ manifest/doc contract path.
 ## Текущее состояние
 
 - `AuthModule` зарегистрирован как обязательный core-модуль;
-- JWT, claims и credential helpers живут внутри модуля;
+- JWT, claims, AuthConfig assembly/validation и credential helpers живут внутри модуля;
 - root `README.md`, local docs и `rustok-module.toml` входят в обязательный acceptance contract;
 - permission surface `users:*` публикуется через `RusToKModule::permissions()`.
 
@@ -35,7 +35,7 @@ manifest/doc contract path.
 
 ### 2. Integration hardening
 
-- [ ] не выносить auth lifecycle logic в host-слой без обновления module contract;
+- [x] не выносить auth lifecycle logic в host-слой без обновления module contract;
 - [x] расширять token/config surface только вместе с local docs и runtime tests;
 - [x] явно документировать новые auth-owned flows до их публикации в host runtime.
 
@@ -54,6 +54,6 @@ manifest/doc contract path.
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля.
 - [x] Проверить полноту и актуальность `README.md` и локальных docs для permission surface sync.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля (без запуска компиляции в этом инкременте по запросу).

@@ -10,6 +10,7 @@
 - Define shared permission, identity, ID, and error primitives.
 - Provide flex/custom-fields schema contracts and content-format helpers used by multiple domains.
 - Keep compatibility re-exports for foundational runtime contracts that are being split into dedicated crates.
+- Expose event foundation contracts, including EventBus stats, in-memory transport reliability, and backpressure observability controls.
 - Stay free from host-specific transport, ORM, and UI concerns.
 - Remain free from domain-specific orchestration logic (auth lifecycle, user CRUD, commerce flows).
 
@@ -19,6 +20,8 @@
 - `ModuleRegistry`
 - `Permission`
 - `generate_id`
+- `EventBus` / `MemoryTransport`
+- `BackpressureController`
 - `CustomFieldsSchema`
 - foundational runtime types re-exported from `src/lib.rs`
 

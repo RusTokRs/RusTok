@@ -8,7 +8,7 @@ use rustok_api::{graphql::GraphQLError, has_any_effective_permission, AuthContex
 use rustok_core::{permissions::Action, Permission, Resource};
 
 pub use mutation::AlloyMutation;
-pub use query::AlloyQuery;
+pub use query::{AlloyQuery, EXECUTION_HISTORY_GRAPHQL_FIELDS};
 pub use types::*;
 
 pub(crate) async fn require_admin(ctx: &Context<'_>) -> Result<AuthContext> {

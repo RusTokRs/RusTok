@@ -6,9 +6,9 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_operability_rollout_guardrail
-- Last checkpoint: B4 maintenance slice зафиксировал no-compile guardrail для legacy blocks read/bridge режима (`verify-page-builder-pages-legacy-bridge.mjs`): create/import blocks остаются bridge surface, visual builder body writes не удаляют blocks, update DTO не расширяет block write surface, admin/storefront показывают read-only compatibility evidence; устранён drift в `registry.md`, декомпозирован `Quality backlog` локального плана и успешно пройдены верификационные гейты.
-- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем оставить pages в maintenance mode до следующего явного builder/FBA среза. Для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs` guardrail; для FBA rollout policy использовать `npm run verify:page-builder:consumer:pages`.
+- Current phase: wave1_readiness_hold
+- Last checkpoint: Wave 1 readiness draft guardrail теперь не только проверяет общий evidence packet shape, но и блокирует случайную подмену draft-а реальным rollout: tenant должен оставаться `pending-wave1-pilot-tenant`, change-set — в `draft:pages-wave1-readiness:*`, метрики — с `readiness_draft_pending_tenant_measurement:*`, approvals — pending, а rollback reason обязан явно держать Wave 1 on hold.
+- Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем заменить Wave 1 readiness draft реальным tenant packet только вместе с owner sign-off и SLO/smoke evidence. Для no-compile Wave 1 hold использовать `npm run verify:page-builder:wave1-readiness-draft`; для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs`; для FBA rollout policy использовать `npm run verify:page-builder:consumer:pages`.
 - Open blockers: None.
 - Hand-off notes for next agent:
   1. Перед любыми изменениями pages сначала сверить `docs/research/dioxus-ffa-pilot-connectivity-map.md` и этот файл; не открывать новый slice без явной цели в трекере.
@@ -33,6 +33,7 @@
 - Last updated at (UTC): 2026-06-14T12:00:00Z
 - Last updated at (UTC): 2026-06-14T18:00:00Z
 - Last updated at (UTC): 2026-06-15T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
@@ -46,6 +47,7 @@
 - Latest RBAC Wave 1 readiness update: no-compile guardrail `verify-page-builder-pages-rbac-readiness.mjs` now pins RBAC regression coverage and local/central docs sync inside the FBA baseline without running Cargo.
 - Latest contract surface maintenance update: no-compile guardrail `verify-page-builder-pages-contract-surface.mjs` теперь фиксирует наличие публичных contract tests для CRUD/sanitize, builder round-trip, legacy blocks bridge, degraded fallback profiles, menu lifecycle, locale fallback, RBAC/channel visibility и manifest/provider drift; aggregate FBA baseline запускает этот guardrail без Cargo-компиляции.
 - Latest FFA maintenance update: storefront selected-page empty-state DTO/helper (`selected_page_empty_state`) вынесен в `core`, а `verify-pages-ui-boundary.mjs` и fixture suite закрепляют, что Leptos adapter потребляет core-owned empty-state policy без прямого владения fallback state.
+- Latest Wave 1 hold update: `verify-page-builder-wave1-readiness-draft.mjs` теперь закрепляет draft-only invariants для pending tenant, draft change-set namespace, pending metric markers, pending approvals, hold rollback reason и отсутствие waivers; package script `npm run verify:page-builder:wave1-readiness-draft` добавлен без Cargo-компиляции.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -242,6 +244,7 @@ Rollback target: переключение tenant flags назад должно �
 - [x] service-level fallback regression checks и admin/storefront host-helper static checks зелёные на актуальном коммите; Next/Flutter typed error parity ещё требуется для Wave 1.
 - [x] нет RBAC regression для editor/moderator/admin в builder-related сценариях: `crates/rustok-pages/tests/rbac.rs` фиксирует запрет manager publish, customer draft restrictions, admin draft bypass и page-channel allowlist bypass; быстрый no-compile gate `verify-page-builder-pages-rbac-readiness.mjs` включён в FBA baseline; `verify-page-builder-pages-contract-surface.mjs` закрепляет public contract-surface coverage без Cargo-компиляции.
 - [~] подтверждён rollback execution <= 10 минут без redeploy `pages` runtime: manifest target зафиксирован, фактическое tenant evidence ожидается в реальном Wave 0 dry-run.
+- [x] Wave 1 readiness draft остаётся безопасным hold-артефактом: no-compile guardrail проверяет pending tenant/sign-off/metrics markers и запрещает waivers до появления реального tenant evidence.
 
 ## Проверка
 

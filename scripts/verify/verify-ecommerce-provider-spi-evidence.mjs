@@ -42,12 +42,65 @@ const requiredExternalAdapterAssertions = [
   'adapter_does_not_persist_lifecycle_state',
 ];
 
+const requiredRuntimeModeCases = [
+  {
+    case: 'missing_provider',
+    assertions: [
+      'registry_lookup_before_adapter_invocation',
+      'typed_owner_error_mapping',
+      'no_provider_side_effect',
+    ],
+  },
+  {
+    case: 'unsupported_operation',
+    assertions: [
+      'capability_check_before_adapter_invocation',
+      'typed_owner_error_mapping',
+      'no_provider_side_effect',
+    ],
+  },
+  {
+    case: 'unknown_operation',
+    assertions: [
+      'operation_allowlist_before_adapter_invocation',
+      'typed_owner_error_mapping',
+      'no_provider_side_effect',
+    ],
+  },
+  {
+    case: 'degraded_provider',
+    assertions: [
+      'degraded_mode_propagated',
+      'fallback_profile_required',
+      'adapter_invocation_remains_owner_controlled',
+    ],
+  },
+  {
+    case: 'unavailable_provider',
+    assertions: [
+      'unavailable_maps_to_non_executable',
+      'fallback_profile_required',
+      'adapter_invocation_blocked_by_owner',
+    ],
+  },
+];
+
+const requiredRegistrationCases = [
+  'descriptor_id_mismatch',
+  'adapter_descriptor_mismatch',
+  'duplicate_provider',
+  'non_ready_without_degraded_mode',
+  'unavailable_default_provider',
+];
+
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
     const evidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-static-matrix.json`;
+    const runtimeSmokePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-runtime-smoke.json`;
     const registry = readJson(root, registryPath);
     const evidence = readJson(root, evidencePath);
+    const runtimeSmoke = readJson(root, runtimeSmokePath);
     const providerSpi = registry.provider_spi;
     const providerSource = readText(root, `crates/rustok-${module}/src/providers.rs`);
 
@@ -125,6 +178,53 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       }
     }
 
+    if (runtimeSmoke.schema_version !== 1) fail(`${module} runtime smoke schema_version must be 1`);
+    if (runtimeSmoke.module !== module) fail(`${module} runtime smoke module drift`);
+    if (runtimeSmoke.packet !== 'provider-spi-runtime-mode-smoke') fail(`${module} runtime smoke packet drift`);
+    if (runtimeSmoke.status !== 'runtime_mode_smoke_locked') fail(`${module} runtime smoke status drift`);
+    if (runtimeSmoke.generated_from !== registryPath) fail(`${module} runtime smoke source drift`);
+    if (runtimeSmoke.runner !== 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs') {
+      fail(`${module} runtime smoke runner drift`);
+    }
+    if (runtimeSmoke.source_contract !== `crates/rustok-${module}/src/providers.rs`) {
+      fail(`${module} runtime smoke source contract drift`);
+    }
+    if (runtimeSmoke.execution_scope !== 'no_compile_static_runtime_contract_evidence') {
+      fail(`${module} runtime smoke execution scope drift`);
+    }
+    if (runtimeSmoke.promotion_gate !== 'does_not_raise_boundary_ready_without_live_adapter_execution') {
+      fail(`${module} runtime smoke must not promote boundary_ready without live adapter execution`);
+    }
+    if (!Array.isArray(runtimeSmoke.runtime_mode_cases)) fail(`${module} runtime smoke lacks runtime mode cases`);
+    for (const requiredCase of requiredRuntimeModeCases) {
+      const runtimeCase = runtimeSmoke.runtime_mode_cases.find((entry) => entry.case === requiredCase.case);
+      if (!runtimeCase) fail(`${module} runtime smoke lacks case ${requiredCase.case}`);
+      if (!sameSet(runtimeCase.assertions, requiredCase.assertions)) {
+        fail(`${module} runtime smoke case ${requiredCase.case} assertions drift`);
+      }
+    }
+    const degradedCase = runtimeSmoke.runtime_mode_cases.find((entry) => entry.case === 'degraded_provider');
+    const unavailableCase = runtimeSmoke.runtime_mode_cases.find((entry) => entry.case === 'unavailable_provider');
+    if (degradedCase?.expected_can_execute !== true) fail(`${module} degraded runtime smoke can_execute drift`);
+    if (unavailableCase?.expected_can_execute !== false) fail(`${module} unavailable runtime smoke can_execute drift`);
+    if (!Array.isArray(runtimeSmoke.registration_cases)) fail(`${module} runtime smoke lacks registration cases`);
+    for (const requiredCase of requiredRegistrationCases) {
+      const registrationCase = runtimeSmoke.registration_cases.find((entry) => entry.case === requiredCase);
+      if (!registrationCase?.expected_error) fail(`${module} runtime smoke lacks registration case ${requiredCase}`);
+    }
+    if (runtimeSmoke.webhook_runtime_case?.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
+      fail(`${module} runtime smoke webhook adapter operation drift`);
+    }
+    if (
+      !sameSet(runtimeSmoke.webhook_runtime_case?.assertions, [
+        'idempotency_key_required_by_contract',
+        'raw_payload_audit_required',
+        'owner_service_replay_guard_required',
+      ])
+    ) {
+      fail(`${module} runtime smoke webhook assertions drift`);
+    }
+
     const registrationType =
       module === 'payment' ? 'ExternalPaymentProviderRegistration' : 'ExternalFulfillmentProviderRegistration';
     const healthType = module === 'payment' ? 'PaymentProviderHealth' : 'FulfillmentProviderHealth';
@@ -166,7 +266,7 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     verifyEcommerceProviderSpiEvidence();
-    console.log('ecommerce provider SPI static evidence verified: payment, fulfillment');
+    console.log('ecommerce provider SPI static + runtime-smoke evidence verified: payment, fulfillment');
   } catch (error) {
     if (error instanceof EcommerceProviderSpiEvidenceError) {
       console.error(`ecommerce provider SPI evidence verification failed: ${error.message}`);

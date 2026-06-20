@@ -4,4 +4,4 @@ mod routes;
 
 pub use dto::*;
 pub use handlers::AppState;
-pub use routes::create_router;
+pub use routes::{AXUM_EXECUTION_HISTORY_ROUTES, create_router};

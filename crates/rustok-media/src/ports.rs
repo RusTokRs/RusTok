@@ -124,3 +124,92 @@ fn media_error_to_port_error(error: MediaError) -> PortError {
         MediaError::Db(source) => PortError::unavailable("media.database", source.to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use rustok_api::{PortActor, PortContext, PortErrorKind};
+    use uuid::Uuid;
+
+    use super::{media_error_to_port_error, parse_tenant_id};
+    use crate::MediaError;
+
+    fn context(tenant_id: impl Into<String>) -> PortContext {
+        PortContext::new(
+            tenant_id,
+            PortActor::service("media-port-test"),
+            "en",
+            "corr-1",
+        )
+        .with_deadline(Duration::from_secs(1))
+    }
+
+    #[test]
+    fn parse_tenant_id_accepts_uuid_context_values() {
+        let tenant_id = Uuid::new_v4();
+
+        assert_eq!(
+            parse_tenant_id(&context(tenant_id.to_string())).expect("tenant UUID should parse"),
+            tenant_id
+        );
+    }
+
+    #[test]
+    fn parse_tenant_id_rejects_non_uuid_context_values_as_validation_errors() {
+        let error = parse_tenant_id(&context("tenant-slug")).expect_err("tenant slug must fail");
+
+        assert_eq!(error.kind, PortErrorKind::Validation);
+        assert_eq!(error.code, "media.invalid_tenant_id");
+        assert!(!error.retryable);
+    }
+
+    #[test]
+    fn media_error_to_port_error_preserves_not_found_and_forbidden_semantics() {
+        let id = Uuid::new_v4();
+        let not_found = media_error_to_port_error(MediaError::NotFound(id));
+        let forbidden = media_error_to_port_error(MediaError::Forbidden);
+
+        assert_eq!(not_found.kind, PortErrorKind::NotFound);
+        assert_eq!(not_found.code, "media.not_found");
+        assert!(!not_found.retryable);
+        assert!(not_found.message.contains(&id.to_string()));
+
+        assert_eq!(forbidden.kind, PortErrorKind::Forbidden);
+        assert_eq!(forbidden.code, "media.forbidden");
+        assert!(!forbidden.retryable);
+    }
+
+    #[test]
+    fn media_error_to_port_error_maps_policy_errors_to_non_retryable_validation() {
+        let unsupported =
+            media_error_to_port_error(MediaError::UnsupportedMimeType("text/html".to_string()));
+        let oversized = media_error_to_port_error(MediaError::FileTooLarge { size: 12, max: 10 });
+        let invalid_locale =
+            media_error_to_port_error(MediaError::InvalidLocale("bad/locale".to_string()));
+
+        for error in [unsupported, oversized, invalid_locale] {
+            assert_eq!(error.kind, PortErrorKind::Validation);
+            assert!(error.code.starts_with("media."));
+            assert!(!error.retryable);
+        }
+    }
+
+    #[test]
+    fn media_error_to_port_error_marks_storage_and_database_failures_retryable() {
+        let storage = media_error_to_port_error(MediaError::Storage(
+            rustok_storage::StorageError::Backend("timeout".to_string()),
+        ));
+        let database = media_error_to_port_error(MediaError::Db(sea_orm::DbErr::Conn(
+            sea_orm::RuntimeErr::Internal("database unavailable".to_string()),
+        )));
+
+        assert_eq!(storage.kind, PortErrorKind::Unavailable);
+        assert_eq!(storage.code, "media.storage");
+        assert!(storage.retryable);
+
+        assert_eq!(database.kind, PortErrorKind::Unavailable);
+        assert_eq!(database.code, "media.database");
+        assert!(database.retryable);
+    }
+}

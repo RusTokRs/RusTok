@@ -4,24 +4,110 @@
   "role": "consumer",
   "provider": "media",
   "generated_from": "crates/rustok-seo/contracts/seo-fba-registry.json",
-  "status": "planned_cases_locked",
+  "status": "source_locked_pending_consumer_runtime",
   "cases": [
     {
       "operation": "get_image_descriptor",
-      "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "seo_descriptor_normalization_preserved", "degraded_omit_image_metadata_on_unavailable"],
-      "runtime_evidence": "pending"
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "seo_descriptor_normalization_preserved",
+        "degraded_omit_image_metadata_on_unavailable"
+      ],
+      "runtime_evidence": "pending_consumer_runtime",
+      "source_markers": {
+        "provider_port": "crates/rustok-media/src/ports.rs",
+        "provider_descriptor": "crates/rustok-media/src/dto.rs",
+        "consumer_alias": "crates/rustok-seo-targets/src/lib.rs"
+      }
     },
     {
       "operation": "get_asset",
-      "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "degraded_keep_existing_seo_image_on_unavailable"],
-      "runtime_evidence": "pending"
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "degraded_keep_existing_seo_image_on_unavailable"
+      ],
+      "runtime_evidence": "pending_consumer_runtime",
+      "source_markers": {
+        "provider_port": "crates/rustok-media/src/ports.rs",
+        "provider_descriptor": "crates/rustok-media/src/dto.rs",
+        "consumer_alias": "crates/rustok-seo-targets/src/lib.rs"
+      }
     }
   ],
   "fallback_smoke": {
-    "status": "planned",
-    "profiles": ["embedded_native"],
-    "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image"]
-  }
+    "status": "source_locked_pending_consumer_runtime",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "omit_image_metadata",
+      "keep_existing_seo_image"
+    ],
+    "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+    "consumer_runtime_evidence": "pending"
+  },
+  "static_source_assertions": [
+    {
+      "name": "media read port exposes descriptor operation",
+      "path": "crates/rustok-media/src/ports.rs",
+      "must_contain": [
+        "trait MediaAssetReadPort",
+        "async fn get_image_descriptor",
+        "Result<Option<MediaImageDescriptor>, PortError>",
+        "context.require_deadline_semantics()?",
+        "MediaImageDescriptor::from_media_item(&item, alt)"
+      ]
+    },
+    {
+      "name": "media descriptor normalization helpers stay typed",
+      "path": "crates/rustok-media/src/dto.rs",
+      "must_contain": [
+        "pub struct MediaImageDescriptor",
+        "pub fn from_parts",
+        "pub fn has_alt",
+        "pub fn has_size",
+        "pub fn pixel_count",
+        "pub fn aspect_ratio",
+        "pub fn file_extension"
+      ]
+    },
+    {
+      "name": "seo targets consume media descriptor alias only",
+      "path": "crates/rustok-seo-targets/src/lib.rs",
+      "must_contain": [
+        "pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor",
+        "image_alt",
+        "image_width",
+        "image_height",
+        "image_has_alt",
+        "image_has_size"
+      ]
+    },
+    {
+      "name": "seo docs preserve image boundary guardrail",
+      "path": "crates/rustok-seo/docs/README.md",
+      "must_contain": [
+        "MediaImageDescriptor",
+        "missing_image_alt",
+        "missing_image_size",
+        "rustok-seo` не читает raw media blobs"
+      ]
+    }
+  ],
+  "runtime_closeout_required": [
+    "execute MediaAssetReadPort get_image_descriptor smoke against in_process provider",
+    "capture unavailable-provider fallback proving omit_image_metadata without SEO page failure",
+    "capture existing explicit SEO image preservation for get_asset unavailable/degraded mode",
+    "attach before/after diagnostics counters for missing_image_alt and missing_image_size"
+  ]
 }

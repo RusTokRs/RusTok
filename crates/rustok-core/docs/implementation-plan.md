@@ -5,11 +5,11 @@
 ## Execution checkpoint
 
 - Current phase: quality_backlog_hardening
-- Last checkpoint: Added cache/resilience contract coverage for in-memory TTLs, retry predicates/backoff caps, circuit breaker controls, bulkhead metrics, and timeout errors without changing runtime surface.
-- Next step: Run the documented module verification gates when compilation is allowed and keep coverage expanding around event/cache observability contracts.
+- Last checkpoint: Added event observability contract coverage for backpressure metrics, EventBus publish/drop stats, MemoryTransport batch stats, and hardened backpressure release to be saturating.
+- Next step: Run the documented module verification gates when compilation is allowed and keep coverage expanding around dispatcher retry/latency contracts.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-19T00:00:00Z
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -29,6 +29,7 @@
 - **security/validation tests**: добавлен `tests/security_validation.rs` с coverage для `SecurityHeaders`, `RateLimiter`, `InputValidator`, `SsrfProtection` и utils (`is_valid_email`, `is_valid_uuid`, `html_escape`, `slugify`);
 - **contract tests**: расширен `tests/contract_surface.rs` проверками на отсутствие auth re-exports и лишних auth-зависимостей в `Cargo.toml`;
 - **cache/resilience tests**: добавлен `tests/cache_resilience_contract.rs` с coverage для in-memory cache TTL/invalidation, retry predicates/backoff caps, circuit breaker manual/half-open controls, bulkhead metrics and timeout errors;
+- **event observability tests**: добавлен `tests/events_observability_contract.rs` с coverage для saturating backpressure release, warning/critical metrics, EventBus publish/drop stats и MemoryTransport batch stats;
 - local docs и root `README.md` удерживаются как часть scoped audit path.
 
 ## Этапы
@@ -56,7 +57,7 @@
 - контрактные тесты покрывают все публичные use-case
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests для primitives, validation, security, permissions, rt_json sanitization, cache/resilience contracts и compatibility exports
+- targeted tests для primitives, validation, security, permissions, rt_json sanitization, cache/resilience contracts, event observability contracts и compatibility exports
 
 ## Правила обновления
 
@@ -68,6 +69,6 @@
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля — добавлены permission/rt_json/cache/resilience contract tests.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля — добавлены permission/rt_json/cache/resilience/event-observability contract tests.
 - [x] Проверить полноту и актуальность `README.md` и локальных docs — README/docs остаются aligned с foundation-only surface; runtime changes не вносились.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля — documented gates сохранены; запуск отложен из-за запрета компиляций в этой итерации.
