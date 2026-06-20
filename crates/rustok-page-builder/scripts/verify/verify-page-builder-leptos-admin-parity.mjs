@@ -23,7 +23,7 @@ function read(relativePath) {
 }
 
 const adminCore = read("crates/rustok-pages/admin/src/core.rs");
-const adminLib = read("crates/rustok-pages/admin/src/lib.rs");
+const adminUi = read("crates/rustok-pages/admin/src/ui/leptos.rs");
 const enLocale = read("crates/rustok-pages/admin/locales/en.json");
 const ruLocale = read("crates/rustok-pages/admin/locales/ru.json");
 const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
@@ -46,7 +46,7 @@ for (const token of [
   "pages.error.featureDisabledGuidance",
   "core::issue_guidance",
 ]) {
-  if (!adminLib.includes(token)) {
+  if (!adminUi.includes(token)) {
     fail(`Leptos admin UI missing '${token}'`);
   }
 }
