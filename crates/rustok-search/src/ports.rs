@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_core::Error;
 
 use crate::{
@@ -24,7 +24,7 @@ impl SearchQueryPort for PgSearchEngine {
         context: PortContext,
         mut request: SearchQuery,
     ) -> Result<SearchResult, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         request.locale.get_or_insert_with(|| context.locale.clone());
         self.search(request)
             .await
@@ -49,7 +49,7 @@ impl SearchSuggestionPort for PgSearchEngine {
         context: PortContext,
         mut request: SearchSuggestionQuery,
     ) -> Result<Vec<SearchSuggestion>, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         request.locale.get_or_insert_with(|| context.locale.clone());
         SearchSuggestionService::suggestions(self.connection(), request)
             .await

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -99,7 +99,7 @@ impl CheckoutCompletionPort for crate::OrderService {
         context: PortContext,
         request: CheckoutResultRequest,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let _tenant_id = parse_port_tenant_id(&context)?;
         let _cart_id = request.cart_id;
         Err(PortError::unavailable(
@@ -113,7 +113,7 @@ impl CheckoutCompletionPort for crate::OrderService {
         context: PortContext,
         request: OrderStatusRequest,
     ) -> Result<OrderStatusSnapshot, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let response = self
             .get_order(tenant_id, request.order_id)
