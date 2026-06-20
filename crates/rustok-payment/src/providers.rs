@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{PaymentError, PaymentResult};
@@ -100,6 +102,89 @@ impl ExternalPaymentProviderRegistration {
         }
 
         Ok(())
+    }
+}
+
+/// In-memory provider registry assembled by host composition before checkout runtime.
+///
+/// The registry keeps adapter lookup explicit and validates external registrations
+/// before an adapter can become visible to orchestration code. It does not persist
+/// lifecycle state and does not choose checkout fallback policy by itself.
+#[derive(Clone, Default)]
+pub struct PaymentProviderRegistry {
+    providers: HashMap<String, Arc<dyn PaymentProvider>>,
+    registrations: HashMap<String, ExternalPaymentProviderRegistration>,
+}
+
+impl PaymentProviderRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_manual_provider() -> Self {
+        let mut registry = Self::new();
+        registry.register_builtin(Arc::new(ManualPaymentProvider));
+        registry
+    }
+
+    pub fn register_builtin(&mut self, provider: Arc<dyn PaymentProvider>) {
+        let descriptor = provider.descriptor();
+        self.providers
+            .insert(descriptor.provider_id.clone(), provider);
+        self.registrations.insert(
+            descriptor.provider_id.clone(),
+            ExternalPaymentProviderRegistration {
+                descriptor,
+                health: PaymentProviderHealth::Ready,
+                degraded_mode: None,
+            },
+        );
+    }
+
+    pub fn register_external(
+        &mut self,
+        expected_provider_id: &str,
+        provider: Arc<dyn PaymentProvider>,
+        registration: ExternalPaymentProviderRegistration,
+    ) -> PaymentResult<()> {
+        registration.validate(expected_provider_id)?;
+        let descriptor = provider.descriptor();
+        if descriptor.provider_id != registration.descriptor.provider_id {
+            return Err(PaymentError::Validation(format!(
+                "payment provider adapter id `{}` does not match descriptor id `{}`",
+                descriptor.provider_id, registration.descriptor.provider_id
+            )));
+        }
+        if self.providers.contains_key(expected_provider_id) {
+            return Err(PaymentError::Validation(format!(
+                "payment provider `{}` is already registered",
+                expected_provider_id
+            )));
+        }
+
+        self.providers
+            .insert(expected_provider_id.to_string(), provider);
+        self.registrations
+            .insert(expected_provider_id.to_string(), registration);
+        Ok(())
+    }
+
+    pub fn provider(&self, provider_id: &str) -> Option<Arc<dyn PaymentProvider>> {
+        self.providers.get(provider_id).cloned()
+    }
+
+    pub fn registration(&self, provider_id: &str) -> Option<&ExternalPaymentProviderRegistration> {
+        self.registrations.get(provider_id)
+    }
+
+    pub fn descriptors(&self) -> Vec<PaymentProviderDescriptor> {
+        let mut descriptors = self
+            .registrations
+            .values()
+            .map(|registration| registration.descriptor.clone())
+            .collect::<Vec<_>>();
+        descriptors.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
+        descriptors
     }
 }
 
