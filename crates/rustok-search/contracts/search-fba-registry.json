@@ -8,61 +8,115 @@
     {
       "name": "SearchQueryPort",
       "owner": "search",
-      "operations": ["execute_search"],
+      "operations": [
+        "execute_search"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": false,
       "deadline_required": true,
       "write_operations": [],
-      "read_operations": ["execute_search"]
+      "read_operations": [
+        "execute_search"
+      ]
     },
     {
       "name": "SearchSuggestionPort",
       "owner": "search",
-      "operations": ["suggest"],
+      "operations": [
+        "suggest"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "idempotency_required": false,
       "deadline_required": true,
       "write_operations": [],
-      "read_operations": ["suggest"],
-      "status": "contract_declared_impl_pending"
+      "read_operations": [
+        "suggest"
+      ]
     }
   ],
   "consumers": [
     {
       "module": "storefront",
       "profile": "site_search",
-      "degraded_modes": ["show_empty_results", "hide_suggestions"],
-      "fallback_profiles": ["embedded_postgres"]
+      "degraded_modes": [
+        "show_empty_results",
+        "hide_suggestions"
+      ],
+      "fallback_profiles": [
+        "embedded_postgres"
+      ]
     },
     {
       "module": "admin",
       "profile": "search_playground",
-      "degraded_modes": ["disable_preview", "show_last_diagnostics_snapshot"],
-      "fallback_profiles": ["embedded_postgres"]
+      "degraded_modes": [
+        "disable_preview",
+        "show_last_diagnostics_snapshot"
+      ],
+      "fallback_profiles": [
+        "embedded_postgres"
+      ]
     }
   ],
   "evidence": {
     "local_plan": "crates/rustok-search/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-search-fba.mjs",
-    "static_matrix": "crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json"
+    "static_matrix": "crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
   },
   "in_process_provider_impl": {
     "service": "PgSearchEngine",
     "source": "crates/rustok-search/src/ports.rs",
-    "status": "partial_query_impl_suggestions_pending"
+    "status": "query_and_suggestion_impl_source_locked"
   },
   "contract_tests": {
     "status": "planned_cases_locked",
     "source": "crates/rustok-search/contracts/search-fba-registry.json",
     "runner": "scripts/verify/verify-search-fba.mjs",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
-    "cases": [
-      {"operation": "execute_search", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "locale_context_fallback"]},
-      {"operation": "suggest", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]}
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
     ],
-    "fallback_smoke": {"status": "planned", "profiles": ["embedded_postgres"], "degraded_modes": ["show_empty_results", "hide_suggestions", "disable_preview", "show_last_diagnostics_snapshot"]}
+    "cases": [
+      {
+        "operation": "execute_search",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "locale_context_fallback"
+        ]
+      },
+      {
+        "operation": "suggest",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "source_locked_no_compile",
+      "profiles": [
+        "embedded_postgres"
+      ],
+      "degraded_modes": [
+        "show_empty_results",
+        "hide_suggestions",
+        "disable_preview",
+        "show_last_diagnostics_snapshot"
+      ],
+      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
+    }
   }
 }

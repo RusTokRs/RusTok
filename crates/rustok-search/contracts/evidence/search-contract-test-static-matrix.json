@@ -4,8 +4,43 @@
   "runner": "scripts/verify/verify-search-fba.mjs",
   "status": "planned_cases_locked",
   "cases": [
-    {"operation": "execute_search", "profiles": ["in_process", "remote_adapter_placeholder"], "static_assertions": ["port_context_required", "deadline_semantics_required", "typed_port_error_mapping", "locale_context_fallback"]},
-    {"operation": "suggest", "profiles": ["in_process", "remote_adapter_placeholder"], "static_assertions": ["port_context_required", "deadline_semantics_required", "typed_port_error_mapping"]}
+    {
+      "operation": "execute_search",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "static_assertions": [
+        "port_context_required",
+        "deadline_semantics_required",
+        "typed_port_error_mapping",
+        "locale_context_fallback"
+      ]
+    },
+    {
+      "operation": "suggest",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "static_assertions": [
+        "port_context_required",
+        "deadline_semantics_required",
+        "typed_port_error_mapping"
+      ]
+    }
   ],
-  "fallback_smoke": {"status": "planned", "profiles": ["embedded_postgres"], "degraded_modes": ["show_empty_results", "hide_suggestions", "disable_preview", "show_last_diagnostics_snapshot"]}
+  "fallback_smoke": {
+    "status": "source_locked_no_compile",
+    "profiles": [
+      "embedded_postgres"
+    ],
+    "degraded_modes": [
+      "show_empty_results",
+      "hide_suggestions",
+      "disable_preview",
+      "show_last_diagnostics_snapshot"
+    ],
+    "evidence": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
+  }
 }

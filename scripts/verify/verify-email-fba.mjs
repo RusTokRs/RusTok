@@ -1,0 +1,42 @@
+import { readFileSync } from 'node:fs';
+const root = new URL('../../', import.meta.url);
+const read = (path) => readFileSync(new URL(path, root), 'utf8');
+const json = (path) => JSON.parse(read(path));
+const fail = (message) => { console.error(`[verify-email-fba] ${message}`); process.exit(1); };
+const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && expected.every((item) => actual.includes(item));
+const registryPath = 'crates/rustok-email/contracts/email-fba-registry.json';
+const evidencePath = 'crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json';
+const registry = json(registryPath);
+const evidence = json(evidencePath);
+const manifest = read('crates/rustok-email/rustok-module.toml');
+const plan = read('crates/rustok-email/docs/implementation-plan.md');
+const central = read('docs/modules/registry.md');
+const pkg = json('package.json');
+const lib = read('crates/rustok-email/src/lib.rs');
+const ports = read('crates/rustok-email/src/ports.rs');
+if (pkg.scripts?.['verify:email:fba'] !== 'node scripts/verify/verify-email-fba.mjs') fail('package script verify:email:fba drift');
+if (registry.schema_version !== 1 || registry.module !== 'email' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.contract_version !== 'email.delivery.v1') fail('contract version drift');
+const [port] = registry.ports ?? [];
+if (!port || port.name !== 'EmailDeliveryPort' || !port.operations.includes('send_transactional_email')) fail('EmailDeliveryPort operation missing');
+if (port.context !== 'crates/rustok-email/src/ports.rs::PortContext' || port.error !== 'crates/rustok-email/src/ports.rs::PortError') fail('context/error drift');
+if (port.deadline_required !== true || port.idempotency_required !== true) fail('email delivery must keep deadline + write idempotency semantics');
+if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/email-fba-registry.json"') || !manifest.includes('contract_version = "email.delivery.v1"')) fail('manifest FBA provider drift');
+if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib must export ports');
+for (const marker of ['trait EmailDeliveryPort', 'impl EmailDeliveryPort for crate::EmailService', 'context.require_write_semantics()?', 'validate_delivery_request', 'EmailDeliveryReceipt', 'EmailProviderMode::DisabledNoop', 'PortErrorKind::Template', 'email.idempotency_required']) {
+  if (!ports.includes(marker)) fail(`ports marker missing ${marker}`);
+}
+for (const assertion of ['disabled_provider_noop_preserved', 'template_error_not_retryable']) {
+  if (!JSON.stringify(registry).includes(assertion)) fail(`registry missing ${assertion}`);
+}
+if (!ports.includes('Serialize, Deserialize')) fail('FBA DTOs must be serializable');
+if (!plan.includes('## FFA/FBA status block') || !plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('EmailDeliveryPort') || !plan.includes('email-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `email` |') || !central.includes(registryPath) || !central.includes('`not_started` | `in_progress`')) fail('central readiness board drift');
+if (evidence.schema_version !== 1 || evidence.module !== 'email' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
+if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-email-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
+if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
+const rc = registry.contract_tests.cases.find((entry) => entry.operation === 'send_transactional_email');
+const ec = evidence.cases.find((entry) => entry.operation === 'send_transactional_email');
+if (!rc || !ec || ec.execution_status !== 'runtime_cases_planned_uncompiled' || !sameSet(ec.assertions, rc.assertions)) fail('send_transactional_email evidence case drift');
+if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
+console.log('[verify-email-fba] Email FBA provider metadata, port semantics and static evidence are consistent');

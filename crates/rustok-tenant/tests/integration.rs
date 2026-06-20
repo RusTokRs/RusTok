@@ -4,7 +4,8 @@ use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
     entities::{tenant, tenant_module},
-    CreateTenantInput, TenantError, TenantService, ToggleModuleInput, UpdateTenantInput,
+    CreateTenantInput, PortContext, PortErrorKind, TenantError, TenantReadPort, TenantReadRequest,
+    TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
 };
 use sea_orm::{
     sea_query::TableCreateStatement, ConnectionTrait, Database, DatabaseConnection, DbBackend,
@@ -141,6 +142,135 @@ async fn reject_invalid_tenant_settings_schema() {
         .expect_err("non-object settings root must be rejected");
 
     assert!(matches!(err, TenantError::InvalidSettingsSchema(_)));
+}
+
+#[tokio::test]
+async fn tenant_read_port_requires_deadline_and_valid_slug() {
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+
+    let missing_deadline = service
+        .read_tenant(
+            PortContext {
+                tenant_id: "tenant-read-port".to_string(),
+                correlation_id: "corr-missing-deadline".to_string(),
+                deadline_ms: None,
+            },
+            TenantReadRequest {
+                selector: TenantReadSelector::Slug("read-port".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect_err("read port calls without a deadline must fail before storage access");
+
+    assert_eq!(missing_deadline.kind, PortErrorKind::Timeout);
+    assert_eq!(missing_deadline.code, "port.deadline_required");
+    assert!(missing_deadline.retryable);
+
+    let empty_slug = service
+        .read_tenant(
+            PortContext {
+                tenant_id: "tenant-read-port".to_string(),
+                correlation_id: "corr-empty-slug".to_string(),
+                deadline_ms: Some(250),
+            },
+            TenantReadRequest {
+                selector: TenantReadSelector::Slug("   ".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect_err("blank slug selectors must map to typed validation errors");
+
+    assert_eq!(empty_slug.kind, PortErrorKind::Validation);
+    assert_eq!(empty_slug.code, "tenant.slug_empty");
+    assert!(!empty_slug.retryable);
+}
+
+#[tokio::test]
+async fn tenant_read_port_preserves_projection_and_inactive_degraded_mode() {
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+
+    let tenant = service
+        .create_tenant(CreateTenantInput {
+            name: "Read Port Tenant".to_string(),
+            slug: "read-port-tenant".to_string(),
+            domain: Some("read-port.example".to_string()),
+        })
+        .await
+        .expect("tenant should be created");
+
+    let active_projection = service
+        .read_tenant(
+            PortContext {
+                tenant_id: tenant.id.to_string(),
+                correlation_id: "corr-active-read".to_string(),
+                deadline_ms: Some(500),
+            },
+            TenantReadRequest {
+                selector: TenantReadSelector::Id(tenant.id),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect("active tenant should resolve through read port");
+
+    assert_eq!(active_projection.id, tenant.id);
+    assert_eq!(active_projection.slug, "read-port-tenant");
+    assert_eq!(active_projection.domain.as_deref(), Some("read-port.example"));
+    assert!(active_projection.is_active);
+
+    service
+        .update_tenant(
+            tenant.id,
+            UpdateTenantInput {
+                name: None,
+                domain: None,
+                is_active: Some(false),
+                settings: None,
+            },
+        )
+        .await
+        .expect("tenant should be deactivated");
+
+    let hidden_inactive = service
+        .read_tenant(
+            PortContext {
+                tenant_id: tenant.id.to_string(),
+                correlation_id: "corr-hidden-inactive".to_string(),
+                deadline_ms: Some(500),
+            },
+            TenantReadRequest {
+                selector: TenantReadSelector::Slug("read-port-tenant".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect_err("inactive tenants must be hidden unless explicitly requested");
+
+    assert_eq!(hidden_inactive.kind, PortErrorKind::NotFound);
+    assert_eq!(hidden_inactive.code, "tenant.inactive");
+    assert!(!hidden_inactive.retryable);
+
+    let inactive_projection = service
+        .read_tenant(
+            PortContext {
+                tenant_id: tenant.id.to_string(),
+                correlation_id: "corr-include-inactive".to_string(),
+                deadline_ms: Some(500),
+            },
+            TenantReadRequest {
+                selector: TenantReadSelector::Slug("read-port-tenant".to_string()),
+                include_inactive: true,
+            },
+        )
+        .await
+        .expect("include_inactive should expose inactive tenant projection");
+
+    assert_eq!(inactive_projection.id, tenant.id);
+    assert!(!inactive_projection.is_active);
 }
 
 #[tokio::test]

@@ -720,7 +720,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                     <select
                                         class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                         prop:value=body_format
-                                        on:change=move |ev| set_body_format.set(event_target_value(&ev))
+                                        on:change=move |ev| {
+                                            let body_format_change =
+                                                core::blog_post_admin_body_format_change_view(
+                                                    event_target_value(&ev),
+                                                );
+                                            set_body_format.set(body_format_change.body_format);
+                                        }
                                     >
                                         {move || {
                                             body_format_select_view

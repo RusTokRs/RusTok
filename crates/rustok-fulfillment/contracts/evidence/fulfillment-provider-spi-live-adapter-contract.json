@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "module": "fulfillment",
+  "packet": "provider-spi-live-adapter-execution-contract",
+  "status": "live_adapter_contract_locked",
+  "generated_from": "crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json",
+  "runner": "scripts/verify/verify-ecommerce-provider-spi-evidence.mjs",
+  "execution_scope": "contract_locked_runtime_execution_pending",
+  "adapter_profile": "external_carrier_adapter",
+  "promotion_gate": "requires_concrete_external_adapter_execution_before_boundary_ready",
+  "required_cases": [
+    {
+      "case": "successful_operation_invokes_adapter_once_after_owner_runtime_guard",
+      "expected_adapter_invocations": 1,
+      "assertions": [
+        "owner_runtime_guard_passes_before_invocation",
+        "adapter_called_exactly_once",
+        "lifecycle_persistence_delegated_to_owner_service"
+      ]
+    },
+    {
+      "case": "provider_error_maps_to_typed_owner_error_without_lifecycle_persistence",
+      "expected_adapter_invocations": 1,
+      "assertions": [
+        "provider_error_normalized_to_owner_error",
+        "adapter_result_not_persisted_directly",
+        "owner_service_controls_lifecycle_state"
+      ]
+    },
+    {
+      "case": "degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed",
+      "expected_can_execute": true,
+      "assertions": [
+        "degraded_mode_returned_by_runtime_mode",
+        "fallback_profile_propagated_to_orchestrator",
+        "adapter_invocation_allowed_after_owner_guard"
+      ]
+    },
+    {
+      "case": "unavailable_mode_blocks_adapter_invocation",
+      "expected_can_execute": false,
+      "expected_adapter_invocations": 0,
+      "assertions": [
+        "unavailable_runtime_mode_is_non_executable",
+        "owner_guard_blocks_adapter_invocation",
+        "typed_owner_error_mapping"
+      ]
+    },
+    {
+      "case": "webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service",
+      "adapter_operation": "handle_tracking_webhook",
+      "assertions": [
+        "idempotency_key_required_by_contract",
+        "duplicate_delivery_replayed_without_duplicate_lifecycle_transition",
+        "raw_payload_retained_for_audit",
+        "lifecycle_transition_delegated_to_owner_service"
+      ]
+    }
+  ],
+  "evidence_status": "runtime_execution_pending"
+}

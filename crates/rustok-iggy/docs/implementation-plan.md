@@ -7,11 +7,11 @@ production-grade уровня.
 ## Execution checkpoint
 
 - Current phase: real_integration_hardening
-- Last checkpoint: no-compile инкремент: offset/ack metadata связана с transport surface (`ack_consumed`), DLQ entry movement/retry сохраняет source metadata, replay config валидирует offset window и фиксирует planned offsets.
+- Last checkpoint: no-compile инкремент: `ack_consumed` теперь валидирует stream/topic/partition metadata перед ack, чтобы не коммитить opaque token от другого курсора; добавлены source-level unit assertions для mismatch guardrail.
 - Next step: заменить simulated connector ack на real SDK subscriber ack/offset commit path и добавить фактическое targeted test evidence.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Следующий инкремент должен связать metadata-bearing consume path с retry_from_dlq/replay и real SDK ack semantics.
-- Last updated at (UTC): 2026-06-15T00:00:00Z
+- Hand-off notes for next agent: Следующий инкремент должен связать real SDK metadata extraction с `validate_connector_metadata`/`ack_consumed`, затем прогнать targeted tests при снятии ограничения на компиляции.
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -43,6 +43,7 @@ production-grade уровня.
     - [x] consume path переносит connector offset/opaque ack metadata в `ConsumedEvent`;
     - [x] transport exposes `ack_consumed`; DLQ entries retain connector metadata and retry republishes with retry-limit validation;
     - [x] replay config validates offset windows and records planned offsets for bounded replay runs;
+    - [x] `ack_consumed` rejects connector metadata from another stream/topic/partition before invoking connector ack;
 - [ ] покрывать performance/recovery/security edge-cases targeted tests и drills.
 
 ### 3. Operability
@@ -71,5 +72,6 @@ production-grade уровня.
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены roundtrip deserialize и consume_next fake-connector tests.
 - [x] Добавить DLQ/replay tests поверх offset/ack metadata для transport-owned metadata plumbing (real SDK ack evidence remains open).
+- [x] Добавить source-level ack metadata mismatch guardrail для `ConsumedEvent`/`ack_consumed` (запуск тестов отложен без компиляций).
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

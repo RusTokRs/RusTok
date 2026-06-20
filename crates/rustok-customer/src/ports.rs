@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         self.get_customer(tenant_id, request.customer_id)
             .await
@@ -59,7 +59,7 @@ impl CustomerReadPort for crate::CustomerService {
         context: PortContext,
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let (items, total) = self
             .list_customers(

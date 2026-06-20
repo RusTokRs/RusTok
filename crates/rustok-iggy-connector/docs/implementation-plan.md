@@ -7,11 +7,11 @@
 ## Execution checkpoint
 
 - Current phase: lifecycle_hardening
-- Last checkpoint: no-compile инкремент: metadata builder расширен `message_id`/`delivery_attempt`, remote/embedded subscribers получили explicit ack override seam; transport DLQ/replay metadata wiring выполнен без переноса policy в connector.
+- Last checkpoint: no-compile инкремент: simulated remote/embedded ack tokens вынесены в canonical metadata helper, чтобы real SDK adapter work не дублировал formatting в transport tests.
 - Next step: связать metadata и ack override с реальным SDK subscriber path, затем заменить no-compile evidence фактическими targeted tests.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Проверить object-safety/async_trait compile gate для default trait methods; затем реализовать real SDK metadata extraction and ack override.
-- Last updated at (UTC): 2026-06-15T00:00:00Z
+- Hand-off notes for next agent: Проверить object-safety/async_trait compile gate для default trait methods; затем реализовать real SDK metadata extraction and ack override поверх canonical metadata helper.
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -40,6 +40,7 @@
   - [x] исправить lifecycle read surface `is_connected()` для remote/embedded connectors;
   - [x] добавить subscriber metadata для offset/ack/retry без transport policy;
   - [x] добавить explicit ack override seam для remote/embedded subscriber adapters;
+  - [x] централизовать simulated ack token builder для remote/embedded metadata;
 - [ ] покрывать batching, TLS и real connection failure cases targeted tests;
 - [ ] удерживать simulation mode как явный documented compatibility path.
 
@@ -67,4 +68,5 @@
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены unit assertions для subscriber metadata/message builders (запуск отложен без компиляций).
 - [x] Проверить полноту и актуальность `README.md` и локальных docs: README/docs/CRATE_API описывают metadata surface.
+- [x] Зафиксировать source-level assertions для canonical simulated ack tokens (запуск отложен без компиляций).
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
