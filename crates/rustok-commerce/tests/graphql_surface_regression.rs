@@ -71,7 +71,14 @@ fn storefront_graphql_queries_keep_read_path_stable() {
 #[test]
 fn commerce_graphql_module_keeps_expected_root_fields() {
     let query_source = include_str!("../src/graphql/query.rs");
-    let mutation_source = include_str!("../src/graphql/mutation.rs");
+    let mutation_source = format!(
+        "{}\\n{}\\n{}\\n{}\\n{}",
+        include_str!("../src/graphql/mutations/cart.rs"),
+        include_str!("../src/graphql/mutations/catalog.rs"),
+        include_str!("../src/graphql/mutations/checkout.rs"),
+        include_str!("../src/graphql/mutations/fulfillment.rs"),
+        include_str!("../src/graphql/mutations/pricing.rs"),
+    );
 
     for required in [
         "async fn product(",

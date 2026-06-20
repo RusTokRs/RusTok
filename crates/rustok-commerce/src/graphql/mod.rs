@@ -1,4 +1,4 @@
-mod mutation;
+mod mutations;
 mod query;
 mod types;
 
@@ -11,7 +11,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::storefront_channel::is_module_enabled_for_request_channel;
 
-pub use mutation::CommerceMutation;
+pub use mutations::CommerceMutation;
 pub use query::CommerceQuery;
 pub use types::*;
 

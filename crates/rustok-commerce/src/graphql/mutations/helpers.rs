@@ -1,0 +1,1317 @@
+use async_graphql::{Context, FieldError, Result};
+use rust_decimal::Decimal;
+use rustok_api::{graphql::GraphQLError, AuthContext, RequestContext, TenantContext};
+use rustok_core::{locale_tags_match, Permission};
+use rustok_inventory::check_variant_availability_for_public_channel;
+use rustok_pricing::{PriceResolutionContext, PricingService};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use serde_json::Value;
+use std::str::FromStr;
+use uuid::Uuid;
+
+use crate::{
+    entities::{price_list, product, product_translation, product_variant, variant_translation},
+    storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
+    storefront_shipping::{
+        effective_shipping_profile_slug, enrich_cart_delivery_groups,
+        is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
+    },
+    CartService, CatalogService, CreateReturnDecisionInput, CustomerService,
+    ExchangeDifferenceRefundInput, FulfillmentOrchestrationService, FulfillmentService,
+    OrderService, PaymentService, PostOrderOrchestrationService,
+    ReturnClaimDecisionInput, ReturnDecisionInput, ReturnExchangeDecisionInput,
+    ReturnRefundDecisionInput, ShippingProfileService, StoreContextService,
+};
+
+use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+
+pub(crate) fn convert_create_product_input(
+    input: CreateProductInput,
+) -> Result<crate::dto::CreateProductInput> {
+    let translations = input
+        .translations
+        .into_iter()
+        .map(|translation| crate::dto::ProductTranslationInput {
+            locale: translation.locale,
+            title: translation.title,
+            handle: translation.handle,
+            description: translation.description,
+            meta_title: translation.meta_title,
+            meta_description: translation.meta_description,
+        })
+        .collect();
+
+    let options = input
+        .options
+        .unwrap_or_default()
+        .into_iter()
+        .map(|option| crate::dto::ProductOptionInput {
+            translations: option
+                .translations
+                .into_iter()
+                .map(|translation| crate::dto::ProductOptionTranslationInput {
+                    locale: translation.locale,
+                    name: translation.name,
+                    values: translation.values,
+                })
+                .collect(),
+        })
+        .collect();
+
+    let variants = input
+        .variants
+        .into_iter()
+        .map(|variant| {
+            let prices = variant
+                .prices
+                .into_iter()
+                .map(|price| {
+                    let amount = parse_decimal(&price.amount)?;
+                    let compare_at_amount = match price.compare_at_amount {
+                        Some(value) => Some(parse_decimal(&value)?),
+                        None => None,
+                    };
+
+                    Ok(crate::dto::PriceInput {
+                        currency_code: price.currency_code,
+                        channel_id: price.channel_id,
+                        channel_slug: price.channel_slug,
+                        amount,
+                        compare_at_amount,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            Ok(crate::dto::CreateVariantInput {
+                sku: variant.sku,
+                barcode: variant.barcode,
+                shipping_profile_slug: variant.shipping_profile_slug,
+                option1: variant.option1,
+                option2: variant.option2,
+                option3: variant.option3,
+                prices,
+                inventory_quantity: variant.inventory_quantity.unwrap_or(0),
+                inventory_policy: variant
+                    .inventory_policy
+                    .unwrap_or_else(|| "deny".to_string()),
+                weight: None,
+                weight_unit: None,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(crate::dto::CreateProductInput {
+        translations,
+        options,
+        variants,
+        seller_id: input.seller_id,
+        vendor: input.vendor,
+        product_type: input.product_type,
+        shipping_profile_slug: input.shipping_profile_slug,
+        tags: input.tags.unwrap_or_default(),
+        metadata: serde_json::Value::Object(Default::default()),
+        publish: input.publish.unwrap_or(false),
+    })
+}
+
+pub(crate) fn parse_decimal(value: &str) -> Result<Decimal> {
+    Decimal::from_str(value).map_err(|_| async_graphql::Error::new("Invalid decimal value"))
+}
+
+pub(crate) fn parse_optional_decimal(value: Option<&str>) -> Result<Option<Decimal>> {
+    value.map(parse_decimal).transpose()
+}
+
+pub(crate) fn parse_pricing_currency_code(value: &str) -> Result<String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.len() != 3 || !normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        return Err(async_graphql::Error::new(
+            "currency_code must be a 3-letter code",
+        ));
+    }
+    Ok(normalized)
+}
+
+pub(crate) fn validate_admin_cart_promotion_target(
+    scope: GqlAdminCartPromotionScope,
+    line_item_id: Option<Uuid>,
+) -> Result<Option<Uuid>> {
+    match scope {
+        GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::Shipping => {
+            if line_item_id.is_some() {
+                return Err(async_graphql::Error::new(
+                    "line_item_id is allowed only for line_item scope",
+                ));
+            }
+            Ok(None)
+        }
+        GqlAdminCartPromotionScope::LineItem => line_item_id.map(Some).ok_or_else(|| {
+            async_graphql::Error::new("line_item_id is required for line_item scope")
+        }),
+    }
+}
+
+pub(crate) fn parse_required_promotion_decimal(value: Option<&str>, field: &str) -> Result<Decimal> {
+    let Some(value) = value else {
+        return Err(async_graphql::Error::new(format!(
+            "{field} is required for the selected promotion kind"
+        )));
+    };
+    parse_decimal(value)
+}
+
+pub(crate) fn ensure_no_unused_promotion_amount(value: Option<&str>, field: &str) -> Result<()> {
+    if value.is_some() {
+        return Err(async_graphql::Error::new(format!(
+            "{field} must be omitted for the selected promotion kind"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn map_cart_promotion_preview(
+    scope: GqlAdminCartPromotionScope,
+    preview: rustok_cart::services::cart::CartPromotionPreview,
+) -> GqlCartPromotionPreview {
+    GqlCartPromotionPreview {
+        kind: match preview.kind {
+            rustok_cart::services::cart::CartPromotionKind::PercentageDiscount => {
+                "percentage_discount".to_string()
+            }
+            rustok_cart::services::cart::CartPromotionKind::FixedDiscount => {
+                "fixed_discount".to_string()
+            }
+        },
+        scope: match scope {
+            GqlAdminCartPromotionScope::Cart => "cart".to_string(),
+            GqlAdminCartPromotionScope::LineItem => "line_item".to_string(),
+            GqlAdminCartPromotionScope::Shipping => "shipping".to_string(),
+        },
+        line_item_id: preview.line_item_id,
+        currency_code: preview.currency_code,
+        base_amount: preview.base_amount.to_string(),
+        adjustment_amount: preview.adjustment_amount.to_string(),
+        adjusted_amount: preview.adjusted_amount.to_string(),
+    }
+}
+
+pub(crate) fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+pub(crate) async fn build_refund_resolution_return_completion(
+    db: &sea_orm::DatabaseConnection,
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    return_id: Uuid,
+    mut complete_input: crate::dto::CompleteOrderReturnInput,
+    refund_input: CompleteOrderReturnRefundInputObject,
+) -> Result<crate::dto::CompleteOrderReturnInput> {
+    if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+        return Err(async_graphql::Error::new(
+            "refund helper cannot be combined with explicit refund_id or order_change_id",
+        ));
+    }
+    if complete_input
+        .resolution_type
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("refund"))
+        == Some(false)
+    {
+        return Err(async_graphql::Error::new(
+            "refund helper requires resolution_type to be omitted or `refund`",
+        ));
+    }
+
+    let existing_return = order_service.get_return(tenant_id, return_id).await?;
+    let payment_service = PaymentService::new(db.clone());
+    let collection_id = match refund_input.payment_collection_id {
+        Some(collection_id) => {
+            let collection = payment_service
+                .get_collection(tenant_id, collection_id)
+                .await?;
+            if collection.order_id != Some(existing_return.order_id) {
+                return Err(async_graphql::Error::new(format!(
+                    "payment collection {collection_id} is not attached to order {}",
+                    existing_return.order_id
+                )));
+            }
+            collection_id
+        }
+        None => payment_service
+            .find_latest_collection_by_order(tenant_id, existing_return.order_id)
+            .await?
+            .map(|collection| collection.id)
+            .ok_or_else(|| {
+                async_graphql::Error::new(format!(
+                    "order {} has no payment collection for return refund",
+                    existing_return.order_id
+                ))
+            })?,
+    };
+
+    let refund = payment_service
+        .create_refund(
+            tenant_id,
+            collection_id,
+            crate::dto::CreateRefundInput {
+                amount: parse_decimal(&refund_input.amount)?,
+                reason: refund_input.reason,
+                metadata: parse_optional_metadata(refund_input.metadata.as_deref())?,
+            },
+        )
+        .await?;
+    let refund = if refund_input.complete.unwrap_or(false) {
+        payment_service
+            .complete_refund(
+                tenant_id,
+                refund.id,
+                crate::dto::CompleteRefundInput {
+                    metadata: serde_json::json!({
+                        "source": "order_return_completion",
+                        "return_id": return_id,
+                    }),
+                },
+            )
+            .await?
+    } else {
+        refund
+    };
+
+    complete_input.resolution_type = Some("refund".to_string());
+    complete_input.refund_id = Some(refund.id);
+    Ok(complete_input)
+}
+
+pub(crate) async fn build_exchange_resolution_return_completion(
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    return_id: Uuid,
+    mut complete_input: crate::dto::CompleteOrderReturnInput,
+    exchange_input: CompleteOrderReturnExchangeInputObject,
+) -> Result<crate::dto::CompleteOrderReturnInput> {
+    if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+        return Err(async_graphql::Error::new(
+            "exchange helper cannot be combined with explicit refund_id or order_change_id",
+        ));
+    }
+    if complete_input
+        .resolution_type
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("exchange"))
+        == Some(false)
+    {
+        return Err(async_graphql::Error::new(
+            "exchange helper requires resolution_type to be omitted or `exchange`",
+        ));
+    }
+
+    let existing_return = order_service.get_return(tenant_id, return_id).await?;
+    let preview_val = parse_json_payload(exchange_input.preview.as_str(), "Invalid JSON preview payload")?;
+    let metadata_val = parse_optional_metadata(exchange_input.metadata.as_deref())?;
+
+    let preview = attach_return_order_change_context_gql(preview_val, return_id, "exchange")?;
+    let metadata = attach_return_order_change_context_gql(metadata_val, return_id, "exchange")?;
+
+    let order_change = order_service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            existing_return.order_id,
+            crate::dto::CreateOrderChangeInput {
+                change_type: "exchange".to_string(),
+                description: exchange_input.description,
+                preview,
+                metadata,
+            },
+        )
+        .await?;
+
+    complete_input.resolution_type = Some("exchange".to_string());
+    complete_input.order_change_id = Some(order_change.id);
+    Ok(complete_input)
+}
+
+pub(crate) async fn build_claim_resolution_return_completion(
+    order_service: &OrderService,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    return_id: Uuid,
+    mut complete_input: crate::dto::CompleteOrderReturnInput,
+    claim_input: CompleteOrderReturnClaimInputObject,
+) -> Result<crate::dto::CompleteOrderReturnInput> {
+    if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() {
+        return Err(async_graphql::Error::new(
+            "claim helper cannot be combined with explicit refund_id or order_change_id",
+        ));
+    }
+    if complete_input
+        .resolution_type
+        .as_deref()
+        .map(|value| value.trim().eq_ignore_ascii_case("claim"))
+        == Some(false)
+    {
+        return Err(async_graphql::Error::new(
+            "claim helper requires resolution_type to be omitted or `claim`",
+        ));
+    }
+
+    let existing_return = order_service.get_return(tenant_id, return_id).await?;
+    let preview_val = parse_json_payload(claim_input.preview.as_str(), "Invalid JSON preview payload")?;
+    let metadata_val = parse_optional_metadata(claim_input.metadata.as_deref())?;
+
+    let preview = attach_return_order_change_context_gql(preview_val, return_id, "claim")?;
+    let metadata = attach_return_order_change_context_gql(metadata_val, return_id, "claim")?;
+
+    let order_change = order_service
+        .create_order_change(
+            tenant_id,
+            actor_id,
+            existing_return.order_id,
+            crate::dto::CreateOrderChangeInput {
+                change_type: "claim".to_string(),
+                description: claim_input.description,
+                preview,
+                metadata,
+            },
+        )
+        .await?;
+
+    complete_input.resolution_type = Some("claim".to_string());
+    complete_input.order_change_id = Some(order_change.id);
+    Ok(complete_input)
+}
+
+pub(crate) fn attach_return_order_change_context_gql(
+    value: serde_json::Value,
+    return_id: Uuid,
+    change_type: &str,
+) -> Result<serde_json::Value> {
+    let mut object = match value {
+        serde_json::Value::Null => serde_json::Map::new(),
+        serde_json::Value::Object(obj) => obj,
+        _ => return Err(async_graphql::Error::new("Value must be a JSON object")),
+    };
+    object.insert(
+        "order_return_id".to_string(),
+        serde_json::Value::String(return_id.to_string()),
+    );
+    object.insert(
+        "return_decision_action".to_string(),
+        serde_json::Value::String(change_type.to_string()),
+    );
+    object.insert(
+        "return_decision_source".to_string(),
+        serde_json::Value::String("rustok-commerce".to_string()),
+    );
+    Ok(serde_json::Value::Object(object))
+}
+
+pub(crate) fn build_create_order_change_input(
+    input: CreateOrderChangeInputObject,
+) -> Result<crate::dto::CreateOrderChangeInput> {
+    Ok(crate::dto::CreateOrderChangeInput {
+        change_type: input.change_type,
+        description: input.description,
+        preview: parse_json_payload(input.preview.as_str(), "Invalid JSON preview payload")?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+pub(crate) fn build_create_order_return_input(
+    input: CreateOrderReturnInputObject,
+) -> Result<crate::dto::CreateOrderReturnInput> {
+    Ok(crate::dto::CreateOrderReturnInput {
+        reason: input.reason,
+        note: input.note,
+        items: input
+            .items
+            .unwrap_or_default()
+            .into_iter()
+            .map(|item| {
+                Ok(crate::dto::CreateOrderReturnItemInput {
+                    line_item_id: item.line_item_id,
+                    quantity: item.quantity,
+                    reason: item.reason,
+                    note: item.note,
+                    metadata: parse_optional_metadata(item.metadata.as_deref())?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+pub(crate) fn build_create_return_decision_input(
+    input: CreateReturnDecisionInputObject,
+) -> Result<CreateReturnDecisionInput> {
+    Ok(CreateReturnDecisionInput {
+        return_request: build_create_order_return_input(input.return_request)?,
+        decision: ReturnDecisionInput {
+            action: input.decision.action,
+            refund: input
+                .decision
+                .refund
+                .map(build_return_refund_decision_input)
+                .transpose()?,
+            exchange: input
+                .decision
+                .exchange
+                .map(build_return_exchange_decision_input)
+                .transpose()?,
+            claim: input
+                .decision
+                .claim
+                .map(build_return_claim_decision_input)
+                .transpose()?,
+            metadata: parse_optional_metadata(input.decision.metadata.as_deref())?,
+        },
+    })
+}
+
+pub(crate) fn build_return_refund_decision_input(
+    input: ReturnRefundDecisionInputObject,
+) -> Result<ReturnRefundDecisionInput> {
+    Ok(ReturnRefundDecisionInput {
+        payment_collection_id: input.payment_collection_id,
+        amount: parse_optional_decimal(input.amount.as_deref())?,
+        reason: input.reason,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+pub(crate) fn build_return_exchange_decision_input(
+    input: ReturnExchangeDecisionInputObject,
+) -> Result<ReturnExchangeDecisionInput> {
+    let preview = input.preview.unwrap_or_else(|| "{}".to_string());
+    Ok(ReturnExchangeDecisionInput {
+        description: input.description,
+        preview: parse_json_payload(preview.as_str(), "Invalid JSON preview payload")?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+pub(crate) fn build_return_claim_decision_input(
+    input: ReturnClaimDecisionInputObject,
+) -> Result<ReturnClaimDecisionInput> {
+    let preview = input.preview.unwrap_or_else(|| "{}".to_string());
+    Ok(ReturnClaimDecisionInput {
+        description: input.description,
+        preview: parse_json_payload(preview.as_str(), "Invalid JSON preview payload")?,
+        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+    })
+}
+
+pub(crate) fn graphql_decision_requires_payments_update(action: &str, has_refund_payload: bool) -> bool {
+    if has_refund_payload {
+        return true;
+    }
+
+    action.trim().to_ascii_lowercase().replace('-', "_") == "refund"
+}
+
+pub(crate) async fn ensure_storefront_order_access(
+    db: &sea_orm::DatabaseConnection,
+    event_bus: &rustok_outbox::TransactionalEventBus,
+    tenant_id: Uuid,
+    ctx: &Context<'_>,
+    order_id: Uuid,
+) -> Result<()> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let customer = CustomerService::new(db.clone())
+        .get_customer_by_user(tenant_id, auth.user_id)
+        .await
+        .map_err(|err| match err {
+            rustok_customer::error::CustomerError::CustomerByUserNotFound(_) => {
+                <FieldError as GraphQLError>::unauthenticated()
+            }
+            other => async_graphql::Error::new(other.to_string()),
+        })?;
+
+    let order = OrderService::new(db.clone(), event_bus.clone())
+        .get_order(tenant_id, order_id)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    if order.customer_id != Some(customer.id) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Order does not belong to the current customer",
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn parse_json_payload(value: &str, message: &str) -> Result<Value> {
+    serde_json::from_str(value).map_err(|_| async_graphql::Error::new(message))
+}
+
+pub(crate) fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(Value::Object(Default::default())),
+        Some(value) => serde_json::from_str(value)
+            .map_err(|_| async_graphql::Error::new("Invalid JSON metadata payload")),
+    }
+}
+
+pub(crate) async fn resolve_optional_storefront_customer_id(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    auth: Option<&AuthContext>,
+) -> Result<Option<Uuid>> {
+    let Some(auth) = auth else {
+        return Ok(None);
+    };
+
+    match CustomerService::new(db.clone())
+        .get_customer_by_user(tenant_id, auth.user_id)
+        .await
+    {
+        Ok(customer) => Ok(Some(customer.id)),
+        Err(rustok_customer::error::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
+        Err(err) => Err(async_graphql::Error::new(err.to_string())),
+    }
+}
+
+pub(crate) fn ensure_storefront_cart_access(
+    cart: &crate::dto::CartResponse,
+    customer_id: Option<Uuid>,
+) -> Result<()> {
+    if let Some(expected_customer_id) = cart.customer_id {
+        if customer_id.is_none() {
+            return Err(<FieldError as GraphQLError>::unauthenticated());
+        }
+        if customer_id != Some(expected_customer_id) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Cart belongs to another customer",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn merge_graphql_metadata(current: Value, patch: Value) -> Value {
+    match (current, patch) {
+        (Value::Object(mut current), Value::Object(patch)) => {
+            for (key, value) in patch {
+                current.insert(key, value);
+            }
+            Value::Object(current)
+        }
+        (_, patch) => patch,
+    }
+}
+
+pub(crate) fn map_price_row_to_gql_price(price: crate::entities::price::Model) -> GqlPricingPrice {
+    let on_sale = price
+        .compare_at_amount
+        .filter(|compare_at| *compare_at > Decimal::ZERO)
+        .map(|compare_at| compare_at > price.amount)
+        .unwrap_or(false);
+    let discount_percent = price.compare_at_amount.and_then(|compare_at_amount| {
+        if compare_at_amount <= Decimal::ZERO || compare_at_amount <= price.amount {
+            return None;
+        }
+
+        Some(
+            (((compare_at_amount - price.amount) / compare_at_amount) * Decimal::from(100))
+                .round_dp(2)
+                .normalize()
+                .to_string(),
+        )
+    });
+
+    GqlPricingPrice {
+        currency_code: price.currency_code,
+        amount: price.amount.normalize().to_string(),
+        compare_at_amount: price
+            .compare_at_amount
+            .map(|item| item.normalize().to_string()),
+        discount_percent,
+        on_sale,
+        price_list_id: price.price_list_id,
+        channel_id: price.channel_id,
+        channel_slug: price.channel_slug,
+        min_quantity: price.min_quantity,
+        max_quantity: price.max_quantity,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn load_pricing_price_row(
+    service: &PricingService,
+    variant_id: Uuid,
+    currency_code: &str,
+    price_list_id: Option<Uuid>,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+    min_quantity: Option<i32>,
+    max_quantity: Option<i32>,
+) -> Result<GqlPricingPrice> {
+    let normalized_channel_slug = normalize_pricing_channel_slug(channel_slug);
+    let prices = service
+        .get_variant_prices(variant_id)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    let price = prices
+        .into_iter()
+        .find(|price| {
+            price.currency_code.eq_ignore_ascii_case(currency_code)
+                && price.price_list_id == price_list_id
+                && price.channel_id == channel_id
+                && normalize_pricing_channel_slug(price.channel_slug.as_deref())
+                    == normalized_channel_slug
+                && price.min_quantity == min_quantity
+                && price.max_quantity == max_quantity
+        })
+        .ok_or_else(|| async_graphql::Error::new("Updated pricing row was not found"))?;
+
+    Ok(map_price_row_to_gql_price(price))
+}
+
+pub(crate) async fn load_active_price_list_option(
+    service: &PricingService,
+    tenant_id: Uuid,
+    price_list_id: Uuid,
+    requested_locale: &str,
+    tenant_default_locale: &str,
+) -> Result<GqlActivePriceListOption> {
+    let option = service
+        .list_active_price_lists(
+            tenant_id,
+            Some(requested_locale),
+            Some(tenant_default_locale),
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?
+        .into_iter()
+        .find(|item| item.id == price_list_id)
+        .ok_or_else(|| {
+            async_graphql::Error::new("price_list_id must reference an active price list")
+        })?;
+
+    Ok(option.into())
+}
+
+pub(crate) async fn validate_active_price_list_for_rule_update(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    price_list_id: Uuid,
+) -> Result<()> {
+    let price_list = price_list::Entity::find_by_id(price_list_id)
+        .filter(price_list::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("price_list_id was not found"))?;
+
+    if !price_list.status.eq_ignore_ascii_case("active") {
+        return Err(async_graphql::Error::new(
+            "price_list_id must reference an active price list",
+        ));
+    }
+
+    let now = chrono::Utc::now();
+    if price_list
+        .starts_at
+        .map(|item| item.with_timezone(&chrono::Utc) > now)
+        .unwrap_or(false)
+    {
+        return Err(async_graphql::Error::new("price_list_id is not active yet"));
+    }
+
+    if price_list
+        .ends_at
+        .map(|item| item.with_timezone(&chrono::Utc) < now)
+        .unwrap_or(false)
+    {
+        return Err(async_graphql::Error::new(
+            "price_list_id is already expired",
+        ));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn cart_context_metadata(
+    cart: &crate::dto::CartResponse,
+    context: &crate::dto::StoreContextResponse,
+) -> Value {
+    serde_json::json!({
+        "cart_context": {
+            "region_id": context.region.as_ref().map(|region| region.id),
+            "country_code": cart.country_code.clone(),
+            "locale": context.locale.clone(),
+            "currency_code": cart.currency_code.clone(),
+            "selected_shipping_option_id": cart.selected_shipping_option_id,
+            "shipping_selections": current_shipping_selections(cart),
+            "customer_id": cart.customer_id,
+            "email": cart.email.clone(),
+        }
+    })
+}
+
+pub(crate) async fn enrich_storefront_cart(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    tenant_default_locale: &str,
+    cart: crate::dto::CartResponse,
+) -> Result<crate::dto::CartResponse> {
+    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
+    enrich_cart_delivery_groups(
+        db,
+        tenant_id,
+        cart,
+        public_channel_slug.as_deref(),
+        Some(request_context.locale.as_str()),
+        Some(tenant_default_locale),
+    )
+    .await
+    .map_err(|err| async_graphql::Error::new(err.to_string()))
+}
+
+pub(crate) fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {
+    ctx.data_opt::<RequestContext>()
+        .and_then(|request_context| {
+            normalize_public_channel_slug(request_context.channel_slug.as_deref())
+        })
+}
+
+pub(crate) fn storefront_public_channel_slug_for_cart(
+    cart: &crate::dto::CartResponse,
+    ctx: &Context<'_>,
+) -> Option<String> {
+    normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| request_public_channel_slug(ctx))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn validate_selected_shipping_option(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    cart: &crate::dto::CartResponse,
+    selected_shipping_option_id: Option<Uuid>,
+    shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
+    currency_code: &str,
+    public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> Result<()> {
+    let selections = if let Some(shipping_selections) = shipping_selections {
+        shipping_selections.to_vec()
+    } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {
+        if cart.delivery_groups.len() > 1 {
+            return Err(async_graphql::Error::new(
+                "selectedShippingOptionId can only be used for carts with a single delivery group",
+            ));
+        }
+        cart.delivery_groups
+            .first()
+            .map(|group| {
+                vec![crate::dto::CartShippingSelectionInput {
+                    shipping_profile_slug: group.shipping_profile_slug.clone(),
+                    seller_id: group.seller_id.clone(),
+                    seller_scope: group.seller_scope.clone(),
+                    selected_shipping_option_id: Some(selected_shipping_option_id),
+                }]
+            })
+            .unwrap_or_default()
+    } else {
+        current_shipping_selections(cart)
+    };
+
+    for selection in selections {
+        let Some(selected_shipping_option_id) = selection.selected_shipping_option_id else {
+            continue;
+        };
+        let option = FulfillmentService::new(db.clone())
+            .get_shipping_option(
+                tenant_id,
+                selected_shipping_option_id,
+                requested_locale,
+                tenant_default_locale,
+            )
+            .await?;
+        if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+            return Err(async_graphql::Error::new(format!(
+                "Shipping option {} uses currency {}, expected {}",
+                option.id, option.currency_code, currency_code
+            )));
+        }
+        if !is_metadata_visible_for_public_channel(&option.metadata, public_channel_slug) {
+            return Err(async_graphql::Error::new(format!(
+                "Shipping option {} is not available for the current channel",
+                option.id
+            )));
+        }
+        let required_shipping_profiles =
+            std::collections::BTreeSet::from([normalize_shipping_profile_slug(
+                selection.shipping_profile_slug.as_str(),
+            )
+            .unwrap_or_else(|| "default".to_string())]);
+        if !is_shipping_option_compatible_with_profiles(&option, &required_shipping_profiles) {
+            return Err(async_graphql::Error::new(format!(
+                "Shipping option {} is not compatible with shipping profile {}",
+                option.id, selection.shipping_profile_slug
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn current_shipping_selections(
+    cart: &crate::dto::CartResponse,
+) -> Vec<crate::dto::CartShippingSelectionInput> {
+    cart.delivery_groups
+        .iter()
+        .map(|group| crate::dto::CartShippingSelectionInput {
+            shipping_profile_slug: group.shipping_profile_slug.clone(),
+            seller_id: group.seller_id.clone(),
+            seller_scope: group.seller_scope.clone(),
+            selected_shipping_option_id: group.selected_shipping_option_id,
+        })
+        .collect()
+}
+
+pub(crate) async fn validate_product_shipping_profile_input(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    shipping_profile_slug: Option<&str>,
+) -> Result<()> {
+    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slug_exists(tenant_id, &slug)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    Ok(())
+}
+
+pub(crate) async fn validate_shipping_option_profile_inputs(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    allowed_shipping_profile_slugs: Option<&Vec<String>>,
+) -> Result<()> {
+    let Some(slugs) = allowed_shipping_profile_slugs else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    Ok(())
+}
+
+pub(crate) fn maybe_undefined_or_existing<T>(
+    value: async_graphql::MaybeUndefined<T>,
+    current: Option<T>,
+) -> Option<T> {
+    match value {
+        async_graphql::MaybeUndefined::Value(value) => Some(value),
+        async_graphql::MaybeUndefined::Null => None,
+        async_graphql::MaybeUndefined::Undefined => current,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn resolve_storefront_line_item_input(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    pricing_service: &PricingService,
+    pricing_context: &PriceResolutionContext,
+    currency_code: &str,
+    locale: &str,
+    default_locale: &str,
+    public_channel_slug: Option<&str>,
+    input: AddStorefrontCartLineItemInput,
+) -> Result<ResolvedStorefrontLineItemInput> {
+    let variant = product_variant::Entity::find_by_id(input.variant_id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("Variant not found"))?;
+
+    let product_model = product::Entity::find_by_id(variant.product_id)
+        .filter(product::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("Product not found"))?;
+    if product_model.status != product::ProductStatus::Active
+        || product_model.published_at.is_none()
+        || !is_metadata_visible_for_public_channel(&product_model.metadata, public_channel_slug)
+    {
+        return Err(async_graphql::Error::new("Product not found"));
+    }
+
+    let product_translation_models = product_translation::Entity::find()
+        .filter(product_translation::Column::ProductId.eq(product_model.id))
+        .all(db)
+        .await?;
+    let variant_translation_models = variant_translation::Entity::find()
+        .filter(variant_translation::Column::VariantId.eq(variant.id))
+        .all(db)
+        .await?;
+
+    let resolved_price = pricing_service
+        .resolve_variant_price(tenant_id, variant.id, pricing_context.clone())
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?
+        .ok_or_else(|| {
+            async_graphql::Error::new(format!(
+                "No storefront price for variant {} in currency {}",
+                variant.id, currency_code
+            ))
+        })?;
+    let (base_unit_price, pricing_adjustment) =
+        storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
+    validate_storefront_variant_inventory(
+        db,
+        tenant_id,
+        &variant,
+        input.quantity,
+        public_channel_slug,
+    )
+    .await?;
+
+    let base_title = pick_product_translation(&product_translation_models, locale, default_locale)
+        .map(|translation| translation.title.clone())
+        .unwrap_or_else(|| {
+            variant
+                .sku
+                .clone()
+                .unwrap_or_else(|| format!("Variant {}", variant.id))
+        });
+    let title = match pick_variant_translation(&variant_translation_models, locale, default_locale)
+        .and_then(|translation| translation.title.clone())
+    {
+        Some(variant_title) if !variant_title.trim().is_empty() => {
+            format!("{base_title} / {}", variant_title.trim())
+        }
+        _ => base_title,
+    };
+
+    Ok(ResolvedStorefrontLineItemInput {
+        add_line_item: crate::dto::AddCartLineItemInput {
+            product_id: Some(product_model.id),
+            variant_id: Some(variant.id),
+            shipping_profile_slug: Some(effective_shipping_profile_slug(
+                product_model.shipping_profile_slug.as_deref(),
+                &product_model.metadata,
+                variant.shipping_profile_slug.as_deref(),
+            )),
+            sku: variant.sku.clone(),
+            title,
+            quantity: input.quantity,
+            unit_price: base_unit_price,
+            metadata: merge_graphql_metadata(
+                parse_optional_metadata(input.metadata.as_deref())?,
+                seller_snapshot_metadata(product_model.seller_id.as_deref()),
+            ),
+        },
+        pricing_adjustment,
+    })
+}
+
+pub(crate) struct ResolvedStorefrontLineItemInput {
+    pub(crate) add_line_item: crate::dto::AddCartLineItemInput,
+    pub(crate) pricing_adjustment: Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
+}
+
+pub(crate) fn pick_product_translation<'a>(
+    translations: &'a [product_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a product_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+pub(crate) fn pick_variant_translation<'a>(
+    translations: &'a [variant_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a variant_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+pub(crate) fn resolve_commerce_graphql_locale(
+    ctx: &Context<'_>,
+    requested: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    requested
+        .map(str::trim)
+        .filter(|locale| !locale.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            ctx.data_opt::<RequestContext>()
+                .map(|request| request.locale.clone())
+        })
+        .unwrap_or_else(|| tenant_default_locale.to_string())
+}
+
+pub(crate) fn build_storefront_pricing_context(
+    cart: &crate::dto::CartResponse,
+    request_context: &RequestContext,
+    public_channel_slug: Option<&str>,
+    quantity: i32,
+) -> PriceResolutionContext {
+    PriceResolutionContext {
+        currency_code: cart.currency_code.to_ascii_uppercase(),
+        region_id: cart.region_id,
+        price_list_id: None,
+        channel_id: cart.channel_id.or(request_context.channel_id),
+        channel_slug: public_channel_slug.map(|slug| slug.to_string()),
+        quantity: Some(quantity),
+    }
+}
+
+pub(crate) async fn reprice_storefront_cart_line_items(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    event_bus: &rustok_outbox::TransactionalEventBus,
+    cart_service: &CartService,
+    cart: crate::dto::CartResponse,
+) -> Result<crate::dto::CartResponse> {
+    if cart.line_items.is_empty() {
+        return Ok(cart);
+    }
+
+    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
+    let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+    let mut updates = Vec::new();
+    for line_item in &cart.line_items {
+        let Some(variant_id) = line_item.variant_id else {
+            continue;
+        };
+        let pricing_context = build_storefront_pricing_context(
+            &cart,
+            request_context,
+            public_channel_slug.as_deref(),
+            line_item.quantity,
+        );
+        let resolved_price = pricing_service
+            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .ok_or_else(|| {
+                async_graphql::Error::new(format!(
+                    "No storefront price for variant {} in currency {}",
+                    variant_id, cart.currency_code
+                ))
+            })?;
+        updates.push(storefront_cart_pricing_update(
+            line_item.id,
+            line_item.quantity,
+            &resolved_price,
+        ));
+    }
+
+    if updates.is_empty() {
+        Ok(cart)
+    } else {
+        cart_service
+            .reprice_line_items(tenant_id, cart.id, updates)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
+}
+
+pub(crate) fn storefront_cart_pricing_update(
+    line_item_id: Uuid,
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
+    let (base_unit_price, pricing_adjustment) =
+        storefront_cart_pricing_snapshot(quantity, resolved_price);
+
+    rustok_cart::services::cart::CartLineItemPricingUpdate {
+        line_item_id,
+        unit_price: base_unit_price,
+        pricing_adjustment,
+    }
+}
+
+pub(crate) fn storefront_cart_pricing_snapshot(
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> (
+    Decimal,
+    Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
+) {
+    let base_unit_price = resolved_price
+        .compare_at_amount
+        .filter(|compare_at| *compare_at > resolved_price.amount)
+        .unwrap_or(resolved_price.amount);
+    let pricing_adjustment = if base_unit_price > resolved_price.amount {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "kind".to_string(),
+            Value::from(if resolved_price.price_list_id.is_some() {
+                "price_list"
+            } else {
+                "sale"
+            }),
+        );
+        metadata.insert(
+            "base_amount".to_string(),
+            Value::from(base_unit_price.normalize().to_string()),
+        );
+        metadata.insert(
+            "effective_amount".to_string(),
+            Value::from(resolved_price.amount.normalize().to_string()),
+        );
+        if let Some(compare_at_amount) = resolved_price.compare_at_amount {
+            metadata.insert(
+                "compare_at_amount".to_string(),
+                Value::from(compare_at_amount.normalize().to_string()),
+            );
+        }
+        if let Some(discount_percent) = resolved_price.discount_percent {
+            metadata.insert(
+                "discount_percent".to_string(),
+                Value::from(discount_percent.normalize().to_string()),
+            );
+        }
+        if let Some(price_list_id) = resolved_price.price_list_id {
+            metadata.insert(
+                "price_list_id".to_string(),
+                Value::from(price_list_id.to_string()),
+            );
+        }
+        if let Some(channel_id) = resolved_price.channel_id {
+            metadata.insert(
+                "channel_id".to_string(),
+                Value::from(channel_id.to_string()),
+            );
+        }
+        if let Some(channel_slug) = resolved_price.channel_slug.as_deref() {
+            metadata.insert("channel_slug".to_string(), Value::from(channel_slug));
+        }
+
+        Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
+            source_id: resolved_price.price_list_id.map(|value| value.to_string()),
+            amount: (base_unit_price - resolved_price.amount) * Decimal::from(quantity),
+            metadata: Value::Object(metadata),
+        })
+    } else {
+        None
+    };
+
+    (base_unit_price, pricing_adjustment)
+}
+
+pub(crate) fn normalize_graphql_seller_scope(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+pub(crate) fn normalize_graphql_seller_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
+pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
+    let seller_id = normalize_graphql_seller_id(seller_id);
+    let seller_scope = seller_id
+        .as_deref()
+        .and_then(|value| normalize_graphql_seller_scope(Some(value)));
+
+    serde_json::json!({
+        "seller": {
+            "id": seller_id,
+            "scope": seller_scope,
+        }
+    })
+}
+
+pub(crate) async fn validate_storefront_line_item_quantity(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> Result<()> {
+    let Some(variant) = product_variant::Entity::find_by_id(variant_id)
+        .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+    else {
+        return Ok(());
+    };
+
+    validate_storefront_variant_inventory(
+        db,
+        tenant_id,
+        &variant,
+        requested_quantity,
+        public_channel_slug,
+    )
+    .await
+}
+
+pub(crate) async fn validate_storefront_variant_inventory(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    variant: &product_variant::Model,
+    requested_quantity: i32,
+    public_channel_slug: Option<&str>,
+) -> Result<()> {
+    let available = check_variant_availability_for_public_channel(
+        db,
+        tenant_id,
+        variant,
+        requested_quantity,
+        public_channel_slug,
+    )
+    .await
+    .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+    if !available {
+        return Err(async_graphql::Error::new(format!(
+            "Variant {} does not have enough available inventory for the current channel",
+            variant.id
+        )));
+    }
+
+    Ok(())
+}

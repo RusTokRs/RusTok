@@ -56,7 +56,7 @@ fn build_schema(
     auth: Option<AuthContext>,
 ) -> CommerceSchema {
     let event_bus = mock_transactional_event_bus();
-    let mut builder = Schema::build(CommerceQuery, CommerceMutation, EmptySubscription)
+    let mut builder = Schema::build(CommerceQuery, CommerceMutation::default(), EmptySubscription)
         .data(db.clone())
         .data(event_bus)
         .data(tenant)

@@ -919,7 +919,7 @@ impl RegistryGovernanceService {
         Ok(request.clone())
     }
 
-    async fn validation_stage_rows(
+    pub(crate) async fn validation_stage_rows(
         &self,
         request_id: &str,
     ) -> anyhow::Result<Vec<registry_validation_stage::Model>> {
@@ -931,7 +931,7 @@ impl RegistryGovernanceService {
             .await?)
     }
 
-    async fn latest_validation_stages_for_request(
+    pub(crate) async fn latest_validation_stages_for_request(
         &self,
         request_id: &str,
     ) -> anyhow::Result<Vec<registry_validation_stage::Model>> {
@@ -1335,6 +1335,7 @@ impl RegistryGovernanceService {
         .await?;
         Ok(request)
     }
+}
 
 pub fn validation_stage_status_label(status: RegistryValidationStageStatus) -> &'static str {
     match status {
@@ -1553,7 +1554,7 @@ fn ensure_remote_validation_claim_runner(
     Ok(())
 }
 
-fn validation_stage_details_value(stage: &registry_validation_stage::Model) -> serde_json::Value {
+pub(crate) fn validation_stage_details_value(stage: &registry_validation_stage::Model) -> serde_json::Value {
     serde_json::json!({
         "stage_id": stage.id.clone(),
         "stage_key": stage.stage_key.clone(),
@@ -1579,7 +1580,7 @@ fn merge_json_object(target: &mut serde_json::Value, extra: serde_json::Value) {
     }
 }
 
-fn derive_validation_stage_snapshots(
+pub(crate) fn derive_validation_stage_snapshots(
     latest_request: Option<&registry_publish_request::Model>,
     recent_events: &[registry_governance_event::Model],
     stage_rows: &[registry_validation_stage::Model],
@@ -1680,7 +1681,7 @@ fn derive_validation_stage_snapshots(
     snapshots
 }
 
-fn derive_follow_up_gate_snapshots(
+pub(crate) fn derive_follow_up_gate_snapshots(
     latest_request: Option<&registry_publish_request::Model>,
     recent_events: &[registry_governance_event::Model],
     validation_stages: &[RegistryValidationStageSnapshot],
@@ -1765,7 +1766,7 @@ fn derive_follow_up_gate_snapshots(
     snapshots
 }
 
-fn rejected_publish_request_can_retry(
+pub(crate) fn rejected_publish_request_can_retry(
     latest_event_type: Option<&str>,
     rejection_reason: Option<&str>,
 ) -> bool {
@@ -1777,7 +1778,7 @@ fn rejected_publish_request_can_retry(
         .is_some_and(|reason| !reason.trim().starts_with("Governance rejection reason:"))
 }
 
-fn normalize_actor(value: &str) -> String {
+pub(crate) fn normalize_actor(value: &str) -> String {
     let actor = value.trim();
     if actor.is_empty() {
         "system:auto".to_string()
@@ -1786,7 +1787,7 @@ fn normalize_actor(value: &str) -> String {
     }
 }
 
-fn dedupe_message_list(values: Vec<String>) -> Vec<String> {
+pub(crate) fn dedupe_message_list(values: Vec<String>) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut deduped = Vec::new();
     for value in values {
@@ -1801,7 +1802,7 @@ fn dedupe_message_list(values: Vec<String>) -> Vec<String> {
     deduped
 }
 
-fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
+pub(crate) fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
     value
         .as_array()
         .into_iter()
@@ -1810,7 +1811,7 @@ fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-fn compare_semver_desc(left: &str, right: &str) -> std::cmp::Ordering {
+pub(crate) fn compare_semver_desc(left: &str, right: &str) -> std::cmp::Ordering {
     match (semver::Version::parse(left), semver::Version::parse(right)) {
         (Ok(left), Ok(right)) => right.cmp(&left),
         (Ok(_), Err(_)) => std::cmp::Ordering::Less,
@@ -1819,7 +1820,7 @@ fn compare_semver_desc(left: &str, right: &str) -> std::cmp::Ordering {
     }
 }
 
-async fn validate_registry_artifact_bundle(
+pub(crate) async fn validate_registry_artifact_bundle(
     db: &DatabaseConnection,
     request: &registry_publish_request::Model,
     artifact: &RegistryArtifactUpload,
@@ -2377,6 +2378,4 @@ fn validate_toml_workspace_aware_string_field(
     warnings.push(format!(
         "Artifact file {label} is missing, so the registry validator could not verify it from the uploaded bundle."
     ));
-}
-
 }

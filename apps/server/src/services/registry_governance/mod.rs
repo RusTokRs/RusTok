@@ -330,13 +330,13 @@ pub struct RegistryPublishRequestFollowUpSnapshot {
 }
 
 #[derive(Debug, Default)]
-struct RegistryArtifactValidation {
+pub(crate) struct RegistryArtifactValidation {
     warnings: Vec<String>,
     errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-struct RegistryValidationCheckDetail {
+pub(crate) struct RegistryValidationCheckDetail {
     key: String,
     status: String,
     detail: String,
@@ -415,6 +415,19 @@ mod tests;
 pub use publishing::request_status_label;
 pub use releases::release_status_label;
 pub use validation::validation_stage_status_label;
+
+pub(crate) use publishing::{
+    lifecycle_governance_actions, publish_request_governance_actions,
+    publish_request_governance_actions_for_authority,
+};
+pub(crate) use releases::request_ui_packages;
+pub(crate) use validation::{
+    compare_semver_desc, dedupe_message_list, deserialize_message_list,
+    derive_follow_up_gate_snapshots, derive_validation_stage_snapshots, normalize_actor,
+    rejected_publish_request_can_retry, validate_registry_artifact_bundle,
+    validation_stage_details_value,
+};
+
 
 impl RegistryGovernanceService {
     pub fn new(db: DatabaseConnection) -> Self {
@@ -516,7 +529,7 @@ impl RegistryGovernanceService {
 }
 
 #[derive(Debug, Clone)]
-struct StoredRegistryArtifact {
+pub(crate) struct StoredRegistryArtifact {
     artifact_storage_key: String,
     artifact_size: i64,
 }
@@ -578,7 +591,7 @@ fn validation_failed_check_details(errors: &[String]) -> Vec<RegistryValidationC
     }]
 }
 
-fn validation_retry_delay_seconds(failed_attempt: usize) -> Option<u64> {
+pub(crate) fn validation_retry_delay_seconds(failed_attempt: usize) -> Option<u64> {
     REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS
         .get(failed_attempt.saturating_sub(1))
         .copied()
@@ -776,27 +789,27 @@ where
     Ok(())
 }
 
-fn actor_principal(actor: &str) -> RegistryPrincipalRef {
+pub(crate) fn actor_principal(actor: &str) -> RegistryPrincipalRef {
     RegistryPrincipalRef::from_legacy_value(&normalize_actor(actor))
 }
 
-fn optional_actor_principal(actor: Option<&str>) -> Option<RegistryPrincipalRef> {
+pub(crate) fn optional_actor_principal(actor: Option<&str>) -> Option<RegistryPrincipalRef> {
     actor.map(actor_principal)
 }
 
-fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
+pub(crate) fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipalRef {
     RegistryPrincipalRef::from_json_value(value)
 }
 
-fn optional_principal_from_json(value: &Option<serde_json::Value>) -> Option<RegistryPrincipalRef> {
+pub(crate) fn optional_principal_from_json(value: &Option<serde_json::Value>) -> Option<RegistryPrincipalRef> {
     value.as_ref().map(principal_from_json)
 }
 
-fn principal_display_label(value: &serde_json::Value) -> String {
+pub(crate) fn principal_display_label(value: &serde_json::Value) -> String {
     principal_from_json(value).label().to_string()
 }
 
-fn optional_principal_display_label(value: &Option<serde_json::Value>) -> Option<String> {
+pub(crate) fn optional_principal_display_label(value: &Option<serde_json::Value>) -> Option<String> {
     optional_principal_from_json(value).map(|principal| principal.label().to_string())
 }
 
@@ -945,7 +958,7 @@ fn authority_can_transfer_registry_owner(
         || principal_matches_ref(&binding.owner_principal, &authority.principal)
 }
 
-fn normalize_reason_code(
+pub(crate) fn normalize_reason_code(
     reason_code: &str,
     allowed: &[&str],
     action_label: &str,
@@ -970,7 +983,7 @@ fn normalize_reason_code(
     Ok(normalized)
 }
 
-fn normalize_required_reason(reason: &str, action_label: &str) -> anyhow::Result<String> {
+pub(crate) fn normalize_required_reason(reason: &str, action_label: &str) -> anyhow::Result<String> {
     let normalized = reason.trim();
     if normalized.is_empty() {
         return Err(malformed_error(format!(
@@ -978,4 +991,8 @@ fn normalize_required_reason(reason: &str, action_label: &str) -> anyhow::Result
         )));
     }
     Ok(normalized.to_string())
+}
+
+pub(crate) fn normalize_registry_locale(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
 }

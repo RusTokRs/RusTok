@@ -1,13 +1,36 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration, Utc};
     use migration::Migrator;
     use rustok_storage::{local::LocalStorage, StorageService};
     use rustok_test_utils::db::{setup_test_db, setup_test_db_with_migrations};
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-        QueryFilter, QueryOrder, Statement,
+        QueryFilter, QueryOrder, Set, Statement,
     };
+    use crate::models::registry_publish_request::{
+        self, ActiveModel as RegistryPublishRequestActiveModel, RegistryPublishRequestStatus,
+    };
+    use crate::models::registry_validation_job::{
+        self as registry_validation_job, ActiveModel as RegistryValidationJobActiveModel,
+        Entity as RegistryValidationJobEntity, RegistryValidationJobStatus,
+    };
+    use crate::models::registry_validation_stage::{
+        self as registry_validation_stage, ActiveModel as RegistryValidationStageActiveModel,
+        Entity as RegistryValidationStageEntity, RegistryValidationStageStatus,
+    };
+    use crate::models::registry_module_release::{
+        Entity as RegistryModuleReleaseEntity, RegistryModuleReleaseStatus,
+    };
+    use crate::models::registry_governance_event::{
+        self as registry_governance_event, ActiveModel as RegistryGovernanceEventActiveModel,
+    };
+    use crate::models::registry_module_owner::{
+        self as registry_module_owner, ActiveModel as RegistryModuleOwnerActiveModel,
+    };
+    use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
+
 
     const SAMPLE_DEFAULT_LOCALE: &str = "en";
     const SAMPLE_MODULE_NAME: &str = "Blog";

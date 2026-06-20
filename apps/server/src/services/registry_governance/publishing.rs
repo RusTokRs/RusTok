@@ -172,7 +172,7 @@ impl RegistryGovernanceService {
             .await
     }
 
-    async fn replace_release_translations_from_request(
+    pub(crate) async fn replace_release_translations_from_request(
         &self,
         release_id: &str,
         request: &registry_publish_request::Model,
@@ -744,6 +744,7 @@ impl RegistryGovernanceService {
         .await?;
         Ok(request)
     }
+}
 
 pub fn request_status_label(status: RegistryPublishRequestStatus) -> &'static str {
     match status {
@@ -774,7 +775,7 @@ fn parse_request_status_label(value: &str) -> Option<RegistryPublishRequestStatu
     }
 }
 
-fn lifecycle_governance_actions(
+pub(crate) fn lifecycle_governance_actions(
     latest_request: Option<&registry_publish_request::Model>,
     latest_release: Option<&registry_module_release::Model>,
     owner_binding: Option<&registry_module_owner::Model>,
@@ -826,7 +827,7 @@ fn lifecycle_governance_actions(
     dedupe_governance_actions(actions)
 }
 
-fn publish_request_governance_actions(
+pub(crate) fn publish_request_governance_actions(
     request: &registry_publish_request::Model,
     validation_stages: &[RegistryValidationStageSnapshot],
     approval_override_required: bool,
@@ -843,7 +844,7 @@ fn publish_request_governance_actions(
     )
 }
 
-fn publish_request_governance_actions_for_authority(
+pub(crate) fn publish_request_governance_actions_for_authority(
     request: &registry_publish_request::Model,
     owner_binding: Option<&registry_module_owner::Model>,
     _validation_stages: &[RegistryValidationStageSnapshot],
@@ -968,10 +969,4 @@ fn dedupe_governance_actions(
         .into_iter()
         .filter(|action| seen.insert(action.key.clone()))
         .collect()
-}
-
-fn normalize_registry_locale(locale: &str) -> String {
-    normalize_locale_tag(locale).unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
-}
-
 }

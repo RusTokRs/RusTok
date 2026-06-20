@@ -361,7 +361,7 @@ impl RegistryGovernanceService {
         })
     }
 
-    async fn upsert_release_from_request(
+    pub(crate) async fn upsert_release_from_request(
         &self,
         request_id: &str,
         _actor: &str,
@@ -441,7 +441,7 @@ impl RegistryGovernanceService {
         Ok(release)
     }
 
-    async fn ensure_authority_can_create_publish_request(
+    pub(crate) async fn ensure_authority_can_create_publish_request(
         &self,
         authority: &RegistryAuthority,
         slug: &str,
@@ -458,7 +458,7 @@ impl RegistryGovernanceService {
         )))
     }
 
-    async fn ensure_authority_can_manage_publish_request(
+    pub(crate) async fn ensure_authority_can_manage_publish_request(
         &self,
         authority: &RegistryAuthority,
         request: &registry_publish_request::Model,
@@ -478,7 +478,7 @@ impl RegistryGovernanceService {
         )))
     }
 
-    async fn ensure_authority_can_review_publish_request(
+    pub(crate) async fn ensure_authority_can_review_publish_request(
         &self,
         authority: &RegistryAuthority,
         request: &registry_publish_request::Model,
@@ -498,7 +498,7 @@ impl RegistryGovernanceService {
         )))
     }
 
-    async fn ensure_authority_can_manage_release(
+    pub(crate) async fn ensure_authority_can_manage_release(
         &self,
         authority: &RegistryAuthority,
         release: &registry_module_release::Model,
@@ -518,7 +518,7 @@ impl RegistryGovernanceService {
         )))
     }
 
-    async fn ensure_authority_can_transfer_registry_owner(
+    pub(crate) async fn ensure_authority_can_transfer_registry_owner(
         &self,
         authority: &RegistryAuthority,
         binding: &registry_module_owner::Model,
@@ -536,7 +536,7 @@ impl RegistryGovernanceService {
         )))
     }
 
-    async fn resolve_effective_publisher(
+    pub(crate) async fn resolve_effective_publisher(
         &self,
         request: &registry_publish_request::Model,
         authority: &RegistryAuthority,
@@ -552,7 +552,7 @@ impl RegistryGovernanceService {
         Ok(authority.principal.label().to_string())
     }
 
-    async fn bind_registry_slug_owner(
+    pub(crate) async fn bind_registry_slug_owner(
         &self,
         slug: &str,
         owner_principal: &RegistryPrincipalRef,
@@ -641,6 +641,7 @@ impl RegistryGovernanceService {
             .one(&self.db)
             .await?)
     }
+}
 
 pub fn release_status_label(status: RegistryModuleReleaseStatus) -> &'static str {
     match status {
@@ -653,6 +654,4 @@ pub fn request_ui_packages(
     request: &registry_publish_request::Model,
 ) -> RegistryPublishUiPackagesRequest {
     serde_json::from_value(request.ui_packages.clone()).unwrap_or_default()
-}
-
 }
