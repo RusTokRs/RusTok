@@ -11,6 +11,7 @@
 - Provide typed route-selection schemas and sanitization helpers for host-owned URL contracts.
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
+- Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports.
 - Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`, `channel_resolution_trace`) from host middleware into module adapters.
 - Keep web-framework-oriented dependencies out of `rustok-core` while still allowing modular reuse.
 - Stay a thin shared host/API layer. It must not absorb module-specific business logic, resolvers, or controllers.
@@ -33,6 +34,7 @@
 - `src/request.rs`
 - `src/ui.rs`
 - `src/route_selection.rs`
+- `src/ports.rs`
 - `src/graphql/`
 
 ## Docs

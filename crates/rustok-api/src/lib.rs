@@ -23,25 +23,28 @@ pub mod write_path_feedback;
 
 #[cfg(feature = "server")]
 pub use context::{
-    has_any_effective_permission, has_effective_permission, infer_user_role_from_permissions,
-    scope_matches, AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
+    AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
     OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
-    TenantContextExtension, TenantError,
+    TenantContextExtension, TenantError, has_any_effective_permission, has_effective_permission,
+    infer_user_role_from_permissions, scope_matches,
 };
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
     ChannelResolutionTraceStep,
 };
-pub use ports::{PortActor, PortActorKind, PortContext, PortError, PortErrorKind};
+pub use ports::{
+    PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
+    PortOperationKind,
+};
 #[cfg(feature = "server")]
 pub use request::RequestContext;
 pub use route_selection::{
-    admin_route_query_schema, is_legacy_admin_query_key, sanitize_admin_route_query,
-    AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema,
+    AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema, admin_route_query_schema,
+    is_legacy_admin_query_key, sanitize_admin_route_query,
 };
 pub use ui::{
-    build_ui_message_catalog, normalize_ui_text, parse_ui_csv, resolve_ui_message,
-    resolve_ui_message_or_fallback, route_query_update_for_text, UiMessageCatalog, UiRouteContext,
-    UiRouteQueryUpdate,
+    UiMessageCatalog, UiRouteContext, UiRouteQueryUpdate, build_ui_message_catalog,
+    normalize_ui_text, parse_ui_csv, resolve_ui_message, resolve_ui_message_or_fallback,
+    route_query_update_for_text,
 };
-pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};
+pub use write_path_feedback::{WritePathIssue, WritePathIssueKind, classify_write_path_issue};
