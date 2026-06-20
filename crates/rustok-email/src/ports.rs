@@ -170,6 +170,12 @@ fn validate_delivery_request(request: &EmailDeliveryRequest) -> Result<(), PortE
 
 fn map_email_error(error: EmailError) -> PortError {
     match error {
+        EmailError::Disabled => PortError::new(
+            PortErrorKind::Unavailable,
+            "email.disabled",
+            "email sending is disabled".to_string(),
+            false,
+        ),
         EmailError::Template(message) => PortError::new(
             PortErrorKind::Template,
             "email.template_failed",

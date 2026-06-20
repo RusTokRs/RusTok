@@ -213,6 +213,7 @@ COALESCE((
                             .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
                             .map(|value| value.to_rfc3339())
                             .map_err(|err| server_error(err.to_string()))?,
+                        tenant_name: None,
                     },
                     cursor: STANDARD.encode((offset + index as i64).to_string()),
                 })
@@ -238,6 +239,39 @@ COALESCE((
 #[cfg(feature = "ssr")]
 fn page_statement_values(vals: Vec<sea_orm::Value>) -> Vec<sea_orm::Value> {
     vals
+}
+
+#[cfg(feature = "ssr")]
+fn api_base_url() -> String {
+    super::get_graphql_url()
+        .trim_end_matches("/api/graphql")
+        .trim_end_matches('/')
+        .to_string()
+}
+
+#[cfg(feature = "ssr")]
+async fn extract_http_error(response: reqwest::Response) -> String {
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    let trimmed = text.trim();
+
+    if trimmed.is_empty() {
+        return format!("request failed with status {status}");
+    }
+
+    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(message) = payload
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| payload.get("error").and_then(Value::as_str))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return message.to_string();
+        }
+    }
+
+    trimmed.to_string()
 }
 
 #[server(prefix = "/api/fn", endpoint = "admin/user-details")]
@@ -403,7 +437,7 @@ pub async fn change_password_native(
         let response = client
             .post(format!(
                 "{}/api/auth/change-password",
-                rustok_api::api_base_url()
+                api_base_url()
             ))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, "application/json")
@@ -418,7 +452,7 @@ pub async fn change_password_native(
 
         if !response.status().is_success() {
             return Err(ServerFnError::new(
-                rustok_api::extract_http_error(response).await,
+                extract_http_error(response).await,
             ));
         }
 
@@ -468,7 +502,7 @@ pub async fn update_profile_native(
         let response = client
             .post(format!(
                 "{}/api/auth/profile",
-                rustok_api::api_base_url()
+                api_base_url()
             ))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, "application/json")
@@ -480,7 +514,7 @@ pub async fn update_profile_native(
 
         if !response.status().is_success() {
             return Err(ServerFnError::new(
-                rustok_api::extract_http_error(response).await,
+                extract_http_error(response).await,
             ));
         }
 
