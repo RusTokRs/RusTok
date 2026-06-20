@@ -285,6 +285,33 @@ impl SubscriberMessageMetadata {
         self.ack_token = Some(ack_token.into());
         self
     }
+
+    /// Builds the canonical simulated acknowledgement token for an offset.
+    ///
+    /// Real SDK adapters may expose their own opaque token format, but remote and
+    /// embedded simulation paths use this helper so ack/replay tests do not copy
+    /// token formatting logic across connector implementations.
+    pub fn simulated_ack_token(
+        mode: &str,
+        stream: &str,
+        topic: &str,
+        partition: u32,
+        offset: u64,
+    ) -> String {
+        format!("{mode}:{stream}:{topic}:{partition}:{offset}")
+    }
+
+    /// Attaches the canonical simulated acknowledgement token for this metadata.
+    pub fn with_simulated_ack_token(mut self, mode: &str, offset: u64) -> Self {
+        self.ack_token = Some(Self::simulated_ack_token(
+            mode,
+            &self.stream,
+            &self.topic,
+            self.partition,
+            offset,
+        ));
+        self
+    }
 }
 
 /// Consumed connector message with payload and low-level metadata.
@@ -606,10 +633,7 @@ impl RemoteMessageSubscriber {
     fn metadata_for_offset(&self, offset: u64) -> SubscriberMessageMetadata {
         SubscriberMessageMetadata::new(&self.stream, &self.topic, self.partition)
             .with_offset(offset)
-            .with_ack_token(format!(
-                "remote:{}:{}:{}:{}",
-                self.stream, self.topic, self.partition, offset
-            ))
+            .with_simulated_ack_token("remote", offset)
     }
 }
 
@@ -804,10 +828,7 @@ impl EmbeddedMessageSubscriber {
     fn metadata_for_offset(&self, offset: u64) -> SubscriberMessageMetadata {
         SubscriberMessageMetadata::new(&self.stream, &self.topic, self.partition)
             .with_offset(offset)
-            .with_ack_token(format!(
-                "embedded:{}:{}:{}:{}",
-                self.stream, self.topic, self.partition, offset
-            ))
+            .with_simulated_ack_token("embedded", offset)
     }
 }
 
@@ -1023,6 +1044,36 @@ mod tests {
         assert_eq!(metadata.ack_token.as_deref(), Some("ack-99"));
         assert_eq!(metadata.message_id, None);
         assert_eq!(metadata.delivery_attempt, None);
+    }
+
+    #[test]
+    fn test_subscriber_message_metadata_simulated_ack_token_builder() {
+        let token =
+            SubscriberMessageMetadata::simulated_ack_token("remote", "stream1", "topic1", 3, 99);
+        let metadata = SubscriberMessageMetadata::new("stream1", "topic1", 3)
+            .with_offset(99)
+            .with_simulated_ack_token("remote", 99);
+
+        assert_eq!(token, "remote:stream1:topic1:3:99");
+        assert_eq!(metadata.ack_token.as_deref(), Some(token.as_str()));
+    }
+
+    #[test]
+    fn test_remote_and_embedded_metadata_use_canonical_simulated_ack_tokens() {
+        let remote = RemoteMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 3)
+            .metadata_for_offset(99);
+        let embedded =
+            EmbeddedMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 3)
+                .metadata_for_offset(99);
+
+        assert_eq!(
+            remote.ack_token.as_deref(),
+            Some("remote:stream1:topic1:3:99")
+        );
+        assert_eq!(
+            embedded.ack_token.as_deref(),
+            Some("embedded:stream1:topic1:3:99")
+        );
     }
 
     #[test]
