@@ -30,3 +30,10 @@ nav_label = "Targets"
 subpath = "apps"
 title = "Channel Apps"
 nav_label = "Apps"
+
+[fba.provider]
+registry = "contracts/channel-fba-registry.json"
+contract_version = "channel.read_projection.v1"
+status = "in_progress"
+port = "ChannelReadPort"
+profiles = ["embedded_native", "rest_compatibility", "unresolved_context"]

@@ -170,6 +170,10 @@
 
 На 2026-06-20 `tenant` добавлен как provider track для tenant read-projection boundary: `TenantReadPort`/`tenant.read_projection.v1`, registry `crates/rustok-tenant/contracts/tenant-fba-registry.json` и static evidence `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:tenant:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
 
+На 2026-06-20 `region` добавлен как provider track для region/country read-projection boundary: `RegionReadPort`/`region.read_projection.v1`, registry `crates/rustok-region/contracts/region-fba-registry.json` и static evidence `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:region:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
+
+На 2026-06-20 `channel` добавлен как provider track для channel/default/host-target read-projection boundary: `ChannelReadPort`/`channel.read_projection.v1`, registry `crates/rustok-channel/contracts/channel-fba-registry.json` и static evidence `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` проверяются быстрым gate `npm run verify:channel:fba` без повышения до `boundary_ready` до runtime contract/fallback smoke.
+
 Проверка структуры на текущем состоянии выявила один исправленный gap: `page_builder` уже
 имел FBA provider metadata и registry, но отсутствовал в readiness board и не имел local
 FFA/FBA status block. Теперь `page_builder` и `pages` отражены единообразно: local plan +

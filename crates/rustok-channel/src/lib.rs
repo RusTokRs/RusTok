@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod policy;
+pub mod ports;
 pub mod resolution;
 pub mod services;
 pub mod target_type;
@@ -18,9 +19,10 @@ pub use dto::{
 };
 pub use error::{ChannelError, ChannelResult};
 pub use policy::{
-    ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate,
-    StoredChannelResolutionRule, CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
+    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition, ResolutionAction,
+    ResolutionPredicate, StoredChannelResolutionRule,
 };
+pub use ports::*;
 pub use resolution::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, ResolutionOutcome,
     ResolutionStage, ResolutionTraceStep, TargetSurface,

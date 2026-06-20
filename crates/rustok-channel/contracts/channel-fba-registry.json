@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "module": "channel",
+  "role": "provider",
+  "status": "in_progress",
+  "contract_version": "channel.read_projection.v1",
+  "ports": [
+    {
+      "name": "ChannelReadPort",
+      "contract_version": "channel.read_projection.v1",
+      "operations": ["read_channel", "list_channels_for_tenant"],
+      "context": "crates/rustok-channel/src/ports.rs::PortContext",
+      "error": "crates/rustok-channel/src/ports.rs::PortError",
+      "deadline_required": true,
+      "idempotency_required": false,
+      "semantics": "read_only"
+    }
+  ],
+  "consumers": [
+    {
+      "module": "server-host",
+      "profiles": ["request_channel_resolution", "default_channel_lookup", "host_target_lookup"],
+      "degraded_modes": ["use_explicit_default_channel", "unresolved_channel_context"]
+    },
+    {
+      "module": "commerce",
+      "profiles": ["channel_tax_provider_context", "channel_checkout_context"],
+      "degraded_modes": ["use_region_tax_provider_fallback", "continue_without_channel_context"]
+    }
+  ],
+  "fallback_profiles": ["embedded_native", "rest_compatibility", "unresolved_context"],
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "cases": [
+      {
+        "operation": "read_channel",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_channel_degraded_mode", "selector_validation"],
+        "write_idempotency_required": false
+      },
+      {
+        "operation": "list_channels_for_tenant",
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_channel_filter_preserved"],
+        "write_idempotency_required": false
+      }
+    ],
+    "fallback_smoke": {
+      "profiles": ["embedded_native", "rest_compatibility", "unresolved_context"],
+      "status": "planned_runtime_pending"
+    }
+  }
+}

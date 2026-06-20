@@ -31,3 +31,10 @@ page_title = "Regions"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
+
+[fba.provider]
+registry = "contracts/region-fba-registry.json"
+contract_version = "region.read_projection.v1"
+status = "in_progress"
+port = "RegionReadPort"
+profiles = ["embedded_native", "graphql_compatibility", "cached_snapshot"]
