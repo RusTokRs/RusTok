@@ -73,7 +73,8 @@ availability из побочных эффектов регистрации.
    tenant context, чтобы bridge/helper availability оставалась phase-aware.
    Для чтения истории используйте поддержанные transport surfaces:
    GraphQL `scriptExecutionHistory(scriptId, pagination)` /
-   `recentScriptExecutions(pagination)`, HTTP/Loco
+   `recentScriptExecutions(pagination)` и legacy compact list
+   `scriptExecutions(scriptId, limit)`, HTTP/Loco
    `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` или
    generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
    Все ответы основаны на `SeaOrmExecutionLog`, используют DB-level offset/limit

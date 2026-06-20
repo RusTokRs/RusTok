@@ -15,6 +15,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 - Redis lifecycle, configurable circuit breaker settings, fallback semantics и cache health reporting;
 - lightweight backend instrumentation через `CacheBackend::stats()` для hits/misses/invalidations/entries;
 - generic anti-stampede helper `CacheService::load_or_fill`, который коалесцирует concurrent misses по cache key и возвращает источник результата (`Hit`, `Filled`, `Coalesced`);
+- generic invalidation publisher `CacheService::publish_invalidation` / `CacheInvalidationService`, который публикует namespaced invalidation messages в Redis pub/sub при включённом backend и всегда fan-out-ит сообщение local subscribers в текущем процессе;
 - tenant-aware cache namespace и invalidation contract;
 - отсутствие собственной RBAC vocabulary и UI surface.
 
@@ -29,7 +30,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для cache backend selection, stats instrumentation, load coalescing, circuit breaker options и health semantics при изменении wiring
+- targeted runtime tests для cache backend selection, stats instrumentation, load coalescing, invalidation publishing/local fan-out, circuit breaker options и health semantics при изменении wiring
 
 ## Связанные документы
 

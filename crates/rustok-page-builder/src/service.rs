@@ -1,10 +1,11 @@
 use crate::dto::{
     BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
-    BuilderTreeInput, BuilderTreeResult, PageBuilderErrorKind, PreviewPageBuilderInput,
-    PreviewPageBuilderResult, PublishPageBuilderInput, PublishPageBuilderResult,
-    PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+    BuilderTreeInput, BuilderTreeResult, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PageBuilderErrorKind,
+    PreviewPageBuilderInput, PreviewPageBuilderResult, PublishPageBuilderInput,
+    PublishPageBuilderResult,
 };
-use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
+use crate::rollout::{BuilderCapabilityFlags, BuilderRolloutError, ensure_capability};
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortErrorKind};
 use rustok_core::{Action, Permission, Resource};
@@ -296,6 +297,32 @@ where
         self.authorizer
             .authorize(auth, BuilderCapabilityKind::Publish)?;
         self.service.publish(context, input).await
+    }
+
+    pub async fn handle(
+        &self,
+        context: &PortContext,
+        auth: &PageBuilderRequestAuth,
+        request: PageBuilderCapabilityRequest,
+    ) -> PageBuilderServiceResult<PageBuilderCapabilityResponse> {
+        match request {
+            PageBuilderCapabilityRequest::Preview(input) => self
+                .preview(context, auth, input)
+                .await
+                .map(PageBuilderCapabilityResponse::Preview),
+            PageBuilderCapabilityRequest::Tree(input) => self
+                .tree(context, auth, input)
+                .await
+                .map(PageBuilderCapabilityResponse::Tree),
+            PageBuilderCapabilityRequest::Properties(input) => self
+                .properties(context, auth, input)
+                .await
+                .map(PageBuilderCapabilityResponse::Properties),
+            PageBuilderCapabilityRequest::Publish(input) => self
+                .publish(context, auth, input)
+                .await
+                .map(PageBuilderCapabilityResponse::Publish),
+        }
     }
 }
 
@@ -612,5 +639,30 @@ mod tests {
             .publish(&write_context(), &auth, publish_input())
             .await
             .expect("pages:manage grants publish");
+    }
+
+    #[tokio::test]
+    async fn transport_neutral_handler_dispatches_tagged_capability_requests() {
+        let service =
+            CapabilityGuardedService::new(StubService, BuilderToggleProfile::AllOn.flags());
+        let handlers = AuthorizedPageBuilderHandlers::new(service);
+        let auth = auth_with(vec![Permission::new(Resource::Pages, Action::Manage)]);
+
+        let response = handlers
+            .handle(
+                &write_context(),
+                &auth,
+                PageBuilderCapabilityRequest::Publish(publish_input()),
+            )
+            .await
+            .expect("publish request is dispatched");
+
+        match response {
+            PageBuilderCapabilityResponse::Publish(result) => {
+                assert_eq!(result.page_id, "home");
+                assert!(result.published);
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
     }
 }

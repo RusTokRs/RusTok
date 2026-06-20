@@ -44,7 +44,8 @@ Operators can inspect the canonical execution log without bypassing Alloy
 transport wiring:
 
 - GraphQL: `scriptExecutionHistory(scriptId, pagination)` and
-  `recentScriptExecutions(pagination)`.
+  `recentScriptExecutions(pagination)`, with legacy
+  `scriptExecutions(scriptId, limit)` retained as a compact history list.
 - HTTP/Loco routes: `GET /api/alloy/executions` and
   `GET /api/alloy/scripts/{id}/executions`.
 - Generic Axum router: `GET /executions` and

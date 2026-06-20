@@ -210,9 +210,23 @@ impl BackpressureController {
 
     /// Releases one slot in the queue (called when event is processed)
     pub fn release(&self) {
-        let previous = self.current_depth.fetch_sub(1, Ordering::Relaxed);
-        if previous == 0 {
-            tracing::warn!("BackpressureController: release() called with depth already at 0");
+        let mut current = self.current_depth.load(Ordering::Relaxed);
+
+        loop {
+            if current == 0 {
+                tracing::warn!("BackpressureController: release() called with depth already at 0");
+                return;
+            }
+
+            match self.current_depth.compare_exchange_weak(
+                current,
+                current - 1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(actual) => current = actual,
+            }
         }
     }
 

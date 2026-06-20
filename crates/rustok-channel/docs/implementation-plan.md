@@ -11,10 +11,10 @@ post-v0 rollout policy lifecycle и runtime integration parity.
 
 ## Execution checkpoint
 
-- Current phase: fba_channel_read_projection_static_contract
-- Last checkpoint: FBA slice #1 добавил `ChannelReadPort` / `channel.read_projection.v1`, registry `crates/rustok-channel/contracts/channel-fba-registry.json`, static matrix `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` и fast gate `npm run verify:channel:fba` без долгой компиляции.
-- Next step: Собрать runtime contract/fallback smoke evidence для `ChannelReadPort` и полный `cargo check`/`cargo test` evidence для `rustok-channel-admin` в CI или в сессии без короткого execution limit; до runtime evidence FBA остаётся `in_progress`.
-- Open blockers: targeted `cargo check -p rustok-channel-admin --lib` дважды превысил безопасный 20-секундный лимит и был остановлен; compile evidence отсутствует, поэтому FFA status остаётся `in_progress`. Compile-free evidence проходит: channel boundary fixture suite 13/13, aggregate source-level `verify:ffa:ui:migration` PASS.
+- Current phase: runtime_facts_policy_parity
+- Last checkpoint: runtime facts slice закрепил source-level policy parity для `locale` и `oauth_app_id`: `build_request_facts` читает `ResolvedRequestLocale` и `AuthContextExtension`, cache key учитывает оба измерения, а middleware tests добавили runtime extension -> policy resolution smoke для `LocaleEquals` и `OAuthAppEquals` без запуска компиляции.
+- Next step: Собрать executable runtime contract/fallback smoke evidence для `ChannelReadPort` и полный `cargo check`/`cargo test` evidence для `rustok-channel-admin`/server middleware в CI или в сессии без короткого execution limit; до runtime evidence FBA остаётся `in_progress`, а runtime facts parity пока подтверждён source-level тестами.
+- Open blockers: по запросу итерации компиляции не запускались; compile evidence отсутствует, поэтому FFA status остаётся `in_progress`. Compile-free evidence проходит: channel admin boundary verifier, channel FBA static verifier и channel boundary fixture suite 13/13.
 - Hand-off notes for next agent: Держать вызовы channel admin UI за `transport`, а route-selection policy — в `core` или shared route helpers; не возвращать raw transport calls в `ui/leptos/`.
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 
@@ -25,7 +25,8 @@ post-v0 rollout policy lifecycle и runtime integration parity.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - `crates/rustok-channel/admin/src/lib.rs` теперь является composition/re-export слоем для module-owned admin surface.
-  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and read deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:channel:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`.
+  - Runtime facts parity slice: `apps/server/src/middleware/channel.rs` builds `RequestFacts.locale` from `ResolvedRequestLocale.effective_locale` and `RequestFacts.oauth_app_id` from `AuthContextExtension.client_id`; `ChannelResolutionCacheKey` includes both fields to avoid cross-locale/cross-client policy cache reuse, and source-level middleware tests now cover `LocaleEquals`/`OAuthAppEquals` policy selection from real request extensions.
+  - FBA provider slice: `crates/rustok-channel/src/ports.rs` declares `ChannelReadPort` / `channel.read_projection.v1` for channel/default/host-target read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, inactive-channel degraded-mode filtering and read deadline semantics; `crates/rustok-channel/contracts/channel-fba-registry.json` plus `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:channel:fba` while executable runtime execution/fallback smoke remains pending before `boundary_ready`.
   - `crates/rustok-channel/admin/src/core.rs` содержит Leptos-free selection policy для очистки URL-owned channel selection.
   - `ChannelPolicySelectionCleanup` / `channel_policy_selection_cleanup` централизуют trim, policy-set lookup и stale rule cleanup; Leptos route effect больше не владеет этой decision logic.
   - `PolicyRuleFormState` и create/edit builders владеют приоритетом по умолчанию, fallback action channel и predicate-to-form mapping; Leptos применяет подготовленное состояние только к signals.
@@ -36,7 +37,7 @@ post-v0 rollout policy lifecycle и runtime integration parity.
   - `scripts/verify/verify-channel-admin-boundary.mjs` закрепляет split без полной Rust-компиляции: обязательную структуру `ui/leptos/`, отсутствие `api.rs`/legacy `transport.rs`, отсутствие raw transport calls в UI, Leptos-free `core`, и разнесение `#[server]`/`reqwest` по adapter-файлам.
   - `scripts/verify/verify-channel-admin-boundary.test.mjs` добавляет fixture-based regression coverage для pass path, legacy `api.rs`, legacy flat `transport.rs`, raw adapter calls из UI, inline policy-selection lookup, Leptos-specific core regression, ошибочных `#[server]` endpoints в facade/REST adapter и raw REST calls вне `rest_adapter.rs`.
   - `npm run verify:ffa:ui:migration` теперь запускает channel admin boundary verifier как часть общего FFA verification pipeline.
-- Compile-evidence note (2026-06-18): два targeted запуска `cargo check -p rustok-channel-admin --lib` остановлены по 20-секундному лимиту без результата; длинная компиляция намеренно не продолжалась. `node scripts/verify/verify-channel-admin-boundary.mjs`, `node --test scripts/verify/verify-channel-admin-boundary.test.mjs`, `cargo fmt -p rustok-channel-admin -- --check` и aggregate source-level FFA verification прошли.
+- Compile-evidence note (2026-06-20): по запросу текущей итерации компиляции не запускались. Compile-free gates: `npm run verify:channel:admin-boundary`, `npm run verify:channel:fba` и `node --test scripts/verify/verify-channel-admin-boundary.test.mjs` прошли; `cargo fmt -p rustok-server -- apps/server/src/middleware/channel.rs` применён только как форматирование без компиляции.
 - Следующий parity step: собрать full Rust evidence (`cargo check`/`cargo test`) перед переводом строки channel admin в `phase_b_ready`.
 
 ## Область работ
@@ -149,8 +150,8 @@ post-v0 rollout policy lifecycle и runtime integration parity.
 
 ### 4. Runtime integration rollout
 
-- [ ] подключить real request locale и OAuth app id в `RequestFacts`;
-- [ ] закрепить middleware ordering и trace parity тестами в `apps/server`;
+- [x] подключить real request locale и OAuth app id в `RequestFacts`;
+- [x] закрепить middleware ordering и source-level runtime facts/policy parity тестами в `apps/server`;
 - [ ] принять решение по built-in host slice (`fast-path` vs policy-only mode) только после закрытия lifecycle parity и с явной документацией решения.
 
 ### 5. Semantic expansion

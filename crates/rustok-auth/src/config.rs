@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::error::{AuthError, Result};
+
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
 
@@ -111,5 +113,153 @@ impl AuthSettingsOverrides {
         if let Some(v) = self.rsa_public_key_pem {
             config.rsa_public_key_pem = Some(v);
         }
+    }
+}
+
+/// Build and validate `AuthConfig` from host-provided settings.
+///
+/// The host remains responsible for reading its framework config, but the
+/// semantics of auth overrides, RS256 key resolution, defaults, and validation
+/// live in `rustok-auth` so transport adapters do not duplicate auth lifecycle
+/// rules.
+pub fn build_auth_config(
+    secret: String,
+    access_expiration: u64,
+    auth_settings: AuthSettingsOverrides,
+) -> Result<AuthConfig> {
+    build_auth_config_with_env(secret, access_expiration, auth_settings, |name| {
+        std::env::var(name)
+            .map_err(|_| AuthError::Internal(format!("Missing auth env var: {name}")))
+    })
+}
+
+/// Build and validate `AuthConfig` with an injectable env resolver for tests.
+pub fn build_auth_config_with_env<F>(
+    secret: String,
+    access_expiration: u64,
+    auth_settings: AuthSettingsOverrides,
+    mut env_resolver: F,
+) -> Result<AuthConfig>
+where
+    F: FnMut(&str) -> Result<String>,
+{
+    let refresh_expiration = auth_settings
+        .refresh_expiration
+        .unwrap_or(DEFAULT_REFRESH_EXPIRATION_SECS);
+
+    let mut config = AuthConfig::new(secret).with_expiration(access_expiration, refresh_expiration);
+
+    if let Some(issuer) = auth_settings.issuer {
+        config = config.with_issuer(issuer);
+    }
+    if let Some(audience) = auth_settings.audience {
+        config = config.with_audience(audience);
+    }
+    if let Some(algorithm) = auth_settings.algorithm {
+        config.algorithm = algorithm;
+    }
+
+    config.rsa_private_key_pem = resolve_key_material(
+        auth_settings.rsa_private_key_pem,
+        auth_settings.rsa_private_key_env,
+        &mut env_resolver,
+    )?;
+    config.rsa_public_key_pem = resolve_key_material(
+        auth_settings.rsa_public_key_pem,
+        auth_settings.rsa_public_key_env,
+        &mut env_resolver,
+    )?;
+
+    validate_auth_config(&config)?;
+    Ok(config)
+}
+
+fn resolve_key_material<F>(
+    inline_pem: Option<String>,
+    env_name: Option<String>,
+    env_resolver: &mut F,
+) -> Result<Option<String>>
+where
+    F: FnMut(&str) -> Result<String>,
+{
+    if let Some(env_name) = env_name.filter(|name| !name.trim().is_empty()) {
+        let value = env_resolver(&env_name)?;
+        if value.trim().is_empty() {
+            return Err(AuthError::Internal(format!(
+                "Auth env var {env_name} must not be empty"
+            )));
+        }
+        return Ok(Some(value));
+    }
+
+    Ok(inline_pem.filter(|pem| !pem.trim().is_empty()))
+}
+
+/// Validate auth config invariants owned by `rustok-auth`.
+pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
+    if config.algorithm == JwtAlgorithm::RS256
+        && (config.rsa_private_key_pem.is_none() || config.rsa_public_key_pem.is_none())
+    {
+        return Err(AuthError::Internal(
+            "RS256 requires both rsa_private_key_pem and rsa_public_key_pem".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn secret() -> String {
+        "test-secret-key-for-unit-tests-only-32bytes!".to_string()
+    }
+
+    #[test]
+    fn build_auth_config_defaults_to_hs256() {
+        let config =
+            build_auth_config_with_env(secret(), 900, AuthSettingsOverrides::default(), |_| {
+                panic!("env resolver should not be called")
+            })
+            .expect("auth config");
+
+        assert_eq!(config.algorithm, JwtAlgorithm::HS256);
+        assert_eq!(config.access_expiration, 900);
+        assert_eq!(config.refresh_expiration, DEFAULT_REFRESH_EXPIRATION_SECS);
+    }
+
+    #[test]
+    fn build_auth_config_resolves_rs256_keys_from_env() {
+        let config = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                rsa_private_key_env: Some("PRIVATE".to_string()),
+                rsa_public_key_env: Some("PUBLIC".to_string()),
+                ..AuthSettingsOverrides::default()
+            },
+            |name| Ok(format!("{name}-pem")),
+        )
+        .expect("auth config");
+
+        assert_eq!(config.rsa_private_key_pem.as_deref(), Some("PRIVATE-pem"));
+        assert_eq!(config.rsa_public_key_pem.as_deref(), Some("PUBLIC-pem"));
+    }
+
+    #[test]
+    fn build_auth_config_rejects_rs256_without_keys() {
+        let result = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                algorithm: Some(JwtAlgorithm::RS256),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        );
+
+        assert!(result.is_err());
     }
 }

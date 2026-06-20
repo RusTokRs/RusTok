@@ -221,6 +221,25 @@
       "overall": "pass"
     }
   },
+
+  "refresh_policy": {
+    "cadence": "monthly",
+    "next_due_at": "2026-07-15T18:00:00Z",
+    "max_age_days": 45,
+    "required_gate": "npm run verify:page-builder:consumer:forum",
+    "owner": "rustok-forum module team",
+    "refresh_evidence_required": true,
+    "stale_evidence_action": "block_builder_consumer_rollout_until_refreshed",
+    "required_sections": [
+      "control_plane.audit_trail",
+      "fallback.profiles",
+      "observability.metrics",
+      "observability.traces",
+      "rollback.decision",
+      "approvals",
+      "waivers"
+    ]
+  },
   "rollback": {
     "decision": "keep",
     "reason": "Wave 1 pilot rollout successfully completed with all smoke checks and read guarantees passing under live traffic.",

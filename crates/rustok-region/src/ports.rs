@@ -1,64 +1,9 @@
 use async_trait::async_trait;
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::dto::RegionResponse;
-
-/// Transport-agnostic region port context for host/runtime boundary calls.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortContext {
-    pub tenant_id: String,
-    pub correlation_id: String,
-    pub deadline_ms: Option<u64>,
-}
-
-impl PortContext {
-    pub fn require_deadline_semantics(&self) -> Result<(), PortError> {
-        if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(PortError::new(
-                PortErrorKind::Timeout,
-                "port.deadline_required",
-                "region read port calls require deadline semantics",
-                true,
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Transport-neutral error returned by region owner ports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortError {
-    pub kind: PortErrorKind,
-    pub code: String,
-    pub message: String,
-    pub retryable: bool,
-}
-
-impl PortError {
-    pub fn new(
-        kind: PortErrorKind,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        retryable: bool,
-    ) -> Self {
-        Self {
-            kind,
-            code: code.into(),
-            message: message.into(),
-            retryable,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PortErrorKind {
-    Validation,
-    NotFound,
-    Unavailable,
-    Timeout,
-}
 
 /// Transport-neutral selector for region read-projection consumers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,7 +57,7 @@ impl RegionReadPort for crate::RegionService {
         context: PortContext,
         request: RegionReadRequest,
     ) -> Result<Option<RegionReadProjection>, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         validate_region_read_request(&request)?;
 
@@ -146,7 +91,7 @@ impl RegionReadPort for crate::RegionService {
         context: PortContext,
         request: RegionListRequest,
     ) -> Result<Vec<RegionReadProjection>, PortError> {
-        context.require_deadline_semantics()?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.list_regions(
             tenant_id,
@@ -166,11 +111,9 @@ impl RegionReadPort for crate::RegionService {
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     context.tenant_id.parse::<Uuid>().map_err(|_| {
-        PortError::new(
-            PortErrorKind::Validation,
+        PortError::validation(
             "region.tenant_id_invalid",
             "region read port requires a UUID tenant_id in context",
-            false,
         )
     })
 }
@@ -178,11 +121,9 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
 fn validate_region_read_request(request: &RegionReadRequest) -> Result<(), PortError> {
     if let RegionReadSelector::CountryCode(country_code) = &request.selector {
         if country_code.trim().is_empty() {
-            return Err(PortError::new(
-                PortErrorKind::Validation,
+            return Err(PortError::validation(
                 "region.country_code_empty",
                 "region read port requires a non-empty country code selector",
-                false,
             ));
         }
     }
@@ -191,24 +132,15 @@ fn validate_region_read_request(request: &RegionReadRequest) -> Result<(), PortE
 
 fn map_region_error(error: crate::RegionError) -> PortError {
     match error {
-        crate::RegionError::RegionNotFound(_) => PortError::new(
-            PortErrorKind::NotFound,
-            "region.not_found",
-            "region read projection was not found",
-            false,
-        ),
+        crate::RegionError::RegionNotFound(_) => {
+            PortError::not_found("region.not_found", "region read projection was not found")
+        }
         crate::RegionError::Validation(message)
-        | crate::RegionError::InvalidCountryCode(message) => PortError::new(
-            PortErrorKind::Validation,
-            "region.validation",
-            message,
-            false,
-        ),
-        crate::RegionError::Database(error) => PortError::new(
-            PortErrorKind::Unavailable,
-            "region.read_failed",
-            error.to_string(),
-            true,
-        ),
+        | crate::RegionError::InvalidCountryCode(message) => {
+            PortError::validation("region.validation", message)
+        }
+        crate::RegionError::Database(error) => {
+            PortError::unavailable("region.read_failed", error.to_string())
+        }
     }
 }
