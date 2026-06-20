@@ -7,11 +7,11 @@
 ## Execution checkpoint
 
 - Current phase: fba_region_read_projection_static_contract
-- Last checkpoint: FBA slice #1 добавил `RegionReadPort` / `region.read_projection.v1`, registry `crates/rustok-region/contracts/region-fba-registry.json`, static matrix `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` и fast gate `npm run verify:region:fba` без долгой компиляции.
-- Next step: Собрать runtime contract/fallback smoke evidence для `RegionReadPort` и storefront native success/native failure + GraphQL success/double-failure error envelope; до runtime evidence статус остаётся `in_progress`.
+- Last checkpoint: FBA slice #2 перевёл `RegionReadPort` на shared `rustok_api::ports::PortContext`/`PortError` и `PortCallPolicy::read()`, обновив manifest/registry/verifier без долгой компиляции.
+- Next step: Собрать runtime contract/fallback smoke evidence для shared-context `RegionReadPort` и storefront native success/native failure + GraphQL success/double-failure error envelope; до runtime evidence статус остаётся `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-20T01:00:00Z
 
 
 ## FFA/FBA status
@@ -21,7 +21,7 @@
 - Structural shape: `core_transport_ui`
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
-  - FBA provider slice: `crates/rustok-region/src/ports.rs` declares `RegionReadPort` / `region.read_projection.v1` for region/country read projection consumers with typed `PortContext`/`PortError`, tenant-scope preservation, locale fallback preservation and read deadline semantics; `crates/rustok-region/contracts/region-fba-registry.json` plus `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:region:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`;
+  - FBA provider slice: `crates/rustok-region/src/ports.rs` declares `RegionReadPort` / `region.read_projection.v1` for region/country read projection consumers with shared `rustok_api::ports::PortContext`/`PortError`, tenant-scope preservation, locale fallback preservation and `PortCallPolicy::read()` deadline semantics; `crates/rustok-region/contracts/region-fba-registry.json` plus `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:region:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FFA slice #1 вынесла нормализацию admin-формы региона в module-local core и переиспользовала `rustok-api::normalize_ui_text` без изменений транспорта;
   - FFA slice #2 вынесла storefront route segment fallback, tax-provider fallback, country/tax summaries, policy-row formatting и selected-region metric view-model в `storefront/src/core.rs` с unit-тестами без Leptos runtime;
