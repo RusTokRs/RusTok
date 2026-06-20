@@ -114,6 +114,7 @@ for (const marker of [
   "count_label",
   "page_link_href",
   "page_status_label",
+  "selected_page_empty_state",
   "load_error_message",
 ]) {
   assertContains(storefrontCore, marker, `${files.storefrontCore}: expected storefront core-owned helper ${marker}`);
@@ -132,6 +133,7 @@ assertContains(storefrontUi, "use crate::transport;", `${files.storefrontUi}: st
 assertContains(storefrontUi, "core::selected_page_title", `${files.storefrontUi}: storefront UI must use core-owned selected page view helpers`);
 assertContains(storefrontUi, "core::page_link_href", `${files.storefrontUi}: storefront UI must use core-owned page links`);
 assertContains(storefrontUi, "core::page_status_label", `${files.storefrontUi}: storefront UI must use core-owned status labels`);
+assertContains(storefrontUi, "core::selected_page_empty_state", `${files.storefrontUi}: storefront UI must use core-owned selected-page empty state`);
 assertContains(storefrontUi, "core::load_error_message", `${files.storefrontUi}: storefront UI must use core-owned load error composition`);
 assertContains(storefrontUi, "transport::fetch_pages", `${files.storefrontUi}: storefront UI must call transport facade`);
 for (const [source, label] of [

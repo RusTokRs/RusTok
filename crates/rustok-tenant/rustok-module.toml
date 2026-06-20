@@ -20,3 +20,11 @@ nav_label = "Tenant"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
+
+[fba.provider]
+status = "in_progress"
+contract_version = "tenant.read_projection.v1"
+registry = "contracts/tenant-fba-registry.json"
+ports = ["TenantReadPort"]
+fallback_profiles = ["embedded_native"]
+degraded_modes = ["hide_inactive_tenant", "show_tenant_resolution_retry"]
