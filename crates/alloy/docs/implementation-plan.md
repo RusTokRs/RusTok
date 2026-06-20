@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Added canonical DB count helpers for execution history and wired GraphQL/HTTP history pagination metadata to exact scoped totals without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then add end-to-end transport assertions for canonical field mapping.
+- Last checkpoint: Added GraphQL and REST DTO canonical field-mapping assertions for execution-history transports without running compilation per operator request.
+- Next step: Run the Alloy validation/test gates when compilation is allowed, then extend transport assertions from DTO conversion coverage to route/schema-level integration coverage.
 - Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. `cargo fmt --check` также упирается в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
-- Last updated at (UTC): 2026-06-19T00:00:00Z
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации добавлены только transport mapping assertions для GraphQL/REST DTO. `cargo fmt --check` также упирается в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -43,7 +43,7 @@ contract приведены к единому формату.
 ### 3. Operability
 
 - [x] развить runbook для scheduler/runtime failures и hook debugging;
-- [x] покрыть execution, scheduler и bridge invariants точечными integration tests;
+- [x] покрыть execution, scheduler, bridge invariants и canonical transport field mapping точечными tests;
 - [x] документировать новые runtime guarantees одновременно с изменением capability surface.
 
 ## Проверка
