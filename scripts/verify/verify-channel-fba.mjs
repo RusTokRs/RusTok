@@ -8,8 +8,10 @@ const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(exp
 
 const registryPath = 'crates/rustok-channel/contracts/channel-fba-registry.json';
 const evidencePath = 'crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json';
+const runtimeSmokePath = 'crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
+const runtimeSmoke = json(runtimeSmokePath);
 const manifest = read('crates/rustok-channel/rustok-module.toml');
 const plan = read('crates/rustok-channel/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
@@ -33,8 +35,8 @@ for (const marker of ['trait ChannelReadPort', 'impl ChannelReadPort for crate::
 }
 if (ports.includes('require_write_semantics()?')) fail('channel read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('channel FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('ChannelReadPort') || !plan.includes('channel-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `channel` |') || !central.includes(registryPath) || !central.includes('| `channel` | admin | `in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('ChannelReadPort') || !plan.includes('channel-contract-test-static-matrix.json') || !plan.includes('channel-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `channel` |') || !central.includes(registryPath) || !central.includes('channel-runtime-fallback-smoke.json') || !central.includes('| `channel` | admin | `in_progress` | `in_progress`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'channel' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-channel-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
@@ -44,4 +46,18 @@ for (const op of ['read_channel', 'list_channels_for_tenant']) {
   if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail(`${op} evidence case drift`);
 }
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-console.log('[verify-channel-fba] Channel FBA provider metadata, port semantics and static evidence are consistent');
+if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'channel' || runtimeSmoke.status !== 'source_locked_runtime_fallback_smoke') fail('runtime smoke identity drift');
+if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-channel-fba.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
+if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile drift');
+for (const profile of registry.contract_tests.fallback_smoke.profiles) {
+  if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'source_locked_runtime_pending')) fail(`runtime smoke missing source-locked profile ${profile}`);
+}
+for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_deadline_semantics()?', 'ensure_tenant_scope', 'request.include_inactive || detail.channel.is_active', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
+  if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
+}
+const transportFacade = read('crates/rustok-channel/admin/src/transport/mod.rs');
+const nativeAdapter = read('crates/rustok-channel/admin/src/transport/native_server_adapter.rs');
+const restAdapter = read('crates/rustok-channel/admin/src/transport/rest_adapter.rs');
+if (!transportFacade.includes('native_server_adapter') || !transportFacade.includes('rest_adapter')) fail('runtime smoke transport facade drift');
+if (!nativeAdapter.includes('#[server') || !restAdapter.includes('reqwest')) fail('runtime smoke native/rest adapter markers drift');
+console.log('[verify-channel-fba] Channel FBA provider metadata, port semantics, static evidence and source-locked runtime fallback smoke are consistent');
