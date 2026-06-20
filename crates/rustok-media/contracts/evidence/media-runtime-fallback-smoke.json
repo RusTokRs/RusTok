@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "module": "media",
+  "role": "provider",
+  "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
+  "status": "source_locked_no_compile",
+  "profile": "embedded_native",
+  "operation": "get_image_descriptor",
+  "port": "MediaAssetReadPort",
+  "source_files": [
+    "crates/rustok-media/src/ports.rs",
+    "crates/rustok-media/src/dto.rs"
+  ],
+  "degraded_modes": [
+    {
+      "name": "omit_image_metadata",
+      "source_marker": "MediaImageDescriptor::from_parts(\"   \", None, None, None, None).is_none()",
+      "consumer_contract": "SEO and AI consumers receive None instead of an invalid descriptor when the asset URL is blank."
+    },
+    {
+      "name": "keep_existing_seo_image",
+      "source_marker": "MediaImageDescriptor::from_media_item(&item, alt)",
+      "consumer_contract": "The provider returns an optional descriptor and does not overwrite an existing SEO image when descriptor construction degrades to None."
+    },
+    {
+      "name": "skip_asset_enrichment",
+      "source_marker": "normalize_dimension(width)",
+      "consumer_contract": "AI media enrichment can proceed without dimensions or MIME when source metadata is incomplete, while preserving URL and alt text when available."
+    }
+  ],
+  "assertions": [
+    "get_image_descriptor requires PortContext deadline semantics before reading MediaService",
+    "get_image_descriptor maps MediaError to typed PortError through media_error_to_port_error",
+    "MediaImageDescriptor is the only cross-module image payload exposed by the provider port",
+    "descriptor normalization keeps query/fragment-safe MIME inference and positive-only dimensions"
+  ],
+  "runtime_execution": "pending_compile_allowed_iteration"
+}

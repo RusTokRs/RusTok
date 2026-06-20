@@ -5,14 +5,67 @@
   "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
   "status": "planned_cases_locked",
   "cases": [
-    {"operation": "get_asset", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"], "runtime_evidence": "pending"},
-    {"operation": "list_assets", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"], "runtime_evidence": "pending"},
-    {"operation": "get_image_descriptor", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "seo_descriptor_normalization_preserved"], "runtime_evidence": "pending"},
-    {"operation": "get_translations", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "locale_fallback_input_preserved"], "runtime_evidence": "pending"}
+    {
+      "operation": "get_asset",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "list_assets",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "get_image_descriptor",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "seo_descriptor_normalization_preserved"
+      ],
+      "runtime_evidence": "pending"
+    },
+    {
+      "operation": "get_translations",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "locale_fallback_input_preserved"
+      ],
+      "runtime_evidence": "pending"
+    }
   ],
   "fallback_smoke": {
-    "status": "planned",
-    "profiles": ["embedded_native"],
-    "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image", "skip_asset_enrichment"]
+    "status": "source_locked",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "omit_image_metadata",
+      "keep_existing_seo_image",
+      "skip_asset_enrichment"
+    ],
+    "source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
   }
 }

@@ -6,8 +6,8 @@
 ## Execution checkpoint
 
 - Current phase: FBA media asset read provider metadata
-- Last checkpoint: FBA asset-read provider slice added `MediaAssetReadPort` / `media.asset_read.v1`, machine-readable registry `crates/rustok-media/contracts/media-fba-registry.json`, static evidence `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, manifest provider metadata and fast guardrail `npm run verify:media:fba`. Admin FFA boundary is pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
-- Next step: Закрыть runtime contract execution/fallback smoke для `MediaAssetReadPort`, особенно SEO image descriptor degraded modes, и затем добрать DB-backed integration tests для `cleanup_storage_orphans` без изменения transport parity.
+- Last checkpoint: no-compile FBA fallback-smoke slice locked `MediaAssetReadPort` / `media.asset_read.v1` source evidence in `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json`, promoted fallback smoke metadata from `planned` to `source_locked`, and restored the fast guardrail script `npm run verify:media:fba`. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
+- Next step: когда компиляции снова разрешены, запустить executable runtime contract/fallback smoke для `MediaAssetReadPort` и затем добрать DB-backed integration tests для `cleanup_storage_orphans` без изменения transport parity.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
 - Last updated at (UTC): 2026-06-19T00:00:00Z
@@ -23,7 +23,7 @@
   - `admin/src/transport/` владеет текущим native-first + GraphQL fallback + REST upload transport facade без изменения внешних GraphQL/REST contracts; facade split зафиксирован через `graphql_adapter.rs`, `rest_adapter.rs` и `native_server_adapter.rs`;
   - `admin/src/ui/leptos.rs` является явным Leptos render adapter, а crate root только связывает модули и реэкспортирует `MediaAdmin`;
   - runtime hardening slice добавил service-level cleanup report/decision helpers и targeted unit coverage для upload policy + storage cleanup classification без transport changes;
-  - FBA provider metadata now exposes the media asset read boundary through `MediaAssetReadPort` / `media.asset_read.v1`: `crates/rustok-media/contracts/media-fba-registry.json`, `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json` and `scripts/verify/verify-media-fba.mjs` lock read-only deadline semantics, typed `PortError` mapping, SEO descriptor fallback profiles and consumer metadata without promoting beyond `in_progress` before runtime smoke.
+  - FBA provider metadata now exposes the media asset read boundary through `MediaAssetReadPort` / `media.asset_read.v1`: `crates/rustok-media/contracts/media-fba-registry.json`, `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, source-locked fallback smoke `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json` and `scripts/verify/verify-media-fba.mjs` lock read-only deadline semantics, typed `PortError` mapping, SEO descriptor fallback/degraded profiles and consumer metadata without promoting beyond `in_progress` before executable runtime smoke.
 
 ## Область работ
 
@@ -76,6 +76,6 @@
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [~] Актуализировать покрытие тестами по ключевым сценариям модуля: FBA static matrix и source-locked fallback smoke закрыты; executable runtime smoke и DB-backed cleanup integration остаются открытыми.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
