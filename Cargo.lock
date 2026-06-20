@@ -8800,9 +8800,9 @@ dependencies = [
 
 [[package]]
 name = "redis"
-version = "1.2.3"
+version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9fd510128eda94d1d49b9f81487744d5c451422431cce41238fe2853d29f4cc"
+checksum = "bae41a63fd0b8a5372f82b21e810e09a316f5dd7efd96bf08e678fb240fc1918"
 dependencies = [
  "arc-swap",
  "arcstr",
@@ -9859,7 +9859,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "moka",
- "redis 1.2.3",
+ "redis 1.2.4",
  "rustok-core",
  "sea-orm-migration",
  "tokio",
@@ -10142,7 +10142,7 @@ dependencies = [
  "once_cell",
  "proptest",
  "rand 0.10.1",
- "redis 1.2.3",
+ "redis 1.2.4",
  "regex",
  "reqwest 0.13.2",
  "rustok-events",
@@ -11126,7 +11126,7 @@ dependencies = [
  "once_cell",
  "password-hash 0.6.1",
  "rand 0.10.1",
- "redis 1.2.3",
+ "redis 1.2.4",
  "reqwest 0.12.28",
  "rhai",
  "rust-embed",
