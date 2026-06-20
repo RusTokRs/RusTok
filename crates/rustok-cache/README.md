@@ -8,8 +8,9 @@ in-memory cache implementations.
 ## Responsibilities
 
 - Provide `CacheModule` metadata for the runtime registry.
-- Own `CacheService` and backend selection logic.
-- Expose cache health information to server runtime wiring.
+- Own `CacheService`, `CacheBackendOptions`, and backend selection logic.
+- Expose cache health information and lightweight hit/miss/invalidation statistics to server runtime wiring.
+- Keep Redis circuit breaker configuration centralized at the cache factory boundary.
 
 ## Interactions
 
@@ -24,6 +25,7 @@ in-memory cache implementations.
 - `CacheModule`
 - `CacheService`
 - `CacheHealthReport`
+- `CacheBackendOptions`
 
 ## Docs
 

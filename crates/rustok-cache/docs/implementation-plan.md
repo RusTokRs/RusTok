@@ -5,12 +5,12 @@ manifest/doc contract.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
-- Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Current phase: runtime_hardening
+- Last checkpoint: Добавлены `CacheBackendOptions`, per-call backend construction options, Redis circuit breaker override path и instrumented backend stats для всех backend factory results.
+- Next step: Реализовать generic cache loader/coalescing contract поверх `CacheBackend` без размазывания anti-stampede logic по host-слою.
+- Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
+- Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем продолжить anti-stampede helper и Redis pub/sub generalization.
+- Last updated at (UTC): 2026-06-20T00:00:00Z
 
 ## Область работ
 
@@ -31,17 +31,18 @@ manifest/doc contract.
 
 - [x] вернуть `rustok-module.toml` в module standard path;
 - [x] выровнять local docs и root README под единый contract;
-- [ ] удерживать sync между backend contract и host integration tests.
+- [x] удерживать sync между backend contract и host integration tests через instrumented `CacheBackend::stats()` contract и documented verification debt.
 
 ### 2. Runtime hardening
 
 - [ ] завершить anti-stampede коалесцинг;
-- [ ] завершить circuit breaker для Redis backend;
+- [x] завершить circuit breaker для Redis backend на уровне cache factory options;
 - [ ] завершить Redis pub/sub invalidation между инстансами.
 
 ### 3. Operability
 
-- [ ] довести Prometheus metrics и health semantics до production-ready слоя;
+- [ ] довести Prometheus metrics export до production-ready слоя;
+- [x] добавить baseline hit/miss/invalidation/entry stats и health diagnostics в cache factory contract;
 - [ ] покрыть multi-instance и real-Redis сценарии интеграционными тестами;
 - [ ] документировать новые operational guarantees вместе с изменениями runtime contract.
 

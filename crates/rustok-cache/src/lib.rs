@@ -1,6 +1,6 @@
 mod service;
 
-pub use service::{CacheHealthReport, CacheService};
+pub use service::{CacheBackendOptions, CacheHealthReport, CacheService};
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
