@@ -285,7 +285,7 @@
 
 - [x] D.1 Lightweight fixture/static matrix seed без компиляции.
   - [x] D.1a Static source assertions для Next runtime/metadata/transport, Rust renderer, Next Admin transport и Leptos storefront SEO runtime contract.
-  - [ ] D.1b Unit/integration/host matrix прогон в CI/runtime окружении.
+  - [x] D.1b Compile-free targeted unit coverage inventory зафиксирован в fixture: normalization/validation, replay idempotency, GraphQL page-context и storefront locale tests source-locked; фактическое выполнение остаётся в CI/runtime окружении.
 - [ ] D.2 RBAC/module gating parity checks.
   - [x] D.2a Compile-free backend/admin transport symbol guard для GraphQL/REST parity surfaces.
   - [x] D.2b Compile-free RBAC/module gating matrix для GraphQL, REST и Next fallback classification.
@@ -296,6 +296,7 @@
 - [x] D.4 Lightweight evidence packet seed + stop criteria.
   - [x] D.4a Compile-free host runtime entrypoint matrix для Next robots/sitemap/metadata и Leptos SSR head preflight.
   - [x] D.4a.1 Live evidence capture template для backend parity, outbox/index pipeline, Next runtime, Leptos runtime и Next Admin operator smoke.
+  - [x] D.4a.2 Live artifact manifest template добавлен: backend parity, before/after outbox/index counters, Next/Leptos host smokes, media descriptor fallback smoke и owner sign-off attachment list.
   - [ ] D.4b Live evidence packet + high-severity defect closure.
 
 ### Milestone E — Docs / runbooks / readiness closeout
@@ -330,6 +331,6 @@
 
 ## Quality backlog
 
-- [ ] Закрыть Milestone D verification matrix с реальным CI evidence packet; static source assertions уже seeded в fixture verifier, но не заменяют live backend/host прогоны.
-- [ ] Зафиксировать Milestone E runbooks и operational remediation playbooks.
+- [ ] Закрыть Milestone D verification matrix с реальным CI evidence packet; static source assertions, targeted unit inventory, integration matrix plan и live artifact manifest уже seeded в fixture verifier, но не заменяют live backend/host прогоны.
+- [ ] Зафиксировать Milestone E live incident examples и owner sign-off artifacts после D8 runtime packet.
 - [ ] Обновлять execution checkpoint после каждого milestone-инкремента Phase D.
