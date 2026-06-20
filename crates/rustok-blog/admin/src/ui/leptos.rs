@@ -673,11 +673,14 @@ pub fn BlogAdmin() -> impl IntoView {
                                     class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                     prop:value=title
                                     on:input=move |ev| {
-                                        let value = event_target_value(&ev);
-                                        if core::should_autofill_slug(slug.get_untracked().as_str()) {
-                                            set_slug.set(core::slugify(value.as_str()));
+                                        let title_input = core::blog_post_admin_title_input_view(
+                                            event_target_value(&ev),
+                                            slug.get_untracked().as_str(),
+                                        );
+                                        if let Some(slug_value) = title_input.slug_update {
+                                            set_slug.set(slug_value);
                                         }
-                                        set_title.set(value);
+                                        set_title.set(title_input.title);
                                     }
                                 />
                             </label>

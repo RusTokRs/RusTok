@@ -107,6 +107,8 @@ for (const marker of [
   "BlogPostAdminEditorFormCopyViewModel",
   "BlogPostAdminEditorFormCopyLabels",
   "blog_post_admin_editor_form_copy_view",
+  "BlogPostAdminTitleInputViewModel",
+  "blog_post_admin_title_input_view",
   "BlogPostAdminStatusBadgeViewModel",
   "blog_post_admin_status_badge_view",
   "BlogPostAdminEditBannerViewModel",
@@ -145,6 +147,7 @@ assertContains(ui, "core::blog_post_admin_raw_body_warning_view", `${uiPath}: UI
 assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
 assertContains(ui, "core::blog_post_admin_editor_form_copy_view", `${uiPath}: UI must use core-owned editor form copy presentation policy`);
+assertContains(ui, "core::blog_post_admin_title_input_view", `${uiPath}: UI must use core-owned title input/autoslug policy`);
 assertContains(ui, "core::blog_post_admin_posts_table_view_from_items", `${uiPath}: UI must use core-owned posts-table normalization and row view-model policy`);
 assertContains(ui, "core::blog_post_load_result_view", `${uiPath}: UI must use core-owned load result policy`);
 assertContains(ui, "core::blog_post_transport_failure_issue", `${uiPath}: UI must use core-owned transport failure issue mapping`);
