@@ -2,7 +2,10 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::model::{GraphqlUser, GraphqlUserResponse, GraphqlUsersConnection, GraphqlUsersResponse, GraphqlUserEdge, GraphqlPageInfo, OAuthApp, AppType};
+use crate::model::{
+    AppType, GraphqlPageInfo, GraphqlUser, GraphqlUserEdge, GraphqlUserResponse,
+    GraphqlUsersConnection, GraphqlUsersResponse, OAuthApp,
+};
 
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -435,10 +438,7 @@ pub async fn change_password_native(
 
         let client = reqwest::Client::new();
         let response = client
-            .post(format!(
-                "{}/api/auth/change-password",
-                api_base_url()
-            ))
+            .post(format!("{}/api/auth/change-password", api_base_url()))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, "application/json")
             .header("X-Tenant-ID", tenant)
@@ -451,9 +451,7 @@ pub async fn change_password_native(
             .map_err(ServerFnError::new)?;
 
         if !response.status().is_success() {
-            return Err(ServerFnError::new(
-                extract_http_error(response).await,
-            ));
+            return Err(ServerFnError::new(extract_http_error(response).await));
         }
 
         let _ = response
@@ -500,10 +498,7 @@ pub async fn update_profile_native(
 
         let client = reqwest::Client::new();
         let response = client
-            .post(format!(
-                "{}/api/auth/profile",
-                api_base_url()
-            ))
+            .post(format!("{}/api/auth/profile", api_base_url()))
             .header(AUTHORIZATION, format!("Bearer {token}"))
             .header(CONTENT_TYPE, "application/json")
             .header("X-Tenant-ID", tenant)
@@ -513,9 +508,7 @@ pub async fn update_profile_native(
             .map_err(ServerFnError::new)?;
 
         if !response.status().is_success() {
-            return Err(ServerFnError::new(
-                extract_http_error(response).await,
-            ));
+            return Err(ServerFnError::new(extract_http_error(response).await));
         }
 
         let user = response

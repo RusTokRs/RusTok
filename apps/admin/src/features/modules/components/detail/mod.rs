@@ -1,6 +1,9 @@
 pub mod governance;
 pub mod json_editor;
 pub mod metadata;
+pub mod governance_form;
+pub mod metadata_checklist_view;
+pub mod version_trail;
 
 use crate::Locale;
 use crate::entities::module::model::MarketplaceModuleVersion;

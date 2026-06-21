@@ -8,6 +8,9 @@
 )]
 
 use leptos::prelude::*;
+use super::detail::governance_form::GovernanceForm;
+use super::detail::metadata_checklist_view::MetadataChecklistView;
+use super::detail::version_trail::VersionTrailView;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
 
@@ -1264,6 +1267,16 @@ pub fn ModuleDetailPanel(
                                 });
                             })
                         };
+                        let on_governance_refresh = {
+                            let on_refresh_detail = on_refresh_detail.clone();
+                            Callback::new(move |_| {
+                                set_governance_intent_action.set(None);
+                                set_governance_confirmation_action.set(None);
+                                set_governance_feedback.set(None);
+                                set_governance_contract_refresh_nonce.update(|value| *value += 1);
+                                on_refresh_detail.run(());
+                            })
+                        };
                         view! {
                             <div class="mt-4 space-y-4">
                                 <div class="space-y-2">
@@ -2010,342 +2023,40 @@ pub fn ModuleDetailPanel(
                                         </div>
                                     </Show>
                                     <Show when=move || show_interactive_governance_form>
-                                        <div class="mt-3 space-y-3 rounded-lg border border-border bg-background p-3">
-                                            <div class="flex flex-wrap items-center justify-between gap-3">
-                                                <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                    {tr(locale, "Interactive actions", "РРЅС‚РµСЂР°РєС‚РёРІРЅС‹Рµ РґРµР№СЃС‚РІРёСЏ")}
-                                                </p>
-                                                <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <input
-                                                        type="checkbox"
-                                                        prop:checked=move || governance_dry_run.get()
-                                                        on:change=move |event| {
-                                                            let next = event_target_checked(&event);
-                                                            set_governance_dry_run.set(next);
-                                                            if next {
-                                                                set_governance_confirmation_action.set(None);
-                                                                set_governance_feedback.set(None);
-                                                            }
-                                                        }
-                                                    />
-                                                    <span>{tr(locale, "Dry run", "Dry run")}</span>
-                                                </label>
-                                            </div>
-                                            <Show when=move || governance_status_contract.get().is_some_and(|status| status.approval_override_required)>
-                                                <div class="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-900">
-                                                    <p class="font-medium">
-                                                        {tr(locale, "Approval override required", "РќСѓР¶РµРЅ approval override")}
-                                                    </p>
-                                                    <ul class="list-disc space-y-1 pl-4">
-                                                        {move || governance_status_contract
-                                                            .get()
-                                                            .filter(|status| status.approval_override_required)
-                                                            .map(|status| approval_override_warning_lines(&status.validation_stages, locale))
-                                                            .unwrap_or_default()
-                                                            .into_iter()
-                                                            .map(|line| view! { <li>{line}</li> })
-                                                            .collect_view()}
-                                                    </ul>
-                                                </div>
-                                            </Show>
-                                            <Show when=move || governance_status_contract_loading.get() || governance_status_contract_error.get().is_some() || governance_status_contract.get().is_some() || has_request_status_contract>
-                                                <div class="rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                                                    {move || {
-                                                        if governance_status_contract_loading.get() {
-                                                            return tr(
-                                                                locale,
-                                                                "Refreshing authenticated request status contract...",
-                                                                "РћР±РЅРѕРІР»СЏРµС‚СЃСЏ Р°СѓС‚РµРЅС‚РёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ РєРѕРЅС‚СЂР°РєС‚ СЃС‚Р°С‚СѓСЃР° Р·Р°РїСЂРѕСЃР°...",
-                                                            )
-                                                            .to_string();
-                                                        }
-                                                        if let Some(error) = governance_status_contract_error.get() {
-                                                            return format!(
-                                                                "{} {}",
-                                                                tr(
-                                                                    locale,
-                                                                    "Authenticated request status is unavailable; request-level actions stay disabled until the fetch succeeds.",
-                                                                    "РђСѓС‚РµРЅС‚РёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ СЃС‚Р°С‚СѓСЃ Р·Р°РїСЂРѕСЃР° РЅРµРґРѕСЃС‚СѓРїРµРЅ; request-level РґРµР№СЃС‚РІРёСЏ РѕСЃС‚Р°РЅСѓС‚СЃСЏ РІС‹РєР»СЋС‡РµРЅРЅС‹РјРё, РїРѕРєР° fetch РЅРµ РїСЂРѕР№РґРµС‚.",
-                                                                ),
-                                                                error
-                                                            );
-                                                        }
-                                                        if let Some(status) = governance_status_contract.get() {
-                                                            return format!(
-                                                                "{}: {}{}",
-                                                                tr(locale, "Authenticated request contract", "РђСѓС‚РµРЅС‚РёС„РёС†РёСЂРѕРІР°РЅРЅС‹Р№ РєРѕРЅС‚СЂР°РєС‚ Р·Р°РїСЂРѕСЃР°"),
-                                                                humanize_token(&status.status),
-                                                                status
-                                                                    .next_step
-                                                                    .as_ref()
-                                                                    .map(|next_step| format!(" В· {}", next_step))
-                                                                    .unwrap_or_default()
-                                                            );
-                                                        }
-                                                        tr(
-                                                            locale,
-                                                            "Sign in with a session-backed user token to load the authoritative request-level governance contract. Until then, request-level actions stay read-only.",
-                                                            "Р’РѕР№РґРёС‚Рµ СЃ session-backed user token, С‡С‚РѕР±С‹ Р·Р°РіСЂСѓР·РёС‚СЊ authoritative request-level governance contract. Р”Рѕ СЌС‚РѕРіРѕ request-level РґРµР№СЃС‚РІРёСЏ РѕСЃС‚Р°СЋС‚СЃСЏ read-only.",
-                                                        )
-                                                        .to_string()
-                                                    }}
-                                                </div>
-                                            </Show>
-                                            <div class="grid gap-3 lg:grid-cols-2">
-                                                <Input
-                                                    value=Signal::derive(move || governance_new_owner_user_id.get())
-                                                    set_value=set_governance_new_owner_user_id
-                                                    placeholder=tr(locale, "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000")
-                                                    label=tr(locale, "New owner user id", "User id РЅРѕРІРѕРіРѕ РІР»Р°РґРµР»СЊС†Р°")
-                                                />
-                                                <Input
-                                                    value=Signal::derive(move || governance_reason_code.get())
-                                                    set_value=set_governance_reason_code
-                                                    placeholder=move || governance_reason_code_placeholder(
-                                                        governance_intent_action.get().as_deref(),
-                                                        &governance_actions_for_form.get(),
-                                                        locale,
-                                                    )
-                                                    label=tr(locale, "Reason code", "Reason code")
-                                                />
-                                                <div class="flex flex-col gap-2">
-                                                    <label class="text-sm font-medium leading-none">
-                                                        {tr(locale, "Reason", "РџСЂРёС‡РёРЅР°")}
-                                                    </label>
-                                                    <textarea
-                                                        class="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                                        prop:value=move || governance_reason.get()
-                                                        placeholder=move || governance_reason_placeholder(
-                                                            governance_intent_action.get().as_deref(),
-                                                            &governance_actions_for_form.get(),
-                                                            locale,
-                                                        )
-                                                        on:input=move |event| {
-                                                            set_governance_reason.set(event_target_value(&event));
-                                                        }
-                                                    ></textarea>
-                                                    <p class="text-[11px] text-muted-foreground">
-                                                        {move || governance_reason_placeholder(
-                                                            governance_intent_action.get().as_deref(),
-                                                            &governance_actions_for_form.get(),
-                                                            locale,
-                                                        )}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <Show when=move || governance_intent_action.get().is_some()>
-                                                <div class="rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                                                    {move || governance_action_requirement_hint(
-                                                        governance_intent_action.get().as_deref(),
-                                                        &governance_actions_for_form.get(),
-                                                        locale,
-                                                    ).unwrap_or_default()}
-                                                </div>
-                                            </Show>
-                                            <div class="flex flex-wrap gap-2">
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "validate"))
-                                                    on_click=on_validate_request
-                                                >
-                                                    {tr(locale, "Validate", "Validate")}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "approve"))
-                                                    on_click=on_approve_request
-                                                >
-                                                    {tr(locale, "Approve", "Approve")}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "request_changes"))
-                                                    on_click=on_request_changes_request
-                                                >
-                                                    {tr(locale, "Request changes", "Р—Р°РїСЂРѕСЃРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ")}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "hold"))
-                                                    on_click=on_hold_request
-                                                >
-                                                    {tr(locale, "Hold", "РџРѕСЃС‚Р°РІРёС‚СЊ РЅР° hold")}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "resume"))
-                                                    on_click=on_resume_request
-                                                >
-                                                    {tr(locale, "Resume", "Р’РѕР·РѕР±РЅРѕРІРёС‚СЊ")}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "reject"))
-                                                    on_click=on_reject_request
-                                                >
-                                                    {move || {
-                                                        if !governance_dry_run.get()
-                                                            && governance_confirmation_action.get().as_deref()
-                                                                == Some("reject")
-                                                        {
-                                                            tr(locale, "Confirm reject", "РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕС‚РєР»РѕРЅРµРЅРёРµ")
-                                                        } else {
-                                                            tr(locale, "Reject", "Reject")
-                                                        }
-                                                    }}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "owner_transfer"))
-                                                    on_click=on_transfer_owner
-                                                >
-                                                    {move || {
-                                                        if !governance_dry_run.get()
-                                                            && governance_confirmation_action.get().as_deref()
-                                                                == Some("owner-transfer")
-                                                        {
-                                                            tr(locale, "Confirm owner transfer", "РџРѕРґС‚РІРµСЂРґРёС‚СЊ РїРµСЂРµРґР°С‡Сѓ")
-                                                        } else {
-                                                            tr(locale, "Owner transfer", "Owner transfer")
-                                                        }
-                                                    }}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "yank"))
-                                                    on_click=on_yank_release
-                                                >
-                                                    {move || {
-                                                        if !governance_dry_run.get()
-                                                            && governance_confirmation_action.get().as_deref()
-                                                                == Some("yank")
-                                                        {
-                                                            tr(locale, "Confirm yank", "РџРѕРґС‚РІРµСЂРґРёС‚СЊ РѕС‚Р·С‹РІ")
-                                                        } else {
-                                                            tr(locale, "Yank", "Yank")
-                                                        }
-                                                    }}
-                                                </Button>
-                                                <Button
-                                                    class="h-8 px-3 py-1 text-xs"
-                                                    disabled=Signal::derive(move || governance_submitting.get())
-                                                    on_click=Callback::new(move |_| {
-                                                        set_governance_intent_action.set(None);
-                                                        set_governance_confirmation_action.set(None);
-                                                        set_governance_feedback.set(None);
-                                                        set_governance_contract_refresh_nonce.update(|value| *value += 1);
-                                                        on_refresh_detail.run(())
-                                                    })
-                                                >
-                                                    {tr(locale, "Refresh", "РћР±РЅРѕРІРёС‚СЊ")}
-                                                </Button>
-                                            </div>
-                                            <Show when=move || governance_confirmation_action.get().is_some() && !governance_dry_run.get()>
-                                                <div class="space-y-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-900">
-                                                    <p class="font-medium">
-                                                        {move || governance_feedback.get().unwrap_or_default()}
-                                                    </p>
-                                                    <div class="flex flex-wrap gap-2">
-                                                        <Button
-                                                            class="h-8 px-3 py-1 text-xs"
-                                                            disabled=Signal::derive(move || governance_submitting.get())
-                                                            on_click=Callback::new(move |ev| {
-                                                                match governance_confirmation_action.get().as_deref() {
-                                                                    Some("reject") => on_reject_request.run(ev),
-                                                                    Some("owner-transfer") => on_transfer_owner.run(ev),
-                                                                    Some("yank") => on_yank_release.run(ev),
-                                                                    _ => {}
-                                                                }
-                                                            })
-                                                        >
-                                                            {move || governance_confirmation_action
-                                                                .get()
-                                                                .map(|action| destructive_governance_action_label(&action, locale).to_string())
-                                                                .unwrap_or_default()}
-                                                        </Button>
-                                                        <Button
-                                                            class="h-8 px-3 py-1 text-xs"
-                                                            disabled=Signal::derive(move || governance_submitting.get())
-                                                            on_click=Callback::new(move |_| {
-                                                                set_governance_confirmation_action.set(None);
-                                                                set_governance_feedback.set(None);
-                                                            })
-                                                        >
-                                                            {tr(locale, "Cancel", "РћС‚РјРµРЅР°")}
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </Show>
-                                            <Show when=move || governance_submitting.get()>
-                                                <div class="rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                                                    {tr(locale, "Submitting registry governance action...", "РћС‚РїСЂР°РІРєР° registry governance-РґРµР№СЃС‚РІРёСЏ...")}
-                                                </div>
-                                            </Show>
-                                            <Show when=move || governance_feedback.get().is_some()>
-                                                <div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                                                    {move || governance_feedback.get().unwrap_or_default()}
-                                                </div>
-                                            </Show>
-                                            <Show when=move || governance_error.get().is_some()>
-                                                <div class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                                                    {move || governance_error.get().unwrap_or_default()}
-                                                </div>
-                                            </Show>
-                                            <Show when=move || governance_result.get().is_some()>
-                                                <div class="space-y-2 rounded-md border border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                                                    <div class="flex flex-wrap items-center gap-2">
-                                                        <span class="font-medium text-card-foreground">
-                                                            {move || governance_result.get().map(|result| result.action).unwrap_or_default()}
-                                                        </span>
-                                                        <span>
-                                                            {move || governance_result.get().and_then(|result| result.status).map(|status| humanize_token(&status)).unwrap_or_default()}
-                                                        </span>
-                                                    </div>
-                                                    <Show when=move || governance_result.get().is_some_and(|result| !result.warnings.is_empty())>
-                                                        <div class="space-y-1">
-                                                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                {tr(locale, "Warnings", "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёСЏ")}
-                                                            </p>
-                                                            {move || governance_result
-                                                                .get()
-                                                                .map(|result| result.warnings.into_iter().map(|warning| {
-                                                                    view! {
-                                                                        <div class="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
-                                                                            {warning}
-                                                                        </div>
-                                                                    }
-                                                                }).collect_view())
-                                                                .unwrap_or_default()}
-                                                        </div>
-                                                    </Show>
-                                                    <Show when=move || governance_result.get().is_some_and(|result| !result.errors.is_empty())>
-                                                        <div class="space-y-1">
-                                                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                {tr(locale, "Errors", "РћС€РёР±РєРё")}
-                                                            </p>
-                                                            {move || governance_result
-                                                                .get()
-                                                                .map(|result| result.errors.into_iter().map(|error| {
-                                                                    view! {
-                                                                        <div class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                                                                            {error}
-                                                                        </div>
-                                                                    }
-                                                                }).collect_view())
-                                                                .unwrap_or_default()}
-                                                        </div>
-                                                    </Show>
-                                                    {move || governance_result.get().and_then(|result| result.next_step).map(|next_step| view! {
-                                                        <div>
-                                                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                                {tr(locale, "Next step", "РЎР»РµРґСѓСЋС‰РёР№ С€Р°Рі")}
-                                                            </p>
-                                                            <p class="mt-1 text-[11px] text-muted-foreground">{next_step}</p>
-                                                        </div>
-                                                    })}
-                                                </div>
-                                            </Show>
-                                        </div>
+                                        <GovernanceForm
+                                            locale=locale
+                                            governance_dry_run=governance_dry_run.into()
+                                            set_governance_dry_run=set_governance_dry_run
+                                            governance_status_contract=governance_status_contract.into()
+                                            governance_status_contract_loading=governance_status_contract_loading.into()
+                                            governance_status_contract_error=governance_status_contract_error.into()
+                                            has_request_status_contract=has_request_status_contract
+                                            governance_new_owner_user_id=governance_new_owner_user_id.into()
+                                            set_governance_new_owner_user_id=set_governance_new_owner_user_id
+                                            governance_reason_code=governance_reason_code.into()
+                                            set_governance_reason_code=set_governance_reason_code
+                                            governance_reason=governance_reason.into()
+                                            set_governance_reason=set_governance_reason
+                                            governance_intent_action=governance_intent_action.into()
+                                            set_governance_intent_action=set_governance_intent_action
+                                            governance_actions_for_form=governance_actions_for_form.into()
+                                            governance_submitting=governance_submitting.into()
+                                            governance_confirmation_action=governance_confirmation_action.into()
+                                            set_governance_confirmation_action=set_governance_confirmation_action
+                                            governance_feedback=governance_feedback.into()
+                                            set_governance_feedback=set_governance_feedback
+                                            governance_error=governance_error.into()
+                                            governance_result=governance_result.into()
+                                            on_validate=on_validate_request
+                                            on_approve=on_approve_request
+                                            on_request_changes=on_request_changes_request
+                                            on_hold=on_hold_request
+                                            on_resume=on_resume_request
+                                            on_reject=on_reject_request
+                                            on_transfer_owner=on_transfer_owner
+                                            on_yank_release=on_yank_release
+                                            on_refresh=on_governance_refresh
+                                        />
                                     </Show>
                                     <Show when=move || !lifecycle_note_lines_for_show.is_empty()>
                                         <div class="mt-3 space-y-2">
@@ -2440,57 +2151,15 @@ pub fn ModuleDetailPanel(
                                 </div>
 
                                 <Show when=move || !metadata_checklist_for_show.is_empty()>
-                                    <div class="rounded-lg border border-border bg-background/70 p-4">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                                {tr(locale, "Registry readiness", "Р“РѕС‚РѕРІРЅРѕСЃС‚СЊ Рє registry")}
-                                            </p>
-                                            <span class=metadata_status_badge_classes(if metadata_required_issues > 0 { "warn" } else { "ready" })>
-                                                {if metadata_required_issues > 0 {
-                                                    format!("{} required issue(s)", metadata_required_issues)
-                                                } else {
-                                                    tr(locale, "No required metadata gaps", "РћР±СЏР·Р°С‚РµР»СЊРЅС‹С… РїСЂРѕР±РµР»РѕРІ РІ РјРµС‚Р°РґР°РЅРЅС‹С… РЅРµС‚").to_string()
-                                                }}
-                                            </span>
-                                            <span class=metadata_status_badge_classes(if metadata_recommended_gaps > 0 { "warn" } else { "ready" })>
-                                                {if metadata_recommended_gaps > 0 {
-                                                    format!("{} recommended gap(s)", metadata_recommended_gaps)
-                                                } else {
-                                                    tr(locale, "Recommended visuals look complete", "Р РµРєРѕРјРµРЅРґСѓРµРјС‹Рµ РІРёР·СѓР°Р»СЊРЅС‹Рµ РјР°С‚РµСЂРёР°Р»С‹ Р·Р°РїРѕР»РЅРµРЅС‹").to_string()
-                                                }}
-                                            </span>
-                                            <span class=metadata_status_badge_classes("info")>
-                                                {format!("{} ready signal(s)", metadata_ready_count)}
-                                            </span>
-                                        </div>
-                                        <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                            {metadata_checklist.clone().into_iter().map(|item| {
-                                                view! {
-                                                    <div class=format!(
-                                                        "rounded-lg border p-3 text-sm {}",
-                                                        metadata_status_panel_classes(item.state)
-                                                    )>
-                                                        <div class="flex flex-wrap items-center justify-between gap-2">
-                                                            <p class="font-medium text-card-foreground">{item.label}</p>
-                                                            <span class=metadata_status_badge_classes(item.state)>
-                                                                {item.summary}
-                                                            </span>
-                                                        </div>
-                                                        <p class="mt-2 text-xs text-muted-foreground">{item.detail}</p>
-                                                    </div>
-                                                }
-                                            }).collect_view()}
-                                        </div>
-                                        <p class="mt-3 text-xs text-muted-foreground">
-                                            {if module.source.eq_ignore_ascii_case("path") {
-                                                tr(locale, "Workspace path modules can stay unpublished; this checklist is meant to surface what is already registry-ready versus what still needs operator follow-up.", "Workspace path-РјРѕРґСѓР»Рё РјРѕРіСѓС‚ РѕСЃС‚Р°РІР°С‚СЊСЃСЏ РЅРµРѕРїСѓР±Р»РёРєРѕРІР°РЅРЅС‹РјРё; СЌС‚РѕС‚ checklist РїРѕРєР°Р·С‹РІР°РµС‚, С‡С‚Рѕ СѓР¶Рµ РіРѕС‚РѕРІРѕ РґР»СЏ registry, Р° С‡С‚Рѕ РµС‰С‘ С‚СЂРµР±СѓРµС‚ РІРЅРёРјР°РЅРёСЏ РѕРїРµСЂР°С‚РѕСЂР°.")
-                                            } else {
-                                                tr(locale, "Registry-backed modules should ideally arrive here with the required metadata already satisfied.", "Registry-backed РјРѕРґСѓР»Рё РІ РёРґРµР°Р»Рµ РґРѕР»Р¶РЅС‹ РїСЂРёС…РѕРґРёС‚СЊ СЃСЋРґР° СѓР¶Рµ СЃ Р·Р°РїРѕР»РЅРµРЅРЅС‹РјРё РѕР±СЏР·Р°С‚РµР»СЊРЅС‹РјРё РјРµС‚Р°РґР°РЅРЅС‹РјРё.")
-                                            }}
-                                        </p>
-                                    </div>
+                                    <MetadataChecklistView
+                                        locale=locale
+                                        module_source=module.source.clone()
+                                        metadata_checklist=metadata_checklist.clone()
+                                        metadata_required_issues=metadata_required_issues
+                                        metadata_recommended_gaps=metadata_recommended_gaps
+                                        metadata_ready_count=metadata_ready_count
+                                    />
                                 </Show>
-
                                 {if has_marketplace_visuals {
                                     view! {
                                         <div class="rounded-lg border border-border bg-background/70 p-4">
@@ -2829,65 +2498,11 @@ pub fn ModuleDetailPanel(
                                     </p>
                                 </div>
 
-                                <div class="rounded-lg border border-border bg-background/70 p-4">
-                                    <div class="flex items-center gap-2">
-                                        <p class="text-xs uppercase tracking-wide text-muted-foreground">
-                                            {tr(locale, "Version history", "РСЃС‚РѕСЂРёСЏ РІРµСЂСЃРёР№")}
-                                        </p>
-                                        <Show when=move || loading.get()>
-                                            <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                                {tr(locale, "Refreshing", "РћР±РЅРѕРІР»РµРЅРёРµ")}
-                                            </span>
-                                        </Show>
-                                    </div>
-                                    {if version_trail.is_empty() {
-                                        view! {
-                                            <p class="mt-3 text-sm text-muted-foreground">
-                                                {tr(locale, "No version history has been published for this module yet.", "Р”Р»СЏ СЌС‚РѕРіРѕ РјРѕРґСѓР»СЏ РёСЃС‚РѕСЂРёСЏ РІРµСЂСЃРёР№ РїРѕРєР° РЅРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅР°.")}
-                                            </p>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        view! {
-                                            <div class="mt-3 space-y-3">
-                                                {version_trail.into_iter().map(|version| {
-                                                    let checksum = short_checksum(version.checksum_sha256.as_deref());
-                                                    view! {
-                                                        <div class="flex flex-col gap-2 rounded-lg border border-border px-3 py-3 text-sm">
-                                                            <div class="flex flex-wrap items-center gap-2">
-                                                                <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                                                    {format!("v{}", version.version)}
-                                                                </span>
-                                                                {version.yanked.then(|| view! {
-                                                                    <span class="inline-flex items-center rounded-full bg-destructive px-2.5 py-0.5 text-xs font-semibold text-destructive-foreground">
-                                                                        {tr(locale, "Yanked", "РћС‚РѕР·РІР°РЅ")}
-                                                                    </span>
-                                                                })}
-                                                                {version.signature_present.then(|| view! {
-                                                                    <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                                                        {tr(locale, "Signed", "РџРѕРґРїРёСЃР°РЅ")}
-                                                                    </span>
-                                                                })}
-                                                                <span class="text-xs text-muted-foreground">
-                    {version.published_at.unwrap_or_else(|| tr(locale, "Unknown", "РќРµРёР·РІРµСЃС‚РЅРѕ").to_string())}
-                                                                </span>
-                                                            </div>
-                                                            {version.changelog.map(|changelog| view! {
-                                                                <p class="text-sm text-muted-foreground">{changelog}</p>
-                                                            })}
-                                                            {checksum.map(|checksum| view! {
-                                                                <div class="text-xs text-muted-foreground">
-                                                                    <span class="font-mono">{format!("sha256 {}", checksum)}</span>
-                                                                </div>
-                                                            })}
-                                                        </div>
-                                                    }
-                                                }).collect_view()}
-                                            </div>
-                                        }
-                                            .into_any()
-                                    }}
-                                </div>
+                                <VersionTrailView
+                                    locale=locale
+                                    version_trail=version_trail.clone()
+                                    loading=loading.into()
+                                />
                             </div>
                         }
                     })

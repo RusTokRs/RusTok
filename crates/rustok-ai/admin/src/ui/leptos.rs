@@ -28,10 +28,16 @@ use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
 use crate::core::{
-    alloy_task_payload, average_latency_ms, blog_task_payload, image_task_payload, optional_text,
+    alloy_task_payload, blog_task_payload, image_task_payload, optional_text,
     parse_csv, product_attributes_task_payload, product_task_payload, summarize_recent_runs,
 };
 use crate::i18n::t;
+use super::components::provider_panel::AiProviderPanel;
+use super::components::tool_panel::AiToolPanel;
+use super::components::task_panel::AiTaskPanel;
+use super::components::jobs_panel::AiJobsPanel;
+use super::components::chat_session_panel::AiChatSessionPanel;
+use super::components::diagnostics_panel::AiDiagnosticsPanel;
 #[cfg(target_arch = "wasm32")]
 use crate::transport::graphql_adapter::{
     connection_init_message, graphql_ws_url_from_location, session_events_subscribe_message,
@@ -833,7 +839,7 @@ pub fn AiAdmin() -> impl IntoView {
         });
     };
 
-    let reset_provider_form = move || {
+    let reset_provider_form = Callback::new(move |_| {
         reset_provider_query_writer.clear_key(AdminQueryKey::ProviderSlug.as_str());
         clear_provider_profile(
             selected_provider,
@@ -851,7 +857,7 @@ pub fn AiAdmin() -> impl IntoView {
             provider_restricted_roles,
             provider_active,
         );
-    };
+    });
 
     let on_update_provider = move |_| {
         let provider_id = selected_provider.get_untracked();
@@ -975,7 +981,7 @@ pub fn AiAdmin() -> impl IntoView {
         });
     };
 
-    let reset_tool_form = move || {
+    let reset_tool_form = Callback::new(move |_| {
         reset_tool_query_writer.clear_key(AdminQueryKey::ToolProfileSlug.as_str());
         clear_tool_profile(
             selected_tool_profile,
@@ -987,7 +993,7 @@ pub fn AiAdmin() -> impl IntoView {
             tool_sensitive,
             tool_active,
         );
-    };
+    });
 
     let on_update_tool_profile = move |_| {
         let tool_profile_id = selected_tool_profile.get_untracked();
@@ -1237,6 +1243,8 @@ pub fn AiAdmin() -> impl IntoView {
         has_product_id && matches_product_attributes
     };
 
+    let can_submit_product_attributes_signal = Signal::derive(move || can_submit_product_attributes());
+
     let on_run_product_attributes_job = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_feedback.set(None);
@@ -1365,7 +1373,7 @@ pub fn AiAdmin() -> impl IntoView {
         });
     };
 
-    let reset_task_form = move || {
+    let reset_task_form = Callback::new(move |_| {
         reset_task_query_writer.clear_key(AdminQueryKey::TaskProfileSlug.as_str());
         clear_task_profile(
             selected_task_profile,
@@ -1379,7 +1387,7 @@ pub fn AiAdmin() -> impl IntoView {
             task_execution_mode,
             task_active,
         );
-    };
+    });
 
     let on_create_task_profile = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -1537,18 +1545,6 @@ pub fn AiAdmin() -> impl IntoView {
             <Suspense fallback=move || view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }>
                 {move || {
                     let ui_locale = ui_locale.clone();
-                    let ui_locale_providers = ui_locale.clone();
-                    let ui_locale_tools = ui_locale.clone();
-                    let ui_locale_tasks = ui_locale.clone();
-                    let ui_locale_diagnostics = ui_locale.clone();
-                    let ui_locale_blog = ui_locale.clone();
-                    let ui_locale_product = ui_locale.clone();
-                    let ui_locale_product_attributes = ui_locale.clone();
-                    let ui_locale_product_attributes_hint = ui_locale.clone();
-                    let ui_locale_image = ui_locale.clone();
-                    let ui_locale_alloy = ui_locale.clone();
-                    let ui_locale_new_session = ui_locale.clone();
-                    let ui_locale_sessions = ui_locale.clone();
                     let ui_locale_operator = ui_locale.clone();
                     let on_create_provider = on_create_provider.clone();
                     let on_update_provider = on_update_provider.clone();
@@ -1568,865 +1564,188 @@ pub fn AiAdmin() -> impl IntoView {
                     let on_run_alloy_job = on_run_alloy_job.clone();
                     let on_start_session = on_start_session.clone();
                     let on_send_message = on_send_message.clone();
-                    let blog_transport_locale = ui_locale.clone();
-                    let product_transport_locale = ui_locale.clone();
-                    let product_attributes_transport_locale = ui_locale.clone();
-                    let image_transport_locale = ui_locale.clone();
-                    let alloy_transport_locale = ui_locale.clone();
-                    let session_transport_locale = ui_locale.clone();
                     let select_provider_query_writer = query_writer.clone();
                     let select_tool_query_writer = query_writer.clone();
                     let select_task_query_writer = query_writer.clone();
                     let select_session_query_writer = query_writer.clone();
                     bootstrap.get().map(|result| match result {
-                    Ok(bootstrap) => view! {
-                        <div class=if diagnostics_only.get() {
-                            "grid gap-6 xl:grid-cols-[1fr_1.6fr]".to_string()
-                        } else {
-                            "grid gap-6 xl:grid-cols-[1.2fr_1fr_1.6fr]".to_string()
-                        }>
-                            {if !diagnostics_only.get() { view! {
-                            <section class="space-y-6">
-                                <Card title=t(ui_locale_providers.as_deref(), "ai.card.providers", "Providers")>
-                                    <form class="space-y-3" on:submit=on_create_provider.clone()>
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.slug", "Slug") value=provider_slug />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.displayName", "Display name") value=provider_name />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.providerKind", "Provider kind") value=provider_kind />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.baseUrl", "Base URL") value=provider_base_url />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.model", "Model") value=provider_model />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.apiKey", "API key") value=provider_api_key />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.temperature", "Temperature") value=provider_temperature />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.maxTokens", "Max tokens") value=provider_max_tokens />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.capabilitiesCsv", "Capabilities (csv)") value=provider_capabilities />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.allowedTasksCsv", "Allowed tasks (csv)") value=provider_allowed_tasks />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.deniedTasksCsv", "Denied tasks (csv)") value=provider_denied_tasks />
-                                        <TextField label=t(ui_locale_providers.as_deref(), "ai.field.restrictedRolesCsv", "Restricted roles (csv)") value=provider_restricted_roles />
-                                        <label class="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <input
-                                                type="checkbox"
-                                                prop:checked=provider_active
-                                                on:change=move |ev| provider_active.set(event_target_checked(&ev))
-                                            />
-                                            {t(ui_locale_providers.as_deref(), "ai.field.active", "Active")}
-                                        </label>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_providers.as_deref(), "ai.action.createProvider", "Create provider")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_provider.clone()>{t(ui_locale_providers.as_deref(), "ai.action.updateSelected", "Update selected")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_test_provider.clone()>{t(ui_locale_providers.as_deref(), "ai.action.testSelected", "Test selected")}</button>
-                                            <button type="button" class="rounded-lg border border-destructive/40 px-4 py-2 text-sm font-medium text-destructive" on:click=on_deactivate_provider.clone()>{t(ui_locale_providers.as_deref(), "ai.action.deactivate", "Deactivate")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_provider_form()>{t(ui_locale_providers.as_deref(), "ai.action.reset", "Reset")}</button>
-                                        </div>
-                                    </form>
-                                    <div class="mt-4 space-y-2">
-                                        {bootstrap.providers.into_iter().map(|provider| {
-                                            let provider_slug_value = provider.slug.clone();
-                                            let provider_query_writer = select_provider_query_writer.clone();
-                                            view! {
-                                                <button
-                                                    class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
-                                                    on:click=move |_| {
-                                                        provider_query_writer.replace_value(
-                                                            AdminQueryKey::ProviderSlug.as_str(),
-                                                            provider_slug_value.clone(),
-                                                        );
-                                                    }
-                                                >
-                                                    <div class="font-medium">{provider.display_name}</div>
-                                                    <div class="text-muted-foreground">
-                                                        {provider_profile_summary(
-                                                            ui_locale_providers.as_deref(),
-                                                            provider.provider_kind.as_str(),
-                                                            provider.model.as_str(),
-                                                            provider.capabilities.len(),
-                                                            provider.is_active,
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                </Card>
+                    Ok(bootstrap) => {
+                        let bootstrap_left = bootstrap.clone();
+                        let bootstrap_diagnostics = bootstrap.clone();
+                        let bootstrap_chat = bootstrap.clone();
 
-                                <Card title=t(ui_locale_tools.as_deref(), "ai.card.toolProfiles", "Tool Profiles")>
-                                    <form class="space-y-3" on:submit=on_create_tool_profile.clone()>
-                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.slug", "Slug") value=tool_slug />
-                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.displayName", "Display name") value=tool_name />
-                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.description", "Description") value=tool_description />
-                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.allowedToolsCsv", "Allowed tools (csv)") value=tool_allowed />
-                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.deniedToolsCsv", "Denied tools (csv)") value=tool_denied />
-                                        <TextField label=t(ui_locale_tools.as_deref(), "ai.field.sensitiveToolsCsv", "Sensitive tools (csv)") value=tool_sensitive />
-                                        <label class="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <input
-                                                type="checkbox"
-                                                prop:checked=tool_active
-                                                on:change=move |ev| tool_active.set(event_target_checked(&ev))
-                                            />
-                                            {t(ui_locale_tools.as_deref(), "ai.field.active", "Active")}
-                                        </label>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_tools.as_deref(), "ai.action.createToolProfile", "Create tool profile")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_tool_profile.clone()>{t(ui_locale_tools.as_deref(), "ai.action.updateSelected", "Update selected")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_tool_form()>{t(ui_locale_tools.as_deref(), "ai.action.reset", "Reset")}</button>
-                                        </div>
-                                    </form>
-                                    <div class="mt-4 space-y-2">
-                                        {bootstrap.tool_profiles.into_iter().map(|profile| {
-                                            let profile_slug_value = profile.slug.clone();
-                                            let tool_query_writer = select_tool_query_writer.clone();
-                                            view! {
-                                                <button
-                                                    class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
-                                                    on:click=move |_| {
-                                                        tool_query_writer.replace_value(
-                                                            AdminQueryKey::ToolProfileSlug.as_str(),
-                                                            profile_slug_value.clone(),
-                                                        );
-                                                    }
-                                                >
-                                                    <div class="font-medium">{profile.display_name}</div>
-                                                    <div class="text-muted-foreground">
-                                                        {tool_profile_summary(
-                                                            ui_locale_tools.as_deref(),
-                                                            profile.allowed_tools.len(),
-                                                            profile.sensitive_tools.len(),
-                                                            profile.is_active,
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                </Card>
+                        let ui_locale_left = ui_locale.clone();
+                        let ui_locale_diagnostics = ui_locale.clone();
+                        let ui_locale_jobs = ui_locale.clone();
+                        let ui_locale_chat = ui_locale.clone();
 
-                                <Card title=t(ui_locale_tasks.as_deref(), "ai.card.taskProfiles", "Task Profiles")>
-                                    <form class="space-y-3" on:submit=on_create_task_profile.clone()>
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.slug", "Slug") value=task_slug />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.displayName", "Display name") value=task_name />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.description", "Description") value=task_description />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.targetCapability", "Target capability") value=task_capability />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.systemPrompt", "System prompt") value=task_system_prompt />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.allowedProviderIdsCsv", "Allowed provider ids (csv)") value=task_allowed_providers />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.preferredProviderIdsCsv", "Preferred provider ids (csv)") value=task_preferred_providers />
-                                        <TextField label=t(ui_locale_tasks.as_deref(), "ai.field.executionMode", "Execution mode") value=task_execution_mode />
-                                        <label class="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <input
-                                                type="checkbox"
-                                                prop:checked=task_active
-                                                on:change=move |ev| task_active.set(event_target_checked(&ev))
-                                            />
-                                            {t(ui_locale_tasks.as_deref(), "ai.field.active", "Active")}
-                                        </label>
-                                        <div class="flex flex-wrap gap-2">
-                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_tasks.as_deref(), "ai.action.createTaskProfile", "Create task profile")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=on_update_task_profile.clone()>{t(ui_locale_tasks.as_deref(), "ai.action.updateSelected", "Update selected")}</button>
-                                            <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium" on:click=move |_| reset_task_form()>{t(ui_locale_tasks.as_deref(), "ai.action.reset", "Reset")}</button>
-                                        </div>
-                                    </form>
-                                    <div class="mt-4 space-y-2">
-                                        {bootstrap.task_profiles.into_iter().map(|profile| {
-                                            let profile_slug_value = profile.slug.clone();
-                                            let task_query_writer = select_task_query_writer.clone();
-                                            view! {
-                                                <button
-                                                    class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
-                                                    on:click=move |_| {
-                                                        task_query_writer.replace_value(
-                                                            AdminQueryKey::TaskProfileSlug.as_str(),
-                                                            profile_slug_value.clone(),
-                                                        );
-                                                    }
-                                                >
-                                                    <div class="font-medium">{profile.display_name}</div>
-                                                    <div class="text-muted-foreground">
-                                                        {task_profile_summary(
-                                                            ui_locale_tasks.as_deref(),
-                                                            profile.target_capability.as_str(),
-                                                            profile.default_execution_mode.as_str(),
-                                                            profile.is_active,
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                </Card>
-                            </section>
-                            }.into_any() } else { ().into_any() }}
-
-                            <section class="space-y-6">
-                                <Card title=t(ui_locale_diagnostics.as_deref(), "ai.card.diagnostics", "Diagnostics")>
-                                    <div class="grid gap-3 sm:grid-cols-2">
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.routerResolutions", "Router resolutions")
-                                            value=bootstrap.metrics.router_resolutions_total.to_string()
+                        view! {
+                            <div class=if diagnostics_only.get() {
+                                "grid gap-6 xl:grid-cols-[1fr_1.6fr]".to_string()
+                            } else {
+                                "grid gap-6 xl:grid-cols-[1.2fr_1fr_1.6fr]".to_string()
+                            }>
+                                <Show when=move || !diagnostics_only.get()>
+                                    <section class="space-y-6">
+                                        <AiProviderPanel
+                                            ui_locale=ui_locale_left.clone()
+                                            providers=bootstrap_left.providers.clone()
+                                            provider_slug=provider_slug
+                                            provider_name=provider_name
+                                            provider_kind=provider_kind
+                                            provider_base_url=provider_base_url
+                                            provider_model=provider_model
+                                            provider_api_key=provider_api_key
+                                            provider_temperature=provider_temperature
+                                            provider_max_tokens=provider_max_tokens
+                                            provider_capabilities=provider_capabilities
+                                            provider_allowed_tasks=provider_allowed_tasks
+                                            provider_denied_tasks=provider_denied_tasks
+                                            provider_restricted_roles=provider_restricted_roles
+                                            provider_active=provider_active
+                                            on_create_provider=Callback::new(on_create_provider.clone())
+                                            on_update_provider=Callback::new(on_update_provider.clone())
+                                            on_test_provider=Callback::new(on_test_provider.clone())
+                                            on_deactivate_provider=Callback::new(on_deactivate_provider.clone())
+                                            on_reset=reset_provider_form.clone()
+                                            select_provider_query_writer=select_provider_query_writer.clone()
                                         />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.overrides", "Overrides")
-                                            value=bootstrap.metrics.router_overrides_total.to_string()
+
+                                        <AiToolPanel
+                                            ui_locale=ui_locale_left.clone()
+                                            tool_profiles=bootstrap_left.tool_profiles.clone()
+                                            tool_slug=tool_slug
+                                            tool_name=tool_name
+                                            tool_description=tool_description
+                                            tool_allowed=tool_allowed
+                                            tool_denied=tool_denied
+                                            tool_sensitive=tool_sensitive
+                                            tool_active=tool_active
+                                            on_create_tool_profile=Callback::new(on_create_tool_profile.clone())
+                                            on_update_tool_profile=Callback::new(on_update_tool_profile.clone())
+                                            on_reset=reset_tool_form.clone()
+                                            select_tool_query_writer=select_tool_query_writer.clone()
                                         />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.completedRuns", "Completed runs")
-                                            value=bootstrap.metrics.completed_runs_total.to_string()
+
+                                        <AiTaskPanel
+                                            ui_locale=ui_locale_left.clone()
+                                            task_profiles=bootstrap_left.task_profiles.clone()
+                                            task_slug=task_slug
+                                            task_name=task_name
+                                            task_description=task_description
+                                            task_capability=task_capability
+                                            task_system_prompt=task_system_prompt
+                                            task_allowed_providers=task_allowed_providers
+                                            task_preferred_providers=task_preferred_providers
+                                            task_execution_mode=task_execution_mode
+                                            task_active=task_active
+                                            on_create_task_profile=Callback::new(on_create_task_profile.clone())
+                                            on_update_task_profile=Callback::new(on_update_task_profile.clone())
+                                            on_reset=reset_task_form.clone()
+                                            select_task_query_writer=select_task_query_writer.clone()
                                         />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.failedRuns", "Failed runs")
-                                            value=bootstrap.metrics.failed_runs_total.to_string()
+                                    </section>
+                                </Show>
+
+                                <section class="space-y-6">
+                                    <Show when=move || diagnostics_only.get()>
+                                        <AiDiagnosticsPanel
+                                            ui_locale=ui_locale_diagnostics.clone()
+                                            bootstrap=bootstrap_diagnostics.clone()
                                         />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.waitingApproval", "Waiting approval")
-                                            value=bootstrap.metrics.waiting_approval_runs_total.to_string()
+                                    </Show>
+
+                                    <Show when=move || !diagnostics_only.get()>
+                                        <AiJobsPanel
+                                            ui_locale=ui_locale_jobs.clone()
+                                            
+                                            blog_title=blog_title
+                                            blog_locale=blog_locale
+                                            blog_post_id=blog_post_id
+                                            blog_source_locale=blog_source_locale
+                                            blog_source_title=blog_source_title
+                                            blog_source_body=blog_source_body
+                                            blog_source_excerpt=blog_source_excerpt
+                                            blog_source_seo_title=blog_source_seo_title
+                                            blog_source_seo_description=blog_source_seo_description
+                                            blog_tags=blog_tags
+                                            blog_category_id=blog_category_id
+                                            blog_featured_image_url=blog_featured_image_url
+                                            blog_copy_instructions=blog_copy_instructions
+                                            blog_assistant_prompt=blog_assistant_prompt
+                                            on_run_blog_job=Callback::new(on_run_blog_job.clone())
+                                            
+                                            product_title=product_title
+                                            product_locale=product_locale
+                                            product_id=product_id
+                                            product_source_locale=product_source_locale
+                                            product_source_title=product_source_title
+                                            product_source_description=product_source_description
+                                            product_source_meta_title=product_source_meta_title
+                                            product_source_meta_description=product_source_meta_description
+                                            product_copy_instructions=product_copy_instructions
+                                            product_assistant_prompt=product_assistant_prompt
+                                            on_run_product_job=Callback::new(on_run_product_job.clone())
+                                            
+                                            product_attributes_title=product_attributes_title
+                                            product_attributes_locale=product_attributes_locale
+                                            product_attributes_product_id=product_attributes_product_id
+                                            product_attributes_category_slug=product_attributes_category_slug
+                                            product_attributes_source_locale=product_attributes_source_locale
+                                            product_attributes_source_title=product_attributes_source_title
+                                            product_attributes_source_description=product_attributes_source_description
+                                            product_attributes_image_urls=product_attributes_image_urls
+                                            product_attributes_copy_instructions=product_attributes_copy_instructions
+                                            product_attributes_assistant_prompt=product_attributes_assistant_prompt
+                                            on_run_product_attributes_job=Callback::new(on_run_product_attributes_job.clone())
+                                            can_submit_product_attributes=can_submit_product_attributes_signal
+                                            
+                                            image_title=image_title
+                                            image_locale=image_locale
+                                            image_prompt=image_prompt
+                                            image_negative_prompt=image_negative_prompt
+                                            image_file_name=image_file_name
+                                            image_asset_title=image_asset_title
+                                            image_alt_text=image_alt_text
+                                            image_caption=image_caption
+                                            image_size=image_size
+                                            image_assistant_prompt=image_assistant_prompt
+                                            on_run_image_job=Callback::new(on_run_image_job.clone())
+                                            
+                                            alloy_title=alloy_title
+                                            alloy_locale=alloy_locale
+                                            alloy_operation=alloy_operation
+                                            alloy_script_id=alloy_script_id
+                                            alloy_script_name=alloy_script_name
+                                            alloy_script_source=alloy_script_source
+                                            alloy_runtime_payload=alloy_runtime_payload
+                                            alloy_prompt=alloy_prompt
+                                            on_run_alloy_job=Callback::new(on_run_alloy_job.clone())
+                                            
+                                            session_title=session_title
+                                            session_locale=session_locale
+                                            session_message=session_message
+                                            selected_provider=selected_provider
+                                            selected_task_profile=selected_task_profile
+                                            selected_tool_profile=selected_tool_profile
+                                            on_start_session=Callback::new(on_start_session.clone())
                                         />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.localeFallbacks", "Locale fallbacks")
-                                            value=bootstrap.metrics.locale_fallback_total.to_string()
-                                        />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.directSelected", "Direct selected")
-                                            value=bootstrap.metrics.selected_direct_total.to_string()
-                                        />
-                                        <InfoItem
-                                            label=t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.mcpSelected", "MCP selected")
-                                            value=bootstrap.metrics.selected_mcp_total.to_string()
-                                        />
-                                    </div>
-                                    <div class="mt-4 space-y-3 text-sm text-muted-foreground">
-                                        <div>
-                                            {average_run_latency_summary(
-                                                ui_locale_diagnostics.as_deref(),
-                                                average_latency_ms(
-                                                    bootstrap.metrics.run_latency_ms_total,
-                                                    bootstrap.metrics.run_latency_samples,
-                                                )
-                                            )}
-                                        </div>
-                                        <div>
-                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.providerBuckets", "Provider buckets")}</div>
-                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.provider_kind_totals)}</div>
-                                        </div>
-                                        <div>
-                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.executionTargets", "Execution targets")}</div>
-                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.execution_target_totals)}</div>
-                                        </div>
-                                        <div>
-                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.taskProfiles", "Task profiles")}</div>
-                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.task_profile_totals)}</div>
-                                        </div>
-                                        <div>
-                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.resolvedLocales", "Resolved locales")}</div>
-                                            <div>{bucket_summary(ui_locale_diagnostics.as_deref(), &bootstrap.metrics.resolved_locale_totals)}</div>
-                                        </div>
-                                        <div>
-                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.recentRuns", "Recent runs")}</div>
-                                            <div>{recent_run_summary(ui_locale_diagnostics.as_deref(), &bootstrap.recent_runs)}</div>
-                                        </div>
-                                        <div class="space-y-2">
-                                            {bootstrap
-                                                .recent_runs
-                                                .iter()
-                                                .take(8)
-                                                .cloned()
-                                                .map(|run| {
-                                                    let error_message = run.error_message.clone().unwrap_or_default();
-                                                    let has_error = !error_message.trim().is_empty();
-                                                    view! {
-                                                        <div class="rounded-lg border border-border px-3 py-3">
-                                                            <div class="font-medium text-foreground">
-                                                                {format!(
-                                                                    "{} В· {} В· {} ms",
-                                                                    run.session_title,
-                                                                    run.status,
-                                                                    run.duration_ms,
-                                                                )}
-                                                            </div>
-                                                            <div class="text-xs text-muted-foreground">
-                                                                {format!(
-                                                                    "{} В· {} В· {} -> {}",
-                                                                    run.provider_display_name,
-                                                                    run
-                                                                        .execution_target
-                                                                        .clone()
-                                                                        .unwrap_or_else(|| run.execution_path.clone()),
-                                                                    run.requested_locale.clone().unwrap_or_else(|| "auto".to_string()),
-                                                                    run.resolved_locale,
-                                                                )}
-                                                            </div>
-                                                            <div class="mt-1 text-xs text-muted-foreground">
-                                                                {format!(
-                                                                    "{}{}",
-                                                                    run.started_at,
-                                                                    run.task_profile_slug
-                                                                        .as_ref()
-                                                                        .map(|slug| format!(" В· task {slug}"))
-                                                                        .unwrap_or_default(),
-                                                                )}
-                                                            </div>
-                                                            <Show when=move || has_error>
-                                                                <div class="mt-1 text-sm text-destructive">
-                                                                    {error_message.clone()}
-                                                                </div>
-                                                            </Show>
-                                                        </div>
-                                                    }
-                                                })
-                                                .collect_view()}
-                                        </div>
-                                        <div>
-                                            <div class="font-medium text-foreground">{t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.recentStreamEvents", "Recent stream events")}</div>
-                                            <div>
-                                                {if bootstrap.recent_stream_events.is_empty() {
-                                                    t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.noRecentEvents", "No recent events yet.")
-                                                } else {
-                                                    t(ui_locale_diagnostics.as_deref(), "ai.diagnostics.cachedEventsCount", "{count} cached event(s)")
-                                                        .replace("{count}", bootstrap.recent_stream_events.len().to_string().as_str())
-                                                }}
-                                            </div>
-                                        </div>
-                                        <div class="space-y-2">
-                                            {bootstrap
-                                                .recent_stream_events
-                                                .iter()
-                                                .take(6)
-                                                .cloned()
-                                                .map(|event| {
-                                                    let status = stream_event_kind_label(
-                                                        ui_locale_diagnostics.as_deref(),
-                                                        &event.event_kind,
-                                                    );
-                                                    let error_message = event.error_message.clone().unwrap_or_default();
-                                                    let has_error = !error_message.trim().is_empty();
-                                                    view! {
-                                                        <div class="rounded-lg border border-border px-3 py-3">
-                                                            <div class="font-medium text-foreground">
-                                                                {format!("{status} · {}", event.run_id)}
-                                                            </div>
-                                                            <div class="text-xs text-muted-foreground">{event.created_at.clone()}</div>
-                                                            <div class="mt-1 whitespace-pre-wrap text-foreground">
-                                                                {event
-                                                                    .accumulated_content
-                                                                    .clone()
-                                                                    .or(event.content_delta.clone())
-                                                                    .unwrap_or_else(|| t(ui_locale_diagnostics.as_deref(), "ai.common.noTextualDelta", "(no textual delta)"))}
-                                                            </div>
-                                                            <Show when=move || has_error>
-                                                                <div class="mt-1 text-sm text-destructive">
-                                                                    {error_message.clone()}
-                                                                </div>
-                                                            </Show>
-                                                        </div>
-                                                    }
-                                                })
-                                                .collect_view()}
-                                        </div>
-                                    </div>
-                                </Card>
+                                    </Show>
 
-                                {if !diagnostics_only.get() { view! {
-                                <Card title=t(ui_locale_blog.as_deref(), "ai.card.blogDraft", "Blog Draft")>
-                                    <form class="space-y-3" on:submit=on_run_blog_job.clone()>
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.jobTitle", "Job title") value=blog_title />
-                                        <TextField
-                                            label=t(ui_locale_blog.as_deref(), "ai.field.locale", "Locale")
-                                            value=blog_locale
-                                            placeholder=t(ui_locale_blog.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
-                                        />
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.existingPostId", "Existing post id") value=blog_post_id />
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceLocale", "Source locale") value=blog_source_locale />
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceTitleOverride", "Source title override") value=blog_source_title />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_blog.as_deref(), "ai.field.sourceBodyOverride", "Source body override")}</span>
-                                            <textarea
-                                                class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=blog_source_body
-                                                on:input=move |ev| blog_source_body.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceExcerptOverride", "Source excerpt override") value=blog_source_excerpt />
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.sourceSeoTitleOverride", "Source SEO title override") value=blog_source_seo_title />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_blog.as_deref(), "ai.field.sourceSeoDescriptionOverride", "Source SEO description override")}</span>
-                                            <textarea
-                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=blog_source_seo_description
-                                                on:input=move |ev| blog_source_seo_description.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.tagsCsv", "Tags (csv)") value=blog_tags />
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.categoryId", "Category id") value=blog_category_id />
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.featuredImageUrl", "Featured image URL") value=blog_featured_image_url />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_blog.as_deref(), "ai.field.copyInstructions", "Copy instructions")}</span>
-                                            <textarea
-                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=blog_copy_instructions
-                                                on:input=move |ev| blog_copy_instructions.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_blog.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=blog_assistant_prompt />
-                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || direct_transport_summary(
-                                                blog_transport_locale.as_deref(),
-                                                selected_provider.get().as_str(),
-                                                selected_task_profile.get().as_str(),
-                                            )}
-                                        </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_blog.as_deref(), "ai.action.generateBlogDraft", "Generate blog draft")}</button>
-                                    </form>
-                                </Card>
-
-                                <Card title=t(ui_locale_product.as_deref(), "ai.card.productCopy", "Product Copy")>
-                                    <form class="space-y-3" on:submit=on_run_product_job.clone()>
-                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.jobTitle", "Job title") value=product_title />
-                                        <TextField
-                                            label=t(ui_locale_product.as_deref(), "ai.field.locale", "Locale")
-                                            value=product_locale
-                                            placeholder=t(ui_locale_product.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
-                                        />
-                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.productId", "Product id") value=product_id />
-                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.sourceLocale", "Source locale") value=product_source_locale />
-                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.sourceTitleOverride", "Source title override") value=product_source_title />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product.as_deref(), "ai.field.sourceDescriptionOverride", "Source description override")}</span>
-                                            <textarea
-                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=product_source_description
-                                                on:input=move |ev| product_source_description.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.sourceMetaTitleOverride", "Source meta title override") value=product_source_meta_title />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product.as_deref(), "ai.field.sourceMetaDescriptionOverride", "Source meta description override")}</span>
-                                            <textarea
-                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=product_source_meta_description
-                                                on:input=move |ev| product_source_meta_description.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product.as_deref(), "ai.field.copyInstructions", "Copy instructions")}</span>
-                                            <textarea
-                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=product_copy_instructions
-                                                on:input=move |ev| product_copy_instructions.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_product.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=product_assistant_prompt />
-                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || direct_transport_summary(
-                                                product_transport_locale.as_deref(),
-                                                selected_provider.get().as_str(),
-                                                selected_task_profile.get().as_str(),
-                                            )}
-                                        </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_product.as_deref(), "ai.action.generateProductCopy", "Generate product copy")}</button>
-                                    </form>
-                                </Card>
-
-
-                                <Card title=t(ui_locale_product_attributes.as_deref(), "ai.card.productAttributes", "Product Attributes")>
-                                    <form class="space-y-3" on:submit=on_run_product_attributes_job.clone()>
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.jobTitle", "Job title") value=product_attributes_title />
-                                        <TextField
-                                            label=t(ui_locale_product_attributes.as_deref(), "ai.field.locale", "Locale")
-                                            value=product_attributes_locale
-                                            placeholder=t(ui_locale_product_attributes.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
-                                        />
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.productId", "Product id") value=product_attributes_product_id />
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.categorySlug", "Category slug") value=product_attributes_category_slug />
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.sourceLocale", "Source locale") value=product_attributes_source_locale />
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.sourceTitleOverride", "Source title override") value=product_attributes_source_title />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product_attributes.as_deref(), "ai.field.sourceDescriptionOverride", "Source description override")}</span>
-                                            <textarea
-                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=product_attributes_source_description
-                                                on:input=move |ev| product_attributes_source_description.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.imageUrlsCsv", "Image URLs (csv)") value=product_attributes_image_urls />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_product_attributes.as_deref(), "ai.field.copyInstructions", "Copy instructions")}</span>
-                                            <textarea
-                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=product_attributes_copy_instructions
-                                                on:input=move |ev| product_attributes_copy_instructions.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <TextField label=t(ui_locale_product_attributes.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=product_attributes_assistant_prompt />
-                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || direct_transport_summary(
-                                                product_attributes_transport_locale.as_deref(),
-                                                selected_provider.get().as_str(),
-                                                selected_task_profile.get().as_str(),
-                                            )}
-                                        </div>
-                                        <Show when=move || !can_submit_product_attributes()>
-                                            <p class="text-xs text-muted-foreground">{t(ui_locale_product_attributes_hint.as_deref(), "ai.hint.productAttributesRequirements", "Select task profile and product id to enable generation.")}</p>
-                                        </Show>
-                                        <button
-                                            type="submit"
-                                            class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                                            disabled=move || !can_submit_product_attributes()
-                                        >
-                                            {t(ui_locale_product_attributes.as_deref(), "ai.action.generateProductAttributes", "Generate product attributes")}
-                                        </button>
-                                    </form>
-                                </Card>
-
-                                <Card title=t(ui_locale_image.as_deref(), "ai.card.mediaImage", "Media Image")>
-                                    <form class="space-y-3" on:submit=on_run_image_job.clone()>
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.jobTitle", "Job title") value=image_title />
-                                        <TextField
-                                            label=t(ui_locale_image.as_deref(), "ai.field.locale", "Locale")
-                                            value=image_locale
-                                            placeholder=t(ui_locale_image.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
-                                        />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.prompt", "Prompt") value=image_prompt />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.negativePrompt", "Negative prompt") value=image_negative_prompt />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.fileName", "File name") value=image_file_name />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.mediaTitle", "Media title") value=image_asset_title />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.altText", "Alt text") value=image_alt_text />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.caption", "Caption") value=image_caption />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.size", "Size") value=image_size />
-                                        <TextField label=t(ui_locale_image.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=image_assistant_prompt />
-                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || direct_transport_summary(
-                                                image_transport_locale.as_deref(),
-                                                selected_provider.get().as_str(),
-                                                selected_task_profile.get().as_str(),
-                                            )}
-                                        </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_image.as_deref(), "ai.action.generateMediaImage", "Generate media image")}</button>
-                                    </form>
-                                </Card>
-
-                                <Card title=t(ui_locale_alloy.as_deref(), "ai.card.alloyAssist", "Alloy Assist")>
-                                    <form class="space-y-3" on:submit=on_run_alloy_job.clone()>
-                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.jobTitle", "Job title") value=alloy_title />
-                                        <TextField
-                                            label=t(ui_locale_alloy.as_deref(), "ai.field.locale", "Locale")
-                                            value=alloy_locale
-                                            placeholder=t(ui_locale_alloy.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
-                                        />
-                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.operation", "Operation") value=alloy_operation />
-                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.scriptId", "Script id") value=alloy_script_id />
-                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.scriptName", "Script name") value=alloy_script_name />
-                                        <TextField label=t(ui_locale_alloy.as_deref(), "ai.field.assistantPrompt", "Assistant prompt") value=alloy_prompt />
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_alloy.as_deref(), "ai.field.scriptSource", "Script source")}</span>
-                                            <textarea
-                                                class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=alloy_script_source
-                                                on:input=move |ev| alloy_script_source.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <label class="block space-y-1">
-                                            <span class="text-sm text-muted-foreground">{t(ui_locale_alloy.as_deref(), "ai.field.runtimePayloadJson", "Runtime payload JSON")}</span>
-                                            <textarea
-                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                prop:value=alloy_runtime_payload
-                                                on:input=move |ev| alloy_runtime_payload.set(event_target_value(&ev))
-                                            />
-                                        </label>
-                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || direct_transport_summary(
-                                                alloy_transport_locale.as_deref(),
-                                                selected_provider.get().as_str(),
-                                                selected_task_profile.get().as_str(),
-                                            )}
-                                        </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_alloy.as_deref(), "ai.action.runAlloyJob", "Run Alloy job")}</button>
-                                    </form>
-                                </Card>
-
-                                <Card title=t(ui_locale_new_session.as_deref(), "ai.card.newSession", "New Session")>
-                                    <form class="space-y-3" on:submit=on_start_session.clone()>
-                                        <TextField label=t(ui_locale_new_session.as_deref(), "ai.field.title", "Title") value=session_title />
-                                        <TextField
-                                            label=t(ui_locale_new_session.as_deref(), "ai.field.locale", "Locale")
-                                            value=session_locale
-                                            placeholder=t(ui_locale_new_session.as_deref(), "ai.field.localeAutoPlaceholder", "auto (request locale -> tenant default -> en)")
-                                        />
-                                        <TextField label=t(ui_locale_new_session.as_deref(), "ai.field.initialMessage", "Initial message") value=session_message />
-                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
-                                            {move || session_transport_summary(
-                                                session_transport_locale.as_deref(),
-                                                selected_provider.get().as_str(),
-                                                selected_task_profile.get().as_str(),
-                                                selected_tool_profile.get().as_str(),
-                                            )}
-                                        </div>
-                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_new_session.as_deref(), "ai.action.startSession", "Start session")}</button>
-                                    </form>
-                                </Card>
-                                }.into_any() } else { ().into_any() }}
-
-                                <Card title=t(ui_locale_sessions.as_deref(), "ai.card.sessions", "Sessions")>
-                                    <div class="space-y-2">
-                                            {bootstrap.sessions.into_iter().map(|session| {
-                                                let session_id = session.id.clone();
-                                                let item_query_writer = select_session_query_writer.clone();
-                                                view! {
-                                                <button
-                                                    class="w-full rounded-lg border border-border px-3 py-3 text-left text-sm hover:bg-muted"
-                                                    on:click=move |_| {
-                                                        item_query_writer.replace_value(
-                                                            AdminQueryKey::SessionId.as_str(),
-                                                            session_id.clone(),
-                                                        );
-                                                    }
-                                                >
-                                                    <div class="font-medium">{session.title}</div>
-                                                    <div class="text-muted-foreground">
-                                                        {session_list_summary(
-                                                            ui_locale_sessions.as_deref(),
-                                                            session.status.as_str(),
-                                                            session.execution_mode.as_str(),
-                                                            session.latest_run_status.as_deref(),
-                                                            session.pending_approvals,
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                </Card>
-                            </section>
-
-                            <section>
-                                <Card title=t(ui_locale_operator.as_deref(), "ai.card.operatorChat", "Operator Chat")>
-                                    <Suspense fallback=move || view! { <div class="h-64 animate-pulse rounded-xl bg-muted"></div> }>
-                                        {move || {
-                                            let ui_locale = ui_locale_operator.clone();
-                                            let on_send_message = on_send_message.clone();
-                                            session_detail.get().map(|result| match result {
-                                            Ok(Some(detail)) => {
-                                                let ui_locale_form = ui_locale.clone();
-                                                let ui_locale_approvals = ui_locale.clone();
-                                                let ui_locale_runs = ui_locale.clone();
-                                                let pending_approvals = detail
-                                                    .approvals
-                                                    .clone()
-                                                    .into_iter()
-                                                    .filter(|item| item.status == "pending")
-                                                    .collect::<Vec<_>>();
-                                                view! {
-                                                    <div class="space-y-5">
-                                                        <div class="rounded-lg border border-border px-3 py-3 text-sm">
-                                                            <div class="font-medium">{detail.session.title.clone()}</div>
-                                                            <div class="text-muted-foreground">
-                                                                {session_profile_summary(
-                                                                    ui_locale.as_deref(),
-                                                                    detail.provider_profile.display_name.as_str(),
-                                                                    detail.provider_profile.model.as_str(),
-                                                                    detail.session.execution_mode.as_str(),
-                                                                )}
-                                                            </div>
-                                                            <div class="text-muted-foreground">
-                                                                {locale_flow_summary(
-                                                                    ui_locale.as_deref(),
-                                                                    detail.session.requested_locale.as_deref(),
-                                                                    detail.session.resolved_locale.as_str(),
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="max-h-[380px] space-y-3 overflow-y-auto rounded-xl border border-border p-3">
-                                                            {detail.messages.into_iter().map(|message| view! {
-                                                                <div class="rounded-lg border border-border px-3 py-3 text-sm">
-                                                                    <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                                                        {message.role.clone()}
-                                                                    </div>
-                                                                    <div>{message.content.unwrap_or_else(|| t(ui_locale.as_deref(), "ai.common.noTextualContent", "(no textual content)"))}</div>
-                                                                </div>
-                                                            }).collect_view()}
-                                                        </div>
-
-                                                        {move || live_stream.get().map(|stream| {
-                                                            let content = if stream.content.trim().is_empty() {
-                                                                t(ui_locale.as_deref(), "ai.session.waitingForAssistant", "Waiting for assistant output...")
-                                                            } else {
-                                                                stream.content.clone()
-                                                            };
-                                                            let error_message = stream.error_message.clone().unwrap_or_default();
-                                                            let has_error = !error_message.trim().is_empty();
-                                                            view! {
-                                                                <div class="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950">
-                                                                    <div class="flex items-center justify-between gap-3">
-                                                                        <div class="font-medium">{t(ui_locale.as_deref(), "ai.session.liveStream", "Live stream")}</div>
-                                                                        <div class="text-xs uppercase tracking-wide text-sky-800">
-                                                                            {stream_status_summary(
-                                                                                ui_locale.as_deref(),
-                                                                                stream.connected,
-                                                                                stream.status.as_str(),
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div class="mt-2 whitespace-pre-wrap text-sky-950">{content}</div>
-                                                                    <Show when=move || has_error>
-                                                                        <div class="mt-2 text-sm text-destructive">{error_message.clone()}</div>
-                                                                    </Show>
-                                                                </div>
-                                                            }
-                                                        })}
-
-                                                        <form class="space-y-3" on:submit=on_send_message.clone()>
-                                                            <textarea
-                                                                class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                                                                prop:value=reply_message
-                                                                on:input=move |ev| reply_message.set(event_target_value(&ev))
-                                                            />
-                                                            <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">{t(ui_locale_form.as_deref(), "ai.action.send", "Send")}</button>
-                                                        </form>
-
-                                                        {if pending_approvals.is_empty() {
-                                                            ().into_any()
-                                                        } else {
-                                                            view! {
-                                                                <div class="space-y-3">
-                                                                    <div class="text-sm font-semibold">{t(ui_locale_approvals.as_deref(), "ai.session.pendingApprovals", "Pending approvals")}</div>
-                                                                    {pending_approvals.into_iter().map(|approval| {
-                                                                    let approve_id = approval.id.clone();
-                                                                    let reject_id = approval.id.clone();
-                                                                    let approval_reason = approval.reason.unwrap_or_else(|| t(ui_locale_approvals.as_deref(), "ai.session.operatorApprovalRequired", "Operator approval required"));
-                                                                    let approve_label = t(ui_locale_approvals.as_deref(), "ai.action.approve", "Approve");
-                                                                    let reject_label = t(ui_locale_approvals.as_deref(), "ai.action.reject", "Reject");
-                                                                    let reject_reason = t(ui_locale_approvals.as_deref(), "ai.session.rejectedInAdminUi", "Rejected in admin UI");
-                                                                    view! {
-                                                                        <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                                                            <div class="font-medium">{approval.tool_name.clone()}</div>
-                                                                            <div class="mt-1 text-amber-800">{approval_reason}</div>
-                                                                            <div class="mt-3 flex gap-2">
-                                                                                <button
-                                                                                    class="rounded-md bg-amber-900 px-3 py-2 text-xs font-semibold text-white"
-                                                                                    on:click=move |_| {
-                                                                                        let approval_id = approve_id.clone();
-                                                                                        spawn_local(async move {
-                                                                                            let _ = transport::resume_approval(approval_id, true, None).await;
-                                                                                            set_refresh_nonce.update(|value| *value += 1);
-                                                                                        });
-                                                                                    }
-                                                                                >
-                                                                                    {approve_label}
-                                                                                </button>
-                                                                                <button
-                                                                                    class="rounded-md border border-amber-900 px-3 py-2 text-xs font-semibold text-amber-900"
-                                                                                    on:click=move |_| {
-                                                                                        let approval_id = reject_id.clone();
-                                                                                        let reject_reason = reject_reason.clone();
-                                                                                        spawn_local(async move {
-                                                                                            let _ = transport::resume_approval(approval_id, false, Some(reject_reason)).await;
-                                                                                            set_refresh_nonce.update(|value| *value += 1);
-                                                                                        });
-                                                                                    }
-                                                                                >
-                                                                                    {reject_label}
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                    }).collect_view()}
-                                                                </div>
-                                                            }.into_any()
-                                                        }}
-
-                                                        <div class="space-y-3">
-                                                            <div class="text-sm font-semibold">{t(ui_locale_runs.as_deref(), "ai.session.runs", "Runs")}</div>
-                                                            {detail.runs.into_iter().map(|run| {
-                                                                let error_message = run.error_message.clone().unwrap_or_default();
-                                                                let has_error = !error_message.is_empty();
-                                                                view! {
-                                                                    <div class="rounded-lg border border-border px-3 py-3 text-sm">
-                                                                        <div class="font-medium">{run.model.clone()}</div>
-                                                                        <div class="text-muted-foreground">
-                                                                            {run_path_summary(
-                                                                                ui_locale_runs.as_deref(),
-                                                                                run.status.as_str(),
-                                                                                run.execution_mode.as_str(),
-                                                                                run.execution_path.as_str(),
-                                                                            )}
-                                                                        </div>
-                                                                        <div class="text-muted-foreground">
-                                                                            {locale_flow_summary(
-                                                                                ui_locale_runs.as_deref(),
-                                                                                run.requested_locale.as_deref(),
-                                                                                run.resolved_locale.as_str(),
-                                                                            )}
-                                                                        </div>
-                                                                        <Show when=move || has_error>
-                                                                            <div class="mt-2 text-destructive">{error_message.clone()}</div>
-                                                                        </Show>
-                                                                    </div>
-                                                                }
-                                                            }).collect_view()}
-                                                        </div>
-
-                                                        <div class="space-y-3">
-                                                            <div class="text-sm font-semibold">{t(ui_locale_runs.as_deref(), "ai.session.toolTrace", "Tool trace")}</div>
-                                                            {detail.tool_traces.into_iter().map(|trace| view! {
-                                                                <div class="rounded-lg border border-border px-3 py-3 text-sm">
-                                                                    <div class="font-medium">{trace.tool_name}</div>
-                                                                    <div class="text-muted-foreground">{tool_trace_summary(ui_locale_runs.as_deref(), trace.status.as_str(), trace.duration_ms)}</div>
-                                                                </div>
-                                                            }).collect_view()}
-                                                        </div>
-
-                                                        <div class="space-y-3">
-                                                            <div class="text-sm font-semibold">{t(ui_locale_runs.as_deref(), "ai.diagnostics.recentStreamEvents", "Recent stream events")}</div>
-                                                            {if detail.recent_stream_events.is_empty() {
-                                                                view! {
-                                                                    <div class="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-                                                                        {t(ui_locale_runs.as_deref(), "ai.session.noCachedStreamEvents", "No cached stream events for this session yet.")}
-                                                                    </div>
-                                                                }.into_any()
-                                                            } else {
-                                                                view! {
-                                                                    {detail.recent_stream_events.into_iter().take(10).map(|event| {
-                                                                        let status = stream_event_kind_label(
-                                                                            ui_locale_runs.as_deref(),
-                                                                            &event.event_kind,
-                                                                        );
-                                                                        let error_message = event.error_message.clone().unwrap_or_default();
-                                                                        let has_error = !error_message.trim().is_empty();
-                                                                        view! {
-                                                                            <div class="rounded-lg border border-border px-3 py-3 text-sm">
-                                                                                <div class="font-medium">{format!("{status} · {}", event.run_id)}</div>
-                                                                                <div class="text-xs text-muted-foreground">{event.created_at}</div>
-                                                                                <div class="mt-1 whitespace-pre-wrap">
-                                                                                    {event
-                                                                                        .accumulated_content
-                                                                                        .or(event.content_delta)
-                                                                                        .unwrap_or_else(|| t(ui_locale_runs.as_deref(), "ai.common.noTextualDelta", "(no textual delta)"))}
-                                                                                </div>
-                                                                                <Show when=move || has_error>
-                                                                                    <div class="mt-1 text-destructive">{error_message.clone()}</div>
-                                                                                </Show>
-                                                                            </div>
-                                                                        }
-                                                                    }).collect_view()}
-                                                                }.into_any()
-                                                            }}
-                                                        </div>
-                                                    </div>
-                                                }.into_any()
-                                            }
-                                            Ok(None) => view! {
-                                                <div class="rounded-lg border border-dashed border-border px-4 py-8 text-sm text-muted-foreground">
-                                                    {t(ui_locale.as_deref(), "ai.session.selectPrompt", "Select a session to inspect chat history, traces, and approvals.")}
-                                                </div>
-                                            }.into_any(),
-                                            Err(err) => view! {
-                                                <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                                                    {t(ui_locale.as_deref(), "ai.session.loadSession", "Failed to load session: {error}")
-                                                        .replace("{error}", err.to_string().as_str())}
-                                                </div>
-                                            }.into_any(),
-                                            })
-                                        }}
-                                    </Suspense>
-                                </Card>
-                            </section>
-                        </div>
-                    }.into_any(),
+                                    <AiChatSessionPanel
+                                        ui_locale=ui_locale_chat.clone()
+                                        bootstrap=bootstrap_chat.clone()
+                                        session_detail=session_detail
+                                        live_stream=live_stream.into()
+                                        reply_message=reply_message
+                                        on_send_message=Callback::new(on_send_message.clone())
+                                        select_session_query_writer=select_session_query_writer.clone()
+                                        set_refresh_nonce=set_refresh_nonce
+                                    />
+                                </section>
+                            </div>
+                        }.into_any()
+                    },
                     Err(err) => view! {
                         <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                             {t(ui_locale_operator.as_deref(), "ai.session.loadBootstrap", "Failed to load AI bootstrap: {error}")
@@ -2441,7 +1760,7 @@ pub fn AiAdmin() -> impl IntoView {
 }
 
 #[component]
-fn Card(#[prop(into)] title: String, children: Children) -> impl IntoView {
+pub(crate) fn Card(#[prop(into)] title: String, children: Children) -> impl IntoView {
     view! {
         <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h2 class="mb-4 text-lg font-semibold text-card-foreground">{title}</h2>
@@ -2451,7 +1770,7 @@ fn Card(#[prop(into)] title: String, children: Children) -> impl IntoView {
 }
 
 #[component]
-fn TextField(
+pub(crate) fn TextField(
     #[prop(into)] label: String,
     value: RwSignal<String>,
     #[prop(optional, into)] placeholder: Option<String>,
@@ -2471,7 +1790,7 @@ fn TextField(
 }
 
 #[component]
-fn InfoItem(#[prop(into)] label: String, value: String) -> impl IntoView {
+pub(crate) fn InfoItem(#[prop(into)] label: String, value: String) -> impl IntoView {
     view! {
         <div class="rounded-lg border border-border px-3 py-3">
             <div class="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
@@ -2480,7 +1799,7 @@ fn InfoItem(#[prop(into)] label: String, value: String) -> impl IntoView {
     }
 }
 
-fn bucket_summary(locale: Option<&str>, buckets: &[AiMetricBucketPayload]) -> String {
+pub(crate) fn bucket_summary(locale: Option<&str>, buckets: &[AiMetricBucketPayload]) -> String {
     if buckets.is_empty() {
         t(locale, "ai.summary.bucketNoData", "no data")
     } else {
@@ -2492,7 +1811,7 @@ fn bucket_summary(locale: Option<&str>, buckets: &[AiMetricBucketPayload]) -> St
     }
 }
 
-fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) -> String {
+pub(crate) fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) -> String {
     if runs.is_empty() {
         return t(
             locale,
@@ -2517,7 +1836,7 @@ fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) 
     .replace("{latency}", stats.average_latency_ms.to_string().as_str())
 }
 
-fn stream_event_kind_label(
+pub(crate) fn stream_event_kind_label(
     locale: Option<&str>,
     value: &model::AiRunStreamEventKindPayload,
 ) -> String {
@@ -2534,7 +1853,7 @@ fn stream_event_kind_label(
     }
 }
 
-fn average_run_latency_summary(locale: Option<&str>, latency_ms: u64) -> String {
+pub(crate) fn average_run_latency_summary(locale: Option<&str>, latency_ms: u64) -> String {
     t(
         locale,
         "ai.diagnostics.averageRunLatency",
@@ -2543,7 +1862,7 @@ fn average_run_latency_summary(locale: Option<&str>, latency_ms: u64) -> String 
     .replace("{value}", latency_ms.to_string().as_str())
 }
 
-fn provider_profile_summary(
+pub(crate) fn provider_profile_summary(
     locale: Option<&str>,
     kind: &str,
     model: &str,
@@ -2561,7 +1880,7 @@ fn provider_profile_summary(
     .replace("{state}", active_state_label(locale, active).as_str())
 }
 
-fn tool_profile_summary(
+pub(crate) fn tool_profile_summary(
     locale: Option<&str>,
     allowed_count: usize,
     sensitive_count: usize,
@@ -2577,7 +1896,7 @@ fn tool_profile_summary(
     .replace("{state}", active_state_label(locale, active).as_str())
 }
 
-fn task_profile_summary(
+pub(crate) fn task_profile_summary(
     locale: Option<&str>,
     capability: &str,
     mode: &str,
@@ -2593,7 +1912,7 @@ fn task_profile_summary(
     .replace("{state}", active_state_label(locale, active).as_str())
 }
 
-fn direct_transport_summary(locale: Option<&str>, provider: &str, task_profile: &str) -> String {
+pub(crate) fn direct_transport_summary(locale: Option<&str>, provider: &str, task_profile: &str) -> String {
     t(
         locale,
         "ai.summary.transportDirect",
@@ -2604,7 +1923,7 @@ fn direct_transport_summary(locale: Option<&str>, provider: &str, task_profile: 
     .replace("{mode}", t(locale, "ai.common.direct", "direct").as_str())
 }
 
-fn session_transport_summary(
+pub(crate) fn session_transport_summary(
     locale: Option<&str>,
     provider: &str,
     task_profile: &str,
@@ -2620,7 +1939,7 @@ fn session_transport_summary(
     .replace("{tool_profile}", tool_profile)
 }
 
-fn session_list_summary(
+pub(crate) fn session_list_summary(
     locale: Option<&str>,
     status: &str,
     mode: &str,
@@ -2641,7 +1960,7 @@ fn session_list_summary(
     .replace("{approvals}", approvals.to_string().as_str())
 }
 
-fn session_profile_summary(
+pub(crate) fn session_profile_summary(
     locale: Option<&str>,
     provider: &str,
     model: &str,
@@ -2657,7 +1976,7 @@ fn session_profile_summary(
     .replace("{mode}", mode)
 }
 
-fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>, resolved: &str) -> String {
+pub(crate) fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>, resolved: &str) -> String {
     let requested_value = requested
         .map(ToString::to_string)
         .unwrap_or_else(|| t(locale, "ai.common.auto", "auto"));
@@ -2670,7 +1989,7 @@ fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>, resolved: 
     .replace("{resolved}", resolved)
 }
 
-fn run_path_summary(locale: Option<&str>, status: &str, mode: &str, path: &str) -> String {
+pub(crate) fn run_path_summary(locale: Option<&str>, status: &str, mode: &str, path: &str) -> String {
     t(
         locale,
         "ai.summary.runPath",
@@ -2681,13 +2000,13 @@ fn run_path_summary(locale: Option<&str>, status: &str, mode: &str, path: &str) 
     .replace("{path}", path)
 }
 
-fn tool_trace_summary(locale: Option<&str>, status: &str, duration_ms: i64) -> String {
+pub(crate) fn tool_trace_summary(locale: Option<&str>, status: &str, duration_ms: i64) -> String {
     t(locale, "ai.summary.toolTrace", "{status} · {duration} ms")
         .replace("{status}", status)
         .replace("{duration}", duration_ms.to_string().as_str())
 }
 
-fn stream_status_summary(locale: Option<&str>, connected: bool, status: &str) -> String {
+pub(crate) fn stream_status_summary(locale: Option<&str>, connected: bool, status: &str) -> String {
     let connection_label = if connected {
         t(locale, "ai.common.connected", "connected")
     } else {
