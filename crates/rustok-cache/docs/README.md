@@ -14,6 +14,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 - `CacheService`, `CacheBackendOptions` и backend selection logic;
 - Redis lifecycle, configurable circuit breaker settings, fallback semantics и cache health reporting;
 - lightweight backend instrumentation через `CacheBackend::stats()` для hits/misses/invalidations/entries;
+- service-level Prometheus gauges через `CacheService::prometheus_metrics()` для Redis configuration/health, metrics toggle и in-flight `load_or_fill` loaders;
 - generic anti-stampede helper `CacheService::load_or_fill`, который коалесцирует concurrent misses по cache key и возвращает источник результата (`Hit`, `Filled`, `Coalesced`);
 - generic invalidation publisher/subscriber `CacheService::publish_invalidation` / `CacheInvalidationService`, который публикует namespaced invalidation messages в Redis pub/sub при включённом backend, всегда fan-out-ит сообщение local subscribers в текущем процессе и даёт host/runtime listener-ам единый `consume_subscription` adapter для Redis pub/sub без прямого Redis wiring;
 - tenant-aware cache namespace и invalidation contract;

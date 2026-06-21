@@ -205,31 +205,27 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                     .into_iter()
                     .map(|page| {
                         let locale = locale.clone();
-                        let slug = page.slug.unwrap_or_else(|| {
-                            t(locale.as_deref(), "pages.list.missingSlug", "missing-slug")
-                        });
-                        let href = core::page_link_href(module_route_base.as_str(), slug.as_str());
+                        let item_view = core::storefront_page_list_item_view(
+                            page,
+                            module_route_base.as_str(),
+                            t(locale.as_deref(), "pages.list.missingSlug", "missing-slug"),
+                            t(locale.as_deref(), "pages.list.untitled", "Untitled page"),
+                            &t(locale.as_deref(), "pages.list.open", "Open"),
+                            &t(locale.as_deref(), "pages.list.templateLabel", "template"),
+                        );
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
                                 <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                                    {core::page_status_label(page.status.as_str()).to_string()}
+                                    {item_view.status}
                                 </div>
                                 <h4 class="mt-2 text-base font-semibold text-foreground">
-                                    {page.title.unwrap_or_else(|| {
-                                        t(locale.as_deref(), "pages.list.untitled", "Untitled page")
-                                    })}
+                                    {item_view.title}
                                 </h4>
-                                <a class="mt-2 inline-flex text-sm text-primary hover:underline" href=href>
-                                    {core::open_link_label(
-                                    &t(locale.as_deref(), "pages.list.open", "Open"),
-                                    slug.as_str(),
-                                )}
+                                <a class="mt-2 inline-flex text-sm text-primary hover:underline" href=item_view.href>
+                                    {item_view.open_label}
                                 </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
-                                    {core::label_value_pair(
-                                        &t(locale.as_deref(), "pages.list.templateLabel", "template"),
-                                        page.template.as_str(),
-                                    )}
+                                    {item_view.template_label}
                                 </p>
                             </article>
                         }

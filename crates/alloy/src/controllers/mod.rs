@@ -67,7 +67,7 @@ pub async fn list_scripts(
     Ok(Json(ListScriptsResponse::new(
         scripts,
         page.total as usize,
-        query.page,
+        query.normalized_page(),
         query.normalized_per_page(),
     )))
 }
@@ -232,7 +232,7 @@ pub async fn list_recent_executions(
     Ok(Json(ListExecutionLogResponse::new(
         executions,
         total,
-        query.page,
+        query.normalized_page(),
         query.normalized_per_page(),
     )))
 }
@@ -264,7 +264,7 @@ pub async fn list_script_executions(
     Ok(Json(ListExecutionLogResponse::new(
         executions,
         total,
-        query.page,
+        query.normalized_page(),
         query.normalized_per_page(),
     )))
 }

@@ -4,8 +4,8 @@ use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
     entities::{tenant, tenant_module},
-    CreateTenantInput, PortContext, PortErrorKind, TenantError, TenantReadPort, TenantReadRequest,
-    TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
+    CreateTenantInput, PortActor, PortContext, PortErrorKind, TenantError, TenantReadPort,
+    TenantReadRequest, TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
 };
 use sea_orm::{
     sea_query::TableCreateStatement, ConnectionTrait, Database, DatabaseConnection, DbBackend,
@@ -151,11 +151,12 @@ async fn tenant_read_port_requires_deadline_and_valid_slug() {
 
     let missing_deadline = service
         .read_tenant(
-            PortContext {
-                tenant_id: "tenant-read-port".to_string(),
-                correlation_id: "corr-missing-deadline".to_string(),
-                deadline_ms: None,
-            },
+            PortContext::new(
+                "tenant-read-port".to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-missing-deadline".to_string(),
+            ),
             TenantReadRequest {
                 selector: TenantReadSelector::Slug("read-port".to_string()),
                 include_inactive: false,
@@ -170,11 +171,13 @@ async fn tenant_read_port_requires_deadline_and_valid_slug() {
 
     let empty_slug = service
         .read_tenant(
-            PortContext {
-                tenant_id: "tenant-read-port".to_string(),
-                correlation_id: "corr-empty-slug".to_string(),
-                deadline_ms: Some(250),
-            },
+            PortContext::new(
+                "tenant-read-port".to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-empty-slug".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(250)),
             TenantReadRequest {
                 selector: TenantReadSelector::Slug("   ".to_string()),
                 include_inactive: false,
@@ -204,11 +207,13 @@ async fn tenant_read_port_preserves_projection_and_inactive_degraded_mode() {
 
     let active_projection = service
         .read_tenant(
-            PortContext {
-                tenant_id: tenant.id.to_string(),
-                correlation_id: "corr-active-read".to_string(),
-                deadline_ms: Some(500),
-            },
+            PortContext::new(
+                tenant.id.to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-active-read".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(500)),
             TenantReadRequest {
                 selector: TenantReadSelector::Id(tenant.id),
                 include_inactive: false,
@@ -219,7 +224,10 @@ async fn tenant_read_port_preserves_projection_and_inactive_degraded_mode() {
 
     assert_eq!(active_projection.id, tenant.id);
     assert_eq!(active_projection.slug, "read-port-tenant");
-    assert_eq!(active_projection.domain.as_deref(), Some("read-port.example"));
+    assert_eq!(
+        active_projection.domain.as_deref(),
+        Some("read-port.example")
+    );
     assert!(active_projection.is_active);
 
     service
@@ -237,11 +245,13 @@ async fn tenant_read_port_preserves_projection_and_inactive_degraded_mode() {
 
     let hidden_inactive = service
         .read_tenant(
-            PortContext {
-                tenant_id: tenant.id.to_string(),
-                correlation_id: "corr-hidden-inactive".to_string(),
-                deadline_ms: Some(500),
-            },
+            PortContext::new(
+                tenant.id.to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-hidden-inactive".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(500)),
             TenantReadRequest {
                 selector: TenantReadSelector::Slug("read-port-tenant".to_string()),
                 include_inactive: false,
@@ -256,11 +266,13 @@ async fn tenant_read_port_preserves_projection_and_inactive_degraded_mode() {
 
     let inactive_projection = service
         .read_tenant(
-            PortContext {
-                tenant_id: tenant.id.to_string(),
-                correlation_id: "corr-include-inactive".to_string(),
-                deadline_ms: Some(500),
-            },
+            PortContext::new(
+                tenant.id.to_string(),
+                PortActor::service("tenant-test"),
+                "en",
+                "corr-include-inactive".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(500)),
             TenantReadRequest {
                 selector: TenantReadSelector::Slug("read-port-tenant".to_string()),
                 include_inactive: true,
