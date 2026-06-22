@@ -36,7 +36,7 @@ Current v0 wiring also includes:
 - `web_domain` targets now use shared canonical normalization/validation (`scheme/path/port` trimming, lowercase, strict host validation), and host lookup reuses the same semantics as storage,
 - a thin REST bootstrap/write surface in `apps/server`, now including policy-set/rule authoring, extended rule update patches (priority/is_active/action/predicates), rule reorder endpoints, and runtime trace diagnostics in channel bootstrap,
 - `rustok-channel-admin` for Leptos admin composition, now including policy-set activation plus policy-rule authoring/edit/removal/reorder/enable-disable flows with native-first `#[server]` transport and REST fallback parity,
-- live proof points in `rustok-pages` and `rustok-blog`, where public read-path gating already uses `channel_module_bindings`, and both modules now exercise metadata-based publication-level `channelSlugs` allowlists.
+- live proof points in `rustok-pages`, `rustok-blog`, and `rustok-commerce`, where public read-path gating already uses `channel_module_bindings`/resolved host `ChannelContext`; pages/blog exercise metadata-based publication-level `channelSlugs` allowlists, while commerce preserves channel snapshot through storefront cart/order/pricing flows without a second sales-channel domain.
 
 Validated baseline:
 
@@ -50,6 +50,7 @@ Validated baseline:
 - `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`
 - `npm run verify:channel:fba` (no-compile provider registry, static matrix, and source-locked runtime fallback smoke gate)
 - `npm run verify:channel:resolution-contract` (no-compile resolution order and built-in host fast-path decision gate)
+- `npm run verify:channel:proof-points` (no-compile pages/blog/commerce proof-point source/docs sync gate)
 
 It does not yet provide:
 

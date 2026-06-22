@@ -30,7 +30,7 @@ if (port.context !== 'crates/rustok-channel/src/ports.rs::PortContext' || port.e
 if (port.deadline_required !== true || port.idempotency_required !== false || port.semantics !== 'read_only') fail('channel read projection must be read-only with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/channel-fba-registry.json"') || !manifest.includes('contract_version = "channel.read_projection.v1"')) fail('manifest metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait ChannelReadPort', 'impl ChannelReadPort for crate::ChannelService', 'context.require_deadline_semantics()?', 'ChannelReadRequest', 'ChannelListRequest', 'ChannelReadProjection', 'channel.slug_empty', 'channel.host_target_empty', 'channel.tenant_id_invalid', 'ensure_tenant_scope', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
+for (const marker of ['trait ChannelReadPort', 'impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ChannelReadRequest', 'ChannelListRequest', 'ChannelReadProjection', 'channel.slug_empty', 'channel.host_target_empty', 'channel.tenant_id_invalid', 'ensure_tenant_scope', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
 if (ports.includes('require_write_semantics()?')) fail('channel read port must not require write idempotency');
@@ -52,7 +52,7 @@ if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profi
 for (const profile of registry.contract_tests.fallback_smoke.profiles) {
   if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'source_locked_runtime_pending')) fail(`runtime smoke missing source-locked profile ${profile}`);
 }
-for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_deadline_semantics()?', 'ensure_tenant_scope', 'request.include_inactive || detail.channel.is_active', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
+for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ensure_tenant_scope', 'request.include_inactive || detail.channel.is_active', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
   if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
 }
 const transportFacade = read('crates/rustok-channel/admin/src/transport/mod.rs');
