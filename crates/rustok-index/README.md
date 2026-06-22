@@ -14,7 +14,7 @@
 
 ## Interactions
 
-- Depends on `rustok-core` for module contracts.
+- Depends on `rustok-core` for module contracts and `rustok-api` for shared transport-agnostic port context/error/policy primitives.
 - Consumes domain events published by content, commerce, blog, forum, pages, workflow, and Flex standalone paths.
 - Content-node tag extraction now reads `nodes.metadata.tags` directly and no longer depends on
   legacy `tags` / `taggables` joins from `rustok-content`.
@@ -35,6 +35,7 @@
 - `LocaleIndexer`
 - `IndexerContext`
 - `IndexerRuntimeConfig`
+- `IndexReadModelPort` / `IndexRebuildPort`
 
 ## Docs
 

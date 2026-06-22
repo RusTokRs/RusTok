@@ -38,6 +38,17 @@ function fail(message) {
   process.exit(1);
 }
 
+function hasPath(root, dottedPath) {
+  let current = root;
+  for (const segment of dottedPath.split(".")) {
+    if (current === null || typeof current !== "object" || !(segment in current)) {
+      return false;
+    }
+    current = current[segment];
+  }
+  return current !== undefined && current !== null;
+}
+
 if (!fs.existsSync(moduleTomlPath)) fail(`missing module manifest: ${moduleTomlPath}`);
 if (!fs.existsSync(implPlanPath)) fail(`missing implementation plan: ${implPlanPath}`);
 
@@ -390,7 +401,9 @@ if (arg === "forum") {
   if (waveNextDueAt - waveCreatedAt > maxAgeMs) {
     fail(`${arg}: Wave 1 refresh_policy.next_due_at must not exceed max_age_days from created_at`);
   }
-  const now = Date.now();
+  const now = process.env.RUSTOK_VERIFY_NOW
+    ? parseWaveTimestamp(process.env.RUSTOK_VERIFY_NOW, "RUSTOK_VERIFY_NOW")
+    : Date.now();
   if (now - waveCreatedAt > maxAgeMs) {
     fail(`${arg}: Wave 1 evidence is older than refresh_policy.max_age_days`);
   }
@@ -408,6 +421,9 @@ if (arg === "forum") {
   ]) {
     if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
       fail(`${arg}: Wave 1 refresh policy missing required section '${requiredSection}'`);
+    }
+    if (!hasPath(forumWave1Evidence, requiredSection)) {
+      fail(`${arg}: Wave 1 evidence missing required refresh section '${requiredSection}'`);
     }
   }
 

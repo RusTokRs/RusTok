@@ -55,6 +55,7 @@
     "verify:fulfillment:storefront-boundary": "node scripts/verify/verify-fulfillment-storefront-boundary.mjs",
     "verify:order:storefront-boundary": "node scripts/verify/verify-order-storefront-boundary.mjs",
     "verify:page-builder:pages:legacy-bridge": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-legacy-bridge.mjs",
+    "verify:page-builder:pages:contract-surface": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-pages-contract-surface.mjs",
     "verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.mjs",
     "test:verify:ecommerce:fba-registries": "node scripts/verify/verify-ecommerce-fba-registries.test.mjs",
     "verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.mjs",
@@ -94,6 +95,7 @@
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
     "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
     "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs"
+    "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

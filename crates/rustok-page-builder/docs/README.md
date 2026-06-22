@@ -23,7 +23,7 @@
 
 - `src/lib.rs` — runtime metadata и permission surface;
 - `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` и typed error catalog (`validation/sanitize/runtime/feature-disabled`) для contract package без привязки к transport adapters;
-- `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, feature-flag guard и server-side handler seam с RBAC permission checks;
+- `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, `ReferencePageBuilderService` для compile-free provider baseline, feature-flag guard и server-side handler seam с RBAC permission checks;
 - `src/transport.rs` — canonical transport bridge для GraphQL, Leptos `#[server]` и future mobile adapters поверх `AuthorizedPageBuilderHandlers::handle`;
 - `src/health.rs` — типизированные provider health states, degradation reasons, `ProviderHealthEvidence` и evaluator pilot SLO thresholds для release-gate evidence;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
@@ -43,6 +43,10 @@ Baseline DTO package теперь содержит `PageBuilderContractMetadata:
 `PageBuilderCapabilityRequest` и `PageBuilderCapabilityResponse` задают tagged-envelope для transport adapters: GraphQL resolvers, Leptos `#[server]` functions и future mobile bridge могут принимать один canonical request envelope и dispatch через `AuthorizedPageBuilderHandlers::handle`. Такой seam удерживает RBAC, rollout guard и write-semantics enforcement в одном месте и не позволяет transport layer повторно изобретать имена capability или локальные error envelopes.
 
 Первый transport bridge slice добавил `PageBuilderTransportKind`, `PageBuilderTransportSuccess`, `PageBuilderTransportError`, `dispatch_transport_envelope`, `dispatch_graphql_envelope` и `dispatch_leptos_server_function_envelope`. GraphQL/server-function adapters должны вызывать эти dispatch helpers, а затем маппить success/error envelope в свой framework-specific result; `PageBuilderTransportError` берёт `kind` и `stable_code` из `PageBuilderServiceError::kind()` / `stable_code()`, поэтому transport не владеет отдельным error catalog.
+
+## Reference provider baseline
+
+`ReferencePageBuilderService` закрывает минимальный capability API baseline без vendor lock-in и без persistence side effects. Provider принимает только `grapesjs_v1`, валидирует `page_id`, `revision_id`, object-shaped `project_data` / `properties`, возвращает typed `validation` errors для contract violations и typed `sanitize` errors для forbidden preview HTML (`<script`). `preview` формирует deterministic HTML wrapper `data-rustok-page-builder="grapesjs_v1"`, `properties` echo-возвращает canonical node properties, а `publish` возвращает typed `PublishPageBuilderResult` только после contract validation. Реальная persistence/rendering adapter-реализация может заменить reference provider за тем же `PageBuilderCapabilityService`, не меняя DTO, RBAC, rollout или transport bridge.
 
 ## Provider health and SLO baseline
 

@@ -8,9 +8,12 @@
     {
       "name": "IndexReadModelPort",
       "contract_version": "index.read_model.v1",
-      "operations": ["read_index_document", "list_index_documents"],
-      "context": "crates/rustok-index/src/ports.rs::PortContext",
-      "error": "crates/rustok-index/src/ports.rs::PortError",
+      "operations": [
+        "read_index_document",
+        "list_index_documents"
+      ],
+      "context": "rustok_api::PortContext",
+      "error": "rustok_api::PortError",
       "deadline_required": true,
       "idempotency_required": false,
       "semantics": "read_only"
@@ -18,9 +21,11 @@
     {
       "name": "IndexRebuildPort",
       "contract_version": "index.rebuild.v1",
-      "operations": ["request_rebuild"],
-      "context": "crates/rustok-index/src/ports.rs::PortContext",
-      "error": "crates/rustok-index/src/ports.rs::PortError",
+      "operations": [
+        "request_rebuild"
+      ],
+      "context": "rustok_api::PortContext",
+      "error": "rustok_api::PortError",
       "deadline_required": true,
       "idempotency_required": true,
       "semantics": "operator_write"
@@ -29,38 +34,79 @@
   "consumers": [
     {
       "module": "admin-host",
-      "profiles": ["operator_index_overview", "operator_rebuild_request"],
-      "degraded_modes": ["show_stale_index_snapshot", "disable_rebuild_action"]
+      "profiles": [
+        "operator_index_overview",
+        "operator_rebuild_request"
+      ],
+      "degraded_modes": [
+        "show_stale_index_snapshot",
+        "disable_rebuild_action"
+      ]
     },
     {
       "module": "search",
-      "profiles": ["read_model_ingestion_source", "cross_module_filter_counts"],
-      "degraded_modes": ["skip_index_enrichment", "empty_filter_counts"]
+      "profiles": [
+        "read_model_ingestion_source",
+        "cross_module_filter_counts"
+      ],
+      "degraded_modes": [
+        "skip_index_enrichment",
+        "empty_filter_counts"
+      ]
     }
   ],
-  "fallback_profiles": ["embedded_native", "admin_read_only", "rebuild_disabled"],
+  "fallback_profiles": [
+    "embedded_native",
+    "admin_read_only",
+    "rebuild_disabled"
+  ],
   "contract_tests": {
     "status": "planned_cases_locked",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
       {
         "operation": "read_index_document",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "locale_scope_preserved", "index_search_boundary_preserved"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "tenant_scope_preserved",
+          "locale_scope_preserved",
+          "index_search_boundary_preserved"
+        ],
         "write_idempotency_required": false
       },
       {
         "operation": "list_index_documents",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "bounded_limit_preserved", "index_search_boundary_preserved"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "tenant_scope_preserved",
+          "bounded_limit_preserved",
+          "index_search_boundary_preserved"
+        ],
         "write_idempotency_required": false
       },
       {
         "operation": "request_rebuild",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "tenant_scope_preserved", "dry_run_preserved"],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required",
+          "tenant_scope_preserved",
+          "dry_run_preserved"
+        ],
         "write_idempotency_required": true
       }
     ],
     "fallback_smoke": {
-      "profiles": ["embedded_native", "admin_read_only", "rebuild_disabled"],
+      "profiles": [
+        "embedded_native",
+        "admin_read_only",
+        "rebuild_disabled"
+      ],
       "status": "planned_runtime_pending"
     }
   }

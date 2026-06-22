@@ -1,9 +1,9 @@
 use crate::dto::{
     BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
     BuilderTreeInput, BuilderTreeResult, PageBuilderCapabilityRequest,
-    PageBuilderCapabilityResponse, PageBuilderErrorKind, PreviewPageBuilderInput,
-    PreviewPageBuilderResult, PublishPageBuilderInput, PublishPageBuilderResult,
-    PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+    PageBuilderCapabilityResponse, PageBuilderContractMetadata, PageBuilderErrorKind,
+    PreviewPageBuilderInput, PreviewPageBuilderResult, PublishPageBuilderInput,
+    PublishPageBuilderResult, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
@@ -43,6 +43,8 @@ pub type PageBuilderServiceResult<T> = Result<T, PageBuilderServiceError>;
 pub enum PageBuilderServiceError {
     #[error("validation failed: {0}")]
     Validation(String),
+    #[error("sanitize failed: {0}")]
+    Sanitize(String),
     #[error("forbidden: {0}")]
     Forbidden(String),
     #[error("capability disabled: {0}")]
@@ -55,6 +57,7 @@ impl PageBuilderServiceError {
     pub fn kind(&self) -> PageBuilderErrorKind {
         match self {
             Self::Validation(_) => PageBuilderErrorKind::Validation,
+            Self::Sanitize(_) => PageBuilderErrorKind::Sanitize,
             Self::Forbidden(_) | Self::Runtime(_) => PageBuilderErrorKind::Runtime,
             Self::CapabilityDisabled(_) => PageBuilderErrorKind::FeatureDisabled,
         }
@@ -172,6 +175,126 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
             BuilderRolloutError::InvalidFlagCombination(message) => Self::Validation(message),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ReferencePageBuilderService;
+
+#[async_trait]
+impl PageBuilderCapabilityService for ReferencePageBuilderService {
+    async fn preview(
+        &self,
+        _context: &PortContext,
+        input: PreviewPageBuilderInput,
+    ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
+        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+
+        Ok(PreviewPageBuilderResult {
+            page_id: input.page_id,
+            html: render_preview_html(&input.project_data)?,
+        })
+    }
+
+    async fn tree(
+        &self,
+        _context: &PortContext,
+        input: BuilderTreeInput,
+    ) -> PageBuilderServiceResult<BuilderTreeResult> {
+        validate_non_empty("page_id", &input.page_id)?;
+
+        Ok(BuilderTreeResult {
+            page_id: input.page_id,
+            nodes: Vec::new(),
+        })
+    }
+
+    async fn properties(
+        &self,
+        _context: &PortContext,
+        input: BuilderNodePropertiesInput,
+    ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
+        validate_non_empty("page_id", &input.page_id)?;
+        validate_non_empty("node_id", &input.node_id)?;
+        ensure_object_payload("properties", &input.properties)?;
+
+        Ok(BuilderNodePropertiesResult {
+            page_id: input.page_id,
+            node_id: input.node_id,
+            properties: input.properties,
+        })
+    }
+
+    async fn publish(
+        &self,
+        _context: &PortContext,
+        input: PublishPageBuilderInput,
+    ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
+        validate_non_empty("revision_id", &input.revision_id)?;
+        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+
+        Ok(PublishPageBuilderResult {
+            page_id: input.page_id,
+            revision_id: input.revision_id,
+            published: true,
+        })
+    }
+}
+
+fn validate_grapesjs_payload(
+    page_id: &str,
+    schema_version: &str,
+    project_data: &serde_json::Value,
+) -> PageBuilderServiceResult<()> {
+    validate_non_empty("page_id", page_id)?;
+    if schema_version != PageBuilderContractMetadata::BASELINE.contract {
+        return Err(PageBuilderServiceError::Validation(format!(
+            "schema_version must be {}",
+            PageBuilderContractMetadata::BASELINE.contract
+        )));
+    }
+    ensure_object_payload("project_data", project_data)
+}
+
+fn validate_non_empty(field: &str, value: &str) -> PageBuilderServiceResult<()> {
+    if value.trim().is_empty() {
+        Err(PageBuilderServiceError::Validation(format!(
+            "{field} must not be empty"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_object_payload(field: &str, value: &serde_json::Value) -> PageBuilderServiceResult<()> {
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(PageBuilderServiceError::Validation(format!(
+            "{field} must be a JSON object"
+        )))
+    }
+}
+
+fn render_preview_html(project_data: &serde_json::Value) -> PageBuilderServiceResult<String> {
+    let body = project_data
+        .get("html")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| project_data.get("body").and_then(serde_json::Value::as_str))
+        .unwrap_or("");
+
+    if contains_script_tag(body) {
+        return Err(PageBuilderServiceError::Sanitize(
+            "preview html contains a forbidden script tag".to_string(),
+        ));
+    }
+
+    Ok(format!(
+        "<div data-rustok-page-builder=\"grapesjs_v1\">{body}</div>"
+    ))
+}
+
+fn contains_script_tag(value: &str) -> bool {
+    value.to_ascii_lowercase().contains("<script")
 }
 
 pub struct CapabilityGuardedService<S> {
@@ -639,6 +762,84 @@ mod tests {
             .publish(&write_context(), &auth, publish_input())
             .await
             .expect("pages:manage grants publish");
+    }
+
+    #[tokio::test]
+    async fn reference_service_renders_preview_and_validates_schema_contract() {
+        let service = ReferencePageBuilderService;
+
+        let preview = service
+            .preview(
+                &read_context(),
+                PreviewPageBuilderInput {
+                    page_id: "landing".to_string(),
+                    schema_version: "grapesjs_v1".to_string(),
+                    project_data: serde_json::json!({ "html": "<main>Welcome</main>" }),
+                },
+            )
+            .await
+            .expect("reference preview should render sanitized html wrapper");
+
+        assert_eq!(preview.page_id, "landing");
+        assert_eq!(
+            preview.html,
+            "<div data-rustok-page-builder=\"grapesjs_v1\"><main>Welcome</main></div>"
+        );
+
+        let err = service
+            .preview(
+                &read_context(),
+                PreviewPageBuilderInput {
+                    page_id: "landing".to_string(),
+                    schema_version: "legacy_blocks".to_string(),
+                    project_data: serde_json::json!({}),
+                },
+            )
+            .await
+            .expect_err("unsupported schema should fail validation");
+
+        assert_eq!(err.kind(), PageBuilderErrorKind::Validation);
+    }
+
+    #[tokio::test]
+    async fn reference_service_exposes_sanitize_error_for_script_payloads() {
+        let service = ReferencePageBuilderService;
+
+        let err = service
+            .preview(
+                &read_context(),
+                PreviewPageBuilderInput {
+                    page_id: "landing".to_string(),
+                    schema_version: "grapesjs_v1".to_string(),
+                    project_data: serde_json::json!({ "html": "<script>alert(1)</script>" }),
+                },
+            )
+            .await
+            .expect_err("script payload should be rejected by sanitize guard");
+
+        assert_eq!(err.kind(), PageBuilderErrorKind::Sanitize);
+    }
+
+    #[tokio::test]
+    async fn reference_service_publishes_only_valid_contract_payloads() {
+        let service = ReferencePageBuilderService;
+
+        let result = service
+            .publish(
+                &write_context(),
+                PublishPageBuilderInput {
+                    page_id: "landing".to_string(),
+                    revision_id: "rev-2".to_string(),
+                    schema_version: "grapesjs_v1".to_string(),
+                    project_data: serde_json::json!({ "html": "<main>Ready</main>" }),
+                },
+            )
+            .await
+            .expect("valid reference publish should return a typed publish result");
+
+        assert_eq!(result.page_id, "landing");
+        assert_eq!(result.revision_id, "rev-2");
+        assert!(result.published);
     }
 
     #[tokio::test]

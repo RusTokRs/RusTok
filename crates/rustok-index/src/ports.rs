@@ -2,75 +2,18 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use rustok_api::{PortCallPolicy, PortContext, PortError};
+
 use crate::models::IndexDocument;
 
-/// Transport-agnostic index port context for host/runtime boundary calls.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortContext {
-    pub tenant_id: String,
-    pub correlation_id: String,
-    pub deadline_ms: Option<u64>,
+/// Require shared read-port policy for indexed projection lookups.
+pub fn require_index_read_policy(context: &PortContext) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::read())
 }
 
-impl PortContext {
-    pub fn require_deadline_semantics(&self) -> Result<(), PortError> {
-        if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(PortError::new(
-                PortErrorKind::Timeout,
-                "index.deadline_required",
-                "index read-model port calls require deadline semantics",
-                true,
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn require_write_semantics(&self) -> Result<(), PortError> {
-        self.require_deadline_semantics()?;
-        if self.correlation_id.trim().is_empty() {
-            return Err(PortError::new(
-                PortErrorKind::Validation,
-                "index.correlation_id_required",
-                "index ingestion/rebuild port calls require a correlation id for idempotency tracing",
-                false,
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Transport-neutral error returned by index owner ports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortError {
-    pub kind: PortErrorKind,
-    pub code: String,
-    pub message: String,
-    pub retryable: bool,
-}
-
-impl PortError {
-    pub fn new(
-        kind: PortErrorKind,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        retryable: bool,
-    ) -> Self {
-        Self {
-            kind,
-            code: code.into(),
-            message: message.into(),
-            retryable,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PortErrorKind {
-    Validation,
-    NotFound,
-    Unavailable,
-    Timeout,
+/// Require shared write-port policy for controlled index rebuild orchestration.
+pub fn require_index_rebuild_policy(context: &PortContext) -> Result<(), PortError> {
+    context.require_policy(PortCallPolicy::write())
 }
 
 /// Transport-neutral selector for index read-model queries.
@@ -78,7 +21,11 @@ pub enum PortErrorKind {
 #[serde(rename_all = "snake_case")]
 pub enum IndexReadSelector {
     DocumentId(Uuid),
-    Slug { doc_type: String, locale: String, slug: String },
+    Slug {
+        doc_type: String,
+        locale: String,
+        slug: String,
+    },
 }
 
 /// Transport-neutral request for reading a single indexed document.
@@ -138,4 +85,43 @@ pub trait IndexRebuildPort: Send + Sync {
         context: PortContext,
         request: IndexRebuildRequest,
     ) -> Result<IndexRebuildOutcome, PortError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use rustok_api::{PortActor, PortErrorKind};
+
+    use super::*;
+
+    fn context() -> PortContext {
+        PortContext::new("tenant-a", PortActor::service("index"), "ru", "corr-a")
+    }
+
+    #[test]
+    fn index_read_policy_requires_deadline_only() {
+        let missing_deadline = context();
+        let error = require_index_read_policy(&missing_deadline)
+            .expect_err("index reads must carry shared deadline semantics");
+        assert_eq!(error.kind, PortErrorKind::Timeout);
+        assert_eq!(error.code, "port.deadline_required");
+
+        let with_deadline = context().with_deadline(Duration::from_secs(2));
+        assert!(require_index_read_policy(&with_deadline).is_ok());
+    }
+
+    #[test]
+    fn index_rebuild_policy_requires_deadline_and_idempotency_key() {
+        let missing_idempotency = context().with_deadline(Duration::from_secs(2));
+        let error = require_index_rebuild_policy(&missing_idempotency)
+            .expect_err("index rebuilds are write-like controlled operations");
+        assert_eq!(error.kind, PortErrorKind::Validation);
+        assert_eq!(error.code, "port.idempotency_key_required");
+
+        let valid = context()
+            .with_deadline(Duration::from_secs(2))
+            .with_idempotency_key("rebuild-index-corr-a");
+        assert!(require_index_rebuild_policy(&valid).is_ok());
+    }
 }

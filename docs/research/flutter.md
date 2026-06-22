@@ -1169,7 +1169,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 | Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav использует `nav.icon` из generated manifest и fallback по module metadata без ручного списка routes | ✅ Done |
 | Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` + `rustok_mobile/packages/rustok_modules_mobile/test/modules_mobile_screen_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back; package widget test verifies `toggleModule` action refresh and operation history/recovery actions | 🟡 In progress |
 | Storefront catalog/cart GraphQL source verifier | `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py` | `python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` verifies catalog/cart operation documents against existing server-owned surfaces | ✅ Done |
-| Storefront live schema/test-server promotion | mobile CI pipeline + server test harness | execute the same catalog/cart operation set against a live schema or test server, then keep source verifier as fast preflight | ⬜ Planned |
+| Storefront live schema/test-server promotion | mobile CI pipeline + server test harness | source verifier now accepts `--live-results` JSON for the same catalog/cart operation set and fails on missing/non-passed live results; producing that JSON from a real test server remains the CI harness step | 🟡 In progress |
 | Storefront package mapping expansion gate | `apps/rustok_frontend_mobile` + module-owned packages | add a new package-backed route only when a module-owned package exists and consumes a host-provided repository | ⬜ Planned |
 
 #### PR-D evidence pack (Flutter storefront mobile host)
@@ -1355,6 +1355,19 @@ Storefront track получил первый детерминированный 
 - package expansion gate — новые package-backed storefront routes разрешены только после появления module-owned package и host-owned repository adapter, а manifest-only routes остаются generic placeholders.
 
 **Не делать в PR-P:** не добавлять `/api/flutter`, `/api/mobile`, package-local GraphQL clients, tenant/locale/cart fallback chains или server-side FBA metadata в Flutter registry. Это hardening existing contract, а не расширение platform surface.
+
+#### PR-P evidence pack (storefront live-schema promotion seam)
+
+**Live evidence seam:** `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py`.
+
+Storefront GraphQL verifier теперь поддерживает promotion-путь без изменения mobile/backend API:
+- preflight остаётся source-backed и проверяет те же Flutter operation documents против server-owned search/commerce sources;
+- `--json` дополнительно печатает `storefront_live_execution` со статусом `skipped`, если live harness не передан;
+- `--live-results <path>` принимает JSON от будущего schema/test-server harness и требует `passed` для всех шести operation/root-field пар: `StorefrontMobileCatalog`, `StorefrontMobileCart`, `StorefrontMobileCreateCart`, `StorefrontMobileAddCartLine`, `StorefrontMobileUpdateCartLine`, `StorefrontMobileRemoveCartLine`;
+- failure policy уже закреплена в tooling: неполный live-result или non-`passed` статус валит verifier, а не включает Flutter fallback endpoint;
+- tests фиксируют skipped preflight, positive live evidence и missing-live-evidence failure без Flutter SDK и без компиляции.
+
+Оставшийся шаг PR-P — подключить реальный producer этого JSON из live schema/test-server job, когда в CI будет доступен соответствующий server harness.
 
 #### PR-A evidence pack (registry contract freeze)
 

@@ -92,6 +92,13 @@ pub enum MediaImageDeliveryProfile {
     OpaqueReference,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+pub enum MediaImagePublicUrlPolicy {
+    DirectPublic,
+    ProxyRequired,
+    NotAddressable,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct MediaImageDescriptor {
     pub url: String,
@@ -174,6 +181,23 @@ impl MediaImageDescriptor {
                 | MediaImageDeliveryProfile::RootRelativePublicUrl
         )
     }
+
+    pub fn public_url_policy(&self) -> MediaImagePublicUrlPolicy {
+        public_url_policy(self.delivery_profile())
+    }
+
+    pub fn requires_public_proxy(&self) -> bool {
+        self.public_url_policy() == MediaImagePublicUrlPolicy::ProxyRequired
+    }
+
+    pub fn should_emit_to_public_metadata(&self) -> bool {
+        self.public_url_policy() == MediaImagePublicUrlPolicy::DirectPublic
+    }
+
+    pub fn normalized_public_url(&self) -> Option<&str> {
+        self.should_emit_to_public_metadata()
+            .then_some(self.url.as_str())
+    }
 }
 
 fn delivery_profile(url: &str) -> MediaImageDeliveryProfile {
@@ -186,6 +210,17 @@ fn delivery_profile(url: &str) -> MediaImageDeliveryProfile {
         MediaImageDeliveryProfile::StorageRelativePath
     } else {
         MediaImageDeliveryProfile::OpaqueReference
+    }
+}
+
+fn public_url_policy(profile: MediaImageDeliveryProfile) -> MediaImagePublicUrlPolicy {
+    match profile {
+        MediaImageDeliveryProfile::AbsolutePublicUrl
+        | MediaImageDeliveryProfile::RootRelativePublicUrl => {
+            MediaImagePublicUrlPolicy::DirectPublic
+        }
+        MediaImageDeliveryProfile::StorageRelativePath => MediaImagePublicUrlPolicy::ProxyRequired,
+        MediaImageDeliveryProfile::OpaqueReference => MediaImagePublicUrlPolicy::NotAddressable,
     }
 }
 
@@ -222,7 +257,10 @@ pub const DEFAULT_MAX_SIZE: u64 = 50 * 1024 * 1024;
 
 #[cfg(test)]
 mod tests {
-    use super::{MediaImageDeliveryProfile, MediaImageDescriptor, UpsertTranslationInput};
+    use super::{
+        MediaImageDeliveryProfile, MediaImageDescriptor, MediaImagePublicUrlPolicy,
+        UpsertTranslationInput,
+    };
 
     #[test]
     fn upsert_translation_input_normalizes_locale_and_optional_text() {
@@ -328,7 +366,16 @@ mod tests {
             descriptor.delivery_profile(),
             MediaImageDeliveryProfile::AbsolutePublicUrl
         );
+        assert_eq!(
+            descriptor.public_url_policy(),
+            MediaImagePublicUrlPolicy::DirectPublic
+        );
         assert!(descriptor.is_publicly_addressable());
+        assert!(descriptor.should_emit_to_public_metadata());
+        assert_eq!(
+            descriptor.normalized_public_url(),
+            Some("https://cdn.example.com/assets/banner.png?signature=abc#fragment")
+        );
     }
 
     #[test]
@@ -351,12 +398,25 @@ mod tests {
             storage_relative.delivery_profile(),
             MediaImageDeliveryProfile::StorageRelativePath
         );
+        assert_eq!(
+            storage_relative.public_url_policy(),
+            MediaImagePublicUrlPolicy::ProxyRequired
+        );
         assert!(!storage_relative.is_publicly_addressable());
+        assert!(storage_relative.requires_public_proxy());
+        assert!(!storage_relative.should_emit_to_public_metadata());
+        assert_eq!(storage_relative.normalized_public_url(), None);
         assert_eq!(
             opaque.delivery_profile(),
             MediaImageDeliveryProfile::OpaqueReference
         );
+        assert_eq!(
+            opaque.public_url_policy(),
+            MediaImagePublicUrlPolicy::NotAddressable
+        );
         assert!(!opaque.is_publicly_addressable());
+        assert!(!opaque.requires_public_proxy());
+        assert!(!opaque.should_emit_to_public_metadata());
     }
 
     #[test]

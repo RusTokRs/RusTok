@@ -43,6 +43,8 @@ pub fn legacy_block_snapshot_label() {}
 pub fn is_save_action_busy() {}
 pub fn is_publish_action_disabled() {}
 pub fn admin_page_list_item_view() {}
+pub fn admin_page_row_action_state() {}
+pub fn admin_page_row_action_labels() {}
 `;
 }
 
@@ -75,6 +77,8 @@ pub fn PagesAdmin() {
     let _save_busy = core::is_save_action_busy;
     let _publish_disabled = core::is_publish_action_disabled;
     let _item_view = core::admin_page_list_item_view;
+    let _action_state = core::admin_page_row_action_state;
+    let _action_labels = core::admin_page_row_action_labels;
     ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
     ${rawServiceCall ? "let _service = PageService::new;" : ""}
 }
