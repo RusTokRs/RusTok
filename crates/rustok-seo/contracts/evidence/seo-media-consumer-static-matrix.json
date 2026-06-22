@@ -16,7 +16,8 @@
         "typed_port_error_mapping",
         "context_deadline_preserved",
         "seo_descriptor_normalization_preserved",
-        "degraded_omit_image_metadata_on_unavailable"
+        "degraded_omit_image_metadata_on_unavailable",
+        "degraded_proxy_storage_relative_url_on_relative_public_url"
       ],
       "runtime_evidence": "pending_consumer_runtime",
       "source_markers": {
@@ -51,7 +52,8 @@
     ],
     "degraded_modes": [
       "omit_image_metadata",
-      "keep_existing_seo_image"
+      "keep_existing_seo_image",
+      "proxy_storage_relative_url"
     ],
     "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
     "consumer_runtime_evidence": "pending"
@@ -109,6 +111,116 @@
     "execute MediaAssetReadPort get_image_descriptor smoke against in_process provider",
     "capture unavailable-provider fallback proving omit_image_metadata without SEO page failure",
     "capture existing explicit SEO image preservation for get_asset unavailable/degraded mode",
-    "attach before/after diagnostics counters for missing_image_alt and missing_image_size"
+    "attach before/after diagnostics counters for missing_image_alt and missing_image_size",
+    "capture proxy_storage_relative_url fallback preserving safe public URL policy"
+  ],
+  "consumer_runtime_artifact_template": {
+    "status": "template_only_pending_consumer_runtime",
+    "capture_root": "artifacts/seo/fba-media-consumer/<yyyy-mm-dd>/",
+    "required_files": [
+      "image-descriptor-in-process.json",
+      "provider-unavailable-omit-image-metadata.json",
+      "asset-unavailable-keep-existing-seo-image.json",
+      "diagnostics-image-quality-before-after.json",
+      "relative-url-proxy-fallback.json"
+    ],
+    "required_top_level_fields": [
+      "captured_at",
+      "provider_contract_version",
+      "consumer_profile",
+      "operation",
+      "profile",
+      "context",
+      "input",
+      "result",
+      "redactions_applied"
+    ],
+    "context_fields": [
+      "tenant_id_redacted",
+      "deadline_ms",
+      "locale",
+      "request_id_redacted"
+    ],
+    "result_fields": [
+      "port_status",
+      "semantic_error_code",
+      "descriptor_present",
+      "image_has_alt",
+      "image_has_size",
+      "degraded_mode",
+      "seo_page_context_preserved"
+    ],
+    "counter_fields": [
+      "missing_image_alt",
+      "missing_image_size",
+      "seo_targets_checked",
+      "fallback_images_preserved",
+      "proxied_relative_urls"
+    ],
+    "redaction_policy": [
+      "remove auth tokens",
+      "remove cookies",
+      "hash tenant/customer/user identifiers",
+      "preserve media asset ids only when synthetic fixtures are used"
+    ],
+    "closeout_rule": "All required_files must be attached or linked from CI before seo_image_descriptor can move from source_locked_pending_consumer_runtime to boundary_ready."
+  },
+  "consumer_runtime_drill_matrix": [
+    {
+      "case": "descriptor_success_in_process",
+      "operation": "get_image_descriptor",
+      "profile": "in_process",
+      "required_evidence": [
+        "typed MediaImageDescriptor sample",
+        "PortContext deadline sample",
+        "SEO target image field mapping sample"
+      ],
+      "blocks_closeout_if": [
+        "descriptor bypasses MediaAssetReadPort",
+        "image alt/size normalization drifts"
+      ]
+    },
+    {
+      "case": "descriptor_unavailable_degrades",
+      "operation": "get_image_descriptor",
+      "profile": "embedded_native",
+      "required_evidence": [
+        "PortError unavailable sample",
+        "SeoPageContext response without image metadata",
+        "missing_image_alt/missing_image_size diagnostics sample"
+      ],
+      "blocks_closeout_if": [
+        "SEO page context request fails hard",
+        "raw media blob fallback appears"
+      ]
+    },
+    {
+      "case": "asset_unavailable_preserves_existing_seo_image",
+      "operation": "get_asset",
+      "profile": "embedded_native",
+      "required_evidence": [
+        "existing explicit SEO image before sample",
+        "unavailable provider response",
+        "after sample with explicit image preserved"
+      ],
+      "blocks_closeout_if": [
+        "explicit image is removed",
+        "fallback mutates owner-authored SEO metadata"
+      ]
+    },
+    {
+      "case": "relative_url_proxy_fallback",
+      "operation": "get_image_descriptor",
+      "profile": "embedded_native",
+      "required_evidence": [
+        "storage-relative media URL input",
+        "proxied public URL output",
+        "no raw storage-relative URL in SEO metadata"
+      ],
+      "blocks_closeout_if": [
+        "storage-relative URL leaks to public metadata",
+        "proxy fallback bypasses provider policy"
+      ]
+    }
   ]
 }

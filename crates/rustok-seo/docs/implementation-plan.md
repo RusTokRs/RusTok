@@ -5,8 +5,8 @@
 ## Execution checkpoint
 
 - Current phase: `fba_media_consumer_static_metadata`
-- Last checkpoint: no-compile D8/D9 evidence seed is tightened: `runtime-parity-fixtures.json` now contains a live artifact schema template, media descriptor fallback command row, signed-state preconditions for owner sign-off, and operations-runbook docs sync coverage; `verify-seo-runtime-fixtures.mjs` validates these closeout guards without compilation.
-- Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, включая SEO image descriptor fallback smoke для `MediaAssetReadPort`, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 или FBA boundary readiness закрытыми по static evidence.
+- Last checkpoint: no-compile D8/D9/FBA evidence seed is tightened: `runtime-parity-fixtures.json` contains live artifact schema/sign-off guards, and `seo-media-consumer-static-matrix.json` now contains a consumer runtime artifact template plus three media descriptor fallback drills; `verify-seo-runtime-fixtures.mjs` and `verify-seo-fba.mjs` validate these closeout guards without compilation.
+- Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, включая SEO image descriptor fallback smoke для `MediaAssetReadPort` по файлам `image-descriptor-in-process.json`, `provider-unavailable-omit-image-metadata.json`, `asset-unavailable-keep-existing-seo-image.json`, `relative-url-proxy-fallback.json`, `diagnostics-image-quality-before-after.json`, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 или FBA boundary readiness закрытыми по static evidence.
 - Open blockers:
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
   - Для D9 остаётся дополнить runbooks live incident evidence и получить owner sign-off по seeded checklist.
@@ -28,7 +28,7 @@
   - `cargo check -p rustok-seo-admin --config profile.dev.debug=0` *(pass, 2026-06-07)*
   - `cargo test -p rustok-seo-admin --lib --config profile.dev.debug=0` *(pass, 2026-06-07; 12 pure-core tests)*
 - Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); `rustok-seo-admin` теперь имеет явный `core/transport/ui` FFA split: `admin/src/core.rs` owns tab/busy/form policy plus effective-settings snapshot mapping via `SeoSettingsSnapshotItem` / `build_seo_settings_snapshot_items`, `admin/src/transport/mod.rs` является facade, `admin/src/transport/native_server_adapter.rs` владеет native server functions и SSR host context extraction, а `scripts/verify/verify-seo-admin-boundary.mjs` фиксирует fast boundary; transport boundary продолжает развиваться через GraphQL + REST `/api/seo/page-context`, `/api/seo/cross-link-suggestions`, control-plane parity endpoints и унифицированный GraphQL-compatible REST error envelope в рамках Phase D.
-- FBA evidence: `crates/rustok-seo/contracts/seo-fba-registry.json` declares the `seo_image_descriptor` consumer profile for `MediaAssetReadPort` / `media.asset_read.v1`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json` is `source_locked_pending_consumer_runtime` and mirrors consumer cases, degraded modes (`omit_image_metadata`, `keep_existing_seo_image`), provider fallback-smoke source, static source assertions and runtime closeout requirements; `scripts/verify/verify-seo-fba.mjs` checks drift against `crates/rustok-media/contracts/media-fba-registry.json` and `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json` without long compilation; status remains below `boundary_ready` until consumer runtime contract execution/fallback smoke lands.
+- FBA evidence: `crates/rustok-seo/contracts/seo-fba-registry.json` declares the `seo_image_descriptor` consumer profile for `MediaAssetReadPort` / `media.asset_read.v1`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json` is `source_locked_pending_consumer_runtime` and mirrors consumer cases, degraded modes (`omit_image_metadata`, `keep_existing_seo_image`, `proxy_storage_relative_url`), provider fallback-smoke source, static source assertions, runtime closeout requirements, consumer runtime artifact template and drill matrix; `scripts/verify/verify-seo-fba.mjs` checks drift against `crates/rustok-media/contracts/media-fba-registry.json` and `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json` without long compilation; status remains below `boundary_ready` until consumer runtime contract execution/fallback smoke lands.
 
 ## Область работ
 
@@ -297,6 +297,7 @@
   - [x] D.4a Compile-free host runtime entrypoint matrix для Next robots/sitemap/metadata и Leptos SSR head preflight.
   - [x] D.4a.1 Live evidence capture template для backend parity, outbox/index pipeline, Next runtime, Leptos runtime и Next Admin operator smoke.
   - [x] D.4a.2 Live artifact manifest template добавлен: backend parity, before/after outbox/index counters, Next/Leptos host smokes, media descriptor fallback smoke и owner sign-off attachment list.
+  - [x] D.4a.3 FBA media consumer runtime artifact template добавлен: in-process descriptor success, unavailable-provider `omit_image_metadata`, unavailable-asset `keep_existing_seo_image`, relative URL proxy fallback, diagnostics before/after counters и redaction policy.
   - [ ] D.4b Live evidence packet + high-severity defect closure.
 
 ### Milestone E — Docs / runbooks / readiness closeout

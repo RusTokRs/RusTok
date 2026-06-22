@@ -23,7 +23,8 @@
       ],
       "degraded_modes": [
         "omit_image_metadata",
-        "keep_existing_seo_image"
+        "keep_existing_seo_image",
+        "proxy_storage_relative_url"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError"
@@ -72,10 +73,22 @@
       ],
       "degraded_modes": [
         "omit_image_metadata",
-        "keep_existing_seo_image"
+        "keep_existing_seo_image",
+        "proxy_storage_relative_url"
       ],
       "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
       "consumer_runtime_evidence": "pending"
+    },
+    "consumer_runtime_artifacts": {
+      "status": "template_only_pending_consumer_runtime",
+      "template": "crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json#consumer_runtime_artifact_template",
+      "required_files": [
+        "image-descriptor-in-process.json",
+        "provider-unavailable-omit-image-metadata.json",
+        "asset-unavailable-keep-existing-seo-image.json",
+        "relative-url-proxy-fallback.json",
+        "diagnostics-image-quality-before-after.json"
+      ]
     }
   }
 }

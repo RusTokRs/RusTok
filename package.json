@@ -94,8 +94,8 @@
     "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
     "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
-    "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs"
-    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs"
+    "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs",
+    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs",
     "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs"
   },
   "dependencies": {
