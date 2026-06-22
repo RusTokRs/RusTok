@@ -51,6 +51,17 @@ if (evidence.module_slug !== "forum" || evidence.wave !== "1" || evidence.mode !
   fail("evidence packet must describe live Wave 1 for the forum module");
 }
 
+function hasPath(root, dottedPath) {
+  let current = root;
+  for (const segment of dottedPath.split(".")) {
+    if (current === null || typeof current !== "object" || !(segment in current)) {
+      return false;
+    }
+    current = current[segment];
+  }
+  return current !== undefined && current !== null;
+}
+
 const refreshPolicy = evidence.refresh_policy ?? {};
 if (refreshPolicy.cadence !== "monthly") {
   fail("refresh_policy.cadence must stay monthly");
@@ -94,6 +105,9 @@ for (const requiredSection of [
 ]) {
   if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
     fail(`refresh_policy.required_sections missing ${requiredSection}`);
+  }
+  if (!hasPath(evidence, requiredSection)) {
+    fail(`evidence packet missing required refresh section ${requiredSection}`);
   }
 }
 
