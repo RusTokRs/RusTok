@@ -17,7 +17,7 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 - tenant-scoped typed resolution policies и explicit default channel semantics;
 - canonical resolution order `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`, где built-in host fast-path остаётся отдельным совместимым слоем перед policy-only evaluation;
 - module-owned Leptos admin UI package `rustok-channel-admin` с operator flow для policy authoring/edit/reorder/enable-disable и native-first `#[server]` + REST fallback transport parity;
-- FBA provider boundary `ChannelReadPort` / `channel.read_projection.v1` для channel/default/host-target read projections, где `npm run verify:channel:fba` без компиляции фиксирует registry, static matrix и source-locked runtime fallback smoke (`embedded_native`, `rest_compatibility`, `unresolved_context`);
+- FBA provider boundary `ChannelReadPort` / `channel.read_projection.v1` для channel/default/host-target read projections, где `npm run verify:channel:fba` без компиляции фиксирует registry, static matrix и no-compile executable runtime fallback smoke (`embedded_native`, `rest_compatibility`, `unresolved_context`);
 - source-locked proof points для `rustok-pages`, `rustok-blog` и `rustok-commerce`, где `npm run verify:channel:proof-points` удерживает использование resolved host `ChannelContext`, `channel_module_bindings`, metadata `channelSlugs` visibility и commerce channel snapshot без второго sales-channel домена.
 
 ## Интеграция

@@ -1,21 +1,21 @@
 {
   "schema_version": 1,
   "module": "channel",
-  "status": "source_locked_runtime_fallback_smoke",
+  "status": "no_compile_executable_runtime_fallback_smoke",
   "generated_from": "crates/rustok-channel/contracts/channel-fba-registry.json",
-  "runner": "scripts/verify/verify-channel-fba.mjs",
+  "runner": "scripts/verify/verify-channel-runtime-fallback-smoke.mjs",
   "contract_version": "channel.read_projection.v1",
   "profiles": [
     "embedded_native",
     "rest_compatibility",
     "unresolved_context"
   ],
-  "execution_note": "No Rust compilation is required for this packet; the verifier locks source-level runtime/fallback markers until executable CI smoke can promote the module to boundary_ready.",
+  "execution_note": "No Rust compilation is required for this packet; the dedicated Node verifier executes the fallback-smoke matrix against source markers and typed evidence while Rust CI evidence remains pending before boundary_ready.",
   "smoke_cases": [
     {
       "profile": "embedded_native",
       "operation": "read_channel",
-      "execution_status": "source_locked_runtime_pending",
+      "execution_status": "no_compile_executable_locked",
       "assertions": [
         "in_process_channel_service_impl_exported",
         "deadline_required_before_lookup",
@@ -27,7 +27,7 @@
     {
       "profile": "embedded_native",
       "operation": "list_channels_for_tenant",
-      "execution_status": "source_locked_runtime_pending",
+      "execution_status": "no_compile_executable_locked",
       "assertions": [
         "in_process_channel_service_impl_exported",
         "deadline_required_before_lookup",
@@ -38,7 +38,7 @@
     {
       "profile": "rest_compatibility",
       "operation": "admin_transport_fallback",
-      "execution_status": "source_locked_runtime_pending",
+      "execution_status": "no_compile_executable_locked",
       "assertions": [
         "module_owned_transport_facade_present",
         "native_server_adapter_present",
@@ -49,7 +49,7 @@
     {
       "profile": "unresolved_context",
       "operation": "read_channel",
-      "execution_status": "source_locked_runtime_pending",
+      "execution_status": "no_compile_executable_locked",
       "assertions": [
         "invalid_tenant_context_maps_to_validation",
         "missing_deadline_maps_to_timeout",

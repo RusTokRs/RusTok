@@ -16,7 +16,7 @@
 - Back the shared request-level `ChannelContext` used by host transport layers.
 - Own the domain resolution pipeline (`RequestFacts -> ResolutionDecision`) that host middleware applies.
 - Ship the module-owned Leptos admin UI package for channel management.
-- Expose `ChannelReadPort` / `channel.read_projection.v1` as the FBA provider boundary for channel/default/host-target read projections, with deadline-aware read semantics and source-locked fallback smoke evidence until executable runtime smoke is available.
+- Expose `ChannelReadPort` / `channel.read_projection.v1` as the FBA provider boundary for channel/default/host-target read projections, with deadline-aware read semantics and no-compile executable fallback smoke evidence until executable runtime smoke is available.
 
 ## Scope
 
@@ -48,7 +48,7 @@ Validated baseline:
 - `cargo test -p rustok-server middleware::channel::tests --lib`
 - `cargo test -p rustok-server registry_dependencies_match_runtime_contract --lib`
 - `cargo test -p rustok-server registry_module_readmes_define_interactions_section --lib`
-- `npm run verify:channel:fba` (no-compile provider registry, static matrix, and source-locked runtime fallback smoke gate)
+- `npm run verify:channel:fba` (no-compile provider registry, static matrix, and no-compile executable runtime fallback smoke gate)
 - `npm run verify:channel:resolution-contract` (no-compile resolution order and built-in host fast-path decision gate)
 - `npm run verify:channel:proof-points` (no-compile pages/blog/commerce proof-point source/docs sync gate)
 
