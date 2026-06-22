@@ -23,7 +23,7 @@ if (registry.contract_version !== 'index.read_model.v1') fail('contract version 
 for (const [name, op] of [['IndexReadModelPort', 'read_index_document'], ['IndexReadModelPort', 'list_index_documents'], ['IndexRebuildPort', 'request_rebuild']]) {
   const port = registry.ports.find((entry) => entry.name === name);
   if (!port || !port.operations.includes(op)) fail(`${name} lacks ${op}`);
-  if (port.context !== 'crates/rustok-index/src/ports.rs::PortContext' || port.error !== 'crates/rustok-index/src/ports.rs::PortError') fail(`${name} context/error drift`);
+  if (port.context !== 'rustok_api::PortContext' || port.error !== 'rustok_api::PortError') fail(`${name} context/error drift`);
 }
 const readPort = registry.ports.find((entry) => entry.name === 'IndexReadModelPort');
 const rebuildPort = registry.ports.find((entry) => entry.name === 'IndexRebuildPort');
@@ -31,7 +31,7 @@ if (readPort.deadline_required !== true || readPort.idempotency_required !== fal
 if (rebuildPort.deadline_required !== true || rebuildPort.idempotency_required !== true || rebuildPort.semantics !== 'operator_write') fail('rebuild port must require deadline + idempotency semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/index-fba-registry.json"') || !manifest.includes('contract_version = "index.read_model.v1"')) fail('manifest metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait IndexReadModelPort', 'trait IndexRebuildPort', 'require_deadline_semantics', 'require_write_semantics', 'IndexReadRequest', 'IndexListRequest', 'IndexRebuildRequest', 'IndexRebuildOutcome', 'IndexDocument', 'PortErrorKind::Timeout', 'PortContext', 'PortError']) {
+for (const marker of ['trait IndexReadModelPort', 'trait IndexRebuildPort', 'PortCallPolicy::read()', 'PortCallPolicy::write()', 'IndexReadRequest', 'IndexListRequest', 'IndexRebuildRequest', 'IndexRebuildOutcome', 'IndexDocument', 'PortErrorKind::Timeout', 'PortContext', 'PortError']) {
   if (!ports.includes(marker) && !registryPath.includes(marker) && !evidencePath.includes(marker)) fail(`source/metadata missing ${marker}`);
 }
 if (!ports.includes('Serialize, Deserialize')) fail('index FBA DTOs must be serializable');
