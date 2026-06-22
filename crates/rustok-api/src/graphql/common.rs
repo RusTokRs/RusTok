@@ -1,5 +1,4 @@
 use async_graphql::{Context, ErrorExtensions, InputObject, Result, SimpleObject};
-use rustok_tenant::entities::tenant_module;
 use sea_orm::DatabaseConnection;
 
 use crate::context::TenantContext;
@@ -108,12 +107,30 @@ pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()>
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
 
-    let enabled = tenant_module::Entity::is_enabled(db, tenant.id, slug)
+    let backend = db.get_database_backend();
+    let query = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT 1 FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 AND enabled = 1 LIMIT 1"
+        }
+        _ => {
+            "SELECT 1 FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 AND enabled = true LIMIT 1"
+        }
+    };
+
+    use sea_orm::{ConnectionTrait, Statement};
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            query,
+            vec![tenant.id.into(), slug.into()],
+        ))
         .await
         .map_err(|e| {
             async_graphql::Error::new(format!("Module check failed: {e}"))
                 .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
         })?;
+
+    let enabled = row.is_some();
 
     if !enabled {
         return Err(async_graphql::Error::new(format!(

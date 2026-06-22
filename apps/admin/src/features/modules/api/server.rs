@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
@@ -11,224 +11,18 @@ use crate::entities::module::model::{
     RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
-    ReleaseInfo, TenantModule, ToggleModuleResult,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo,
+    ReleaseInfo, TenantModule,
 };
-use crate::shared::api::{api_base_url, combine_native_and_graphql_error, request, ApiError};
-
-pub const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
-pub const MODULE_REGISTRY_QUERY: &str = "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled ownership trustLevel recommendedAdminSurfaces showcaseAdminSurfaces } }";
-pub const INSTALLED_MODULES_QUERY: &str = "query InstalledModules { installedModules { slug source crateName version required dependencies } }";
-pub const TENANT_MODULES_QUERY: &str =
-    "query TenantModules { tenantModules { moduleSlug enabled settings } }";
-pub const MARKETPLACE_QUERY: &str = "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
-pub const MARKETPLACE_MODULE_QUERY: &str = "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { owner { displayLabel } boundBy { displayLabel } boundAt updatedAt } latestRequest { id status requestedBy { displayLabel } publisher { displayLabel } approvedBy { displayLabel } rejectedBy { displayLabel } rejectionReason changesRequestedBy { displayLabel } changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy { displayLabel } heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher { displayLabel } checksumSha256 publishedAt yankedReason yankedBy { displayLabel } yankedAt } recentEvents { id eventType actor { displayLabel } publisher { displayLabel } payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode ownerTransition { previousOwner { displayLabel } newOwner { displayLabel } boundBy { displayLabel } } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
-pub const ACTIVE_BUILD_QUERY: &str = "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const ACTIVE_RELEASE_QUERY: &str = "query ActiveRelease { activeRelease { id buildId status environment manifestHash manifestRevision modules previousReleaseId deployedAt rolledBackAt createdAt updatedAt } }";
-pub const BUILD_HISTORY_QUERY: &str = "query BuildHistory($limit: Int!, $offset: Int!) { buildHistory(limit: $limit, offset: $offset) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const BUILD_PROGRESS_SUBSCRIPTION: &str = "subscription BuildProgress { buildProgress { buildId status stage progress releaseId errorMessage } }";
-pub const TOGGLE_MODULE_MUTATION: &str = "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) { toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) { moduleSlug enabled settings } }";
-pub const MODULE_OPERATION_RECOVERY_PLAN_QUERY: &str = "query ModuleOperationRecoveryPlan($operationId: UUID!) { moduleOperationRecoveryPlan(operationId: $operationId) { operationId tenantId moduleSlug requestedEnabled previousEffectiveEnabled status issue retryable recommendedAction correlationId requestedBy errorMessage } }";
-pub const FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY: &str = "query FailedModuleOperationRecoveryPlans($moduleSlug: String, $limit: Int) { failedModuleOperationRecoveryPlans(moduleSlug: $moduleSlug, limit: $limit) { operationId tenantId moduleSlug requestedEnabled previousEffectiveEnabled status issue retryable recommendedAction correlationId requestedBy errorMessage } }";
-pub const RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION: &str = "mutation RetryFailedModuleOperationPostHook($operationId: UUID!) { retryFailedModuleOperationPostHook(operationId: $operationId) { operationId tenantId moduleSlug requestedEnabled previousEffectiveEnabled status issue retryable recommendedAction correlationId requestedBy errorMessage } }";
-pub const COMPENSATE_FAILED_MODULE_OPERATION_MUTATION: &str = "mutation CompensateFailedModuleOperation($operationId: UUID!) { compensateFailedModuleOperation(operationId: $operationId) { moduleSlug enabled settings } }";
-pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
-pub const INSTALL_MODULE_MUTATION: &str = "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+use crate::shared::api::api_base_url;
+use super::types::*;
 
 #[cfg(feature = "ssr")]
-const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
-    "maintenance_handoff",
-    "team_restructure",
-    "publisher_rotation",
-    "security_emergency",
-    "governance_override",
-    "other",
-];
-#[cfg(feature = "ssr")]
-const REGISTRY_YANK_REASON_CODES: &[&str] = &[
-    "security",
-    "legal",
-    "malware",
-    "critical_regression",
-    "rollback",
-    "other",
-];
-pub const UNINSTALL_MODULE_MUTATION: &str = "mutation UninstallModule($slug: String!) { uninstallModule(slug: $slug) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!, $version: String!) { upgradeModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const ROLLBACK_BUILD_MUTATION: &str = "mutation RollbackBuild($buildId: String!) { rollbackBuild(buildId: $buildId) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-#[cfg(feature = "ssr")]
-const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
+use super::manifest::*;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EnabledModulesResponse {
-    #[serde(rename = "enabledModules")]
-    pub enabled_modules: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ModuleRegistryResponse {
-    #[serde(rename = "moduleRegistry")]
-    pub module_registry: Vec<ModuleInfo>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InstalledModulesResponse {
-    #[serde(rename = "installedModules")]
-    pub installed_modules: Vec<InstalledModule>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TenantModulesResponse {
-    #[serde(rename = "tenantModules")]
-    pub tenant_modules: Vec<TenantModule>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MarketplaceResponse {
-    pub marketplace: Vec<MarketplaceModule>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MarketplaceModuleResponse {
-    #[serde(rename = "marketplaceModule")]
-    pub marketplace_module: Option<MarketplaceModule>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ActiveBuildResponse {
-    #[serde(rename = "activeBuild")]
-    pub active_build: Option<BuildJob>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ActiveReleaseResponse {
-    #[serde(rename = "activeRelease")]
-    pub active_release: Option<ReleaseInfo>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct BuildHistoryResponse {
-    #[serde(rename = "buildHistory")]
-    pub build_history: Vec<BuildJob>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct BuildProgressEvent {
-    #[serde(rename = "buildId")]
-    pub build_id: String,
-    pub status: String,
-    pub stage: String,
-    pub progress: i32,
-    #[serde(rename = "releaseId")]
-    pub release_id: Option<String>,
-    #[serde(rename = "errorMessage")]
-    pub error_message: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ToggleModuleResponse {
-    #[serde(rename = "toggleModule")]
-    pub toggle_module: ToggleModuleResult,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ModuleOperationRecoveryPlanResponse {
-    #[serde(rename = "moduleOperationRecoveryPlan")]
-    pub module_operation_recovery_plan: Option<ModuleOperationRecoveryPlan>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FailedModuleOperationRecoveryPlansResponse {
-    #[serde(rename = "failedModuleOperationRecoveryPlans")]
-    pub failed_module_operation_recovery_plans: Vec<ModuleOperationRecoveryPlan>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RetryFailedModuleOperationPostHookResponse {
-    #[serde(rename = "retryFailedModuleOperationPostHook")]
-    pub retry_failed_module_operation_post_hook: ModuleOperationRecoveryPlan,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CompensateFailedModuleOperationResponse {
-    #[serde(rename = "compensateFailedModuleOperation")]
-    pub compensate_failed_module_operation: TenantModule,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UpdateModuleSettingsResponse {
-    #[serde(rename = "updateModuleSettings")]
-    pub update_module_settings: TenantModule,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InstallModuleResponse {
-    #[serde(rename = "installModule")]
-    pub install_module: BuildJob,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UninstallModuleResponse {
-    #[serde(rename = "uninstallModule")]
-    pub uninstall_module: BuildJob,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UpgradeModuleResponse {
-    #[serde(rename = "upgradeModule")]
-    pub upgrade_module: BuildJob,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RollbackBuildResponse {
-    #[serde(rename = "rollbackBuild")]
-    pub rollback_build: BuildJob,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct RegistryMutationResult {
-    pub schema_version: u32,
-    pub action: String,
-    pub dry_run: bool,
-    pub accepted: bool,
-    pub request_id: Option<String>,
-    pub status: Option<String>,
-    pub slug: String,
-    pub version: String,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-    #[serde(default)]
-    pub errors: Vec<String>,
-    pub next_step: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct RegistryPublishStatusContract {
-    pub schema_version: u32,
-    pub request_id: String,
-    pub slug: String,
-    pub version: String,
-    pub status: String,
-    pub accepted: bool,
-    #[serde(default)]
-    pub warnings: Vec<String>,
-    #[serde(default)]
-    pub errors: Vec<String>,
-    #[serde(default, rename = "followUpGates")]
-    pub follow_up_gates: Vec<RegistryFollowUpGateLifecycle>,
-    #[serde(default, rename = "validationStages")]
-    pub validation_stages: Vec<RegistryValidationStageLifecycle>,
-    #[serde(default, rename = "approvalOverrideRequired")]
-    pub approval_override_required: bool,
-    #[serde(default, rename = "approvalOverrideReasonCodes")]
-    pub approval_override_reason_codes: Vec<String>,
-    #[serde(default, rename = "governanceActions")]
-    pub governance_actions: Vec<RegistryGovernanceActionLifecycle>,
-    pub next_step: Option<String>,
-}
 
 #[cfg(feature = "ssr")]
-async fn registry_governance_get_native<T>(
+pub async fn registry_governance_get_native<T>(
     path: String,
     token: String,
     tenant: String,
@@ -246,8 +40,9 @@ where
     .await
 }
 
+
 #[cfg(feature = "ssr")]
-async fn registry_governance_request_native<B, T>(
+pub async fn registry_governance_request_native<B, T>(
     method: reqwest::Method,
     path: String,
     token: String,
@@ -261,8 +56,9 @@ where
     registry_governance_http_request_native(method, path, token, tenant, Some(body)).await
 }
 
+
 #[cfg(feature = "ssr")]
-async fn registry_governance_http_request_native<B, T>(
+pub async fn registry_governance_http_request_native<B, T>(
     method: reqwest::Method,
     path: String,
     token: String,
@@ -311,434 +107,78 @@ where
     serde_json::from_str(&text).map_err(|err| ServerFnError::new(err.to_string()))
 }
 
-#[cfg(feature = "ssr")]
-#[derive(Clone, Debug, Serialize)]
-struct RegistryValidationRequestPayload {
-    #[serde(rename = "schema_version")]
-    schema_version: u32,
-    #[serde(rename = "dry_run")]
-    dry_run: bool,
-}
 
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
-struct RegistryDecisionRequestPayload {
+pub struct RegistryValidationRequestPayload {
     #[serde(rename = "schema_version")]
-    schema_version: u32,
+    pub schema_version: u32,
     #[serde(rename = "dry_run")]
-    dry_run: bool,
-    reason: Option<String>,
-    reason_code: Option<String>,
+    pub dry_run: bool,
 }
+
 
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
-struct RegistryOwnerTransferPayload {
+pub struct RegistryDecisionRequestPayload {
     #[serde(rename = "schema_version")]
-    schema_version: u32,
+    pub schema_version: u32,
     #[serde(rename = "dry_run")]
-    dry_run: bool,
-    slug: String,
+    pub dry_run: bool,
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
+}
+
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Debug, Serialize)]
+pub struct RegistryOwnerTransferPayload {
+    #[serde(rename = "schema_version")]
+    pub schema_version: u32,
+    #[serde(rename = "dry_run")]
+    pub dry_run: bool,
+    pub slug: String,
     #[serde(rename = "new_owner_user_id")]
-    new_owner_user_id: String,
-    reason: Option<String>,
-    reason_code: Option<String>,
+    pub new_owner_user_id: String,
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
 }
+
 
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
-struct RegistryYankPayload {
+pub struct RegistryYankPayload {
     #[serde(rename = "schema_version")]
-    schema_version: u32,
+    pub schema_version: u32,
     #[serde(rename = "dry_run")]
-    dry_run: bool,
-    slug: String,
-    version: String,
-    reason: Option<String>,
-    reason_code: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ToggleModuleVariables {
-    #[serde(rename = "moduleSlug")]
-    pub module_slug: String,
-    pub enabled: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ModuleOperationRecoveryPlanVariables {
-    #[serde(rename = "operationId")]
-    pub operation_id: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct FailedModuleOperationRecoveryPlansVariables {
-    #[serde(rename = "moduleSlug")]
-    pub module_slug: Option<String>,
-    pub limit: Option<i32>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct UpdateModuleSettingsVariables {
-    #[serde(rename = "moduleSlug")]
-    pub module_slug: String,
-    pub settings: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct BuildHistoryVariables {
-    pub limit: i32,
-    pub offset: i32,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct MarketplaceVariables {
-    pub search: Option<String>,
-    pub category: Option<String>,
-    pub tag: Option<String>,
-    pub source: Option<String>,
-    #[serde(rename = "trustLevel")]
-    pub trust_level: Option<String>,
-    #[serde(rename = "onlyCompatible")]
-    pub only_compatible: Option<bool>,
-    #[serde(rename = "installedOnly")]
-    pub installed_only: Option<bool>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct MarketplaceModuleVariables {
-    pub slug: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct InstallModuleVariables {
+    pub dry_run: bool,
     pub slug: String,
     pub version: String,
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct UninstallModuleVariables {
-    pub slug: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct UpgradeModuleVariables {
-    pub slug: String,
-    pub version: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct RollbackBuildVariables {
-    #[serde(rename = "buildId")]
-    pub build_id: String,
-}
 
 #[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeModulesManifest {
-    #[serde(default)]
-    schema: u32,
-    #[serde(default)]
-    app: String,
-    #[serde(default)]
-    build: RuntimeBuildConfig,
-    #[serde(default)]
-    modules: std::collections::HashMap<String, RuntimeManifestModuleSpec>,
-    #[serde(default)]
-    settings: RuntimeSettingsManifest,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeBuildConfig {
-    #[serde(default)]
-    target: String,
-    #[serde(default)]
-    profile: String,
-    #[serde(default)]
-    server: RuntimeServerBuildConfig,
-    #[serde(default)]
-    admin: RuntimeAdminBuildConfig,
-    #[serde(default)]
-    storefront: Vec<RuntimeStorefrontBuildConfig>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeServerBuildConfig {
-    #[serde(default)]
-    embed_admin: bool,
-    #[serde(default)]
-    embed_storefront: bool,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeAdminBuildConfig {
-    #[serde(default)]
-    stack: String,
-    #[serde(default)]
-    public_url: String,
-    #[serde(default)]
-    redirect_uris: Vec<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeStorefrontBuildConfig {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    stack: String,
-    #[serde(default)]
-    public_url: String,
-    #[serde(default)]
-    redirect_uris: Vec<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeSettingsManifest {
-    #[serde(default)]
-    default_enabled: Vec<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-struct RuntimeManifestModuleSpec {
-    source: String,
-    #[serde(rename = "crate", default)]
-    crate_name: String,
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(default)]
-    version: Option<String>,
-    #[serde(default)]
-    git: Option<String>,
-    #[serde(default)]
-    rev: Option<String>,
-    #[serde(default)]
-    required: bool,
-    #[serde(default)]
-    depends_on: Vec<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Default)]
-struct RuntimeModulePackageManifest {
-    module: RuntimeModuleMetadata,
-    #[serde(default)]
-    marketplace: RuntimeModuleMarketplaceMetadata,
-    #[serde(default)]
-    dependencies: std::collections::BTreeMap<String, RuntimeModuleDependencySpec>,
-    #[serde(default)]
-    settings: std::collections::BTreeMap<String, RuntimeModuleSettingSpec>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Default)]
-struct RuntimeModuleMetadata {
-    slug: String,
-    name: String,
-    version: String,
-    #[serde(default)]
-    description: String,
-    #[serde(default = "default_module_ownership")]
-    ownership: String,
-    #[serde(default = "default_module_trust_level")]
-    trust_level: String,
-    #[serde(default)]
-    recommended_admin_surfaces: Vec<String>,
-    #[serde(default)]
-    showcase_admin_surfaces: Vec<String>,
-    #[serde(default)]
-    rustok_min_version: Option<String>,
-    #[serde(default)]
-    rustok_max_version: Option<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Default)]
-struct RuntimeModuleMarketplaceMetadata {
-    #[serde(default)]
-    category: Option<String>,
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(default)]
-    icon_url: Option<String>,
-    #[serde(default)]
-    banner_url: Option<String>,
-    #[serde(default)]
-    screenshots: Vec<String>,
-    #[serde(default)]
-    publisher: Option<String>,
-    #[serde(default)]
-    checksum_sha256: Option<String>,
-    #[serde(default)]
-    signature: Option<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Default)]
-struct RuntimeModuleDependencySpec {
-    #[allow(dead_code)]
-    #[serde(default)]
-    version_req: Option<String>,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct RuntimeModuleSettingSpec {
-    #[serde(rename = "type", default)]
-    value_type: String,
-    #[serde(default)]
-    required: bool,
-    #[serde(default)]
-    default: Option<serde_json::Value>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    min: Option<f64>,
-    #[serde(default)]
-    max: Option<f64>,
-    #[serde(default)]
-    options: Vec<serde_json::Value>,
-    #[serde(default)]
-    object_keys: Vec<String>,
-    #[serde(default)]
-    item_type: Option<String>,
-    #[serde(default)]
-    properties: std::collections::BTreeMap<String, RuntimeModuleSettingSpec>,
-    #[serde(default)]
-    items: Option<Box<RuntimeModuleSettingSpec>>,
-}
-
-#[cfg(feature = "ssr")]
-fn runtime_setting_shape(spec: &RuntimeModuleSettingSpec) -> Option<serde_json::Value> {
-    let mut shape = serde_json::Map::new();
-
-    if !spec.properties.is_empty() {
-        let properties = spec
-            .properties
-            .iter()
-            .map(|(key, property_spec)| {
-                (
-                    key.clone(),
-                    serde_json::to_value(property_spec)
-                        .expect("runtime setting property schema should serialize"),
-                )
-            })
-            .collect::<serde_json::Map<String, serde_json::Value>>();
-        shape.insert(
-            "properties".to_string(),
-            serde_json::Value::Object(properties),
-        );
-    }
-
-    if let Some(items) = &spec.items {
-        shape.insert(
-            "items".to_string(),
-            serde_json::to_value(items.as_ref())
-                .expect("runtime setting item schema should serialize"),
-        );
-    }
-
-    (!shape.is_empty()).then_some(serde_json::Value::Object(shape))
-}
-
-#[cfg(feature = "ssr")]
-fn runtime_setting_object_keys(spec: &RuntimeModuleSettingSpec) -> Vec<String> {
-    if spec.properties.is_empty() {
-        spec.object_keys.clone()
-    } else {
-        spec.properties.keys().cloned().collect()
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn runtime_setting_item_type(spec: &RuntimeModuleSettingSpec) -> Option<String> {
-    spec.items
-        .as_deref()
-        .map(|item| item.value_type.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or_else(|| spec.item_type.clone())
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Default)]
-struct RuntimeCargoManifest {
-    package: RuntimeCargoPackage,
-}
-
-#[cfg(feature = "ssr")]
-#[derive(Debug, Deserialize, Default)]
-struct RuntimeCargoPackage {
-    name: String,
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum RuntimeFrontendBuildTool {
-    Cargo,
-    Trunk,
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum RuntimeFrontendArtifactKind {
-    File,
-    Directory,
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
-struct RuntimeFrontendBuildPlan {
-    surface: String,
-    tool: RuntimeFrontendBuildTool,
-    package: String,
-    workspace_path: String,
-    profile: String,
-    target: Option<String>,
-    artifact_path: String,
-    artifact_kind: RuntimeFrontendArtifactKind,
-    command: String,
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
-struct RuntimeBuildExecutionPlan {
-    cargo_package: String,
-    cargo_profile: String,
-    cargo_target: Option<String>,
-    cargo_features: Vec<String>,
-    cargo_command: String,
-    admin_build: Option<RuntimeFrontendBuildPlan>,
-    storefront_build: Option<RuntimeFrontendBuildPlan>,
-}
-
-#[cfg(feature = "ssr")]
-fn server_error(message: impl Into<String>) -> ServerFnError {
+pub fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
 }
 
+
 #[cfg(feature = "ssr")]
-fn default_module_ownership() -> String {
+pub fn default_module_ownership() -> String {
     "third_party".to_string()
 }
 
+
 #[cfg(feature = "ssr")]
-fn default_module_trust_level() -> String {
+pub fn default_module_trust_level() -> String {
     "unverified".to_string()
 }
 
+
 #[cfg(feature = "ssr")]
-async fn modules_server_context() -> Result<
+pub async fn modules_server_context() -> Result<
     (
         loco_rs::app::AppContext,
         rustok_api::AuthContext,
@@ -776,8 +216,9 @@ async fn modules_server_context() -> Result<
     Ok((app_ctx, auth, tenant))
 }
 
+
 #[cfg(feature = "ssr")]
-fn upper_snake(value: &str) -> String {
+pub fn upper_snake(value: &str) -> String {
     value
         .replace('-', "_")
         .split('_')
@@ -787,8 +228,9 @@ fn upper_snake(value: &str) -> String {
         .join("_")
 }
 
+
 #[cfg(feature = "ssr")]
-fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
+pub fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
     let Some(value) = value else {
         return String::new();
     };
@@ -810,23 +252,9 @@ fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
     value.to_string()
 }
 
-#[cfg(feature = "ssr")]
-#[derive(Debug, Clone)]
-struct RuntimePlatformSnapshot {
-    #[allow(dead_code)]
-    revision: i64,
-    manifest: RuntimeModulesManifest,
-}
 
 #[cfg(feature = "ssr")]
-fn bootstrap_runtime_modules_manifest() -> Result<RuntimeModulesManifest, ServerFnError> {
-    let raw = include_str!("../../../../../modules.toml");
-    toml::from_str(raw)
-        .map_err(|err| server_error(format!("failed to parse embedded modules.toml: {err}")))
-}
-
-#[cfg(feature = "ssr")]
-fn platform_state_select_sql(backend: sea_orm::DbBackend) -> &'static str {
+pub fn platform_state_select_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
             "SELECT revision, manifest_json, manifest_hash FROM platform_state WHERE id = ?1 LIMIT 1"
@@ -837,8 +265,9 @@ fn platform_state_select_sql(backend: sea_orm::DbBackend) -> &'static str {
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
+pub fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
             "INSERT INTO platform_state (id, revision, manifest_json, manifest_hash, active_release_id, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7)"
@@ -849,8 +278,9 @@ fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
     }
 }
 
+
 #[cfg(feature = "ssr")]
-async fn active_runtime_platform_snapshot(
+pub async fn active_runtime_platform_snapshot(
     db: &sea_orm::DatabaseConnection,
 ) -> Result<RuntimePlatformSnapshot, ServerFnError> {
     use sea_orm::{ConnectionTrait, Statement};
@@ -917,8 +347,9 @@ async fn active_runtime_platform_snapshot(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-async fn effective_enabled_modules_native(
+pub async fn effective_enabled_modules_native(
     db: &sea_orm::DatabaseConnection,
     registry: &rustok_core::ModuleRegistry,
     tenant_id: uuid::Uuid,
@@ -957,13 +388,9 @@ async fn effective_enabled_modules_native(
     Ok(enabled)
 }
 
-#[cfg(feature = "ssr")]
-fn runtime_workspace_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../")
-}
 
 #[cfg(feature = "ssr")]
-fn humanize_module_slug(slug: &str) -> String {
+pub fn humanize_module_slug(slug: &str) -> String {
     slug.split('-')
         .map(|part| {
             let mut chars = part.chars();
@@ -976,8 +403,9 @@ fn humanize_module_slug(slug: &str) -> String {
         .join(" ")
 }
 
+
 #[cfg(feature = "ssr")]
-fn fallback_module_category(slug: &str) -> &'static str {
+pub fn fallback_module_category(slug: &str) -> &'static str {
     match slug {
         "content" | "blog" | "forum" | "pages" => "content",
         "commerce" | "pricing" | "product" | "inventory" => "commerce",
@@ -986,8 +414,9 @@ fn fallback_module_category(slug: &str) -> &'static str {
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn runtime_setting_fields(
+pub fn runtime_setting_fields(
     schema: &std::collections::BTreeMap<String, RuntimeModuleSettingSpec>,
 ) -> Vec<crate::entities::module::ModuleSettingField> {
     schema
@@ -1008,429 +437,10 @@ fn runtime_setting_fields(
         .collect()
 }
 
-#[cfg(feature = "ssr")]
-fn load_toml_file<T: serde::de::DeserializeOwned>(
-    path: &std::path::Path,
-) -> Result<T, ServerFnError> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|err| server_error(format!("failed to read {}: {err}", path.display())))?;
-    toml::from_str(&raw)
-        .map_err(|err| server_error(format!("failed to parse {}: {err}", path.display())))
-}
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
-fn runtime_binary_output_dir_name(profile: &str) -> &str {
-    if profile == "release" {
-        "release"
-    } else {
-        profile
-    }
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_executable_suffix(target: Option<&str>) -> &'static str {
-    match target {
-        Some(value) if value.contains("windows") => "exe",
-        Some(_) => "",
-        None => std::env::consts::EXE_EXTENSION,
-    }
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_binary_file_name(package: &str, target: Option<&str>) -> String {
-    let suffix = runtime_executable_suffix(target);
-    if suffix.is_empty() {
-        package.to_string()
-    } else {
-        format!("{package}.{suffix}")
-    }
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_admin_frontend_build_plan(
-    manifest: &RuntimeModulesManifest,
-    cargo_profile: &str,
-) -> Option<RuntimeFrontendBuildPlan> {
-    let admin_stack = manifest.build.admin.stack.trim().to_ascii_lowercase();
-    let requires_leptos_admin = manifest.build.server.embed_admin || admin_stack == "leptos";
-
-    requires_leptos_admin.then(|| {
-        let mut command_parts = vec!["trunk".to_string(), "build".to_string()];
-        if cargo_profile == "release" {
-            command_parts.push("--release".to_string());
-        }
-
-        RuntimeFrontendBuildPlan {
-            surface: "admin".to_string(),
-            tool: RuntimeFrontendBuildTool::Trunk,
-            package: "rustok-admin".to_string(),
-            workspace_path: "apps/admin".to_string(),
-            profile: cargo_profile.to_string(),
-            target: None,
-            artifact_path: "apps/admin/dist".to_string(),
-            artifact_kind: RuntimeFrontendArtifactKind::Directory,
-            command: command_parts.join(" "),
-        }
-    })
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_storefront_frontend_build_plan(
-    manifest: &RuntimeModulesManifest,
-    cargo_profile: &str,
-    cargo_target: Option<&str>,
-) -> Option<RuntimeFrontendBuildPlan> {
-    let has_leptos_storefront = manifest.build.server.embed_storefront
-        || manifest
-            .build
-            .storefront
-            .iter()
-            .any(|storefront| storefront.stack.trim().eq_ignore_ascii_case("leptos"));
-
-    has_leptos_storefront.then(|| {
-        let mut command_parts = vec![
-            "cargo".to_string(),
-            "build".to_string(),
-            "-p".to_string(),
-            "rustok-storefront".to_string(),
-        ];
-        if cargo_profile == "release" {
-            command_parts.push("--release".to_string());
-        } else {
-            command_parts.push("--profile".to_string());
-            command_parts.push(cargo_profile.to_string());
-        }
-        if let Some(target) = cargo_target {
-            command_parts.push("--target".to_string());
-            command_parts.push(target.to_string());
-        }
-
-        let mut artifact_path = String::from("target/");
-        if let Some(target) = cargo_target {
-            artifact_path.push_str(target);
-            artifact_path.push('/');
-        }
-        artifact_path.push_str(runtime_binary_output_dir_name(cargo_profile));
-        artifact_path.push('/');
-        artifact_path.push_str(&runtime_binary_file_name("rustok-storefront", cargo_target));
-
-        RuntimeFrontendBuildPlan {
-            surface: "storefront".to_string(),
-            tool: RuntimeFrontendBuildTool::Cargo,
-            package: "rustok-storefront".to_string(),
-            workspace_path: ".".to_string(),
-            profile: cargo_profile.to_string(),
-            target: cargo_target.map(ToString::to_string),
-            artifact_path,
-            artifact_kind: RuntimeFrontendArtifactKind::File,
-            command: command_parts.join(" "),
-        }
-    })
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_build_execution_plan(manifest: &RuntimeModulesManifest) -> RuntimeBuildExecutionPlan {
-    let cargo_package = if manifest.app.trim().is_empty() {
-        "rustok-server".to_string()
-    } else {
-        manifest.app.trim().to_string()
-    };
-
-    let cargo_profile = if manifest.build.profile.trim().is_empty() {
-        "release".to_string()
-    } else {
-        manifest.build.profile.trim().to_string()
-    };
-
-    let cargo_target = (!manifest.build.target.trim().is_empty())
-        .then(|| manifest.build.target.trim().to_string());
-
-    let mut cargo_features = Vec::new();
-    if manifest.build.server.embed_admin {
-        cargo_features.push("embed-admin".to_string());
-    }
-    if manifest.build.server.embed_storefront {
-        cargo_features.push("embed-storefront".to_string());
-    }
-
-    let mut command_parts = vec![
-        "cargo".to_string(),
-        "build".to_string(),
-        "-p".to_string(),
-        cargo_package.clone(),
-    ];
-    if cargo_profile == "release" {
-        command_parts.push("--release".to_string());
-    } else {
-        command_parts.push("--profile".to_string());
-        command_parts.push(cargo_profile.clone());
-    }
-    if let Some(target) = &cargo_target {
-        command_parts.push("--target".to_string());
-        command_parts.push(target.clone());
-    }
-    if !cargo_features.is_empty() {
-        command_parts.push("--features".to_string());
-        command_parts.push(cargo_features.join(","));
-    }
-
-    RuntimeBuildExecutionPlan {
-        cargo_package,
-        cargo_profile: cargo_profile.clone(),
-        cargo_target: cargo_target.clone(),
-        cargo_features,
-        cargo_command: command_parts.join(" "),
-        admin_build: runtime_admin_frontend_build_plan(manifest, &cargo_profile),
-        storefront_build: runtime_storefront_frontend_build_plan(
-            manifest,
-            &cargo_profile,
-            cargo_target.as_deref(),
-        ),
-    }
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_deployment_profile(manifest: &RuntimeModulesManifest) -> String {
-    match (
-        manifest.build.server.embed_admin,
-        manifest.build.server.embed_storefront,
-    ) {
-        (true, true) => "monolith".to_string(),
-        (true, false) => "server-with-admin".to_string(),
-        (false, true) => "server-with-storefront".to_string(),
-        (false, false) => "headless-api".to_string(),
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String {
-    rustok_api::manifest_hash::hash_manifest(manifest)
-        .unwrap_or_else(|_| runtime_manifest_snapshot_hash(&serde_json::Value::Null))
-}
-
-#[cfg(feature = "ssr")]
-fn runtime_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
-    rustok_api::manifest_hash::hash_manifest_snapshot(snapshot)
-}
-
-#[cfg(all(test, feature = "ssr"))]
-mod runtime_manifest_hash_tests {
-    use super::{
-        runtime_manifest_hash, runtime_manifest_snapshot_hash, RuntimeBuildConfig,
-        RuntimeManifestModuleSpec, RuntimeModulesManifest, RuntimeSettingsManifest,
-    };
-    use std::collections::HashMap;
-
-    fn sample_manifest() -> RuntimeModulesManifest {
-        let mut modules = HashMap::new();
-        modules.insert(
-            "catalog".to_string(),
-            RuntimeManifestModuleSpec {
-                source: "git".to_string(),
-                crate_name: "rustok-catalog".to_string(),
-                path: Some("crates/rustok-catalog".to_string()),
-                version: Some("1.0.0".to_string()),
-                git: Some("https://example.invalid/catalog.git".to_string()),
-                rev: Some("abc123".to_string()),
-                required: false,
-                depends_on: vec!["pricing".to_string()],
-            },
-        );
-        RuntimeModulesManifest {
-            schema: 1,
-            app: "rustok".to_string(),
-            build: RuntimeBuildConfig {
-                profile: "release".to_string(),
-                ..Default::default()
-            },
-            modules,
-            settings: RuntimeSettingsManifest {
-                default_enabled: vec!["catalog".to_string()],
-            },
-        }
-    }
-
-    #[test]
-    fn manifest_snapshot_hash_is_sha256_hex() {
-        let hash = runtime_manifest_snapshot_hash(&serde_json::json!({
-            "modules": {"catalog": {"enabled": true}}
-        }));
-        assert_eq!(hash.len(), 64);
-        assert!(hash.chars().all(|ch| ch.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn manifest_snapshot_hash_is_stable_for_key_order() {
-        let left = runtime_manifest_snapshot_hash(&serde_json::json!({
-            "modules": {"catalog": {"enabled": true}, "pricing": {"enabled": false}},
-            "profile": "default",
-            "settings": {"b": 1, "a": 2}
-        }));
-        let right = runtime_manifest_snapshot_hash(&serde_json::json!({
-            "settings": {"a": 2, "b": 1},
-            "profile": "default",
-            "modules": {"pricing": {"enabled": false}, "catalog": {"enabled": true}}
-        }));
-
-        assert_eq!(left, right);
-    }
-
-    #[test]
-    fn manifest_snapshot_hash_changes_for_meaningful_change() {
-        let left =
-            runtime_manifest_snapshot_hash(&serde_json::json!({"settings": {"locale": "en"}}));
-        let right =
-            runtime_manifest_snapshot_hash(&serde_json::json!({"settings": {"locale": "ru"}}));
-
-        assert_ne!(left, right);
-    }
-
-    #[test]
-    fn manifest_snapshot_hash_matches_known_sha256_vector() {
-        let hash = runtime_manifest_snapshot_hash(&serde_json::json!({"b": 2, "a": 1}));
-        assert_eq!(
-            hash,
-            "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"
-        );
-    }
-
-    #[test]
-    fn runtime_manifest_hash_changes_when_profile_changes() {
-        let left = sample_manifest();
-        let mut right = left.clone();
-        right.build.profile = "debug".to_string();
-
-        assert_ne!(runtime_manifest_hash(&left), runtime_manifest_hash(&right));
-    }
-
-    #[test]
-    fn runtime_manifest_hash_changes_when_dependency_metadata_changes() {
-        let left = sample_manifest();
-        let mut right = left.clone();
-        right
-            .modules
-            .get_mut("catalog")
-            .expect("catalog module exists")
-            .depends_on
-            .push("inventory".to_string());
-
-        assert_ne!(runtime_manifest_hash(&left), runtime_manifest_hash(&right));
-    }
-
-    #[test]
-    fn runtime_manifest_hash_changes_when_source_pin_changes() {
-        let left = sample_manifest();
-        let mut right = left.clone();
-        right
-            .modules
-            .get_mut("catalog")
-            .expect("catalog module exists")
-            .rev = Some("def456".to_string());
-
-        assert_ne!(runtime_manifest_hash(&left), runtime_manifest_hash(&right));
-    }
-
-    #[test]
-    fn runtime_manifest_hash_matches_canonical_snapshot_hash() {
-        let manifest = sample_manifest();
-        let snapshot = rustok_api::manifest_hash::canonical_manifest_snapshot_json(&manifest)
-            .expect("serialize manifest snapshot");
-
-        assert_eq!(
-            runtime_manifest_hash(&manifest),
-            runtime_manifest_snapshot_hash(&snapshot),
-            "manifest hash must use the same canonical snapshot contract",
-        );
-    }
-
-    #[test]
-    fn runtime_manifest_hash_is_stable_for_module_map_order() {
-        let mut left = sample_manifest();
-        left.modules.insert(
-            "pricing".to_string(),
-            RuntimeManifestModuleSpec {
-                source: "workspace".to_string(),
-                crate_name: "rustok-pricing".to_string(),
-                path: Some("crates/rustok-pricing".to_string()),
-                version: Some("1.0.0".to_string()),
-                git: None,
-                rev: None,
-                required: false,
-                depends_on: vec![],
-            },
-        );
-
-        let mut right = sample_manifest();
-        right.modules.insert(
-            "pricing".to_string(),
-            RuntimeManifestModuleSpec {
-                source: "workspace".to_string(),
-                crate_name: "rustok-pricing".to_string(),
-                path: Some("crates/rustok-pricing".to_string()),
-                version: Some("1.0.0".to_string()),
-                git: None,
-                rev: None,
-                required: false,
-                depends_on: vec![],
-            },
-        );
-
-        // Reinsert to ensure potentially different insertion history still hashes identically.
-        let catalog = right
-            .modules
-            .remove("catalog")
-            .expect("catalog module exists");
-        right.modules.insert("catalog".to_string(), catalog);
-
-        assert_eq!(
-            runtime_manifest_hash(&left),
-            runtime_manifest_hash(&right),
-            "canonical serializer must normalize map ordering",
-        );
-    }
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_modules_delta_json(
-    manifest: &RuntimeModulesManifest,
-    summary: String,
-) -> serde_json::Value {
-    let modules = manifest
-        .modules
-        .iter()
-        .map(|(slug, spec)| {
-            (
-                slug.clone(),
-                serde_json::json!({
-                    "source": spec.source,
-                    "crate_name": spec.crate_name,
-                    "version": spec.version,
-                    "git": spec.git,
-                    "rev": spec.rev,
-                    "path": spec.path,
-                }),
-            )
-        })
-        .collect::<serde_json::Map<String, serde_json::Value>>();
-
-    serde_json::json!({
-        "summary": summary,
-        "modules": modules,
-        "execution_plan": runtime_build_execution_plan(manifest),
-    })
-}
-
-#[cfg(feature = "ssr")]
-#[allow(dead_code)]
-fn runtime_build_job_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
+pub fn runtime_build_job_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
             r#"
@@ -1455,9 +465,10 @@ fn runtime_build_job_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
     }
 }
 
+
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
-fn runtime_build_job_select_sql(backend: sea_orm::DbBackend) -> &'static str {
+pub fn runtime_build_job_select_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
             r#"
@@ -1486,246 +497,8 @@ fn runtime_build_job_select_sql(backend: sea_orm::DbBackend) -> &'static str {
     }
 }
 
-#[cfg(feature = "ssr")]
-fn runtime_module_roots(
-    manifest: &RuntimeModulesManifest,
-) -> Result<Vec<std::path::PathBuf>, ServerFnError> {
-    let workspace_root = runtime_workspace_root();
-    let crates_root = workspace_root.join("crates");
-    let mut roots = std::collections::BTreeSet::new();
 
-    if crates_root.exists() {
-        for entry in std::fs::read_dir(&crates_root).map_err(|err| {
-            server_error(format!("failed to read {}: {err}", crates_root.display()))
-        })? {
-            let entry = entry.map_err(|err| server_error(err.to_string()))?;
-            let path = entry.path();
-            if path.join("rustok-module.toml").exists() {
-                roots.insert(path);
-            }
-        }
-    }
-
-    for spec in manifest.modules.values() {
-        if let Some(path) = spec.path.as_ref() {
-            let module_root = workspace_root.join(path);
-            if module_root.join("rustok-module.toml").exists() {
-                roots.insert(module_root);
-            }
-        }
-    }
-
-    Ok(roots.into_iter().collect())
-}
-
-#[cfg(feature = "ssr")]
-fn load_runtime_marketplace_modules(
-    registry: &rustok_core::ModuleRegistry,
-    manifest: &RuntimeModulesManifest,
-) -> Result<Vec<MarketplaceModule>, ServerFnError> {
-    let module_roots = runtime_module_roots(manifest)?;
-    let mut installed_by_slug = manifest.modules.clone();
-    let mut modules = Vec::new();
-
-    for module_root in module_roots {
-        let package_manifest: RuntimeModulePackageManifest =
-            load_toml_file(&module_root.join("rustok-module.toml"))?;
-        let cargo_manifest: RuntimeCargoManifest = load_toml_file(&module_root.join("Cargo.toml"))?;
-        let slug = package_manifest.module.slug.clone();
-        let installed_entry = installed_by_slug.remove(&slug);
-        let runtime_module = registry.get(&slug);
-        let latest_version = runtime_module
-            .map(|module| module.version().to_string())
-            .unwrap_or_else(|| package_manifest.module.version.clone());
-        let installed_version = installed_entry
-            .as_ref()
-            .and_then(|entry| entry.version.clone());
-        let dependencies = runtime_module
-            .map(|module| {
-                module
-                    .dependencies()
-                    .iter()
-                    .map(|dependency| dependency.to_string())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_else(|| {
-                if package_manifest.dependencies.is_empty() {
-                    installed_entry
-                        .as_ref()
-                        .map(|entry| entry.depends_on.clone())
-                        .unwrap_or_default()
-                } else {
-                    package_manifest.dependencies.keys().cloned().collect()
-                }
-            });
-
-        modules.push(MarketplaceModule {
-            slug: slug.clone(),
-            name: runtime_module
-                .map(|module| module.name().to_string())
-                .unwrap_or_else(|| package_manifest.module.name.clone()),
-            latest_version: latest_version.clone(),
-            description: runtime_module
-                .map(|module| module.description().to_string())
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| package_manifest.module.description.clone()),
-            source: installed_entry
-                .as_ref()
-                .map(|entry| entry.source.clone())
-                .unwrap_or_else(|| "path".to_string()),
-            kind: if registry.is_core(&slug)
-                || installed_entry.as_ref().is_some_and(|entry| entry.required)
-            {
-                "core".to_string()
-            } else {
-                "optional".to_string()
-            },
-            category: package_manifest
-                .marketplace
-                .category
-                .clone()
-                .unwrap_or_else(|| fallback_module_category(&slug).to_string()),
-            tags: package_manifest.marketplace.tags.clone(),
-            icon_url: package_manifest.marketplace.icon_url.clone(),
-            banner_url: package_manifest.marketplace.banner_url.clone(),
-            screenshots: package_manifest.marketplace.screenshots.clone(),
-            crate_name: installed_entry
-                .as_ref()
-                .map(|entry| entry.crate_name.clone())
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| cargo_manifest.package.name.clone()),
-            dependencies,
-            ownership: package_manifest.module.ownership.clone(),
-            trust_level: package_manifest.module.trust_level.clone(),
-            rustok_min_version: package_manifest.module.rustok_min_version.clone(),
-            rustok_max_version: package_manifest.module.rustok_max_version.clone(),
-            publisher: package_manifest.marketplace.publisher.clone(),
-            checksum_sha256: package_manifest.marketplace.checksum_sha256.clone(),
-            signature_present: package_manifest.marketplace.signature.is_some(),
-            versions: vec![crate::entities::module::model::MarketplaceModuleVersion {
-                version: latest_version.clone(),
-                changelog: None,
-                yanked: false,
-                published_at: None,
-                checksum_sha256: package_manifest.marketplace.checksum_sha256.clone(),
-                signature_present: package_manifest.marketplace.signature.is_some(),
-            }],
-            has_admin_ui: false,
-            has_storefront_ui: false,
-            ui_classification: "no-ui".to_string(),
-            registry_lifecycle: None,
-            compatible: true,
-            recommended_admin_surfaces: package_manifest.module.recommended_admin_surfaces.clone(),
-            showcase_admin_surfaces: package_manifest.module.showcase_admin_surfaces.clone(),
-            settings_schema: runtime_setting_fields(&package_manifest.settings),
-            installed: installed_entry.is_some(),
-            installed_version: installed_version.clone(),
-            update_available: installed_version
-                .as_ref()
-                .is_some_and(|version| version != &latest_version),
-        });
-    }
-
-    for (slug, entry) in installed_by_slug {
-        let latest_version = registry
-            .get(&slug)
-            .map(|module| module.version().to_string())
-            .or(entry.version.clone())
-            .unwrap_or_else(|| "workspace".to_string());
-        modules.push(MarketplaceModule {
-            slug: slug.clone(),
-            name: registry
-                .get(&slug)
-                .map(|module| module.name().to_string())
-                .unwrap_or_else(|| humanize_module_slug(&slug)),
-            latest_version: latest_version.clone(),
-            description: registry
-                .get(&slug)
-                .map(|module| module.description().to_string())
-                .unwrap_or_else(|| format!("{} module", humanize_module_slug(&slug))),
-            source: entry.source,
-            kind: if registry.is_core(&slug) || entry.required {
-                "core".to_string()
-            } else {
-                "optional".to_string()
-            },
-            category: fallback_module_category(&slug).to_string(),
-            tags: Vec::new(),
-            icon_url: None,
-            banner_url: None,
-            screenshots: Vec::new(),
-            crate_name: if entry.crate_name.is_empty() {
-                format!("rustok-{slug}")
-            } else {
-                entry.crate_name
-            },
-            dependencies: if entry.depends_on.is_empty() {
-                registry
-                    .get(&slug)
-                    .map(|module| {
-                        module
-                            .dependencies()
-                            .iter()
-                            .map(|dependency| dependency.to_string())
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            } else {
-                entry.depends_on
-            },
-            ownership: "third_party".to_string(),
-            trust_level: "unverified".to_string(),
-            rustok_min_version: None,
-            rustok_max_version: None,
-            publisher: None,
-            checksum_sha256: None,
-            signature_present: false,
-            versions: vec![crate::entities::module::model::MarketplaceModuleVersion {
-                version: latest_version.clone(),
-                changelog: None,
-                yanked: false,
-                published_at: None,
-                checksum_sha256: None,
-                signature_present: false,
-            }],
-            has_admin_ui: false,
-            has_storefront_ui: false,
-            ui_classification: "no-ui".to_string(),
-            registry_lifecycle: None,
-            compatible: true,
-            recommended_admin_surfaces: Vec::new(),
-            showcase_admin_surfaces: Vec::new(),
-            settings_schema: Vec::new(),
-            installed: true,
-            installed_version: entry.version.clone(),
-            update_available: entry
-                .version
-                .as_ref()
-                .is_some_and(|version| version != &latest_version),
-        });
-    }
-
-    modules.sort_by(|left, right| left.slug.cmp(&right.slug));
-    Ok(modules)
-}
-
-#[cfg(feature = "ssr")]
-fn load_runtime_module_package_manifest_by_slug(
-    module_slug: &str,
-    manifest: &RuntimeModulesManifest,
-) -> Result<Option<RuntimeModulePackageManifest>, ServerFnError> {
-    for module_root in runtime_module_roots(manifest)? {
-        let package_manifest: RuntimeModulePackageManifest =
-            load_toml_file(&module_root.join("rustok-module.toml"))?;
-        if package_manifest.module.slug == module_slug {
-            return Ok(Some(package_manifest));
-        }
-    }
-
-    Ok(None)
-}
-
-fn runtime_setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
+pub fn runtime_setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
     match value_type {
         "string" => value.is_string(),
         "integer" => {
@@ -1744,8 +517,9 @@ fn runtime_setting_value_matches_type(value_type: &str, value: &serde_json::Valu
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn validate_runtime_setting_value(
+pub fn validate_runtime_setting_value(
     module_slug: &str,
     key: &str,
     spec: &RuntimeModuleSettingSpec,
@@ -1839,8 +613,9 @@ fn validate_runtime_setting_value(
     Ok(())
 }
 
+
 #[cfg(feature = "ssr")]
-fn normalize_runtime_module_settings(
+pub fn normalize_runtime_module_settings(
     module_slug: &str,
     schema: &std::collections::BTreeMap<String, RuntimeModuleSettingSpec>,
     settings: serde_json::Value,
@@ -1908,8 +683,9 @@ fn normalize_runtime_module_settings(
     Ok(serde_json::Value::Object(normalized))
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_build_job_row(row: sea_orm::QueryResult) -> Result<BuildJob, ServerFnError> {
+pub fn map_build_job_row(row: sea_orm::QueryResult) -> Result<BuildJob, ServerFnError> {
     let modules_delta = row
         .try_get::<Option<serde_json::Value>>("", "modules_delta")
         .map_err(|err| server_error(err.to_string()))?;
@@ -1976,8 +752,9 @@ fn map_build_job_row(row: sea_orm::QueryResult) -> Result<BuildJob, ServerFnErro
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, ServerFnError> {
+pub fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, ServerFnError> {
     let modules = row
         .try_get::<serde_json::Value>("", "modules")
         .ok()
@@ -2026,8 +803,9 @@ fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, Server
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn json_message_list(value: Option<serde_json::Value>) -> Vec<String> {
+pub fn json_message_list(value: Option<serde_json::Value>) -> Vec<String> {
     value
         .and_then(|value| value.as_array().cloned())
         .unwrap_or_default()
@@ -2036,8 +814,9 @@ fn json_message_list(value: Option<serde_json::Value>) -> Vec<String> {
         .collect()
 }
 
+
 #[cfg(feature = "ssr")]
-fn required_registry_principal_label(
+pub fn required_registry_principal_label(
     row: &sea_orm::QueryResult,
     column: &str,
 ) -> Result<String, ServerFnError> {
@@ -2051,8 +830,9 @@ fn required_registry_principal_label(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn optional_registry_principal_label(
+pub fn optional_registry_principal_label(
     row: &sea_orm::QueryResult,
     column: &str,
 ) -> Result<Option<String>, ServerFnError> {
@@ -2062,8 +842,9 @@ fn optional_registry_principal_label(
     Ok(value.as_ref().and_then(registry_principal_label_from_value))
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_registry_publish_request_row(
+pub fn map_registry_publish_request_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryPublishRequestLifecycle, ServerFnError> {
     Ok(RegistryPublishRequestLifecycle {
@@ -2129,8 +910,9 @@ fn map_registry_publish_request_row(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_registry_release_row(
+pub fn map_registry_release_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryReleaseLifecycle, ServerFnError> {
     Ok(RegistryReleaseLifecycle {
@@ -2160,8 +942,9 @@ fn map_registry_release_row(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_registry_owner_row(
+pub fn map_registry_owner_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryOwnerLifecycle, ServerFnError> {
     Ok(RegistryOwnerLifecycle {
@@ -2178,8 +961,9 @@ fn map_registry_owner_row(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_registry_governance_event_row(
+pub fn map_registry_governance_event_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryGovernanceEventLifecycle, ServerFnError> {
     let details = row
@@ -2203,8 +987,9 @@ fn map_registry_governance_event_row(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn map_registry_validation_stage_row(
+pub fn map_registry_validation_stage_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryValidationStageLifecycle, ServerFnError> {
     let key: String = row
@@ -2249,8 +1034,9 @@ fn map_registry_validation_stage_row(
     })
 }
 
+
 #[cfg(feature = "ssr")]
-fn registry_follow_up_gate_detail(key: &str) -> &'static str {
+pub fn registry_follow_up_gate_detail(key: &str) -> &'static str {
     match key {
         "compile_smoke" => "Compile smoke still runs outside the current registry validator.",
         "targeted_tests" => {
@@ -2263,8 +1049,9 @@ fn registry_follow_up_gate_detail(key: &str) -> &'static str {
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
+pub fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
     match key {
         "security_policy_review" => "manual_review",
         "compile_smoke" | "targeted_tests" => "remote",
@@ -2272,8 +1059,9 @@ fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn fallback_validation_stage_reason_codes() -> Vec<String> {
+pub fn fallback_validation_stage_reason_codes() -> Vec<String> {
     [
         "local_runner_passed",
         "manual_review_complete",
@@ -2291,8 +1079,9 @@ fn fallback_validation_stage_reason_codes() -> Vec<String> {
     .collect()
 }
 
+
 #[cfg(feature = "ssr")]
-fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str> {
+pub fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str> {
     match key {
         "compile_smoke" | "targeted_tests" => Some("local_runner_passed"),
         "security_policy_review" => Some("manual_review_complete"),
@@ -2300,8 +1089,9 @@ fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str>
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static str> {
+pub fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static str> {
     match key {
         "compile_smoke" => Some("build_failure"),
         "targeted_tests" => Some("test_failure"),
@@ -2310,8 +1100,9 @@ fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static s
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
+pub fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
     match key {
         "security_policy_review" => Some("security_findings"),
         "compile_smoke" | "targeted_tests" => Some("other"),
@@ -2319,8 +1110,9 @@ fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static s
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn registry_governance_action(
+pub fn registry_governance_action(
     key: &str,
     reason_required: bool,
     reason_code_required: bool,
@@ -2339,8 +1131,9 @@ fn registry_governance_action(
     }
 }
 
+
 #[cfg(feature = "ssr")]
-fn derive_registry_governance_actions(
+pub fn derive_registry_governance_actions(
     latest_request: Option<&RegistryPublishRequestLifecycle>,
     latest_release: Option<&RegistryReleaseLifecycle>,
     owner_binding: Option<&RegistryOwnerLifecycle>,
@@ -2395,8 +1188,9 @@ fn derive_registry_governance_actions(
         .collect()
 }
 
+
 #[cfg(feature = "ssr")]
-fn derive_registry_validation_stages(
+pub fn derive_registry_validation_stages(
     latest_request: Option<&RegistryPublishRequestLifecycle>,
     recent_events: &[RegistryGovernanceEventLifecycle],
     stage_rows: &[RegistryValidationStageLifecycle],
@@ -2494,8 +1288,9 @@ fn derive_registry_validation_stages(
     stages
 }
 
+
 #[cfg(feature = "ssr")]
-fn derive_registry_follow_up_gates(
+pub fn derive_registry_follow_up_gates(
     validation_stages: &[RegistryValidationStageLifecycle],
     latest_request: Option<&RegistryPublishRequestLifecycle>,
     recent_events: &[RegistryGovernanceEventLifecycle],
@@ -2562,8 +1357,9 @@ fn derive_registry_follow_up_gates(
     gates
 }
 
+
 #[cfg(feature = "ssr")]
-async fn load_registry_module_lifecycle(
+pub async fn load_registry_module_lifecycle(
     app_ctx: &loco_rs::app::AppContext,
     slug: &str,
 ) -> Result<Option<RegistryModuleLifecycle>, ServerFnError> {
@@ -2865,322 +1661,9 @@ async fn load_registry_module_lifecycle(
     }))
 }
 
-pub async fn fetch_enabled_modules(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<String>, ApiError> {
-    match fetch_enabled_modules_server().await {
-        Ok(modules) => Ok(modules),
-        Err(_) => fetch_enabled_modules_graphql(token, tenant_slug).await,
-    }
-}
-
-pub async fn fetch_enabled_modules_server() -> Result<Vec<String>, ServerFnError> {
-    list_enabled_modules_native().await
-}
-
-pub async fn fetch_enabled_modules_graphql(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<String>, ApiError> {
-    let response: EnabledModulesResponse = request(
-        ENABLED_MODULES_QUERY,
-        serde_json::json!({}),
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.enabled_modules)
-}
-
-fn bundled_humanize_module_slug(slug: &str) -> String {
-    slug.split(['-', '_'])
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn bundled_module_category(nav_group: &str) -> String {
-    match nav_group {
-        "Content" => "content",
-        "Commerce" => "commerce",
-        "Runtime" => "runtime",
-        "Governance" => "governance",
-        "Automation" => "automation",
-        _ => "extensions",
-    }
-    .to_string()
-}
-
-fn fallback_module_registry() -> Vec<ModuleInfo> {
-    let core_slugs = crate::app::modules::core_module_slugs();
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(|entry| {
-            let metadata = crate::app::modules::module_runtime_metadata(entry.module_slug);
-            let is_core = core_slugs.contains(&entry.module_slug);
-            ModuleInfo {
-                module_slug: entry.module_slug.to_string(),
-                name: entry.nav_label.to_string(),
-                description: format!("{} module", entry.nav_label),
-                version: "workspace".to_string(),
-                kind: if is_core { "core" } else { "optional" }.to_string(),
-                dependencies: Vec::new(),
-                enabled: true,
-                ownership: metadata
-                    .map(|metadata| metadata.ownership.to_string())
-                    .unwrap_or_else(|| "first_party".to_string()),
-                trust_level: metadata
-                    .map(|metadata| metadata.trust_level.to_string())
-                    .unwrap_or_else(|| "trusted".to_string()),
-                has_admin_ui: true,
-                has_storefront_ui: false,
-                ui_classification: "admin".to_string(),
-                recommended_admin_surfaces: metadata
-                    .map(|metadata| {
-                        metadata
-                            .recommended_admin_surfaces
-                            .iter()
-                            .map(|surface| surface.to_string())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                showcase_admin_surfaces: metadata
-                    .map(|metadata| {
-                        metadata
-                            .showcase_admin_surfaces
-                            .iter()
-                            .map(|surface| surface.to_string())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            }
-        })
-        .collect::<Vec<_>>();
-    modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
-    modules.dedup_by(|left, right| left.module_slug == right.module_slug);
-    modules
-}
-
-fn fallback_installed_modules() -> Vec<InstalledModule> {
-    let core_slugs = crate::app::modules::core_module_slugs();
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(|entry| InstalledModule {
-            slug: entry.module_slug.to_string(),
-            source: "bundled".to_string(),
-            crate_name: format!("rustok-{}", entry.module_slug),
-            version: Some("workspace".to_string()),
-            required: core_slugs.contains(&entry.module_slug),
-            dependencies: Vec::new(),
-        })
-        .collect::<Vec<_>>();
-    modules.sort_by(|left, right| left.slug.cmp(&right.slug));
-    modules.dedup_by(|left, right| left.slug == right.slug);
-    modules
-}
-
-fn fallback_tenant_modules() -> Vec<TenantModule> {
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(|entry| TenantModule {
-            module_slug: entry.module_slug.to_string(),
-            enabled: true,
-            settings: "{}".to_string(),
-        })
-        .collect::<Vec<_>>();
-    modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
-    modules.dedup_by(|left, right| left.module_slug == right.module_slug);
-    modules
-}
-
-fn fallback_marketplace_module_from_entry(
-    entry: &crate::app::modules::GeneratedModuleNavigationEntry,
-) -> MarketplaceModule {
-    let metadata = crate::app::modules::module_runtime_metadata(entry.module_slug);
-    MarketplaceModule {
-        slug: entry.module_slug.to_string(),
-        name: entry.nav_label.to_string(),
-        latest_version: "workspace".to_string(),
-        description: format!("{} module", entry.nav_label),
-        source: "bundled".to_string(),
-        kind: "optional".to_string(),
-        category: bundled_module_category(entry.nav_group),
-        tags: vec![entry.nav_group.to_ascii_lowercase()],
-        icon_url: None,
-        banner_url: None,
-        screenshots: Vec::new(),
-        crate_name: format!("rustok-{}", entry.module_slug),
-        dependencies: Vec::new(),
-        ownership: metadata
-            .map(|metadata| metadata.ownership.to_string())
-            .unwrap_or_else(|| "first_party".to_string()),
-        trust_level: metadata
-            .map(|metadata| metadata.trust_level.to_string())
-            .unwrap_or_else(|| "trusted".to_string()),
-        rustok_min_version: None,
-        rustok_max_version: None,
-        publisher: None,
-        checksum_sha256: None,
-        signature_present: false,
-        versions: vec![MarketplaceModuleVersion {
-            version: "workspace".to_string(),
-            changelog: None,
-            yanked: false,
-            published_at: None,
-            checksum_sha256: None,
-            signature_present: false,
-        }],
-        has_admin_ui: true,
-        has_storefront_ui: false,
-        ui_classification: "admin".to_string(),
-        registry_lifecycle: None,
-        compatible: true,
-        recommended_admin_surfaces: metadata
-            .map(|metadata| {
-                metadata
-                    .recommended_admin_surfaces
-                    .iter()
-                    .map(|surface| surface.to_string())
-                    .collect()
-            })
-            .unwrap_or_default(),
-        showcase_admin_surfaces: metadata
-            .map(|metadata| {
-                metadata
-                    .showcase_admin_surfaces
-                    .iter()
-                    .map(|surface| surface.to_string())
-                    .collect()
-            })
-            .unwrap_or_default(),
-        settings_schema: Vec::new(),
-        installed: true,
-        installed_version: Some("workspace".to_string()),
-        update_available: false,
-    }
-}
-
-fn fallback_marketplace_modules(variables: &MarketplaceVariables) -> Vec<MarketplaceModule> {
-    let search = variables.search.as_ref().map(|value| value.to_lowercase());
-    let category = variables
-        .category
-        .as_ref()
-        .map(|value| value.to_lowercase());
-    let tag = variables.tag.as_ref().map(|value| value.to_lowercase());
-    let source = variables.source.as_ref().map(|value| value.to_lowercase());
-    let trust_level = variables
-        .trust_level
-        .as_ref()
-        .map(|value| value.to_lowercase());
-    let installed_only = variables.installed_only.unwrap_or(false);
-
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(fallback_marketplace_module_from_entry)
-        .filter(|module| !installed_only || module.installed)
-        .filter(|module| {
-            category
-                .as_ref()
-                .is_none_or(|value| value == "all" || module.category.eq_ignore_ascii_case(value))
-        })
-        .filter(|module| {
-            tag.as_ref().is_none_or(|value| {
-                value == "all"
-                    || module
-                        .tags
-                        .iter()
-                        .any(|module_tag| module_tag.eq_ignore_ascii_case(value))
-            })
-        })
-        .filter(|module| {
-            source
-                .as_ref()
-                .is_none_or(|value| value == "all" || module.source.eq_ignore_ascii_case(value))
-        })
-        .filter(|module| {
-            trust_level.as_ref().is_none_or(|value| {
-                value == "all" || module.trust_level.eq_ignore_ascii_case(value)
-            })
-        })
-        .filter(|module| {
-            search.as_ref().is_none_or(|value| {
-                module.slug.to_lowercase().contains(value)
-                    || module.name.to_lowercase().contains(value)
-                    || module.description.to_lowercase().contains(value)
-                    || module.crate_name.to_lowercase().contains(value)
-            })
-        })
-        .collect::<Vec<_>>();
-
-    modules.sort_by(|left, right| left.slug.cmp(&right.slug));
-    modules.dedup_by(|left, right| left.slug == right.slug);
-    modules
-}
-
-fn fallback_marketplace_module(slug: &str) -> Option<MarketplaceModule> {
-    let slug = slug.trim();
-    crate::app::modules::module_navigation_entries()
-        .iter()
-        .find(|entry| entry.module_slug.eq_ignore_ascii_case(slug))
-        .map(fallback_marketplace_module_from_entry)
-        .or_else(|| {
-            (!slug.is_empty()).then(|| {
-                let label = bundled_humanize_module_slug(slug);
-                MarketplaceModule {
-                    slug: slug.to_string(),
-                    name: label.clone(),
-                    latest_version: "workspace".to_string(),
-                    description: format!("{label} module"),
-                    source: "bundled".to_string(),
-                    kind: "optional".to_string(),
-                    category: "extensions".to_string(),
-                    tags: Vec::new(),
-                    icon_url: None,
-                    banner_url: None,
-                    screenshots: Vec::new(),
-                    crate_name: format!("rustok-{slug}"),
-                    dependencies: Vec::new(),
-                    ownership: "first_party".to_string(),
-                    trust_level: "trusted".to_string(),
-                    rustok_min_version: None,
-                    rustok_max_version: None,
-                    publisher: None,
-                    checksum_sha256: None,
-                    signature_present: false,
-                    versions: vec![MarketplaceModuleVersion {
-                        version: "workspace".to_string(),
-                        changelog: None,
-                        yanked: false,
-                        published_at: None,
-                        checksum_sha256: None,
-                        signature_present: false,
-                    }],
-                    has_admin_ui: true,
-                    has_storefront_ui: false,
-                    ui_classification: "admin".to_string(),
-                    registry_lifecycle: None,
-                    compatible: true,
-                    recommended_admin_surfaces: Vec::new(),
-                    showcase_admin_surfaces: Vec::new(),
-                    settings_schema: Vec::new(),
-                    installed: true,
-                    installed_version: Some("workspace".to_string()),
-                    update_available: false,
-                }
-            })
-        })
-}
 
 #[server(prefix = "/api/fn", endpoint = "admin/list-enabled-modules")]
-async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError> {
+pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
@@ -3225,31 +1708,9 @@ async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError> {
     }
 }
 
-pub async fn fetch_modules(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<ModuleInfo>, ApiError> {
-    match list_module_registry_native().await {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
-            let response: Result<ModuleRegistryResponse, ApiError> = request(
-                MODULE_REGISTRY_QUERY,
-                serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
-            match response {
-                Ok(response) => Ok(response.module_registry),
-                Err(_) => Ok(fallback_module_registry()),
-            }
-        }
-    }
-}
 
 #[server(prefix = "/api/fn", endpoint = "admin/module-registry")]
-async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError> {
+pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use crate::app::modules::module_runtime_metadata;
@@ -3322,31 +1783,9 @@ async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError>
     }
 }
 
-pub async fn fetch_installed_modules(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<InstalledModule>, ApiError> {
-    match list_installed_modules_native().await {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
-            let response: Result<InstalledModulesResponse, ApiError> = request(
-                INSTALLED_MODULES_QUERY,
-                serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
-            match response {
-                Ok(response) => Ok(response.installed_modules),
-                Err(_) => Ok(fallback_installed_modules()),
-            }
-        }
-    }
-}
 
 #[server(prefix = "/api/fn", endpoint = "admin/installed-modules")]
-async fn list_installed_modules_native() -> Result<Vec<InstalledModule>, ServerFnError> {
+pub async fn list_installed_modules_native() -> Result<Vec<InstalledModule>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let (app_ctx, _auth, _tenant) = modules_server_context().await?;
@@ -3377,179 +1816,9 @@ async fn list_installed_modules_native() -> Result<Vec<InstalledModule>, ServerF
     }
 }
 
-pub async fn fetch_tenant_modules(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<TenantModule>, ApiError> {
-    match list_tenant_modules_native().await {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
-            let response: Result<TenantModulesResponse, ApiError> = request(
-                TENANT_MODULES_QUERY,
-                serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
-            match response {
-                Ok(response) => Ok(response.tenant_modules),
-                Err(_) => Ok(fallback_tenant_modules()),
-            }
-        }
-    }
-}
-
-pub async fn fetch_marketplace_modules(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    variables: MarketplaceVariables,
-) -> Result<Vec<MarketplaceModule>, ApiError> {
-    if token.is_some() {
-        let response: Result<MarketplaceResponse, ApiError> = request(
-            MARKETPLACE_QUERY,
-            variables.clone(),
-            token.clone(),
-            tenant_slug.clone(),
-        )
-        .await;
-        return match response {
-            Ok(response) => Ok(response.marketplace),
-            Err(_) => Ok(fallback_marketplace_modules(&variables)),
-        };
-    }
-
-    match list_marketplace_modules_native(
-        variables.search.clone(),
-        variables.category.clone(),
-        variables.tag.clone(),
-        variables.source.clone(),
-        variables.trust_level.clone(),
-        variables.only_compatible,
-        variables.installed_only,
-    )
-    .await
-    {
-        Ok(modules) => Ok(modules),
-        Err(server_err) => {
-            let fallback_variables = variables.clone();
-            let response: Result<MarketplaceResponse, ApiError> =
-                request(MARKETPLACE_QUERY, variables, token, tenant_slug)
-                    .await
-                    .map_err(|graphql_err| {
-                        combine_native_and_graphql_error(server_err, graphql_err)
-                    });
-            match response {
-                Ok(response) => Ok(response.marketplace),
-                Err(_) => Ok(fallback_marketplace_modules(&fallback_variables)),
-            }
-        }
-    }
-}
-
-pub async fn fetch_marketplace_module(
-    slug: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Option<MarketplaceModule>, ApiError> {
-    if token.is_some() {
-        let response: Result<MarketplaceModuleResponse, ApiError> = request(
-            MARKETPLACE_MODULE_QUERY,
-            MarketplaceModuleVariables { slug: slug.clone() },
-            token.clone(),
-            tenant_slug.clone(),
-        )
-        .await;
-        return match response {
-            Ok(response) => Ok(response.marketplace_module),
-            Err(_) => Ok(fallback_marketplace_module(&slug)),
-        };
-    }
-
-    match marketplace_module_native(slug.clone()).await {
-        Ok(module) => Ok(module),
-        Err(server_err) => {
-            let fallback_slug = slug.clone();
-            let response: Result<MarketplaceModuleResponse, ApiError> = request(
-                MARKETPLACE_MODULE_QUERY,
-                MarketplaceModuleVariables { slug },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err));
-            match response {
-                Ok(response) => Ok(response.marketplace_module),
-                Err(_) => Ok(fallback_marketplace_module(&fallback_slug)),
-            }
-        }
-    }
-}
-
-pub async fn fetch_active_build(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Option<BuildJob>, ApiError> {
-    match active_build_native().await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: ActiveBuildResponse = request(
-                ACTIVE_BUILD_QUERY,
-                serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.active_build)
-        }
-    }
-}
-
-pub async fn fetch_active_release(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Option<ReleaseInfo>, ApiError> {
-    match active_release_native().await {
-        Ok(release) => Ok(release),
-        Err(server_err) => {
-            let response: ActiveReleaseResponse = request(
-                ACTIVE_RELEASE_QUERY,
-                serde_json::json!({}),
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.active_release)
-        }
-    }
-}
-
-pub async fn fetch_build_history(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    limit: i32,
-    offset: i32,
-) -> Result<Vec<BuildJob>, ApiError> {
-    match build_history_native(limit, offset).await {
-        Ok(history) => Ok(history),
-        Err(server_err) => {
-            let response: BuildHistoryResponse = request(
-                BUILD_HISTORY_QUERY,
-                BuildHistoryVariables { limit, offset },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.build_history)
-        }
-    }
-}
 
 #[server(prefix = "/api/fn", endpoint = "admin/list-tenant-modules")]
-async fn list_tenant_modules_native() -> Result<Vec<TenantModule>, ServerFnError> {
+pub async fn list_tenant_modules_native() -> Result<Vec<TenantModule>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_tenant::TenantService;
@@ -3581,8 +1850,9 @@ async fn list_tenant_modules_native() -> Result<Vec<TenantModule>, ServerFnError
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/marketplace")]
-async fn list_marketplace_modules_native(
+pub async fn list_marketplace_modules_native(
     search: Option<String>,
     category: Option<String>,
     tag: Option<String>,
@@ -3684,8 +1954,9 @@ async fn list_marketplace_modules_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/marketplace-module")]
-async fn marketplace_module_native(
+pub async fn marketplace_module_native(
     slug: String,
 ) -> Result<Option<MarketplaceModule>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -3719,8 +1990,9 @@ async fn marketplace_module_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/active-build")]
-async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
+pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -3800,8 +2072,9 @@ async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/active-release")]
-async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnError> {
+pub async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -3869,8 +2142,9 @@ async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnError> {
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/build-history")]
-async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJob>, ServerFnError> {
+pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJob>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -3956,8 +2230,9 @@ async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJob>, 
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/update-module-settings")]
-async fn update_module_settings_native(
+pub async fn update_module_settings_native(
     module_slug: String,
     settings: String,
 ) -> Result<TenantModule, ServerFnError> {
@@ -4050,8 +2325,9 @@ async fn update_module_settings_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/rollback-build")]
-async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnError> {
+pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_api::has_any_effective_permission;
@@ -4381,11 +2657,12 @@ async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnErr
     }
 }
 
+
 #[server(
     prefix = "/api/fn",
     endpoint = "admin/registry-fetch-publish-request-status"
 )]
-async fn fetch_registry_publish_request_status_native(
+pub async fn fetch_registry_publish_request_status_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4404,11 +2681,12 @@ async fn fetch_registry_publish_request_status_native(
     }
 }
 
+
 #[server(
     prefix = "/api/fn",
     endpoint = "admin/registry-validate-publish-request"
 )]
-async fn validate_registry_publish_request_native(
+pub async fn validate_registry_publish_request_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4437,11 +2715,12 @@ async fn validate_registry_publish_request_native(
     }
 }
 
+
 #[server(
     prefix = "/api/fn",
     endpoint = "admin/registry-approve-publish-request"
 )]
-async fn approve_registry_publish_request_native(
+pub async fn approve_registry_publish_request_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4474,8 +2753,9 @@ async fn approve_registry_publish_request_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/registry-reject-publish-request")]
-async fn reject_registry_publish_request_native(
+pub async fn reject_registry_publish_request_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4508,11 +2788,12 @@ async fn reject_registry_publish_request_native(
     }
 }
 
+
 #[server(
     prefix = "/api/fn",
     endpoint = "admin/registry-request-changes-publish-request"
 )]
-async fn request_changes_registry_publish_request_native(
+pub async fn request_changes_registry_publish_request_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4545,8 +2826,9 @@ async fn request_changes_registry_publish_request_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/registry-hold-publish-request")]
-async fn hold_registry_publish_request_native(
+pub async fn hold_registry_publish_request_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4579,8 +2861,9 @@ async fn hold_registry_publish_request_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/registry-resume-publish-request")]
-async fn resume_registry_publish_request_native(
+pub async fn resume_registry_publish_request_native(
     token: String,
     tenant: String,
     request_id: String,
@@ -4613,8 +2896,9 @@ async fn resume_registry_publish_request_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/registry-transfer-owner")]
-async fn transfer_registry_owner_native(
+pub async fn transfer_registry_owner_native(
     token: String,
     tenant: String,
     slug: String,
@@ -4658,8 +2942,9 @@ async fn transfer_registry_owner_native(
     }
 }
 
+
 #[server(prefix = "/api/fn", endpoint = "admin/registry-yank-release")]
-async fn yank_registry_release_native(
+pub async fn yank_registry_release_native(
     token: String,
     tenant: String,
     slug: String,
@@ -4693,356 +2978,4 @@ async fn yank_registry_release_native(
             "admin/registry-yank-release requires the `ssr` feature",
         ))
     }
-}
-
-pub async fn toggle_module(
-    module_slug: String,
-    enabled: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<ToggleModuleResult, ApiError> {
-    let response: ToggleModuleResponse = request(
-        TOGGLE_MODULE_MUTATION,
-        ToggleModuleVariables {
-            module_slug,
-            enabled,
-        },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.toggle_module)
-}
-
-pub async fn module_operation_recovery_plan(
-    operation_id: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Option<ModuleOperationRecoveryPlan>, ApiError> {
-    let response: ModuleOperationRecoveryPlanResponse = request(
-        MODULE_OPERATION_RECOVERY_PLAN_QUERY,
-        ModuleOperationRecoveryPlanVariables { operation_id },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.module_operation_recovery_plan)
-}
-
-pub async fn failed_module_operation_recovery_plans(
-    module_slug: Option<String>,
-    limit: Option<i32>,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<Vec<ModuleOperationRecoveryPlan>, ApiError> {
-    let response: FailedModuleOperationRecoveryPlansResponse = request(
-        FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY,
-        FailedModuleOperationRecoveryPlansVariables { module_slug, limit },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.failed_module_operation_recovery_plans)
-}
-
-pub async fn retry_failed_module_operation_post_hook(
-    operation_id: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<ModuleOperationRecoveryPlan, ApiError> {
-    let response: RetryFailedModuleOperationPostHookResponse = request(
-        RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION,
-        ModuleOperationRecoveryPlanVariables { operation_id },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.retry_failed_module_operation_post_hook)
-}
-
-pub async fn compensate_failed_module_operation(
-    operation_id: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<TenantModule, ApiError> {
-    let response: CompensateFailedModuleOperationResponse = request(
-        COMPENSATE_FAILED_MODULE_OPERATION_MUTATION,
-        ModuleOperationRecoveryPlanVariables { operation_id },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.compensate_failed_module_operation)
-}
-
-pub async fn update_module_settings(
-    module_slug: String,
-    settings: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<TenantModule, ApiError> {
-    match update_module_settings_native(module_slug.clone(), settings.clone()).await {
-        Ok(module) => Ok(module),
-        Err(server_err) => {
-            let response: UpdateModuleSettingsResponse = request(
-                UPDATE_MODULE_SETTINGS_MUTATION,
-                UpdateModuleSettingsVariables {
-                    module_slug,
-                    settings,
-                },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.update_module_settings)
-        }
-    }
-}
-
-pub async fn install_module(
-    slug: String,
-    version: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<BuildJob, ApiError> {
-    let response: InstallModuleResponse = request(
-        INSTALL_MODULE_MUTATION,
-        InstallModuleVariables { slug, version },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.install_module)
-}
-
-pub async fn uninstall_module(
-    slug: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<BuildJob, ApiError> {
-    let response: UninstallModuleResponse = request(
-        UNINSTALL_MODULE_MUTATION,
-        UninstallModuleVariables { slug },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.uninstall_module)
-}
-
-pub async fn upgrade_module(
-    slug: String,
-    version: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<BuildJob, ApiError> {
-    let response: UpgradeModuleResponse = request(
-        UPGRADE_MODULE_MUTATION,
-        UpgradeModuleVariables { slug, version },
-        token,
-        tenant_slug,
-    )
-    .await?;
-    Ok(response.upgrade_module)
-}
-
-pub async fn rollback_build(
-    build_id: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<BuildJob, ApiError> {
-    match rollback_build_native(build_id.clone()).await {
-        Ok(build) => Ok(build),
-        Err(server_err) => {
-            let response: RollbackBuildResponse = request(
-                ROLLBACK_BUILD_MUTATION,
-                RollbackBuildVariables { build_id },
-                token,
-                tenant_slug,
-            )
-            .await
-            .map_err(|graphql_err| combine_native_and_graphql_error(server_err, graphql_err))?;
-            Ok(response.rollback_build)
-        }
-    }
-}
-
-pub async fn validate_registry_publish_request(
-    request_id: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    validate_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn fetch_registry_publish_request_status(
-    request_id: String,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryPublishStatusContract, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    fetch_registry_publish_request_status_native(token, tenant_slug.unwrap_or_default(), request_id)
-        .await
-        .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn approve_registry_publish_request(
-    request_id: String,
-    reason: Option<String>,
-    reason_code: Option<String>,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    approve_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn reject_registry_publish_request(
-    request_id: String,
-    reason: String,
-    reason_code: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    reject_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn request_changes_registry_publish_request(
-    request_id: String,
-    reason: String,
-    reason_code: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    request_changes_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn hold_registry_publish_request(
-    request_id: String,
-    reason: String,
-    reason_code: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    hold_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn resume_registry_publish_request(
-    request_id: String,
-    reason: String,
-    reason_code: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    resume_registry_publish_request_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        request_id,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn transfer_registry_owner(
-    slug: String,
-    new_owner_user_id: String,
-    reason: String,
-    reason_code: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    transfer_registry_owner_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        slug,
-        new_owner_user_id,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
-}
-
-pub async fn yank_registry_release(
-    slug: String,
-    version: String,
-    reason: String,
-    reason_code: String,
-    dry_run: bool,
-    token: Option<String>,
-    tenant_slug: Option<String>,
-) -> Result<RegistryMutationResult, ApiError> {
-    let token = token.ok_or(ApiError::Unauthorized)?;
-    yank_registry_release_native(
-        token,
-        tenant_slug.unwrap_or_default(),
-        slug,
-        version,
-        reason,
-        reason_code,
-        dry_run,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))
 }
