@@ -10,7 +10,7 @@
 - Own media GraphQL and REST transport adapters for module-facing APIs.
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Integrate storage-backed file lifecycle with tenant-aware media records, including conservative cleanup probes and reports that never delete readable storage objects during orphan detection.
-- Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers) for SEO and other read-side consumers.
+- Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers, delivery profile, and public URL policy) for SEO and other read-side consumers.
 - Publish `MediaAssetReadPort` / `media.asset_read.v1` source-locked FBA evidence, including deadline/context guards and typed `PortError` retryability mapping for consumers.
 
 ## Interactions
@@ -36,6 +36,7 @@
 - `controllers::routes`
 - `rustok-media-admin`
 - `MediaStorageCleanupDecision` / `MediaStorageCleanupReport`
+- `MediaImageDescriptor` / `MediaImageDeliveryProfile` / `MediaImagePublicUrlPolicy`
 - `MediaItem`
 - `MediaTranslationItem`
 - `UploadInput`
@@ -45,7 +46,7 @@
 
 - Translation upserts normalize locale and text payloads before persistence: locale values are trimmed/lowercased, blank optional text fields become `None`, and translation lists are returned in locale order.
 - Server cleanup uses a read probe for the exact `storage_path`; readable objects keep their DB record, `NotFound`/`InvalidPath` remove only the DB record, and transient `Io`/`Backend` errors keep the record for a later retry.
-- FBA provider calls require non-zero `PortContext.deadline_ms`, UUID tenant context, non-retryable domain validation/access errors, and retryable unavailable errors for storage/database failures.
+- FBA provider calls require non-zero `PortContext.deadline_ms`, UUID tenant context, non-retryable domain validation/access errors, and retryable unavailable errors for storage/database failures. Descriptor consumers must emit only direct public URLs into public metadata; storage-relative descriptors are explicitly marked `ProxyRequired`.
 
 ## Docs
 
