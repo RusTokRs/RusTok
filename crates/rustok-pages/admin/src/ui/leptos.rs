@@ -1130,6 +1130,21 @@ fn PagesTable(
                                 let is_editing = item_view.is_editing;
                                 let is_published = item_view.is_published;
                                 let is_busy = item_view.is_busy;
+                                let action_state = core::admin_page_row_action_state(
+                                    is_busy,
+                                    busy_key.as_deref(),
+                                );
+                                let action_labels = core::admin_page_row_action_labels(
+                                    is_editing,
+                                    is_published,
+                                    action_state,
+                                    "...".to_string(),
+                                    t(locale.as_deref(), "pages.table.editing", "Editing"),
+                                    t(locale.as_deref(), "pages.table.edit", "Edit"),
+                                    t(locale.as_deref(), "pages.table.unpublish", "Unpublish"),
+                                    t(locale.as_deref(), "pages.table.publish", "Publish"),
+                                    t(locale.as_deref(), "pages.table.delete", "Delete"),
+                                );
 
                                 view! {
                                     <tr class=("bg-primary/5", is_editing)>
@@ -1156,17 +1171,7 @@ fn PagesTable(
                                                         move |_| on_edit.run(page_id.clone())
                                                     }
                                                 >
-                                                    {if is_busy && busy_key
-                                                        .as_deref()
-                                                        .map(|key| core::busy_key_matches_action(Some(key), "edit"))
-                                                        .unwrap_or(false)
-                                                    {
-                                                        "...".to_string()
-                                                    } else if is_editing {
-                                                        t(locale.as_deref(), "pages.table.editing", "Editing")
-                                                    } else {
-                                                        t(locale.as_deref(), "pages.table.edit", "Edit")
-                                                    }}
+                                                    {action_labels.edit}
                                                 </button>
                                                 <button
                                                     class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
@@ -1176,17 +1181,7 @@ fn PagesTable(
                                                         move |_| on_toggle_publish.run((page_id.clone(), !is_published))
                                                     }
                                                 >
-                                                    {if is_busy && busy_key
-                                                        .as_deref()
-                                                        .map(|key| core::busy_key_matches_action(Some(key), "publish"))
-                                                        .unwrap_or(false)
-                                                    {
-                                                        "...".to_string()
-                                                    } else if is_published {
-                                                        t(locale.as_deref(), "pages.table.unpublish", "Unpublish")
-                                                    } else {
-                                                        t(locale.as_deref(), "pages.table.publish", "Publish")
-                                                    }}
+                                                    {action_labels.publish}
                                                 </button>
                                                 <button
                                                     class="rounded-lg border border-destructive/30 px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:opacity-50"
@@ -1196,15 +1191,7 @@ fn PagesTable(
                                                         move |_| on_delete.run(page_id.clone())
                                                     }
                                                 >
-                                                    {if is_busy && busy_key
-                                                        .as_deref()
-                                                        .map(|key| core::busy_key_matches_action(Some(key), "delete"))
-                                                        .unwrap_or(false)
-                                                    {
-                                                        "...".to_string()
-                                                    } else {
-                                                        t(locale.as_deref(), "pages.table.delete", "Delete")
-                                                    }}
+                                                    {action_labels.delete}
                                                 </button>
                                             </div>
                                         </td>
