@@ -548,6 +548,65 @@ pub struct AdminPageListItemView {
     pub is_busy: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminPageRowActionLabels {
+    pub edit: String,
+    pub publish: String,
+    pub delete: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdminPageRowActionState {
+    pub edit_busy: bool,
+    pub publish_busy: bool,
+    pub delete_busy: bool,
+}
+
+pub fn admin_page_row_action_state(
+    is_busy: bool,
+    busy_key: Option<&str>,
+) -> AdminPageRowActionState {
+    AdminPageRowActionState {
+        edit_busy: is_busy && busy_key_matches_action(busy_key, "edit"),
+        publish_busy: is_busy && busy_key_matches_action(busy_key, "publish"),
+        delete_busy: is_busy && busy_key_matches_action(busy_key, "delete"),
+    }
+}
+
+pub fn admin_page_row_action_labels(
+    is_editing: bool,
+    is_published: bool,
+    state: AdminPageRowActionState,
+    busy_label: String,
+    editing_label: String,
+    edit_label: String,
+    unpublish_label: String,
+    publish_label: String,
+    delete_label: String,
+) -> AdminPageRowActionLabels {
+    AdminPageRowActionLabels {
+        edit: if state.edit_busy {
+            busy_label.clone()
+        } else if is_editing {
+            editing_label
+        } else {
+            edit_label
+        },
+        publish: if state.publish_busy {
+            busy_label.clone()
+        } else if is_published {
+            unpublish_label
+        } else {
+            publish_label
+        },
+        delete: if state.delete_busy {
+            busy_label
+        } else {
+            delete_label
+        },
+    }
+}
+
 pub fn admin_page_list_item_view(
     page: &PageListItem,
     editing_page_id: Option<&str>,
@@ -778,6 +837,30 @@ mod tests {
         assert!(view.is_editing);
         assert!(view.is_published);
         assert!(view.is_busy);
+    }
+
+    #[test]
+    fn admin_page_row_action_labels_are_core_owned() {
+        let state = admin_page_row_action_state(true, Some("publish:page_1"));
+        assert!(!state.edit_busy);
+        assert!(state.publish_busy);
+        assert!(!state.delete_busy);
+
+        let labels = admin_page_row_action_labels(
+            false,
+            true,
+            state,
+            "...".to_string(),
+            "Editing".to_string(),
+            "Edit".to_string(),
+            "Unpublish".to_string(),
+            "Publish".to_string(),
+            "Delete".to_string(),
+        );
+
+        assert_eq!(labels.edit, "Edit");
+        assert_eq!(labels.publish, "...");
+        assert_eq!(labels.delete, "Delete");
     }
 
     #[test]
