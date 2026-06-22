@@ -23,6 +23,7 @@ pub struct TenantResponse {
     pub slug: String,
     pub domain: Option<String>,
     pub is_active: bool,
+    pub default_locale: String,
     pub settings: serde_json::Value,
     pub created_at: String,
     pub updated_at: String,

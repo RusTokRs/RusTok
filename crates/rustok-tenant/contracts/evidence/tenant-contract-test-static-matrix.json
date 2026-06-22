@@ -31,5 +31,16 @@
       "hide_inactive_tenant",
       "show_tenant_resolution_retry"
     ]
+  },
+  "host_integration": {
+    "status": "source_locked_uncompiled",
+    "source": "apps/server/src/middleware/tenant.rs",
+    "assertions": [
+      "server_resolver_uses_tenant_read_port",
+      "resolver_preserves_uuid_slug_domain_selectors",
+      "resolver_requests_include_inactive_then_maps_disabled_to_forbidden_negative_cache",
+      "resolver_maps_not_found_to_negative_cache",
+      "resolver_keeps_cache_coalescing_around_owner_port"
+    ]
   }
 }
