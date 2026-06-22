@@ -5,7 +5,7 @@
 ## Execution checkpoint
 
 - Current phase: `fba_media_consumer_static_metadata`
-- Last checkpoint: SEO FBA media consumer static evidence is now source-locked against the media provider fallback-smoke packet: `seo-media-consumer-static-matrix.json` carries source assertions for `MediaAssetReadPort`, `MediaImageDescriptor`, the `SeoTargetImageRecord` alias and docs guardrails, while `scripts/verify/verify-seo-fba.mjs` validates provider/evidence drift without compilation.
+- Last checkpoint: no-compile D8/D9 evidence seed is tightened: `runtime-parity-fixtures.json` now contains a live artifact schema template, media descriptor fallback command row, signed-state preconditions for owner sign-off, and operations-runbook docs sync coverage; `verify-seo-runtime-fixtures.mjs` validates these closeout guards without compilation.
 - Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, включая SEO image descriptor fallback smoke для `MediaAssetReadPort`, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 или FBA boundary readiness закрытыми по static evidence.
 - Open blockers:
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
@@ -16,7 +16,7 @@
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для replay mode сохранять forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) без backward transitions.
   - Для Next runtime adapter сохранять semantic error mapping (`BAD_USER_INPUT` / `PERMISSION_DENIED` / `NOT_FOUND` / transport failures) и не возвращаться к blanket `catch {}`.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-21T00:00:00Z
 
 ## FFA/FBA status block
 
@@ -243,7 +243,7 @@
 - [ ] **Batch D9 — Docs / runbooks / readiness closeout (Milestone E, operational batch)**
   - [x] E.1 Обновить docs в `rustok-seo`, `rustok-seo-admin-support`, `rustok-seo-render`, `apps/storefront`, `apps/next-frontend`, `apps/next-admin`, central docs registry/index — compile-free sync matrix зафиксирована в `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json`.
   - [x] E.2 Финализировать baseline runbooks: `SEO event backlog stuck`, `Partial indexing failures`, `Replay/Reindex procedures` с rollback/stop criteria.
-  - [x] E.2a Зафиксировать compile-free incident evidence templates для backlog, partial indexing failures и replay/reindex drills.
+  - [x] E.2a Зафиксировать compile-free incident evidence templates для backlog, partial indexing failures и replay/reindex drills; добавить live artifact schema и signed-state preconditions для owner sign-off.
   - [ ] E.2b Дополнить runbooks live incident evidence после D8 backend/host прогонов.
   - [x] E.3 Зафиксировать owner sign-off checklist, owner closeout criteria и DoD/DoR для следующего execution wave — checklist seeded в runtime parity fixture; фактические подписи ждут live evidence.
 
