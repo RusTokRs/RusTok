@@ -12,7 +12,7 @@
 
 ## Interactions
 
-- Depends on `rustok-core` for module contracts.
+- Depends on `rustok-core` for module contracts and `rustok-api` for shared port context/error/write-policy primitives.
 - Used by `apps/server` auth lifecycle and operational notification paths.
 - Does not publish a dedicated RBAC surface.
 - Any admin-facing actions that trigger email delivery are authorized in `apps/server`

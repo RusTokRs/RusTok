@@ -19,11 +19,11 @@ if (registry.schema_version !== 1 || registry.module !== 'email' || registry.rol
 if (registry.contract_version !== 'email.delivery.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'EmailDeliveryPort' || !port.operations.includes('send_transactional_email')) fail('EmailDeliveryPort operation missing');
-if (port.context !== 'crates/rustok-email/src/ports.rs::PortContext' || port.error !== 'crates/rustok-email/src/ports.rs::PortError') fail('context/error drift');
+if (port.context !== 'rustok_api::PortContext' || port.error !== 'rustok_api::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== true) fail('email delivery must keep deadline + write idempotency semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/email-fba-registry.json"') || !manifest.includes('contract_version = "email.delivery.v1"')) fail('manifest FBA provider drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib must export ports');
-for (const marker of ['trait EmailDeliveryPort', 'impl EmailDeliveryPort for crate::EmailService', 'context.require_write_semantics()?', 'validate_delivery_request', 'EmailDeliveryReceipt', 'EmailProviderMode::DisabledNoop', 'PortErrorKind::Template', 'email.idempotency_required']) {
+for (const marker of ['trait EmailDeliveryPort', 'impl EmailDeliveryPort for crate::EmailService', 'require_email_delivery_policy(&context)?', 'PortCallPolicy::write()', 'validate_delivery_request', 'EmailDeliveryReceipt', 'EmailProviderMode::DisabledNoop', 'PortError::invariant_violation', 'email.idempotency_required']) {
   if (!ports.includes(marker)) fail(`ports marker missing ${marker}`);
 }
 for (const assertion of ['disabled_provider_noop_preserved', 'template_error_not_retryable']) {
