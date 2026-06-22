@@ -7,7 +7,7 @@
 ## Responsibilities
 
 - Provide `TenantModule` metadata for the runtime registry.
-- Manage tenant CRUD and legacy low-level module override state.
+- Manage tenant CRUD, domain lookup, and legacy low-level module override state.
 - Publish tenant lifecycle events (`tenant.created`, `tenant.updated`, `tenant.module.toggled`) via transactional outbox when `TenantService` is wired with `TransactionalEventBus`.
 - Publish the typed `tenants:*` and `modules:*` RBAC surface.
 - Keep tenant admin read flows aligned with tenant-scoped RBAC checks for both tenant and module permissions.
@@ -19,6 +19,7 @@
 - Used by `apps/server` tenant middleware, tenant admin flows, and module lifecycle orchestration.
 - Tenant resolver invariants for `header`/`host`/`subdomain` resolution and disabled/not-found
   semantics are covered in `apps/server/tests/tenant_resolver_invariants_test.rs`.
+- Exposes `TenantReadPort` (`tenant.read_projection.v1`) for transport-neutral read projections by tenant id, slug, or domain with shared `rustok_api::PortContext`/`PortError` deadline semantics.
 - Tenant provisioning/deprovisioning flows in the host are expected to invalidate tenant cache keys
   (`uuid` / `slug` / `host`) to avoid stale resolver state beyond TTL windows.
 - Exposes a module-owned Leptos admin overview through `rustok-tenant-admin`.
@@ -33,6 +34,7 @@
 
 - `TenantModule`
 - `TenantService` (including `TenantService::with_event_bus` for transactional outbox publishing)
+- `TenantReadPort` / `TenantReadRequest` / `TenantReadSelector`
 - `CreateTenantInput`
 - `UpdateTenantInput`
 - `ToggleModuleInput`

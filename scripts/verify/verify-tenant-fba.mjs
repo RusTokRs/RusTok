@@ -27,9 +27,9 @@ if (!port.operations.includes('read_tenant')) fail('port lacks read_tenant');
 if (port.context !== 'crates/rustok-tenant/src/ports.rs::PortContext' || port.error !== 'crates/rustok-tenant/src/ports.rs::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('tenant read projection must be read-like with deadline semantics');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/tenant-fba-registry.json"') || !manifest.includes('contract_version = "tenant.read_projection.v1"')) fail('manifest metadata drift');
-if (cargo.includes('rustok-api.workspace = true')) fail('tenant must not depend on rustok-api because rustok-api owns host API composition and already depends on tenant');
+if (!cargo.includes('rustok-api.workspace = true')) fail('tenant FBA provider must depend on shared rustok-api PortContext/PortError');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait TenantReadPort', 'impl TenantReadPort for crate::TenantService', 'context.require_deadline_semantics()?', 'TenantReadRequest', 'TenantReadProjection', 'tenant.slug_empty', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
+for (const marker of ['trait TenantReadPort', 'impl TenantReadPort for crate::TenantService', 'context.require_policy(PortCallPolicy::read())?', 'TenantReadRequest', 'TenantReadProjection', 'TenantReadSelector::Domain', 'get_tenant_by_domain', 'tenant.slug_empty', 'tenant.domain_empty', 'PortErrorKind::Validation', 'PortContext', 'PortError']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
 if (ports.includes('require_write_semantics()?')) fail('tenant read port must not require write idempotency');
@@ -44,7 +44,7 @@ const evidenceCase = evidence.cases.find((entry) => entry.operation === 'read_te
 if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'runtime_cases_authored_uncompiled' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('read_tenant evidence case drift');
 if (evidence.fallback_smoke.status !== 'runtime_smoke_authored_uncompiled') fail('fallback smoke status drift');
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-for (const marker of ['tenant_read_port_requires_deadline_and_valid_slug', 'tenant_read_port_preserves_projection_and_inactive_degraded_mode', 'PortErrorKind::Timeout', 'PortErrorKind::Validation', 'PortErrorKind::NotFound', 'include_inactive: true']) {
+for (const marker of ['tenant_read_port_requires_deadline_and_valid_slug', 'tenant_read_port_preserves_projection_and_inactive_degraded_mode', 'tenant_read_port_resolves_domain_and_validates_blank_domain', 'PortErrorKind::Timeout', 'PortErrorKind::Validation', 'PortErrorKind::NotFound', 'include_inactive: true', 'TenantReadSelector::Domain', 'tenant.domain_empty']) {
   if (!integrationTests.includes(marker)) fail(`integration tests missing ${marker}`);
 }
 console.log('[verify-tenant-fba] Tenant FBA provider metadata, port semantics and static evidence are consistent');

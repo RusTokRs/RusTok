@@ -10,6 +10,7 @@ pub use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErro
 pub enum TenantReadSelector {
     Id(Uuid),
     Slug(String),
+    Domain(String),
 }
 
 /// Transport-neutral request for tenant read-projection consumers.
@@ -54,6 +55,7 @@ impl TenantReadPort for crate::TenantService {
         let tenant = match request.selector {
             TenantReadSelector::Id(id) => self.get_tenant(id).await,
             TenantReadSelector::Slug(slug) => self.get_tenant_by_slug(&slug).await,
+            TenantReadSelector::Domain(domain) => self.get_tenant_by_domain(&domain).await,
         }
         .map_err(map_tenant_error)?;
 
@@ -79,8 +81,8 @@ impl TenantReadPort for crate::TenantService {
 }
 
 fn validate_tenant_read_request(request: &TenantReadRequest) -> Result<(), PortError> {
-    if let TenantReadSelector::Slug(slug) = &request.selector {
-        if slug.trim().is_empty() {
+    match &request.selector {
+        TenantReadSelector::Slug(slug) if slug.trim().is_empty() => {
             return Err(PortError::new(
                 PortErrorKind::Validation,
                 "tenant.slug_empty",
@@ -88,6 +90,15 @@ fn validate_tenant_read_request(request: &TenantReadRequest) -> Result<(), PortE
                 false,
             ));
         }
+        TenantReadSelector::Domain(domain) if domain.trim().is_empty() => {
+            return Err(PortError::new(
+                PortErrorKind::Validation,
+                "tenant.domain_empty",
+                "tenant read port requires a non-empty domain selector",
+                false,
+            ));
+        }
+        _ => {}
     }
     Ok(())
 }

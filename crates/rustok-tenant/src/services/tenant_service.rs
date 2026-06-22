@@ -93,6 +93,16 @@ impl TenantService {
         Ok(to_tenant_response(model))
     }
 
+    #[instrument(skip(self), fields(domain = %domain))]
+    pub async fn get_tenant_by_domain(&self, domain: &str) -> TenantResult<TenantResponse> {
+        let model = tenant::Entity::find()
+            .filter(tenant::Column::Domain.eq(domain))
+            .one(&self.db)
+            .await?
+            .ok_or(TenantError::NotFound)?;
+        Ok(to_tenant_response(model))
+    }
+
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
     pub async fn update_tenant(
         &self,
