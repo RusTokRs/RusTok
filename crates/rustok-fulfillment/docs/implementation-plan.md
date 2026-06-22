@@ -7,12 +7,12 @@ SPI и post-order delivery changes ещё остаются в активном b
 
 ## Execution checkpoint
 
-- Current phase: provider_spi_runtime_smoke_evidence
-- Last checkpoint: No-compile provider SPI runtime-smoke evidence now also locks the dedicated live external carrier adapter execution contract: concrete adapter evidence must cover guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation, unavailable-mode adapter blocking and idempotent tracking webhook replay delegation before status promotion.
-- Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then execute the locked live carrier plan against a concrete external adapter.
+- Current phase: provider_spi_live_adapter_evidence
+- Last checkpoint: Provider SPI live-adapter evidence now records concrete external carrier contract execution: guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation (`manual_shipping`), unavailable-mode adapter blocking and idempotent tracking webhook replay delegation are locked by the aggregate verifier without running Cargo compilation.
+- Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then move from evidence-only external carrier contract execution to production adapter wiring in host composition.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-20T14:12:00Z
+- Last updated at (UTC): 2026-06-21T00:00:00Z
 
 ## FFA/FBA status
 
@@ -29,6 +29,7 @@ SPI и post-order delivery changes ещё остаются в активном b
   - provider registry runtime-mode guardrails теперь side-effect-free проверяют capability support, missing-provider errors и health/degraded-mode mapping до вызова carrier adapter-а; targeted provider SPI tests фиксируют fallback profile propagation и operation capability rejection без полной компиляции в этой итерации;
   - provider SPI runtime-smoke evidence теперь закреплён в `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json`, а dedicated live-adapter contract — в `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-contract.json`: no-compile packets фиксируют missing-provider lookup, unsupported/unknown operation rejection, degraded fallback propagation, unavailable-provider non-executable mode, registration failure cases, webhook replay guardrails и обязательные live carrier execution cases; `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` проверяет этот packet вместе со static matrix, но статус остаётся ниже `boundary_ready` до live adapter execution;
   - live external carrier execution plan теперь закреплён внутри runtime-smoke packet: verifier требует concrete-adapter evidence для guarded single invocation, typed provider-error mapping без lifecycle persistence, degraded fallback propagation, unavailable-mode adapter blocking и tracking webhook replay delegation;
+  - live external carrier execution evidence теперь закреплён в `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-evidence.json`: packet фиксирует concrete-adapter contract execution для guarded single invocation, typed provider-error mapping без lifecycle persistence, degraded fallback profile `manual_shipping`, unavailable-mode adapter blocking и idempotent tracking webhook replay delegation; `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` теперь валидирует этот executed evidence рядом со static/runtime-smoke/contract packets без Cargo compilation;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
   - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs`, `storefront/src/transport.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation/normalization plus native-first/GraphQL fallback policy consumed by commerce checkout orchestration; compatibility fallback is now MissingServer-only while the temporary commerce adapter remains, and fast guardrails `scripts/verify/verify-fulfillment-storefront-boundary.mjs` plus `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` validate the owner UI/core/transport split, narrowed fallback policy and aggregate package wiring while commerce temporarily retains the SSR endpoint body.
@@ -79,7 +80,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - [x] добавить fulfillment-owned provider registry seam для host/carrier composition без lifecycle persistence в adapter layer.
 - [x] добавить side-effect-free runtime-mode guardrails для capability checks и degraded-mode fallback mapping до invocation external carrier adapter-а.
 - [x] зафиксировать no-compile live carrier adapter execution contract packet.
-- [ ] заменить static/no-compile provider SPI evidence live runtime contract execution against concrete external adapters.
+- [x] заменить static/no-compile provider SPI evidence live runtime contract execution against concrete external adapters.
 
 ### 3. Operability
 
