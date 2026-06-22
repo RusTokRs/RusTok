@@ -3,13 +3,13 @@ use std::sync::Arc;
 use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
-    entities::{tenant, tenant_module},
     CreateTenantInput, PortActor, PortContext, PortErrorKind, TenantError, TenantReadPort,
     TenantReadRequest, TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
+    entities::{tenant, tenant_module},
 };
 use sea_orm::{
-    sea_query::TableCreateStatement, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    EntityTrait, QueryOrder, Schema,
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, QueryOrder, Schema,
+    sea_query::TableCreateStatement,
 };
 
 async fn setup_db() -> DatabaseConnection {
@@ -286,6 +286,63 @@ async fn tenant_read_port_preserves_projection_and_inactive_degraded_mode() {
 }
 
 #[tokio::test]
+async fn tenant_read_port_resolves_domain_and_validates_blank_domain() {
+    let db = setup_db().await;
+    let service = TenantService::new(db);
+
+    let tenant = service
+        .create_tenant(CreateTenantInput {
+            name: "Domain Read Tenant".to_string(),
+            slug: "domain-read-tenant".to_string(),
+            domain: Some("domain-read.example".to_string()),
+        })
+        .await
+        .expect("tenant should be created");
+
+    let projection = service
+        .read_tenant(
+            PortContext::new(
+                tenant.id.to_string(),
+                PortActor::service("tenant-domain-resolution-test"),
+                "en",
+                "corr-domain-read".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(500)),
+            TenantReadRequest {
+                selector: TenantReadSelector::Domain("domain-read.example".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect("domain selector should resolve the tenant projection");
+
+    assert_eq!(projection.id, tenant.id);
+    assert_eq!(projection.slug, "domain-read-tenant");
+    assert_eq!(projection.domain.as_deref(), Some("domain-read.example"));
+
+    let blank_domain = service
+        .read_tenant(
+            PortContext::new(
+                tenant.id.to_string(),
+                PortActor::service("tenant-domain-resolution-test"),
+                "en",
+                "corr-blank-domain".to_string(),
+            )
+            .with_deadline(std::time::Duration::from_millis(500)),
+            TenantReadRequest {
+                selector: TenantReadSelector::Domain("   ".to_string()),
+                include_inactive: false,
+            },
+        )
+        .await
+        .expect_err("blank domain selectors must map to typed validation errors");
+
+    assert_eq!(blank_domain.kind, PortErrorKind::Validation);
+    assert_eq!(blank_domain.code, "tenant.domain_empty");
+    assert!(!blank_domain.retryable);
+}
+
+#[tokio::test]
 #[allow(deprecated)]
 async fn module_toggle_flow_legacy() {
     let db = setup_db().await;
@@ -383,15 +440,21 @@ async fn tenant_mutations_publish_outbox_events() {
         .expect("outbox events should load");
 
     assert_eq!(events.len(), 3);
-    assert!(events
-        .iter()
-        .any(|event| event.event_type == "tenant.created"));
-    assert!(events
-        .iter()
-        .any(|event| event.event_type == "tenant.updated"));
-    assert!(events
-        .iter()
-        .any(|event| event.event_type == "tenant.module.toggled"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.created")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.updated")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.module.toggled")
+    );
 
     let module_toggle_payload = events
         .iter()

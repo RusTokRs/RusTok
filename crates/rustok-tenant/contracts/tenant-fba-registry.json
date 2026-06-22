@@ -8,7 +8,9 @@
     {
       "name": "TenantReadPort",
       "owner": "tenant",
-      "operations": ["read_tenant"],
+      "operations": [
+        "read_tenant"
+      ],
       "context": "crates/rustok-tenant/src/ports.rs::PortContext",
       "error": "crates/rustok-tenant/src/ports.rs::PortError",
       "idempotency_required": false,
@@ -18,7 +20,7 @@
   "consumers": [
     {
       "module": "server-hosts",
-      "profile": "tenant_resolution_read_projection",
+      "profile": "tenant_resolution_read_projection_by_id_slug_domain",
       "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"],
       "fallback_profiles": ["embedded_native"]
     }
@@ -42,7 +44,7 @@
       {
         "operation": "read_tenant",
         "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_tenant_degraded_mode_preserved"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "slug_and_domain_resolution_preserved", "inactive_tenant_degraded_mode_preserved"]
       }
     ],
     "fallback_smoke": {

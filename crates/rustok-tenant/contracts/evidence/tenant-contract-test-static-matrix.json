@@ -5,17 +5,31 @@
   "generated_from": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
   "runner": "scripts/verify/verify-tenant-fba.mjs",
   "contract_version": "tenant.read_projection.v1",
-  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "profiles": [
+    "in_process",
+    "remote_adapter_placeholder"
+  ],
   "cases": [
     {
       "operation": "read_tenant",
       "execution_status": "runtime_cases_authored_uncompiled",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "inactive_tenant_degraded_mode_preserved"]
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "tenant_scope_preserved",
+        "slug_and_domain_resolution_preserved",
+        "inactive_tenant_degraded_mode_preserved"
+      ]
     }
   ],
   "fallback_smoke": {
     "status": "runtime_smoke_authored_uncompiled",
-    "profiles": ["embedded_native"],
-    "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"]
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "hide_inactive_tenant",
+      "show_tenant_resolution_retry"
+    ]
   }
 }
