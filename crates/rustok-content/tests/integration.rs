@@ -12,8 +12,8 @@ use rustok_core::{DomainEvent, MemoryTransport, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    EntityTrait, QueryFilter, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DbBackend, EntityTrait, QueryFilter, Statement,
 };
 use uuid::Uuid;
 
@@ -316,6 +316,64 @@ fn orchestration_security() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
+async fn seed_canonical_url(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    target_kind: &str,
+    target_id: Uuid,
+    locale: &str,
+    canonical: &str,
+) {
+    let now = chrono::Utc::now().fixed_offset();
+    canonical_url::ActiveModel {
+        id: sea_orm::ActiveValue::Set(Uuid::new_v4()),
+        tenant_id: sea_orm::ActiveValue::Set(tenant_id),
+        target_kind: sea_orm::ActiveValue::Set(target_kind.to_string()),
+        target_id: sea_orm::ActiveValue::Set(target_id),
+        locale: sea_orm::ActiveValue::Set(locale.to_string()),
+        canonical_url: sea_orm::ActiveValue::Set(canonical.to_string()),
+        created_at: sea_orm::ActiveValue::Set(now),
+        updated_at: sea_orm::ActiveValue::Set(now),
+    }
+    .insert(db)
+    .await
+    .expect("failed to seed canonical URL");
+}
+
+async fn assert_no_orchestration_side_effects(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    receiver: &mut tokio::sync::broadcast::Receiver<EventEnvelope>,
+) {
+    let operations = orchestration_operation::Entity::find()
+        .filter(orchestration_operation::Column::TenantId.eq(tenant_id))
+        .all(db)
+        .await
+        .expect("operations query should succeed");
+    let audits = orchestration_audit_log::Entity::find()
+        .filter(orchestration_audit_log::Column::TenantId.eq(tenant_id))
+        .all(db)
+        .await
+        .expect("audit query should succeed");
+    let aliases = url_alias::Entity::find()
+        .filter(url_alias::Column::TenantId.eq(tenant_id))
+        .all(db)
+        .await
+        .expect("alias query should succeed");
+    let envelopes = drain_event_envelopes(receiver);
+
+    assert!(
+        operations.is_empty(),
+        "collision must not persist idempotency state"
+    );
+    assert!(audits.is_empty(), "collision must not persist audit state");
+    assert!(aliases.is_empty(), "collision must not insert aliases");
+    assert!(
+        envelopes.is_empty(),
+        "collision must not publish outbox events"
+    );
+}
+
 #[tokio::test]
 async fn test_promote_topic_to_post_is_idempotent_and_publishes_single_event() {
     let db = setup_content_test_db().await;
@@ -565,4 +623,98 @@ async fn test_split_topic_rejects_empty_reply_list_before_bridge_call() {
 
     assert!(matches!(err, rustok_content::ContentError::Validation(_)));
     assert_eq!(bridge.split_calls.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn test_promote_rejects_cross_target_canonical_collision_without_side_effects() {
+    let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let mut receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let bridge = Arc::new(MockBridge::new());
+    let orchestration = ContentOrchestrationService::new(db.clone(), event_bus, bridge.clone());
+
+    let tenant_id = Uuid::new_v4();
+    seed_canonical_url(
+        &db,
+        tenant_id,
+        "blog_post",
+        Uuid::new_v4(),
+        "en-US",
+        "/modules/blog?slug=hello",
+    )
+    .await;
+
+    let err = orchestration
+        .promote_topic_to_post(
+            tenant_id,
+            orchestration_security(),
+            PromoteTopicToPostInput {
+                topic_id: Uuid::new_v4(),
+                locale: "en-US".to_string(),
+                blog_category_id: None,
+                reason: Some("collision guard".to_string()),
+                idempotency_key: "promote-canonical-collision".to_string(),
+            },
+        )
+        .await
+        .expect_err("cross-target canonical collision must fail");
+
+    match err {
+        rustok_content::ContentError::Validation(message) => {
+            assert!(message.contains("already belongs to another content target"));
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+    assert_eq!(bridge.promote_calls.load(Ordering::Relaxed), 1);
+    assert_no_orchestration_side_effects(&db, tenant_id, &mut receiver).await;
+}
+
+#[tokio::test]
+async fn test_promote_rejects_alias_shadowing_other_canonical_without_side_effects() {
+    let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let mut receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let bridge = Arc::new(MockBridge::new());
+    let orchestration = ContentOrchestrationService::new(db.clone(), event_bus, bridge.clone());
+
+    let tenant_id = Uuid::new_v4();
+    seed_canonical_url(
+        &db,
+        tenant_id,
+        "forum_topic",
+        Uuid::new_v4(),
+        "en-US",
+        "/modules/forum?topic=legacy",
+    )
+    .await;
+
+    let err = orchestration
+        .promote_topic_to_post(
+            tenant_id,
+            orchestration_security(),
+            PromoteTopicToPostInput {
+                topic_id: Uuid::new_v4(),
+                locale: "en-US".to_string(),
+                blog_category_id: None,
+                reason: Some("alias shadow guard".to_string()),
+                idempotency_key: "promote-alias-shadow".to_string(),
+            },
+        )
+        .await
+        .expect_err("alias shadowing another canonical route must fail");
+
+    match err {
+        rustok_content::ContentError::Validation(message) => {
+            assert!(message.contains("would shadow another target canonical URL"));
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
+    assert_eq!(bridge.promote_calls.load(Ordering::Relaxed), 1);
+    assert_no_orchestration_side_effects(&db, tenant_id, &mut receiver).await;
 }
