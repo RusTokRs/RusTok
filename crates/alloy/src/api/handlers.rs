@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::SeaOrmExecutionLog;
 use crate::error::ScriptError;
-use crate::model::{EntityProxy, ScriptStatus};
+use crate::model::EntityProxy;
 use crate::runner::ScriptOrchestrator;
 use crate::storage::{ScriptQuery, ScriptRegistry};
 use crate::utils::{dynamic_to_json, json_to_dynamic};
@@ -74,7 +74,10 @@ pub async fn list_scripts<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
     Query(query): Query<ListScriptsQuery>,
 ) -> ApiResult<Json<ListScriptsResponse>> {
-    let script_query = match query.status.as_deref().and_then(ScriptStatus::parse) {
+    let script_query = match query.status_filter().map_err(|message| ApiError {
+        error: message,
+        code: "validation".to_string(),
+    })? {
         Some(status) => ScriptQuery::ByStatus(status),
         None => ScriptQuery::All,
     };

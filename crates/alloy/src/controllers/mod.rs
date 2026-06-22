@@ -12,7 +12,7 @@ use rustok_api::TenantContext;
 use uuid::Uuid;
 
 use crate::{
-    ScriptError, ScriptRegistry,
+    ScriptError,
     api::{
         CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
         ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
@@ -51,7 +51,7 @@ pub async fn list_scripts(
     Query(query): Query<ListScriptsQuery>,
 ) -> Result<Json<ListScriptsResponse>> {
     let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
-    let script_query = match query.status.as_deref().and_then(ScriptStatus::parse) {
+    let script_query = match query.status_filter().map_err(Error::BadRequest)? {
         Some(status) => crate::storage::ScriptQuery::ByStatus(status),
         None => crate::storage::ScriptQuery::All,
     };
