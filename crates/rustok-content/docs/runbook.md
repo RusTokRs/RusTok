@@ -6,7 +6,7 @@ Operational procedures for `rustok-content` in production and staging environmen
 
 ## Verification gate
 
-Run `npm run verify:content:orchestration` after any change to orchestration commands, canonical URL mapping, route resolution, local docs, or the central content registry row. The gate is compile-free and checks RBAC/idempotency/audit/outbox invariants, canonical/alias collision guards, alias-first redirects, shared locale fallback usage, and documentation sync.
+Run `npm run verify:content:orchestration` after any change to orchestration commands, canonical URL mapping, route resolution, local docs, or the central content registry row. The gate is compile-free and checks RBAC/idempotency/audit/outbox invariants, canonical/alias collision guards, targeted rollback/no-outbox evidence markers, alias-first redirects, shared locale fallback usage, and documentation sync.
 
 ---
 

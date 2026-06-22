@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-20T00:00:00Z",
+  "updatedAt": "2026-06-21T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -209,7 +209,7 @@
   ],
   "d8EvidencePacket": {
     "status": "lightweight_static_baseline",
-    "capturedAt": "2026-06-17T00:00:00Z",
+    "capturedAt": "2026-06-21T00:00:00Z",
     "compilationPolicy": "not_run_by_request",
     "coveredBatches": [
       "D8.1 fixture invariants",
@@ -228,7 +228,10 @@
       "D9.3 owner closeout criteria matrix",
       "D8.1 targeted unit coverage inventory",
       "D8.2 integration matrix execution plan",
-      "D8.4 live artifact manifest template"
+      "D8.4 live artifact manifest template",
+      "D8.4 runtime artifact schema template",
+      "D9.2 runbook live drill acceptance matrix",
+      "D9.3 signed-state transition guard"
     ],
     "deferredBatches": [
       "D8.1 Rust unit execution",
@@ -253,7 +256,9 @@
       "missing owner closeout acceptance criteria",
       "targeted unit inventory source token missing",
       "integration matrix lacks GraphQL REST host and media-fallback surfaces",
-      "live artifact manifest lacks before/after counters or redaction policy"
+      "live artifact manifest lacks before/after counters or redaction policy",
+      "live artifact manifest lacks semantic error samples",
+      "owner sign-off moved to signed before artifact review"
     ]
   },
   "docsSyncMatrix": [
@@ -296,6 +301,16 @@
         "host parity evidence"
       ],
       "status": "synced_compile_free"
+    },
+    {
+      "scope": "SEO operations runbook",
+      "path": "crates/rustok-seo/docs/operations-runbook.md",
+      "covers": [
+        "D9 incident drill templates",
+        "live evidence closeout criteria",
+        "owner sign-off preconditions"
+      ],
+      "status": "synced_compile_free"
     }
   ],
   "ownerSignoffChecklist": [
@@ -307,7 +322,12 @@
         "semantic error parity",
         "idempotency/cursor invariants"
       ],
-      "status": "pending_live_runtime_evidence"
+      "status": "pending_live_runtime_evidence",
+      "mayMoveToSignedWhen": [
+        "all requiredEvidence artifacts attached",
+        "no unresolved high-severity defects",
+        "owner reviewed redacted samples"
+      ]
     },
     {
       "owner": "Frontends",
@@ -317,7 +337,12 @@
         "robots/sitemap runtime source smoke",
         "operator repair/replay smoke"
       ],
-      "status": "pending_live_runtime_evidence"
+      "status": "pending_live_runtime_evidence",
+      "mayMoveToSignedWhen": [
+        "all requiredEvidence artifacts attached",
+        "no unresolved high-severity defects",
+        "owner reviewed redacted samples"
+      ]
     },
     {
       "owner": "Domain modules",
@@ -327,7 +352,12 @@
         "owner route metadata smoke",
         "no host-local entity SEO editors"
       ],
-      "status": "static_evidence_seeded"
+      "status": "static_evidence_seeded",
+      "mayMoveToSignedWhen": [
+        "all requiredEvidence artifacts attached",
+        "no unresolved high-severity defects",
+        "owner reviewed redacted samples"
+      ]
     }
   ],
   "liveEvidencePlan": {
@@ -634,6 +664,15 @@
           "repair replay success sample",
           "semantic error sample"
         ]
+      },
+      {
+        "surface": "media_descriptor_fallback_smoke",
+        "command": "live MediaAssetReadPort fallback smoke for SEO consumer (backend/host runtime required)",
+        "requiredArtifacts": [
+          "MediaAssetReadPort unavailable sample",
+          "SEO page context without image metadata",
+          "existing explicit SEO image preservation sample"
+        ]
       }
     ],
     "redactionRules": [
@@ -858,5 +897,65 @@
       "preserve route/target_kind/status/error code fields"
     ],
     "closeoutRule": "All requiredFiles must be attached, counters must include before/after snapshots, and ownerSignoffChecklist rows may move to signed only after artifacts are reviewed."
+  },
+  "liveArtifactSchemaTemplate": {
+    "status": "template_only_pending_d8_runtime",
+    "requiredTopLevelFields": [
+      "captured_at",
+      "environment",
+      "surface",
+      "command_or_ci_job",
+      "before",
+      "after",
+      "samples",
+      "redactions_applied",
+      "result"
+    ],
+    "environmentFields": [
+      "git_sha",
+      "tenant_id_redacted",
+      "seo_flags",
+      "host_base_url_redacted",
+      "backend_base_url_redacted"
+    ],
+    "sampleFields": [
+      "route",
+      "target_kind",
+      "transport",
+      "status_code",
+      "semantic_error_code",
+      "fallback_reason",
+      "artifact_path"
+    ],
+    "resultFields": [
+      "passed",
+      "high_severity_defects",
+      "owner_review_required"
+    ],
+    "counterSnapshots": {
+      "before": [
+        "pending",
+        "sent",
+        "retry",
+        "failed",
+        "dead_letter",
+        "replay_mode"
+      ],
+      "after": [
+        "pending",
+        "sent",
+        "retry",
+        "failed",
+        "dead_letter",
+        "replay_mode"
+      ]
+    },
+    "redactionMustRemove": [
+      "auth tokens",
+      "cookies",
+      "tenant secrets",
+      "customer/user identifiers"
+    ],
+    "closeoutRule": "Every liveArtifactManifestTemplate.requiredFiles item must conform to this shape or document an explicit equivalent CI artifact URL."
   }
 }

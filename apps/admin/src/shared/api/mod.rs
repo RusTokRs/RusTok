@@ -83,10 +83,14 @@ pub fn combine_native_and_graphql_error(
     server_err: leptos::prelude::ServerFnError,
     graphql_err: ApiError,
 ) -> ApiError {
+    let err_str = server_err.to_string();
+    let clean_err = err_str.strip_prefix("error running server function: ").unwrap_or(&err_str);
+    let graph_str = graphql_err.to_string();
+    let clean_graph = graph_str.strip_prefix("GraphQL error: ").unwrap_or(&graph_str);
     let payload = serde_json::json!({
         "kind": "dual_path_failure",
-        "native": server_err.to_string(),
-        "graphql": graphql_err.to_string(),
+        "native": clean_err,
+        "graphql": clean_graph,
     });
     ApiError::Graphql(format!("dual-path failure {}", payload))
 }
@@ -156,20 +160,24 @@ fn map_server_fn_error(error: ServerFnError) -> ApiError {
 
 #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
 fn normalize_server_fn_error_message(message: &str) -> ApiError {
-    if message == "Unauthorized" {
+    let mut clean_msg = message;
+    if let Some(stripped) = clean_msg.strip_prefix("error running server function: ") {
+        clean_msg = stripped;
+    }
+    if clean_msg == "Unauthorized" {
         return ApiError::Unauthorized;
     }
-    if message == "Network error" {
+    if clean_msg == "Network error" {
         return ApiError::Network;
     }
-    if let Some(value) = message.strip_prefix("Http error: ") {
+    if let Some(value) = clean_msg.strip_prefix("Http error: ") {
         return ApiError::Http(value.to_string());
     }
-    if let Some(value) = message.strip_prefix("GraphQL error: ") {
+    if let Some(value) = clean_msg.strip_prefix("GraphQL error: ") {
         return ApiError::Graphql(value.to_string());
     }
 
-    ApiError::Graphql(message.to_string())
+    ApiError::Graphql(clean_msg.to_string())
 }
 
 #[cfg(all(

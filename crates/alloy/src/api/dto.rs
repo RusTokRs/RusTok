@@ -66,6 +66,16 @@ fn default_per_page() -> u32 {
 }
 
 impl ListScriptsQuery {
+    pub fn status_filter(&self) -> Result<Option<ScriptStatus>, String> {
+        self.status
+            .as_deref()
+            .map(|status| {
+                ScriptStatus::parse(status)
+                    .ok_or_else(|| format!("Unsupported script status filter: {status}"))
+            })
+            .transpose()
+    }
+
     pub fn offset(&self) -> u64 {
         (self.normalized_page().saturating_sub(1) as u64) * self.limit()
     }
@@ -367,6 +377,27 @@ mod tests {
         };
         assert_eq!(zero_page.normalized_page(), 1);
         assert_eq!(zero_page.offset(), 0);
+    }
+
+    #[test]
+    fn list_scripts_query_rejects_unknown_status_filter() {
+        let valid = ListScriptsQuery {
+            page: 1,
+            per_page: 20,
+            status: Some("active".to_string()),
+        };
+        assert_eq!(valid.status_filter(), Ok(Some(ScriptStatus::Active)));
+
+        let invalid = ListScriptsQuery {
+            page: 1,
+            per_page: 20,
+            status: Some("retired".to_string()),
+        };
+
+        assert_eq!(
+            invalid.status_filter(),
+            Err("Unsupported script status filter: retired".to_string())
+        );
     }
 
     #[test]

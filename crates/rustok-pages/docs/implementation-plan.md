@@ -51,6 +51,7 @@
 - Latest Wave 1 hold update: `verify-page-builder-wave1-readiness-draft.mjs` теперь закрепляет draft-only invariants для pending tenant, draft change-set namespace, pending metric markers, pending approvals, hold rollback reason и отсутствие waivers; package script `npm run verify:page-builder:wave1-readiness-draft` добавлен без Cargo-компиляции.
 - Latest observability gate update: `crates/rustok-page-builder/contracts/page-builder-correlation-contract.json` и `verify-page-builder-correlation-evidence.mjs` фиксируют no-compile correlation chain `builder write -> pages publish -> storefront read` для Wave 0/Wave 1 packets и source markers в pages publish/storefront read paths.
 - Latest FFA maintenance update: admin table item state/fallback mapping (`admin_page_list_item_view`) и storefront published list item mapping (`storefront_page_list_item_view`) вынесены в `core`, а package-level `verify:pages:ui-boundary` scripts восстановлены после JSON drift без Cargo-компиляции.
+- Latest FFA maintenance update: admin table row action busy/label mapping (`admin_page_row_action_state`, `admin_page_row_action_labels`) вынесен в `admin/src/core.rs`, Leptos adapter оставлен thin render/callback layer, а `verify-pages-ui-boundary.mjs` закрепляет новые no-compile markers.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -321,6 +322,7 @@ Rollback target: переключение tenant flags назад должно �
 - [x] Slice 21: admin save/publish busy-state helpers moved to core (`is_save_action_busy`, `is_publish_action_disabled`).
 - [x] Slice 22: storefront load-error composition moved to core (`load_error_message`).
 - [x] Slice 23: admin table row fallback/state view moved to core (`admin_page_list_item_view`).
+- [x] Slice 25: admin table row action busy/label view moved to core (`admin_page_row_action_state`, `admin_page_row_action_labels`).
 - [x] Slice 24: storefront published list item view moved to core (`storefront_page_list_item_view`).
 
 

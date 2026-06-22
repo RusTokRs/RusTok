@@ -8,6 +8,7 @@ const resolver = read('crates/rustok-content/src/services/canonical_url_service.
 const plan = read('crates/rustok-content/docs/implementation-plan.md');
 const docs = read('crates/rustok-content/docs/README.md');
 const runbook = read('crates/rustok-content/docs/runbook.md');
+const integrationTests = read('crates/rustok-content/tests/integration.rs');
 const registry = read('docs/modules/registry.md');
 const pkg = read('package.json');
 
@@ -102,6 +103,17 @@ check(
   'canonical mutation helper publishes URL outbox events',
   includesAll(service, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
   'canonical URL changes must emit both URL events when aliases are present',
+);
+check(
+  'canonical collision integration evidence covers rollback/no outbox side effects',
+  includesAll(integrationTests, [
+    'test_promote_rejects_cross_target_canonical_collision_without_side_effects',
+    'test_promote_rejects_alias_shadowing_other_canonical_without_side_effects',
+    'assert_no_orchestration_side_effects',
+    'collision must not persist idempotency state',
+    'collision must not publish outbox events',
+  ]),
+  'integration tests must cover canonical collision and alias-shadow rollback/no-outbox evidence',
 );
 check(
   'route resolver keeps alias-first redirect semantics',

@@ -82,6 +82,9 @@ availability из побочных эффектов регистрации.
    metadata из базы данных и сортируются newest-first.
    Ответы возвращают canonical fields: execution id, script id/name, phase,
    outcome, duration, error, user/tenant context и creation time.
-5. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
+5. Для списка scripts используйте только известные `status` значения; unknown
+   status должен возвращать validation error и не должен расширять выборку до
+   all scripts.
+6. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.

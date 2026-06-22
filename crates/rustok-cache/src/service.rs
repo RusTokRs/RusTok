@@ -315,6 +315,37 @@ impl CacheInvalidationMessage {
             key: key.into(),
         }
     }
+
+    /// Build a validated invalidation message.
+    ///
+    /// Invalidation channels are shared across Redis pub/sub and local fan-out,
+    /// so empty/whitespace-only channels or keys are rejected before a message
+    /// can be published. The non-validating `new` constructor remains available
+    /// for existing callers and tests that already own validation.
+    pub fn try_new(
+        channel: impl Into<String>,
+        key: impl Into<String>,
+    ) -> Result<Self, CacheInvalidationMessageError> {
+        let message = Self::new(channel, key);
+        message.validate()?;
+        Ok(message)
+    }
+
+    pub fn validate(&self) -> Result<(), CacheInvalidationMessageError> {
+        if self.channel.trim().is_empty() {
+            return Err(CacheInvalidationMessageError::EmptyChannel);
+        }
+        if self.key.trim().is_empty() {
+            return Err(CacheInvalidationMessageError::EmptyKey);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheInvalidationMessageError {
+    EmptyChannel,
+    EmptyKey,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,6 +379,21 @@ impl CacheInvalidationService {
 
     pub fn subscribe_local(&self) -> broadcast::Receiver<CacheInvalidationMessage> {
         self.local.subscribe()
+    }
+
+    /// Subscribe to local invalidations for a single namespace.
+    ///
+    /// This mirrors Redis channel subscription semantics for in-process listeners:
+    /// unrelated local invalidations are skipped, while lag/closed receiver errors
+    /// are still surfaced to the caller.
+    pub fn subscribe_local_channel(
+        &self,
+        channel: impl Into<String>,
+    ) -> LocalCacheInvalidationSubscription {
+        LocalCacheInvalidationSubscription {
+            channel: channel.into(),
+            receiver: self.local.subscribe(),
+        }
     }
 
     /// Consume Redis pub/sub messages for a cache invalidation channel until the
@@ -423,6 +469,14 @@ impl CacheInvalidationService {
     }
 
     pub async fn publish(&self, message: CacheInvalidationMessage) -> CacheInvalidationOutcome {
+        if let Err(error) = message.validate() {
+            tracing::warn!(?error, "Ignoring invalid cache invalidation message");
+            return CacheInvalidationOutcome {
+                local_subscribers: 0,
+                redis_published: false,
+            };
+        }
+
         let mut outcome = CacheInvalidationOutcome {
             local_subscribers: 0,
             redis_published: false,
@@ -445,6 +499,27 @@ impl CacheInvalidationService {
         }
 
         outcome
+    }
+}
+
+/// Local channel-scoped invalidation receiver.
+pub struct LocalCacheInvalidationSubscription {
+    channel: String,
+    receiver: broadcast::Receiver<CacheInvalidationMessage>,
+}
+
+impl LocalCacheInvalidationSubscription {
+    pub fn channel(&self) -> &str {
+        &self.channel
+    }
+
+    pub async fn recv(&mut self) -> Result<CacheInvalidationMessage, broadcast::error::RecvError> {
+        loop {
+            let message = self.receiver.recv().await?;
+            if message.channel == self.channel {
+                return Ok(message);
+            }
+        }
     }
 }
 
@@ -775,6 +850,67 @@ mod tests {
         assert_eq!(message.key, "key-1");
         assert_eq!(outcome.local_subscribers, 1);
         assert!(!outcome.redis_published);
+    }
+
+    #[tokio::test]
+    async fn invalidation_message_validation_rejects_empty_parts() {
+        assert_eq!(
+            CacheInvalidationMessage::try_new("", "key").unwrap_err(),
+            CacheInvalidationMessageError::EmptyChannel
+        );
+        assert_eq!(
+            CacheInvalidationMessage::try_new("cache.test", "   ").unwrap_err(),
+            CacheInvalidationMessageError::EmptyKey
+        );
+
+        let valid = CacheInvalidationMessage::try_new("cache.test", "key").unwrap();
+        assert_eq!(valid.channel, "cache.test");
+        assert_eq!(valid.key, "key");
+    }
+
+    #[tokio::test]
+    async fn invalid_invalidation_message_is_not_published_locally() {
+        let service = CacheService::from_url(None);
+        let mut subscriber = service.invalidations().subscribe_local();
+
+        let outcome = service
+            .publish_invalidation(CacheInvalidationMessage::new("cache.test", ""))
+            .await;
+
+        assert_eq!(outcome.local_subscribers, 0);
+        assert!(!outcome.redis_published);
+        assert!(subscriber.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn local_channel_subscription_filters_other_namespaces() {
+        let service = CacheService::from_url(None);
+        let mut tenant_subscriber = service
+            .invalidations()
+            .subscribe_local_channel("tenant.cache.invalidate");
+        let mut rbac_subscriber = service
+            .invalidations()
+            .subscribe_local_channel("rbac.cache.invalidate");
+
+        service
+            .publish_invalidation(CacheInvalidationMessage::new(
+                "rbac.cache.invalidate",
+                "role:admin",
+            ))
+            .await;
+        service
+            .publish_invalidation(CacheInvalidationMessage::new(
+                "tenant.cache.invalidate",
+                "tenant-a",
+            ))
+            .await;
+
+        let tenant_message = tenant_subscriber.recv().await.unwrap();
+        let rbac_message = rbac_subscriber.recv().await.unwrap();
+
+        assert_eq!(tenant_subscriber.channel(), "tenant.cache.invalidate");
+        assert_eq!(tenant_message.key, "tenant-a");
+        assert_eq!(rbac_message.key, "role:admin");
     }
 
     #[tokio::test]

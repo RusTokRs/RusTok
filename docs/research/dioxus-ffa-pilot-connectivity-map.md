@@ -165,6 +165,7 @@
 - `rustok-pages` slice #17: storefront cleanup after full pages module-test evidence (remove unused import warning).
 - `rustok-pages` slice #19 evidence: admin capability-card presentation helpers (`publish_state_view`, `channel_count_label`, `legacy_block_snapshot_label`) moved into `admin/src/core.rs`; Leptos adapter keeps only signal wiring and callback execution.
 - `rustok-pages` slice #20 evidence: storefront published-page link/status presentation (`page_link_href`, `page_status_label`) moved into `storefront/src/core.rs`; dual-path transport contract unchanged.
+- `rustok-pages` slice #24 evidence: admin page table row action busy/label mapping (`admin_page_row_action_state`, `admin_page_row_action_labels`) moved into `admin/src/core.rs`; Leptos adapter keeps only render/callback wiring and dual-path transport contract unchanged.
 
 
 ### Перепроверка после slices #2-#8 (rustok-pages/admin)

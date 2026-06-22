@@ -121,6 +121,10 @@ for (const owner of ["Platform foundation", "Frontends", "Domain modules"]) {
     Array.isArray(row.requiredEvidence) && row.requiredEvidence.length >= 2,
     `Owner sign-off row misses required evidence: ${owner}`,
   );
+  assert(
+    Array.isArray(row.mayMoveToSignedWhen) && row.mayMoveToSignedWhen.length >= 3,
+    `Owner sign-off row must define signed-state preconditions: ${owner}`,
+  );
 }
 
 assert(
@@ -318,6 +322,39 @@ for (const counterField of ["pending", "sent", "retry", "failed", "dead_letter",
 assert(
   (liveArtifactManifestTemplate.redactionPolicy ?? []).some((rule) => rule.includes("auth tokens")),
   "Live artifact manifest template must include auth token redaction",
+);
+
+const liveArtifactSchemaTemplate = fixtures.liveArtifactSchemaTemplate ?? {};
+assert(
+  liveArtifactSchemaTemplate.status === "template_only_pending_d8_runtime",
+  "Live artifact schema template must remain pending until D8 runtime evidence is captured",
+);
+for (const requiredField of [
+  "captured_at",
+  "environment",
+  "surface",
+  "command_or_ci_job",
+  "before",
+  "after",
+  "samples",
+  "redactions_applied",
+  "result",
+]) {
+  assert(
+    liveArtifactSchemaTemplate.requiredTopLevelFields?.includes(requiredField),
+    `Live artifact schema template misses top-level field ${requiredField}`,
+  );
+}
+for (const counterField of ["pending", "sent", "retry", "failed", "dead_letter", "replay_mode"]) {
+  assert(
+    liveArtifactSchemaTemplate.counterSnapshots?.before?.includes(counterField)
+      && liveArtifactSchemaTemplate.counterSnapshots?.after?.includes(counterField),
+    `Live artifact schema template misses before/after counter ${counterField}`,
+  );
+}
+assert(
+  (liveArtifactSchemaTemplate.redactionMustRemove ?? []).some((rule) => rule.includes("cookies")),
+  "Live artifact schema template must include cookie redaction",
 );
 
 console.log(

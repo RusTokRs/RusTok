@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Hardened REST script and execution-history pagination normalization so `page=0` is reported and executed as page 1, kept `per_page` clamped to 1..100 before DB offset/limit, and updated operator docs without running compilation per operator request.
+- Last checkpoint: Hardened REST script-list status filtering so unknown `status` query values fail validation instead of silently widening to all scripts; kept operator docs in sync without running compilation per operator request.
 - Next step: Run the Alloy validation/test gates when compilation is allowed, then replace lightweight route/schema/pagination contract assertions with executable router/schema integration checks where host test fixtures permit.
 - Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации REST script list и execution-history pagination дополнительно нормализуют `page=0` в page 1 как для DB offset, так и для response metadata; `per_page` остаётся clamped 1..100. Добавлены lightweight assertions без запуска compiler/test gates. `rustfmt --edition 2024` выполнен только для изменённых Alloy файлов; обычный `rustfmt` без edition падает на Rust 2015 default для async fn. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации REST/Loco script list переведён на строгий `status` filter: неизвестный статус возвращает validation/BadRequest и больше не раскрывает all-scripts выборку. Pagination для script list и execution-history сохраняет нормализацию `page=0` в page 1 и clamp `per_page` 1..100. Добавлены lightweight assertions без запуска compiler/test gates. `rustfmt --edition 2024` выполнен только для изменённых Alloy файлов; обычный `rustfmt` без edition падает на Rust 2015 default для async fn. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
+- Last updated at (UTC): 2026-06-21T00:00:00Z
 
 ## Область работ
 

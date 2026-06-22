@@ -91,6 +91,7 @@ pub struct UpdateFlexEntryCommand {
 pub fn validate_create_schema_command(input: &CreateFlexSchemaCommand) -> Result<(), FlexError> {
     validate_identifier(&input.slug, "schema slug", MAX_SCHEMA_SLUG_LEN)?;
     validate_schema_name(&input.name)?;
+    validate_schema_description(input.description.as_ref())?;
 
     validate_json_object(input.settings.as_ref(), "schema settings")?;
     validate_definition_keys(&input.fields_config)
@@ -135,6 +136,7 @@ pub fn validate_update_schema_command(input: &UpdateFlexSchemaCommand) -> Result
     if let Some(name) = &input.name {
         validate_schema_name(name)?;
     }
+    validate_schema_description(input.description.as_ref())?;
 
     if let Some(fields_config) = &input.fields_config {
         validate_definition_keys(fields_config)?;
@@ -638,6 +640,27 @@ fn validate_status(status: Option<&String>) -> Result<(), FlexError> {
                 "status must be at most {MAX_ENTRY_STATUS_LEN} characters"
             )));
         }
+    }
+
+    Ok(())
+}
+
+fn validate_schema_description(description: Option<&String>) -> Result<(), FlexError> {
+    let Some(description) = description else {
+        return Ok(());
+    };
+
+    if description.trim().is_empty() {
+        return Err(FlexError::InvalidFieldKey(
+            "schema description must not be empty when provided".to_string(),
+        ));
+    }
+
+    if description.trim() != description {
+        return Err(FlexError::InvalidFieldKey(
+            "schema description must already be normalized without surrounding whitespace"
+                .to_string(),
+        ));
     }
 
     Ok(())
@@ -1217,6 +1240,31 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_update_schema_command(&duplicate_keys).is_err());
+    }
+
+    #[test]
+    fn validate_schema_command_rejects_empty_or_untrimmed_description() {
+        let empty_description = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: Some("   ".to_string()),
+            fields_config: vec![],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&empty_description).is_err());
+
+        let untrimmed_description = UpdateFlexSchemaCommand {
+            description: Some(" Draft page".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_update_schema_command(&untrimmed_description).is_err());
+
+        let valid_description = UpdateFlexSchemaCommand {
+            description: Some("Draft page".to_string()),
+            ..Default::default()
+        };
+        assert!(validate_update_schema_command(&valid_description).is_ok());
     }
 
     #[test]

@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 rustok-core.workspace = true
+rustok-api.workspace = true
 rustok-events.workspace = true
 rustok-telemetry.workspace = true
 

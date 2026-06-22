@@ -13,7 +13,7 @@
 ## Зона ответственности
 
 - `MediaService`, media entities/DTOs и контракт обновления переводов с нормализацией locale/text на runtime boundary;
-- типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers) и `MediaImageDeliveryProfile` для явной политики public/storage/opaque URL;
+- типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile` и `MediaImagePublicUrlPolicy` для явной политики direct-public/proxy-required/not-addressable URL;
 - FBA provider-контракт `MediaAssetReadPort` / `media.asset_read.v1` с source-locked evidence для deadline/context guards и typed `PortError` retryability;
 - GraphQL- и REST-адаптеры модуля;
 - валидацию загрузок по size/MIME policy и tenant isolation до обращения к storage;
@@ -28,8 +28,8 @@
 - `apps/server` остаётся composition root и wiring-слоем для media routes/graphql;
 - runtime guard опирается на tenant-scoped module enablement для публичных поверхностей;
 - загрузка остаётся REST-first path, GraphQL сохраняется для read/mutation flows без multipart-расширения, а Leptos admin adapter вызывает transport facade вместо raw API module; transport facade внутри admin package разделяет native server functions, GraphQL fallback и REST upload adapters, а upload/detail presentation state остаётся в Leptos-free `admin/src/core.rs`;
-- `rustok-seo` и owner SEO providers потребляют `MediaImageDescriptor` как единственную image boundary для OG/Twitter/schema fallback; descriptor normalization покрывает explicit MIME, invalid dimensions, query/fragment cleanup и delivery profile classification;
-- `MediaAssetReadPort` требует deadline semantics, UUID tenant context и возвращает typed `PortError`: validation/access/not-found ошибки non-retryable, storage/database failures retryable unavailable.
+- `rustok-seo` и owner SEO providers потребляют `MediaImageDescriptor` как единственную image boundary для OG/Twitter/schema fallback; нормализация descriptor покрывает явный MIME, отбрасывание некорректных размеров, очистку query/fragment, классификацию delivery profile и public URL policy для storage-relative путей, требующих proxy;
+- `MediaAssetReadPort` требует deadline semantics, UUID tenant context и возвращает typed `PortError`: ошибки validation/access/not-found являются non-retryable, а storage/database failures возвращаются как retryable unavailable; consumers descriptor-ов не должны напрямую публиковать storage-relative пути в public metadata и должны маршрутизировать `ProxyRequired` descriptor-ы через host proxy.
 
 ## Проверка
 
