@@ -375,3 +375,197 @@ macro_rules! event_handler {
         $crate::events::handler::HandlerBuilder::new($name, $predicate, $handler)
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::sync::Notify;
+    use uuid::Uuid;
+
+    fn test_envelope() -> EventEnvelope {
+        EventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::IndexUpdated {
+                index_name: "products".to_string(),
+                target_id: Uuid::new_v4(),
+            },
+        )
+    }
+
+    #[derive(Debug)]
+    struct CountingHandler {
+        attempts: Arc<AtomicUsize>,
+        fail_until_attempt: usize,
+        error_notifications: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl EventHandler for CountingHandler {
+        fn name(&self) -> &'static str {
+            "counting_handler"
+        }
+
+        fn handles(&self, event: &DomainEvent) -> bool {
+            matches!(event, DomainEvent::IndexUpdated { .. })
+        }
+
+        async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            if attempt <= self.fail_until_attempt {
+                Err(Error::External(format!("attempt {attempt} failed")))
+            } else {
+                Ok(())
+            }
+        }
+
+        async fn on_error(&self, _envelope: &EventEnvelope, _error: &Error) {
+            self.error_notifications.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_with_retry_stops_after_successful_retry_without_on_error() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let error_notifications = Arc::new(AtomicUsize::new(0));
+        let handler = Arc::new(CountingHandler {
+            attempts: Arc::clone(&attempts),
+            fail_until_attempt: 1,
+            error_notifications: Arc::clone(&error_notifications),
+        });
+        let config = DispatcherConfig {
+            retry_count: 2,
+            retry_delay_ms: 0,
+            ..DispatcherConfig::default()
+        };
+
+        EventDispatcher::handle_with_retry(handler, test_envelope(), &config)
+            .await
+            .unwrap();
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(error_notifications.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn handle_with_retry_calls_on_error_after_retry_budget_is_exhausted() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let error_notifications = Arc::new(AtomicUsize::new(0));
+        let handler = Arc::new(CountingHandler {
+            attempts: Arc::clone(&attempts),
+            fail_until_attempt: usize::MAX,
+            error_notifications: Arc::clone(&error_notifications),
+        });
+        let config = DispatcherConfig {
+            retry_count: 2,
+            retry_delay_ms: 0,
+            ..DispatcherConfig::default()
+        };
+
+        let error = EventDispatcher::handle_with_retry(handler, test_envelope(), &config)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("attempt 3 failed"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+        assert_eq!(error_notifications.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_releases_backpressure_when_no_handlers_match() {
+        let controller = Arc::new(super::super::backpressure::BackpressureController::new(
+            super::super::backpressure::BackpressureConfig::new(4, 0.5, 1.0),
+        ));
+        controller.try_acquire().unwrap();
+
+        EventDispatcher::dispatch_to_handlers(
+            test_envelope(),
+            Arc::new(Vec::new()),
+            DispatcherConfig::default(),
+            Arc::new(Semaphore::new(1)),
+            Some(Arc::clone(&controller)),
+            EventConsumerRuntime::new("test_dispatcher"),
+        )
+        .await;
+
+        assert_eq!(controller.current_depth(), 0);
+    }
+
+    #[tokio::test]
+    async fn concurrent_dispatch_releases_backpressure_after_all_handlers_finish() {
+        let controller = Arc::new(super::super::backpressure::BackpressureController::new(
+            super::super::backpressure::BackpressureConfig::new(4, 0.5, 1.0),
+        ));
+        controller.try_acquire().unwrap();
+
+        let first_started = Arc::new(Notify::new());
+        let allow_first_finish = Arc::new(Notify::new());
+        let handled = Arc::new(AtomicUsize::new(0));
+
+        let first_started_for_handler = Arc::clone(&first_started);
+        let allow_first_finish_for_handler = Arc::clone(&allow_first_finish);
+        let handled_for_first = Arc::clone(&handled);
+        let first = HandlerBuilder::new(
+            "first",
+            |_| true,
+            move |_| {
+                let first_started = Arc::clone(&first_started_for_handler);
+                let allow_first_finish = Arc::clone(&allow_first_finish_for_handler);
+                let handled = Arc::clone(&handled_for_first);
+                async move {
+                    first_started.notify_one();
+                    allow_first_finish.notified().await;
+                    handled.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        );
+
+        let handled_for_second = Arc::clone(&handled);
+        let second = HandlerBuilder::new(
+            "second",
+            |_| true,
+            move |_| {
+                let handled = Arc::clone(&handled_for_second);
+                async move {
+                    handled.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        );
+
+        let dispatch = tokio::spawn(EventDispatcher::dispatch_to_handlers(
+            test_envelope(),
+            Arc::new(vec![
+                Arc::new(first) as Arc<dyn EventHandler>,
+                Arc::new(second) as Arc<dyn EventHandler>,
+            ]),
+            DispatcherConfig {
+                max_concurrent: 2,
+                retry_delay_ms: 0,
+                ..DispatcherConfig::default()
+            },
+            Arc::new(Semaphore::new(2)),
+            Some(Arc::clone(&controller)),
+            EventConsumerRuntime::new("test_dispatcher"),
+        ));
+
+        first_started.notified().await;
+        assert_eq!(controller.current_depth(), 1);
+
+        allow_first_finish.notify_one();
+        dispatch.await.unwrap();
+
+        for _ in 0..10 {
+            if controller.current_depth() == 0 && handled.load(Ordering::SeqCst) == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        assert_eq!(handled.load(Ordering::SeqCst), 2);
+        assert_eq!(controller.current_depth(), 0);
+    }
+}

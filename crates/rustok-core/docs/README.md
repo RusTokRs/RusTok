@@ -14,7 +14,7 @@ contracts, ошибки, security primitives, content helpers и прочие и
 
 - typed primitives и shared value objects (например, `UserRole`, `UserStatus` для RBAC);
 - базовые error/validation helpers и security contracts;
-- foundation-контракты событий: канонические re-export событий, in-memory transport, bus stats и observability для backpressure;
+- foundation-контракты событий: канонические re-export событий, in-memory transport, bus stats, observability для backpressure, retry-семантику dispatcher-а и hooks задержки dispatch-а;
 - content/rich-text вспомогательные контракты, которые используются несколькими модулями (`rt_json`, `grapesjs`, `content_format`);
 - flex/custom-fields schema contracts (`field_schema`);
 - compatibility re-exports и shared API surface для foundation layer;
@@ -32,7 +32,7 @@ contracts, ошибки, security primitives, content helpers и прочие и
 
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests для typed primitives, validation helpers, security contracts, observability-контрактов событий и compatibility exports
+- targeted tests для typed primitives, validation helpers, security contracts, observability-контрактов событий, dispatcher retry/latency contracts и compatibility exports
 
 ## Связанные документы
 
