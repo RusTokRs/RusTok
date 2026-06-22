@@ -11,7 +11,7 @@ in-memory cache implementations.
 - Own `CacheService`, `CacheBackendOptions`, and backend selection logic.
 - Expose cache health information, service-level Prometheus gauges, and lightweight hit/miss/invalidation statistics to server runtime wiring.
 - Provide `CacheService::load_or_fill` as the generic per-key loader/coalescing contract for anti-stampede protection.
-- Provide `CacheService::publish_invalidation` / `CacheInvalidationService` for namespaced cache invalidation publishing with Redis pub/sub, local fan-out, and a reusable Redis pub/sub subscription adapter for host/runtime listeners.
+- Provide `CacheService::publish_invalidation` / `CacheInvalidationService` for validated namespaced cache invalidation publishing with Redis pub/sub, local fan-out, channel-scoped local subscriptions, and a reusable Redis pub/sub subscription adapter for host/runtime listeners.
 - Keep Redis circuit breaker configuration centralized at the cache factory boundary.
 
 ## Interactions
@@ -29,7 +29,7 @@ in-memory cache implementations.
 - `CacheHealthReport`
 - `CacheBackendOptions`
 - `CacheLoadResult` / `CacheLoadSource`
-- `CacheInvalidationMessage` / `CacheInvalidationOutcome` / `CacheInvalidationService`
+- `CacheInvalidationMessage` / `CacheInvalidationMessageError` / `CacheInvalidationOutcome` / `CacheInvalidationService` / `LocalCacheInvalidationSubscription`
 
 ## Docs
 
@@ -38,4 +38,4 @@ in-memory cache implementations.
 
 ## Invalidation listener contract
 
-With the `redis-cache` feature enabled, `CacheInvalidationService::consume_subscription(channel, handler)` owns Redis pub/sub connection/subscription setup for one channel and invokes the supplied handler for each invalidation message. Host runtimes keep their domain-specific retry loop, health status, and telemetry around this adapter; without Redis, `subscribe_local()` remains the single-instance/test fan-out contract.
+With the `redis-cache` feature enabled, `CacheInvalidationService::consume_subscription(channel, handler)` owns Redis pub/sub connection/subscription setup for one channel and invokes the supplied handler for each invalidation message. Invalidation messages can be pre-validated with `CacheInvalidationMessage::try_new`, and `publish_invalidation` drops empty channel/key messages before local or Redis fan-out. Host runtimes keep their domain-specific retry loop, health status, and telemetry around this adapter; without Redis, `subscribe_local()` remains the full single-instance/test fan-out contract and `subscribe_local_channel(channel)` mirrors Redis channel filtering for namespace-specific listeners.

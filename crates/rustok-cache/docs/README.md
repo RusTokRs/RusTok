@@ -16,7 +16,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 - lightweight backend instrumentation через `CacheBackend::stats()` для hits/misses/invalidations/entries;
 - service-level Prometheus gauges через `CacheService::prometheus_metrics()` для Redis configuration/health, metrics toggle и in-flight `load_or_fill` loaders;
 - generic anti-stampede helper `CacheService::load_or_fill`, который коалесцирует concurrent misses по cache key и возвращает источник результата (`Hit`, `Filled`, `Coalesced`);
-- generic invalidation publisher/subscriber `CacheService::publish_invalidation` / `CacheInvalidationService`, который публикует namespaced invalidation messages в Redis pub/sub при включённом backend, всегда fan-out-ит сообщение local subscribers в текущем процессе и даёт host/runtime listener-ам единый `consume_subscription` adapter для Redis pub/sub без прямого Redis wiring;
+- generic invalidation publisher/subscriber `CacheService::publish_invalidation` / `CacheInvalidationService`, который валидирует непустые channel/key, публикует namespaced invalidation messages в Redis pub/sub при включённом backend, всегда fan-out-ит сообщение local subscribers в текущем процессе, поддерживает channel-scoped local subscriptions через `subscribe_local_channel()` и даёт host/runtime listener-ам единый `consume_subscription` adapter для Redis pub/sub без прямого Redis wiring;
 - tenant-aware cache namespace и invalidation contract;
 - отсутствие собственной RBAC vocabulary и UI surface.
 
@@ -31,7 +31,7 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для cache backend selection, stats instrumentation, load coalescing, invalidation publishing/local fan-out, circuit breaker options и health semantics при изменении wiring
+- targeted runtime tests для cache backend selection, stats instrumentation, load coalescing, invalidation message validation, invalidation publishing/local fan-out, channel-scoped local subscriptions, circuit breaker options и health semantics при изменении wiring
 
 ## Связанные документы
 
@@ -41,4 +41,4 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 
 ## Listener/reconnect guarantees
 
-`CacheInvalidationService::consume_subscription(channel, handler)` держит один Redis pub/sub stream до закрытия или ошибки и отдаёт каждое сообщение в domain handler как `CacheInvalidationMessage`. Retry/backoff остаются за host/runtime listener-ом, чтобы каждый домен мог публиковать собственный health status и reconnect telemetry; `apps/server` tenant listener использует этот adapter внутри существующего retry-loop. В non-Redis сборке subscription adapter недоступен, а local fan-out через `subscribe_local()` остаётся baseline contract для single-instance runtime и тестов.
+`CacheInvalidationService::consume_subscription(channel, handler)` держит один Redis pub/sub stream до закрытия или ошибки и отдаёт каждое сообщение в domain handler как `CacheInvalidationMessage`. `CacheInvalidationMessage::try_new()` фиксирует валидируемый constructor для call sites, которые хотят fail-fast до publish; `publish()` дополнительно отбрасывает пустой channel/key без local/Redis fan-out. Retry/backoff остаются за host/runtime listener-ом, чтобы каждый домен мог публиковать собственный health status и reconnect telemetry; `apps/server` tenant listener использует этот adapter внутри существующего retry-loop. В non-Redis сборке subscription adapter недоступен, full local fan-out через `subscribe_local()` остаётся baseline contract для single-instance runtime и тестов, а `subscribe_local_channel(channel)` даёт namespace-filtered receiver для multi-listener сценариев без Redis.
