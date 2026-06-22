@@ -15,6 +15,12 @@ function evidence(overrides = {}) {
     wave: "1",
     mode: "live",
     created_at: "2026-06-01T00:00:00Z",
+    control_plane: { audit_trail: "control_plane_builder_wave_audit" },
+    fallback: { profiles: [{ name: "all_on" }] },
+    observability: { metrics: { preview_p95_ms: "live_wave1_actual:120" }, traces: { builder_write_to_forum_publish: "trace" } },
+    rollback: { decision: "keep" },
+    approvals: { platform_on_call: "approved" },
+    waivers: [],
     refresh_policy: {
       cadence: "monthly",
       max_age_days: 45,
@@ -91,4 +97,13 @@ test("forum wave evidence freshness verifier rejects missing required refresh se
       assert.match(result.stderr, /required_sections missing fallback\.profiles/);
     },
   );
+});
+
+
+test("forum wave evidence freshness verifier rejects missing actual refresh section", () => {
+  const packet = evidence({ fallback: null });
+  withEvidence(packet, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /evidence packet missing required refresh section fallback\.profiles/);
+  });
 });
