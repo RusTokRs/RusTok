@@ -36,8 +36,8 @@ impl CustomerService {
             .validate()
             .map_err(|error| CustomerError::Validation(error.to_string()))?;
 
-        self.ensure_email_available(tenant_id, &input.email, None)
-            .await?;
+        let email = input.email.trim().to_string();
+        self.ensure_email_available(tenant_id, &email, None).await?;
         if let Some(user_id) = input.user_id {
             self.ensure_user_available(tenant_id, user_id, None).await?;
         }
@@ -49,7 +49,7 @@ impl CustomerService {
             id: Set(customer_id),
             tenant_id: Set(tenant_id),
             user_id: Set(input.user_id),
-            email: Set(input.email.trim().to_string()),
+            email: Set(email),
             first_name: Set(normalize_optional_text(input.first_name)),
             last_name: Set(normalize_optional_text(input.last_name)),
             phone: Set(normalize_optional_text(input.phone)),
@@ -189,14 +189,15 @@ impl CustomerService {
             .await?
             .ok_or(CustomerError::CustomerNotFound(customer_id))?;
 
-        if let Some(email) = input.email.as_deref() {
+        let normalized_email = input.email.as_deref().map(str::trim).map(str::to_string);
+        if let Some(email) = normalized_email.as_deref() {
             self.ensure_email_available(tenant_id, email, Some(customer_id))
                 .await?;
         }
 
         let mut active: entities::customer::ActiveModel = customer.into();
-        if let Some(email) = input.email {
-            active.email = Set(email.trim().to_string());
+        if let Some(email) = normalized_email {
+            active.email = Set(email);
         }
         if let Some(first_name) = input.first_name {
             active.first_name = Set(normalize_text(first_name));

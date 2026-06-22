@@ -16,7 +16,7 @@
 
 - модуль не зависит от `rustok-commerce` umbrella, чтобы не создавать цикл;
 - customer profile хранится отдельно от auth/user домена;
-- связь с пользователем опциональна и не отменяет самостоятельность customer-модели;
+- связь с пользователем опциональна, tenant-scoped и не отменяет самостоятельность customer-модели;
 - bridge к `profiles` остаётся опциональным read-contract и не превращает customer в канонический public profile;
 - admin UI ownership теперь живёт в `rustok-customer/admin`; list defaults вынесены в `admin/src/core.rs`, Leptos-отрисовка вынесена в `admin/src/ui/leptos.rs`, а CRUD-вызовы идут через `admin/src/transport.rs`; storefront GraphQL и REST transport пока остаются в фасаде `rustok-commerce`.
 
@@ -25,6 +25,7 @@
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
 - storefront transport и GraphQL по-прежнему публикуются через `rustok-commerce`, но admin UI-поверхность уже зафиксирована как отдельный module-owned surface в `rustok-customer/admin`;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями;
+- `CustomerService` нормализует email до проверки уникальности и хранения, поэтому create/update не допускают trimmed-дубликаты внутри tenant; duplicate `user_id` linkage остаётся tenant-scoped и не превращает customer в auth/user domain.
 - `CustomerReadPort` использует общий `PortContext`/`PortError`, требует read deadline semantics и мапит invalid tenant / not found в typed port errors; no-compile runtime smoke зафиксирован в `contracts/evidence/customer-read-projection-runtime-smoke.json`, но FBA status остаётся `in_progress` до фактического compiled runtime execution.
 
 ## Разделение FFA для admin

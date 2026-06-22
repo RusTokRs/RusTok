@@ -6,12 +6,12 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 ## Execution checkpoint
 
-- Current phase: fba_customer_read_projection_runtime_contract_slice
-- Last checkpoint: Customer read-projection runtime contract slice authored no-compile tests for `CustomerReadPort`: deadline enforcement, invalid tenant validation, typed not-found mapping and tenant-scoped list fallback smoke; `customer-read-projection-runtime-smoke.json` source-locks runtime/fallback evidence while promotion remains blocked until compiled execution.
-- Next step: Когда компиляции снова разрешены, выполнить targeted customer port tests and only then decide whether FBA can move above `in_progress`; до этого держать fast verifier `npm run verify:ecommerce:fba` зелёным без долгих сборок.
+- Current phase: customer_identity_normalization_and_tenant_guard_slice
+- Last checkpoint: Customer identity guard slice normalized create/update email uniqueness before persistence and authored no-compile tests for trimmed duplicate email rejection plus tenant-scoped duplicate `user_id` linkage; FBA read-projection runtime smoke remains source-locked and promotion remains blocked until compiled execution.
+- Next step: Когда компиляции снова разрешены, выполнить targeted customer service/port tests for normalized identity guards and read-projection runtime smoke, then decide whether FBA can move above `in_progress`; до этого держать fast verifier `npm run verify:ecommerce:fba` зелёным без долгих сборок.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и держать central readiness board синхронизированным.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Last updated at (UTC): 2026-06-21T00:00:00Z
 
 ## FFA/FBA status
 
@@ -53,7 +53,7 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 - [ ] расширять customer-owned settings/profile flows только внутри модуля;
 - [x] удерживать ownership guard и tenant isolation покрытыми targeted tests;
-- [ ] не допускать размывания customer semantics в auth/user domain.
+- [x] не допускать размывания customer semantics в auth/user domain (tenant-scoped duplicate `user_id` guard covered by no-compile test).
 
 ### 3. Operability
 
@@ -77,6 +77,6 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: normalized email uniqueness, update duplicate checks, tenant-scoped user linkage and read-projection smoke are source-locked; compiled execution pending by request.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

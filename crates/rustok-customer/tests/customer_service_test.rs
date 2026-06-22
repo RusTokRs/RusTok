@@ -116,6 +116,139 @@ async fn duplicate_email_is_rejected() {
 }
 
 #[tokio::test]
+async fn duplicate_email_check_uses_normalized_customer_email() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                email: " normalized@example.com ".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(Uuid::new_v4()),
+                email: "normalized@example.com".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CustomerError::DuplicateEmail(email) => assert_eq!(email, "normalized@example.com"),
+        other => panic!("expected normalized duplicate email error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn update_customer_duplicate_email_check_uses_normalized_email() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                email: "existing@example.com".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+    let second = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(Uuid::new_v4()),
+                email: "second@example.com".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .update_customer(
+            tenant_id,
+            second.id,
+            UpdateCustomerInput {
+                email: Some(" existing@example.com ".to_string()),
+                first_name: None,
+                last_name: None,
+                phone: None,
+                locale: None,
+                metadata: None,
+            },
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CustomerError::DuplicateEmail(email) => assert_eq!(email, "existing@example.com"),
+        other => panic!("expected normalized duplicate email update error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn duplicate_user_link_is_tenant_scoped_and_rejected_inside_tenant() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+
+    service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                email: "linked@example.com".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .create_customer(
+            other_tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                email: "linked-other-tenant@example.com".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = service
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(user_id),
+                email: "linked-duplicate@example.com".to_string(),
+                ..create_input()
+            },
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CustomerError::DuplicateUserLink(duplicate_user_id) => {
+            assert_eq!(duplicate_user_id, user_id)
+        }
+        other => panic!("expected duplicate user link error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn list_customers_filters_by_search_and_paginates() {
     let service = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -430,16 +563,12 @@ async fn customer_read_port_lists_tenant_scoped_projections_for_checkout_fallbac
 
     assert_eq!(response.total, 2);
     assert_eq!(response.items.len(), 2);
-    assert!(
-        response
-            .items
-            .iter()
-            .all(|customer| customer.email.ends_with("@example.com"))
-    );
-    assert!(
-        !response
-            .items
-            .iter()
-            .any(|customer| customer.email == "fallback-other@example.com")
-    );
+    assert!(response
+        .items
+        .iter()
+        .all(|customer| customer.email.ends_with("@example.com")));
+    assert!(!response
+        .items
+        .iter()
+        .any(|customer| customer.email == "fallback-other@example.com"));
 }
