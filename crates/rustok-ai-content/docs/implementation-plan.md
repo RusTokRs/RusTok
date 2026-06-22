@@ -13,16 +13,16 @@
 
 ## Execution checkpoint
 
-- Current phase: policy_matrix_approval_routing_integrated
-- Last checkpoint: `rustok-ai-content` now owns a content AI policy matrix with moderation marked for operator approval and blog drafts marked as automatic unpublished artifact generation; `rustok-ai` merges the content-owned sensitive tool defaults into runtime tool policies so moderation approval routing no longer depends only on operator-entered tool profile lists.
-- Next step: Расширить blog contract тестами и добавить executable targeted verification evidence при разрешённых компиляциях.
+- Current phase: blog_contract_static_evidence_added
+- Last checkpoint: Added compile-free static verification for the content AI contract and expanded blog draft contract tests to cover full payloads, patch-style empty payloads, and blank-value rejection across every optional generated text field.
+- Next step: Добавить executable targeted verification evidence при разрешённых компиляциях.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: Не переносить executable runtime composition из `rustok-ai`; support crate владеет descriptors/policy/validation, host crate только consumes defaults.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 
 ## Quality backlog
 
 - [x] Domain-owned policy matrix for content moderation/blog draft approval routing.
 - [x] Runtime policy integration consumes content-owned sensitive-tool defaults from `rustok-ai`.
-- [ ] Расширить blog generated payload contract тестами.
+- [x] Расширить blog generated payload contract тестами.
 - [ ] Запустить `cargo test -p rustok-ai-content --lib` и `cargo test -p rustok-ai --lib` при разрешённых компиляциях.
