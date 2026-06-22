@@ -6,11 +6,11 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Invalidation contract усилен validation guardrails и channel-scoped local subscriptions; tenant anti-stampede path уже переведён на `CacheService::load_or_fill`, а cache capability экспортирует service-level Prometheus gauges для Redis health/configuration, metrics toggle и in-flight loaders.
+- Last checkpoint: Invalidation contract усилен validation guardrails, channel-scoped local subscriptions и service-level counters для local publish / Redis publish success-failure / rejected messages; tenant anti-stampede path уже переведён на `CacheService::load_or_fill`, а cache capability экспортирует service-level Prometheus gauges для Redis health/configuration, metrics toggle, in-flight loaders и invalidation counters.
 - Next step: Добавить compile/test evidence при снятии ограничения на компиляции и расширить real-Redis/multi-instance интеграционные сценарии поверх нового channel-scoped subscription contract.
 - Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем добавить real-Redis pub/sub integration evidence для `try_new`/publish guardrails и `subscribe_local_channel` parity.
-- Last updated at (UTC): 2026-06-20T12:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 
 ## Область работ
 
@@ -43,7 +43,7 @@ manifest/doc contract.
 
 ### 3. Operability
 
-- [x] довести Prometheus metrics export до production-ready service-level слоя;
+- [x] довести Prometheus metrics export до production-ready service-level слоя, включая invalidation publish/rejection counters;
 - [x] добавить baseline hit/miss/invalidation/entry stats и health diagnostics в cache factory contract;
 - [ ] покрыть multi-instance и real-Redis сценарии интеграционными тестами;
 - [x] документировать publisher/local fan-out guarantees для generic invalidation contract;
@@ -53,7 +53,7 @@ manifest/doc contract.
 
 - `cargo xtask module validate cache`
 - `cargo xtask module test cache`
-- targeted runtime tests для backend selection, fallback, `load_or_fill` coalescing, invalidation validation/channel filtering, Prometheus formatting и health semantics
+- targeted runtime tests для backend selection, fallback, `load_or_fill` coalescing, invalidation validation/channel filtering, invalidation counters, Prometheus formatting и health semantics
 
 ## Правила обновления
 
@@ -64,7 +64,7 @@ manifest/doc contract.
 
 ## Quality backlog
 
-- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены source-level тесты для invalidation validation guardrails и channel-scoped local subscription parity без запуска компиляции.
+- [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены source-level тесты для invalidation validation guardrails, channel-scoped local subscription parity, invalidation counters и Prometheus counter formatting без запуска компиляции.
 - [ ] Добавить compile/test evidence для нового invalidation coverage при снятии ограничения на компиляции.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
