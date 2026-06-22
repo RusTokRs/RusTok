@@ -7,12 +7,12 @@
 
 ## Execution checkpoint
 
-- Current phase: phase5_standalone_schema_definition_guardrails
-- Last checkpoint: Standalone Flex schema-definition guardrails tightened further without compilation: schema create/update validation now rejects non-normalized localized map locale keys, empty optional localized maps, unsupported or negative min/max rules and malformed select option values before persistence.
+- Current phase: phase5_standalone_no_compile_verification_handoff
+- Last checkpoint: No-compile handoff hardening for standalone Flex: schema create/update validation now rejects empty or untrimmed schema descriptions before adapter writes, the latest schema-definition guardrails remain documented, and the verification handoff keeps pending compile/test evidence explicit.
 - Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared standalone UUID and schema-definition guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, schema-definition shape validation including regex/options/error-message/position/min-max/locale-map checks, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` should be rerun when compilation/checks are allowed; no compilation/test command was run by request.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, schema-definition shape validation including regex/options/error-message/position/min-max/locale-map checks, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. Schema description normalization was tightened in `crates/flex/src/standalone.rs`; rerun `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` and then the targeted Flex test commands as soon as compilation/checks are allowed.
+- Last updated at (UTC): 2026-06-21T00:00:00Z
 
 ## Область работ
 
@@ -308,6 +308,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - 2026-06-20 no-compile schema-definition follow-up: standalone schema create/update validation now checks field-definition shape before adapter writes: non-empty localized labels/descriptions, select option presence/uniqueness, unsupported pattern rules, inverted min/max ranges, and invalid default values are rejected through targeted contract tests.
   - 2026-06-20 no-compile schema-definition hardening follow-up: standalone schema validators now also reject invalid/empty regex patterns, options on non-select fields, malformed localized validation error messages and negative field positions; targeted contract tests were added without execution by request.
   - 2026-06-20 no-compile schema-definition locale/rule follow-up: standalone schema validators now require normalized locale keys for localized labels/descriptions/error messages/select labels, reject empty optional localized maps, enforce select option values as normalized machine identifiers, and reject unsupported/negative min-max rules before adapter writes; targeted contract tests were added without execution by request.
+  - 2026-06-21 no-compile handoff cleanup: standalone schema create/update validation now rejects empty or untrimmed schema descriptions before adapter writes, with targeted contract tests added without execution by request; the execution checkpoint also makes the deferred formatting/compile/test gates explicit for the next allowed verification pass.
   - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail/schema-definition fixes и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
