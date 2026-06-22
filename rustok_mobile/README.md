@@ -116,12 +116,12 @@ python3 rustok_mobile/tooling/scripts/check_mobile_codegen.py \
 python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py --repo-root /workspace/RusTok
 ```
 
-Use `--json` when CI needs machine-readable evidence for the mobile operation documents and the server-side surfaces that back them; `server_evidence` is emitted as a path list, not a comma-delimited string.
+Use `--json` when CI needs machine-readable evidence for the mobile operation documents and the server-side surfaces that back them; `server_evidence` is emitted as a path list, not a comma-delimited string. When a live schema/test-server harness is available, pass `--live-results <path>` with a JSON object containing `storefront_live_execution` results for the same operation/root-field pairs. Without that file the verifier remains a source-backed preflight and reports live execution as `skipped`.
 
 ## Next steps
 
 1. Replace in-memory auth session store with secure storage and connect refresh flow to sign-in lifecycle.
 2. Promote storefront cart id persistence from the file-backed adapter to the agreed production storage backend once product requirements choose secure/non-sensitive storage boundaries.
 3. Add deterministic generated-file checks to the mobile CI pipeline.
-4. Promote the storefront catalog/cart evidence from source-backed contract checks to a live schema/test-server CI job once the Flutter SDK and test server are available in the target environment.
+4. Wire a live schema/test-server producer that writes the `storefront_live_execution` JSON consumed by `verify_storefront_graphql_contract.py --live-results` once the Flutter SDK and server harness are available in the target environment.
 5. Extend generated storefront registry mappings as more module-owned storefront packages are added.
