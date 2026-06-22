@@ -52,6 +52,19 @@
 - Зафиксировано, что GraphQL и REST возвращают совместимые semantic error codes.
 - Для Next host подтверждён fallback reason (`module_disabled`, `not_found`, `permission_denied`, `transport_failure`) вместо blanket failure.
 
+## Live artifact schema (D8/D9 closeout)
+
+Каждый live artifact для D8/D9 closeout должен содержать одинаковый минимальный набор полей, чтобы owner sign-off нельзя было перевести в `signed` по неполным скриншотам или логам:
+
+- `captured_at`, `surface`, `command_or_ci_job` и redacted environment (`git_sha`, SEO flags, backend/host base URL without secrets);
+- before/after snapshots для `pending`, `sent`, `retry`, `failed`, `dead_letter`, `replay_mode`;
+- semantic error sample для `BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND` или transport failure, если surface покрывает error parity;
+- storefront sample для route, `target_kind`, fallback reason/source и JSON-LD/metadata assertions;
+- `redactions_applied` с подтверждением удаления auth tokens, cookies, tenant secrets и user/customer identifiers;
+- `result.passed`, `result.high_severity_defects` и `result.owner_review_required`.
+
+Owner sign-off переводится из `pending_live_runtime_evidence` в `signed` только после того, как все required artifacts из `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` приложены, high-severity defects отсутствуют или имеют владельца remediation, а owner просмотрел redacted samples.
+
 ## Live incident evidence template (D9)
 
 Use this block when D8 live backend/host evidence is available. Do not mark D9 live evidence complete from static review alone.
