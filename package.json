@@ -92,7 +92,8 @@
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs",
     "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
-    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs"
+    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
+    "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
