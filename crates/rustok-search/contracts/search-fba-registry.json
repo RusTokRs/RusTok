@@ -65,7 +65,8 @@
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-search-fba.mjs",
     "static_matrix": "crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
+    "runtime_fallback_smoke": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
+    "runtime_fallback_smoke_runner": "scripts/verify/verify-search-fba-runtime-smoke.mjs"
   },
   "in_process_provider_impl": {
     "service": "PgSearchEngine",
@@ -106,7 +107,7 @@
       }
     ],
     "fallback_smoke": {
-      "status": "source_locked_no_compile",
+      "status": "executable_no_compile",
       "profiles": [
         "embedded_postgres"
       ],
@@ -116,7 +117,8 @@
         "disable_preview",
         "show_last_diagnostics_snapshot"
       ],
-      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json"
+      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
+      "runner": "scripts/verify/verify-search-fba-runtime-smoke.mjs"
     }
   }
 }

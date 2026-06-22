@@ -51,6 +51,9 @@ const evidenceCases = evidence.cases.map((c) => c.operation).sort().join('|');
 if (registryCases !== evidenceCases) fail('evidence case matrix drift');
 if (registry.evidence.runtime_fallback_smoke !== runtimeSmokePath) fail('registry runtime fallback evidence path drift');
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.status !== registry.contract_tests.fallback_smoke.status) fail('runtime fallback smoke header drift');
+if (registry.contract_tests.fallback_smoke.status !== 'executable_no_compile') fail('runtime fallback smoke must be executable no-compile evidence');
+if (registry.contract_tests.fallback_smoke.runner !== 'scripts/verify/verify-search-fba-runtime-smoke.mjs') fail('runtime fallback smoke runner drift');
+if (runtimeSmoke.runner !== registry.contract_tests.fallback_smoke.runner) fail('runtime fallback smoke evidence runner drift');
 const smokeOps = runtimeSmoke.cases.map((c) => c.operation).sort().join('|');
 if (smokeOps !== registryCases) fail('runtime fallback smoke case matrix drift');
 for (const profile of registry.contract_tests.fallback_smoke.profiles ?? []) {
@@ -65,4 +68,4 @@ hasAll(plan, ['- FBA status: `in_progress`', 'search-fba-registry.json', 'Search
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `in_progress`'], 'central registry');
 
-console.log('[verify-search-fba] search FBA provider metadata, port semantics, static evidence and source-locked runtime fallback smoke are consistent');
+console.log('[verify-search-fba] search FBA provider metadata, port semantics, static evidence and executable no-compile runtime fallback smoke are consistent');

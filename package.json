@@ -69,7 +69,7 @@
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs",
     "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs",
-    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs",
+    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs && npm run verify:search:fba:runtime-smoke",
     "test:verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.test.mjs",
     "test:verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.test.mjs",
     "test:verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.test.mjs",
@@ -92,7 +92,8 @@
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs",
     "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
-    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs"
+    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
+    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
