@@ -445,7 +445,7 @@ npm run verify:ffa:ui:migration
 - наличие marker-ов dependency/consumer contract (`page_builder`/`builder_consumer`, `contract_version`, `builder_contract_version`);
 - наличие `Execution checkpoint` и FBA/page-builder readiness notes в implementation-plan;
 - для `pages`: marker-ы rollout policy в manifest/docs для `control_plane_builder_wave_audit`, before/after snapshots, keep/rollback decision, owner sign-off, SLO rollback triggers, pilot smoke `preview -> properties -> publish(dry)` и rollback target <= 10 минут без redeploy;
-- для `forum`: FW-2 fallback matrix, FW-4/Wave 1 rollout evidence, numeric SLO metrics, forum-owned trace keys, approvals/waivers, monthly refresh policy и проверку актуальности по срокам (`created_at`, `next_due_at`, `max_age_days`) перед builder-consumer rollout.
+- для `forum`: FW-2 fallback matrix, FW-4/Wave 1 rollout evidence, numeric SLO metrics, forum-owned trace keys, approvals/waivers, monthly refresh policy, актуальность по срокам (`created_at`, `next_due_at`, `max_age_days`) и непустую форму обязательных refresh sections перед builder-consumer rollout.
 
 Поддерживаемые slug:
 - `pages`
@@ -465,7 +465,8 @@ npm run verify:ffa:ui:migration
 - `forum-wave1-rollout-evidence.json` относится к `forum`, `wave=1`, `mode=live`;
 - monthly refresh policy закрепляет `npm run verify:page-builder:consumer:forum`;
 - stale evidence блокирует rollout до refresh evidence;
-- `next_due_at` позже `created_at`, укладывается в `max_age_days` и не находится в прошлом на момент запуска gate.
+- `next_due_at` позже `created_at`, укладывается в `max_age_days` и не находится в прошлом на момент запуска gate;
+- обязательные refresh sections объявлены в policy, фактически присутствуют в packet и не пустые (`waivers` допускается как пустой массив).
 
 **Severity:** GATE для forum builder-consumer rollout. Скрипт не запускает Rust/Leptos компиляцию.
 

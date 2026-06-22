@@ -107,3 +107,11 @@ test("forum wave evidence freshness verifier rejects missing actual refresh sect
     assert.match(result.stderr, /evidence packet missing required refresh section fallback\.profiles/);
   });
 });
+
+test("forum wave evidence freshness verifier rejects empty materialized refresh sections", () => {
+  const packet = evidence({ observability: { metrics: {}, traces: { builder_write_to_forum_publish: "trace" } } });
+  withEvidence(packet, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /observability\.metrics must be a non-empty object/);
+  });
+});

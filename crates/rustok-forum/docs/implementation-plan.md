@@ -6,17 +6,17 @@
 ## Execution checkpoint
 
 - Current phase: phase_d_rollout_hardened
-- Last checkpoint: FW-10 (refresh section materialization hardening) закрепил проверку не только списка `refresh_policy.required_sections`, но и фактического наличия этих секций в Wave 1 evidence; focused freshness gate получил negative fixture на отсутствующий раздел, а aggregate consumer readiness gate получил clock override для детерминированной no-compile проверки.
+- Last checkpoint: FW-11 (refresh section shape hardening) усилил focused freshness и aggregate consumer readiness gates: обязательные refresh sections теперь должны быть не только объявлены и материализованы, но и иметь непустую форму (`object`/`array`/`string`, кроме допустимого пустого `waivers`), fixture suite закрепляет negative case для пустых metrics, а root `package.json` снова валиден для npm no-compile запусков.
 - Next step: Steady-state maintenance: refresh Wave evidence before `refresh_policy.next_due_at`, keep no-compile gates and fixture tests green, and integrate only compatible platform features
 - Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, `next_due_at` after `created_at`, stale evidence blocks rollout until refreshed); `npm run verify:forum:wave-evidence-freshness` выделяет проверку актуальности по срокам в отдельный быстрый gate и валидирует фактическую материализацию обязательных refresh sections, а `npm run test:verify:forum:wave-evidence-freshness` закрепляет fresh/stale/overwide-window/missing-policy-section/missing-actual-section fixtures без компиляции.
+- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, `next_due_at` after `created_at`, stale evidence blocks rollout until refreshed); `npm run verify:forum:wave-evidence-freshness` выделяет проверку актуальности по срокам в отдельный быстрый gate и валидирует фактическую материализацию и непустую форму обязательных refresh sections, а `npm run test:verify:forum:wave-evidence-freshness` закрепляет fresh/stale/overwide-window/missing-policy-section/missing-actual-section/empty-section fixtures без компиляции.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
@@ -164,3 +164,10 @@
 - [x] Расширить focused freshness gate так, чтобы `refresh_policy.required_sections` подтверждал не только policy-list, но и фактическое наличие `control_plane.audit_trail`, `fallback.profiles`, `observability.metrics`, `observability.traces`, `rollback.decision`, `approvals` и `waivers` в evidence packet.
 - [x] Добавить no-compile negative fixture для отсутствующей фактической refresh section без мутации live evidence packet.
 - [x] Синхронизировать aggregate `npm run verify:page-builder:consumer:forum` с тем же materialization guardrail и добавить `RUSTOK_VERIFY_NOW` clock override для детерминированных no-compile запусков.
+
+
+### FW-11 — Refresh section shape hardening
+
+- [x] Усилить focused freshness gate: обязательные refresh sections должны иметь непустую форму (`object`/`array`/`string`), чтобы policy не проходил с пустыми `observability.metrics`, `fallback.profiles`, `approvals` или пустыми строковыми audit/decision markers; `waivers` остаётся единственным допустимым пустым массивом.
+- [x] Расширить fixture suite negative case для пустой materialized section (`observability.metrics = {}`) без мутации live Wave 1 evidence packet.
+- [x] Синхронизировать aggregate `npm run verify:page-builder:consumer:forum` с тем же shape guardrail и восстановить валидность root `package.json` для npm-based no-compile gates.
