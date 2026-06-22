@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, TypedDict
+from typing import Iterable, Literal, TypedDict
 
 
 class ContractEvidence(TypedDict):
@@ -22,6 +22,14 @@ class ContractEvidence(TypedDict):
     kind: str
     root_field: str
     server_evidence: list[str]
+
+
+class LiveExecutionEvidence(TypedDict):
+    operation: str
+    root_field: str
+    status: Literal["passed", "skipped"]
+    source: str
+    message: str
 
 
 @dataclass(frozen=True)
@@ -43,9 +51,10 @@ class GraphQlContract:
 
 SEARCH_STOREFRONT_API = "crates/rustok-search/storefront/src/api.rs"
 COMMERCE_QUERY = "crates/rustok-commerce/src/graphql/query.rs"
-COMMERCE_MUTATION = "crates/rustok-commerce/src/graphql/mutation.rs"
+COMMERCE_MUTATION = "crates/rustok-commerce/src/graphql/mutations/cart.rs"
 COMMERCE_TYPES = "crates/rustok-commerce/src/graphql/types.rs"
-COMMERCE_RUNTIME_TEST = "crates/rustok-commerce/tests/graphql_runtime_parity_test.rs"
+COMMERCE_RUNTIME_TEST = "crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs"
+COMMERCE_RUNTIME_CART_TEST = "crates/rustok-commerce/tests/graphql_runtime_parity_test/cart.rs"
 
 
 CONTRACTS: tuple[GraphQlContract, ...] = (
@@ -142,12 +151,81 @@ MOBILE_CONTEXT_PATH = Path(
     "rustok_mobile/apps/rustok_frontend_mobile/lib/app_shell/storefront_context.dart"
 )
 COMMERCE_RUNTIME_TEST_PATH = Path(COMMERCE_RUNTIME_TEST)
+COMMERCE_RUNTIME_CART_TEST_PATH = Path(COMMERCE_RUNTIME_CART_TEST)
 FORBIDDEN_TRANSPORT_MARKERS = ("/api/flutter", "/api/mobile")
 FORBIDDEN_DOCUMENT_MARKERS = (*FORBIDDEN_TRANSPORT_MARKERS, "tenantId:", "$tenantId")
 
 
 class ContractError(RuntimeError):
     pass
+
+
+def contract_key(contract: ContractEvidence) -> tuple[str, str]:
+    return (contract["operation"], contract["root_field"])
+
+
+def load_live_execution_results(
+    evidence: list[ContractEvidence],
+    live_results_path: Path | None,
+) -> list[LiveExecutionEvidence]:
+    """Attach optional live schema/test-server evidence to source checks."""
+    if live_results_path is None:
+        return [
+            {
+                "operation": contract["operation"],
+                "root_field": contract["root_field"],
+                "status": "skipped",
+                "source": "preflight",
+                "message": "live schema/test-server harness was not provided",
+            }
+            for contract in evidence
+        ]
+
+    raw = json.loads(live_results_path.read_text(encoding="utf-8"))
+    results = raw.get("storefront_live_execution")
+    if not isinstance(results, list):
+        raise ContractError(
+            "live results must contain a `storefront_live_execution` list"
+        )
+
+    by_key: dict[tuple[str, str], dict[str, object]] = {}
+    for result in results:
+        if not isinstance(result, dict):
+            raise ContractError("each live execution result must be an object")
+        operation = result.get("operation")
+        root_field = result.get("root_field")
+        status = result.get("status")
+        if not isinstance(operation, str) or not isinstance(root_field, str):
+            raise ContractError(
+                "live execution result must include string operation/root_field"
+            )
+        if status != "passed":
+            raise ContractError(
+                f"live execution for `{operation}`/`{root_field}` did not pass"
+            )
+        by_key[(operation, root_field)] = result
+
+    live_evidence: list[LiveExecutionEvidence] = []
+    for contract in evidence:
+        key = contract_key(contract)
+        result = by_key.get(key)
+        if result is None:
+            raise ContractError(
+                "missing live execution result for "
+                f"`{contract['operation']}`/`{contract['root_field']}`"
+            )
+        source = result.get("source")
+        message = result.get("message")
+        live_evidence.append(
+            {
+                "operation": contract["operation"],
+                "root_field": contract["root_field"],
+                "status": "passed",
+                "source": source if isinstance(source, str) else "live-harness",
+                "message": message if isinstance(message, str) else "live execution passed",
+            }
+        )
+    return live_evidence
 
 
 def read(repo_root: Path, path: Path | str) -> str:
@@ -175,10 +253,14 @@ def assert_absent(source: str, marker: str, context: str) -> None:
         raise ContractError(f"forbidden marker `{marker}` in {context}")
 
 
-def assert_runtime_builder_is_executed(runtime_source: str, builder: str) -> None:
-    assert_contains(runtime_source, f"fn {builder}", COMMERCE_RUNTIME_TEST)
-    pattern = re.compile(rf"schema\s*\.execute\(Request::new\(\s*{builder}")
-    if pattern.search(runtime_source) is None:
+def assert_runtime_builder_is_executed(
+    runtime_builder_source: str,
+    runtime_execution_source: str,
+    builder: str,
+) -> None:
+    assert_contains(runtime_builder_source, f"fn {builder}", COMMERCE_RUNTIME_TEST)
+    pattern = re.compile(rf"\.execute\(Request::new\(\s*{builder}")
+    if pattern.search(runtime_execution_source) is None:
         raise ContractError(
             f"runtime parity test defines `{builder}` but does not execute it "
             "through schema.execute"
@@ -208,17 +290,23 @@ def verify_contract(
         checked_paths.add(source_marker.path)
 
     if contract.runtime_builder is not None:
-        runtime_source = read(repo_root, COMMERCE_RUNTIME_TEST_PATH)
-        assert_runtime_builder_is_executed(runtime_source, contract.runtime_builder)
-        checked_paths.add(COMMERCE_RUNTIME_TEST)
-    if contract.runtime_error_marker is not None:
-        runtime_source = read(repo_root, COMMERCE_RUNTIME_TEST_PATH)
-        assert_contains(
-            runtime_source,
-            contract.runtime_error_marker,
-            COMMERCE_RUNTIME_TEST,
+        runtime_builder_source = read(repo_root, COMMERCE_RUNTIME_TEST_PATH)
+        runtime_execution_source = read(repo_root, COMMERCE_RUNTIME_CART_TEST_PATH)
+        assert_runtime_builder_is_executed(
+            runtime_builder_source,
+            runtime_execution_source,
+            contract.runtime_builder,
         )
         checked_paths.add(COMMERCE_RUNTIME_TEST)
+        checked_paths.add(COMMERCE_RUNTIME_CART_TEST)
+    if contract.runtime_error_marker is not None:
+        runtime_execution_source = read(repo_root, COMMERCE_RUNTIME_CART_TEST_PATH)
+        assert_contains(
+            runtime_execution_source,
+            contract.runtime_error_marker,
+            COMMERCE_RUNTIME_CART_TEST,
+        )
+        checked_paths.add(COMMERCE_RUNTIME_CART_TEST)
 
     return {
         "const": contract.const_name,
@@ -267,6 +355,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print machine-readable evidence instead of a short OK line.",
     )
+    parser.add_argument(
+        "--live-results",
+        type=Path,
+        help=(
+            "Optional JSON evidence produced by a live schema/test-server "
+            "harness. The file must report a passed result for every "
+            "source-verified storefront mobile operation."
+        ),
+    )
     return parser
 
 
@@ -275,20 +372,30 @@ def main(argv: Iterable[str] | None = None) -> int:
     repo_root = args.repo_root.resolve()
     try:
         evidence = verify(repo_root)
-    except ContractError as error:
+        live_evidence = load_live_execution_results(evidence, args.live_results)
+    except (ContractError, OSError, json.JSONDecodeError) as error:
         print(f"ERROR: {error}")
         return 1
 
     if args.json:
         print(
             json.dumps(
-                {"storefront_graphql_contracts": evidence},
+                {
+                    "storefront_graphql_contracts": evidence,
+                    "storefront_live_execution": live_evidence,
+                },
                 indent=2,
                 sort_keys=True,
             )
         )
     else:
-        print(f"OK: verified {len(evidence)} storefront mobile GraphQL contracts")
+        live_passed = sum(1 for item in live_evidence if item["status"] == "passed")
+        suffix = (
+            f"; live execution passed for {live_passed} contracts"
+            if live_passed
+            else "; live execution skipped"
+        )
+        print(f"OK: verified {len(evidence)} storefront mobile GraphQL contracts{suffix}")
     return 0
 
 
