@@ -8,6 +8,20 @@ pub const CONTENT_MODERATION_TOOL_NAME: &str = "direct.content.moderation";
 pub const BLOG_DRAFT_TOOL_NAME: &str = "direct.blog.generate_draft";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentAiApprovalMode {
+    Auto,
+    OperatorApproval,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentAiPolicyRule {
+    pub task_slug: &'static str,
+    pub tool_name: &'static str,
+    pub approval_mode: ContentAiApprovalMode,
+    pub rationale: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ContentAiVerticalDescriptor {
     pub task_slug: &'static str,
     pub tool_name: &'static str,
@@ -26,6 +40,33 @@ pub const CONTENT_AI_VERTICALS: &[ContentAiVerticalDescriptor] = &[
         sensitive: false,
     },
 ];
+
+pub const CONTENT_AI_POLICY_MATRIX: &[ContentAiPolicyRule] = &[
+    ContentAiPolicyRule {
+        task_slug: CONTENT_MODERATION_TASK_SLUG,
+        tool_name: CONTENT_MODERATION_TOOL_NAME,
+        approval_mode: ContentAiApprovalMode::OperatorApproval,
+        rationale: "moderation decisions can hide or block user-generated content",
+    },
+    ContentAiPolicyRule {
+        task_slug: BLOG_DRAFT_TASK_SLUG,
+        tool_name: BLOG_DRAFT_TOOL_NAME,
+        approval_mode: ContentAiApprovalMode::Auto,
+        rationale: "blog drafts create unpublished editorial artifacts",
+    },
+];
+
+pub fn content_ai_policy_matrix() -> &'static [ContentAiPolicyRule] {
+    CONTENT_AI_POLICY_MATRIX
+}
+
+pub fn content_ai_sensitive_tools() -> Vec<String> {
+    CONTENT_AI_POLICY_MATRIX
+        .iter()
+        .filter(|rule| matches!(rule.approval_mode, ContentAiApprovalMode::OperatorApproval))
+        .map(|rule| rule.tool_name.to_string())
+        .collect()
+}
 
 /// Domain-owned registration entrypoint for content AI vertical metadata.
 pub fn content_ai_verticals() -> &'static [ContentAiVerticalDescriptor] {
@@ -129,9 +170,10 @@ pub fn validate_moderation_decision(
 #[cfg(test)]
 mod tests {
     use super::{
-        content_ai_verticals, normalize_moderation_decision, validate_moderation_decision,
+        content_ai_policy_matrix, content_ai_sensitive_tools, content_ai_verticals,
+        normalize_moderation_decision, validate_moderation_decision, ContentAiApprovalMode,
         GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG,
-        CONTENT_MODERATION_TASK_SLUG,
+        CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
     };
 
     #[test]
@@ -143,6 +185,21 @@ mod tests {
         assert!(content_ai_verticals()[0].sensitive);
         assert_eq!(content_ai_verticals()[1].task_slug, BLOG_DRAFT_TASK_SLUG);
         assert!(!content_ai_verticals()[1].sensitive);
+    }
+
+    #[test]
+    fn exposes_policy_matrix_for_approval_routing() {
+        let matrix = content_ai_policy_matrix();
+        assert_eq!(matrix[0].task_slug, CONTENT_MODERATION_TASK_SLUG);
+        assert_eq!(
+            matrix[0].approval_mode,
+            ContentAiApprovalMode::OperatorApproval
+        );
+        assert_eq!(matrix[1].approval_mode, ContentAiApprovalMode::Auto);
+        assert_eq!(
+            content_ai_sensitive_tools(),
+            vec![CONTENT_MODERATION_TOOL_NAME]
+        );
     }
 
     #[test]

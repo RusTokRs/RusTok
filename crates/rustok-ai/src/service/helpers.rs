@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
-    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait,
+    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use serde_json::json;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use rustok_core::normalize_locale_tag as normalize_core_locale_tag;
@@ -22,8 +22,8 @@ use crate::policy::ToolExecutionPolicy;
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
 use crate::{AiError, AiResult};
 
-use super::types::AiOperatorContext;
 use super::mapping::role_slug;
+use super::types::AiOperatorContext;
 
 pub fn db_err(error: impl std::fmt::Display) -> AiError {
     AiError::Runtime(error.to_string())
@@ -75,7 +75,9 @@ pub fn provider_kind_from_slug(value: &str) -> AiResult<ProviderKind> {
         "openai_compatible" => Ok(ProviderKind::OpenAiCompatible),
         "anthropic" => Ok(ProviderKind::Anthropic),
         "gemini" => Ok(ProviderKind::Gemini),
-        other => Err(AiError::Runtime(format!("invalid provider kind slug: {other}"))),
+        other => Err(AiError::Runtime(format!(
+            "invalid provider kind slug: {other}"
+        ))),
     }
 }
 
@@ -87,7 +89,9 @@ pub fn capability_from_slug(value: &str) -> AiResult<ProviderCapability> {
         "multimodal_understanding" => Ok(ProviderCapability::MultimodalUnderstanding),
         "code_generation" => Ok(ProviderCapability::CodeGeneration),
         "alloy_assist" => Ok(ProviderCapability::AlloyAssist),
-        other => Err(AiError::Runtime(format!("invalid provider capability slug: {other}"))),
+        other => Err(AiError::Runtime(format!(
+            "invalid provider capability slug: {other}"
+        ))),
     }
 }
 
@@ -96,7 +100,9 @@ pub fn execution_mode_from_slug(value: &str) -> AiResult<ExecutionMode> {
         "auto" => Ok(ExecutionMode::Auto),
         "direct" => Ok(ExecutionMode::Direct),
         "mcp_tooling" => Ok(ExecutionMode::McpTooling),
-        other => Err(AiError::Runtime(format!("invalid execution mode slug: {other}"))),
+        other => Err(AiError::Runtime(format!(
+            "invalid execution mode slug: {other}"
+        ))),
     }
 }
 
@@ -118,6 +124,12 @@ pub fn provider_config(model: &ai_provider_profiles::Model) -> AiResult<AiProvid
 }
 
 pub fn policy_from_model(model: Option<&ai_tool_profiles::Model>) -> ToolExecutionPolicy {
+    let mut sensitive_tools = match model {
+        Some(model) => string_list(&model.sensitive_tools),
+        None => Vec::new(),
+    };
+    merge_content_ai_sensitive_tools(&mut sensitive_tools);
+
     match model {
         Some(model) => ToolExecutionPolicy::new(
             match string_list(&model.allowed_tools) {
@@ -125,9 +137,20 @@ pub fn policy_from_model(model: Option<&ai_tool_profiles::Model>) -> ToolExecuti
                 values => Some(values),
             },
             string_list(&model.denied_tools),
-            string_list(&model.sensitive_tools),
+            sensitive_tools,
         ),
-        None => ToolExecutionPolicy::default(),
+        None => ToolExecutionPolicy::new(None, Vec::new(), sensitive_tools),
+    }
+}
+
+fn merge_content_ai_sensitive_tools(sensitive_tools: &mut Vec<String>) {
+    for tool_name in rustok_ai_content::content_ai_sensitive_tools() {
+        if !sensitive_tools
+            .iter()
+            .any(|existing| existing == &tool_name)
+        {
+            sensitive_tools.push(tool_name);
+        }
     }
 }
 
