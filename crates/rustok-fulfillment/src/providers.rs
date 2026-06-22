@@ -249,6 +249,69 @@ impl FulfillmentProviderRegistry {
             degraded_mode: registration.degraded_mode.clone(),
         })
     }
+    fn executable_provider(
+        &self,
+        provider_id: &str,
+        operation: &str,
+    ) -> FulfillmentResult<Arc<dyn FulfillmentProvider>> {
+        let mode = self.runtime_mode(provider_id, operation)?;
+        if !mode.can_execute {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider `{}` is unavailable for `{}`",
+                provider_id, operation
+            )));
+        }
+        self.provider(provider_id).ok_or_else(|| {
+            FulfillmentError::Validation(format!(
+                "fulfillment provider `{}` is not registered",
+                provider_id
+            ))
+        })
+    }
+
+    /// Guard and invoke carrier rate quoting. The registry checks runtime mode before adapter side effects.
+    pub async fn execute_quote_rates(
+        &self,
+        provider_id: &str,
+        request: FulfillmentRateQuoteRequest,
+    ) -> FulfillmentResult<Vec<FulfillmentRateQuote>> {
+        self.executable_provider(provider_id, "rate_quote")?
+            .quote_rates(request)
+            .await
+    }
+
+    /// Guard and invoke label creation without persisting fulfillment lifecycle state.
+    pub async fn execute_create_label(
+        &self,
+        provider_id: &str,
+        request: FulfillmentProviderOperationRequest,
+    ) -> FulfillmentResult<FulfillmentProviderOperationResult> {
+        self.executable_provider(provider_id, "create_label")?
+            .create_label(request)
+            .await
+    }
+
+    /// Guard and invoke carrier cancellation without persisting fulfillment lifecycle state.
+    pub async fn execute_cancel(
+        &self,
+        provider_id: &str,
+        request: FulfillmentProviderOperationRequest,
+    ) -> FulfillmentResult<FulfillmentProviderOperationResult> {
+        self.executable_provider(provider_id, "cancel")?
+            .cancel(request)
+            .await
+    }
+
+    /// Guard and invoke tracking webhook normalization; replay-safe lifecycle handling remains in `FulfillmentService`.
+    pub async fn execute_tracking_webhook(
+        &self,
+        provider_id: &str,
+        request: FulfillmentProviderWebhookRequest,
+    ) -> FulfillmentResult<FulfillmentProviderWebhookResult> {
+        self.executable_provider(provider_id, "tracking_webhook_ingress")?
+            .handle_tracking_webhook(request)
+            .await
+    }
 }
 
 /// Transport-neutral rate quote request for carrier/provider adapters.
