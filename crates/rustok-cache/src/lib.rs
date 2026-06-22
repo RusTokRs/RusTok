@@ -2,8 +2,9 @@ mod service;
 
 pub use service::{
     format_cache_service_prometheus_metrics, CacheBackendOptions, CacheHealthReport,
-    CacheInvalidationMessage, CacheInvalidationOutcome, CacheInvalidationService, CacheLoadResult,
-    CacheLoadSource, CacheService,
+    CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
+    CacheInvalidationService, CacheLoadResult, CacheLoadSource, CacheService,
+    LocalCacheInvalidationSubscription,
 };
 
 use async_trait::async_trait;
