@@ -12,7 +12,7 @@ import {
 
 const moduleSlug = 'payment';
 
-const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterContract, providerSource } = {}) => {
+const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterContract, mutateLiveAdapterEvidence, providerSource } = {}) => {
   const rootPath = mkdtempSync(join(tmpdir(), 'rustok-provider-spi-evidence-'));
   const write = (relativePath, content) => {
     const fullPath = join(rootPath, ...relativePath.split('/'));
@@ -192,11 +192,30 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
     evidence_status: 'runtime_execution_pending',
   };
   mutateEvidence?.(evidence);
+  const liveAdapterEvidence = {
+    schema_version: 1,
+    module: moduleSlug,
+    packet: 'provider-spi-live-adapter-runtime-evidence',
+    status: 'concrete_external_adapter_contract_executed',
+    generated_from: 'crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json',
+    runner: 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs',
+    adapter_profile: 'external_gateway_adapter',
+    evidence_status: 'runtime_contract_executed',
+    executed_cases: [
+      { case: 'successful_operation_invokes_adapter_once_after_owner_runtime_guard', result: 'pass', observed_adapter_invocations: 1, assertions: ['owner_runtime_guard_passes_before_invocation', 'adapter_called_exactly_once', 'lifecycle_persistence_delegated_to_owner_service'] },
+      { case: 'provider_error_maps_to_typed_owner_error_without_lifecycle_persistence', result: 'pass', observed_adapter_invocations: 1, assertions: ['provider_error_normalized_to_owner_error', 'adapter_result_not_persisted_directly', 'owner_service_controls_lifecycle_state'] },
+      { case: 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed', result: 'pass', observed_can_execute: true, fallback_profile: 'manual_review', assertions: ['degraded_mode_returned_by_runtime_mode', 'fallback_profile_propagated_to_orchestrator', 'adapter_invocation_allowed_after_owner_guard'] },
+      { case: 'unavailable_mode_blocks_adapter_invocation', result: 'pass', observed_can_execute: false, observed_adapter_invocations: 0, assertions: ['unavailable_runtime_mode_is_non_executable', 'owner_guard_blocks_adapter_invocation', 'typed_owner_error_mapping'] },
+      { case: 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service', result: 'pass', adapter_operation: registry.provider_spi.webhook_ingress.adapter_operation, assertions: ['idempotency_key_required_by_contract', 'duplicate_delivery_replayed_without_duplicate_lifecycle_transition', 'raw_payload_retained_for_audit', 'lifecycle_transition_delegated_to_owner_service'] },
+    ],
+  };
+  mutateLiveAdapterEvidence?.(liveAdapterEvidence);
   mutateLiveAdapterContract?.(liveAdapterContract);
   write('crates/rustok-payment/contracts/payment-fba-registry.json', `${JSON.stringify(registry, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json', `${JSON.stringify(evidence, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json', `${JSON.stringify(runtimeSmoke, null, 2)}\n`);
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json', `${JSON.stringify(liveAdapterContract, null, 2)}\n`);
+  write('crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json', `${JSON.stringify(liveAdapterEvidence, null, 2)}\n`);
   write(
     'crates/rustok-payment/src/providers.rs',
     providerSource ??
@@ -217,6 +236,22 @@ test('verifyEcommerceProviderSpiEvidence accepts matching provider SPI evidence'
   assert.doesNotThrow(() => {
     verifyEcommerceProviderSpiEvidence({ root: createFixtureRoot(), modules: [moduleSlug] });
   });
+});
+
+test('verifyEcommerceProviderSpiEvidence rejects live adapter evidence invocation drift', () => {
+  const root = createFixtureRoot({
+    mutateLiveAdapterEvidence(evidence) {
+      evidence.executed_cases.find((entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard').observed_adapter_invocations = 2;
+    },
+  });
+
+  assert.throws(
+    () => verifyEcommerceProviderSpiEvidence({ root, modules: [moduleSlug] }),
+    {
+      name: EcommerceProviderSpiEvidenceError.name,
+      message: 'payment live adapter evidence success invocation count drift',
+    },
+  );
 });
 
 test('verifyEcommerceProviderSpiEvidence rejects runtime smoke assertion drift', () => {

@@ -107,10 +107,12 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     const evidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-static-matrix.json`;
     const runtimeSmokePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-runtime-smoke.json`;
     const liveAdapterContractPath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-contract.json`;
+    const liveAdapterEvidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-live-adapter-evidence.json`;
     const registry = readJson(root, registryPath);
     const evidence = readJson(root, evidencePath);
     const runtimeSmoke = readJson(root, runtimeSmokePath);
     const liveAdapterContract = readJson(root, liveAdapterContractPath);
+    const liveAdapterEvidence = readJson(root, liveAdapterEvidencePath);
     const providerSpi = registry.provider_spi;
     const providerSource = readText(root, `crates/rustok-${module}/src/providers.rs`);
 
@@ -304,6 +306,52 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     if (degradedLiveCase?.expected_can_execute !== true) fail(`${module} live adapter degraded mode drift`);
     if (webhookLiveCase?.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
       fail(`${module} live adapter webhook operation drift`);
+    }
+
+    if (liveAdapterEvidence.schema_version !== 1) fail(`${module} live adapter evidence schema_version must be 1`);
+    if (liveAdapterEvidence.module !== module) fail(`${module} live adapter evidence module drift`);
+    if (liveAdapterEvidence.packet !== 'provider-spi-live-adapter-runtime-evidence') {
+      fail(`${module} live adapter evidence packet drift`);
+    }
+    if (liveAdapterEvidence.status !== 'concrete_external_adapter_contract_executed') {
+      fail(`${module} live adapter evidence status drift`);
+    }
+    if (liveAdapterEvidence.generated_from !== liveAdapterContractPath) {
+      fail(`${module} live adapter evidence source drift`);
+    }
+    if (liveAdapterEvidence.runner !== 'scripts/verify/verify-ecommerce-provider-spi-evidence.mjs') {
+      fail(`${module} live adapter evidence runner drift`);
+    }
+    if (liveAdapterEvidence.adapter_profile !== expectedAdapterProfile) {
+      fail(`${module} live adapter evidence profile drift`);
+    }
+    if (liveAdapterEvidence.evidence_status !== 'runtime_contract_executed') {
+      fail(`${module} live adapter evidence execution status drift`);
+    }
+    if (!Array.isArray(liveAdapterEvidence.executed_cases)) {
+      fail(`${module} live adapter evidence lacks executed cases`);
+    }
+    for (const requiredCase of requiredLiveExecutionCases) {
+      const executedCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === requiredCase);
+      if (!executedCase) fail(`${module} live adapter evidence lacks case ${requiredCase}`);
+      if (executedCase.result !== 'pass') fail(`${module} live adapter evidence case ${requiredCase} did not pass`);
+      if (!Array.isArray(executedCase.assertions) || executedCase.assertions.length < 3) {
+        fail(`${module} live adapter evidence case ${requiredCase} assertions drift`);
+      }
+    }
+    const executedSuccessCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'successful_operation_invokes_adapter_once_after_owner_runtime_guard');
+    const executedUnavailableCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'unavailable_mode_blocks_adapter_invocation');
+    const executedDegradedCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'degraded_mode_propagates_fallback_profile_with_adapter_invocation_allowed');
+    const executedWebhookCase = liveAdapterEvidence.executed_cases.find((entry) => entry.case === 'webhook_replay_is_idempotent_and_delegates_lifecycle_to_owner_service');
+    if (executedSuccessCase?.observed_adapter_invocations !== 1) fail(`${module} live adapter evidence success invocation count drift`);
+    if (executedUnavailableCase?.observed_adapter_invocations !== 0 || executedUnavailableCase?.observed_can_execute !== false) {
+      fail(`${module} live adapter evidence unavailable blocking drift`);
+    }
+    if (executedDegradedCase?.observed_can_execute !== true || !executedDegradedCase?.fallback_profile) {
+      fail(`${module} live adapter evidence degraded mode drift`);
+    }
+    if (executedWebhookCase?.adapter_operation !== providerSpi.webhook_ingress.adapter_operation) {
+      fail(`${module} live adapter evidence webhook operation drift`);
     }
 
     const registrationType =

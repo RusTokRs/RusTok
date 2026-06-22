@@ -9736,7 +9736,6 @@ dependencies = [
  "loco-rs",
  "rustok-core",
  "rustok-outbox",
- "rustok-tenant",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9949,6 +9948,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-core",
  "rustok-test-utils",
  "sea-orm",
@@ -11350,6 +11350,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",

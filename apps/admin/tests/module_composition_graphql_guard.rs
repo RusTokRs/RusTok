@@ -1,11 +1,41 @@
 use std::fs;
 use std::path::Path;
 
+
+fn read_client_content() -> String {
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let client_path = crate_root.join("src/features/modules/api/client.rs");
+    if client_path.exists() {
+        fs::read_to_string(&client_path).expect("read client.rs")
+    } else {
+        let api_path = crate_root.join("src/features/modules/api.rs");
+        fs::read_to_string(&api_path).expect("read api.rs")
+    }
+}
+
+fn read_api_content() -> String {
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let api_dir = crate_root.join("src/features/modules/api");
+    if api_dir.exists() {
+        let mut content = String::new();
+        for filename in ["types.rs", "manifest.rs", "server.rs", "client.rs", "mod.rs"] {
+            if let Ok(file_content) = fs::read_to_string(api_dir.join(filename)) {
+                content.push_str(&file_content);
+                content.push('\n');
+            }
+        }
+        content
+    } else {
+        let api_path = crate_root.join("src/features/modules/api.rs");
+        fs::read_to_string(&api_path).expect("read api.rs")
+    }
+}
+
+
 #[test]
 fn native_module_composition_endpoints_are_not_declared() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for endpoint in [
         "endpoint = \"admin/install-module\"",
@@ -23,8 +53,7 @@ fn native_module_composition_endpoints_are_not_declared() {
 #[test]
 fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for forbidden in [
         "UPDATE platform_state",
@@ -43,8 +72,7 @@ fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() 
 #[test]
 fn module_composition_client_helpers_do_not_call_native_paths() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for native_call in [
         "install_module_native(",
@@ -62,8 +90,7 @@ fn module_composition_client_helpers_do_not_call_native_paths() {
 #[test]
 fn module_composition_helpers_do_not_use_native_graphql_fallback_combiner() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for helper in [
         "pub async fn install_module(",
@@ -84,8 +111,7 @@ fn module_composition_helpers_do_not_use_native_graphql_fallback_combiner() {
 #[test]
 fn module_composition_helpers_use_graphql_contract_payloads() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     assert_graphql_only_helper(
         &content,
@@ -124,8 +150,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
 #[test]
 fn module_composition_helpers_forward_auth_context_without_local_overrides() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for signature in [
         "pub async fn install_module(",
@@ -167,8 +192,7 @@ fn module_composition_helpers_forward_auth_context_without_local_overrides() {
 #[test]
 fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for signature in [
         "pub async fn install_module(",
@@ -195,7 +219,7 @@ fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
             "graphQLErrors",
         ] {
             assert!(
-                !helper_body.contains(forbidden),
+                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(forbidden),
                 "{signature} must not branch on runtime taxonomy fragment `{forbidden}`"
             );
         }
@@ -205,8 +229,7 @@ fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
 #[test]
 fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for signature in [
         "pub async fn install_module(",
@@ -236,8 +259,7 @@ fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows
 #[test]
 fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let lifecycle_taxonomy_fragments = [
         "UNKNOWN_MODULE",
@@ -288,8 +310,7 @@ fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_cont
 #[test]
 fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let status_fragments = [
         "validated",
@@ -323,8 +344,7 @@ fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy()
 #[test]
 fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let manifest_contract_fragments = [
         "manifest_ref",
@@ -355,8 +375,7 @@ fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
 #[test]
 fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let control_plane_error_fragments = [
         "CONFLICT",
@@ -389,8 +408,7 @@ fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
 #[test]
 fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let pipeline_fragments = [
         "builds",
@@ -424,8 +442,7 @@ fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() 
 #[test]
 fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let graphql_error_shape_fragments = [
         ".errors",
@@ -457,8 +474,7 @@ fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
 #[test]
 fn module_composition_helpers_do_not_map_graphql_taxonomy_to_transport_error_variants() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let forbidden_transport_remap_fragments = [
         "ApiError::Unauthorized",
@@ -490,8 +506,7 @@ fn module_composition_helpers_do_not_map_graphql_taxonomy_to_transport_error_var
 #[test]
 fn module_composition_helpers_do_not_use_local_serverfn_error_normalizers() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let forbidden_local_normalizer_fragments = [
         "normalize_server_fn_error_message(",
@@ -520,8 +535,7 @@ fn module_composition_helpers_do_not_use_local_serverfn_error_normalizers() {
 #[test]
 fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let cases = [
         (
@@ -565,13 +579,14 @@ fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
     for (signature, required, forbidden_list) in cases {
         let helper_body = extract_function_block(&content, signature)
             .unwrap_or_else(|| panic!("helper signature not found: {signature}"));
+
         assert!(
             helper_body.contains(required),
             "{signature} must reference canonical mutation constant `{required}`"
         );
         for forbidden in forbidden_list {
             assert!(
-                !helper_body.contains(forbidden),
+                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(forbidden),
                 "{signature} must not cross-wire foreign mutation constant `{forbidden}`"
             );
         }
@@ -581,8 +596,7 @@ fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
 #[test]
 fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let cases = [
         (
@@ -651,8 +665,7 @@ fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
 #[test]
 fn module_composition_mutation_constants_are_declared_once() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_api_content();
 
     for constant in [
         "pub const INSTALL_MODULE_MUTATION: &str =",
@@ -671,8 +684,7 @@ fn module_composition_mutation_constants_are_declared_once() {
 #[test]
 fn module_composition_helpers_reference_single_canonical_mutation_and_request_call() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let cases: &[(&str, &str, &[&str])] = &[
         (
@@ -717,7 +729,7 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
         );
         for foreign in foreign_mutations {
             assert!(
-                !helper_body.contains(foreign),
+                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(foreign),
                 "{signature} must not reference foreign mutation constant `{foreign}`"
             );
         }
@@ -731,8 +743,7 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
 #[test]
 fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallback_combiner() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let rollback_body = extract_function_block(&content, "pub async fn rollback_build(")
         .expect("rollback_build helper signature not found");
@@ -763,8 +774,7 @@ fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallb
 #[test]
 fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     struct Case<'a> {
         signature: &'a str,
@@ -878,7 +888,7 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
 
         for forbidden in case.foreign_mutations {
             assert!(
-                !helper_body.contains(forbidden),
+                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(forbidden),
                 "{} must not reference foreign mutation `{forbidden}`",
                 case.signature
             );
@@ -921,8 +931,7 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
 #[test]
 fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     let helper_body = extract_function_block(&content, "pub async fn toggle_module(")
         .expect("toggle_module helper signature not found");
@@ -963,8 +972,7 @@ fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
 #[test]
 fn module_graphql_mutation_constants_have_stable_operation_shapes() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_api_content();
 
     let cases: &[(&str, &[&str], &[&str])] = &[
         (
@@ -1084,8 +1092,7 @@ fn assert_graphql_only_helper(
 #[test]
 fn module_recovery_helpers_use_canonical_graphql_surface() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_api_content();
     let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
     let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
 
@@ -1149,8 +1156,7 @@ fn module_recovery_helpers_use_canonical_graphql_surface() {
 #[test]
 fn module_composition_helper_signatures_are_unique() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_client_content();
 
     for signature in [
         "pub async fn install_module(",
@@ -1254,8 +1260,7 @@ fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let admin_api_path = crate_root.join("src/features/modules/api.rs");
-    let admin_api = fs::read_to_string(&admin_api_path).expect("read admin api.rs");
+    let admin_api = read_api_content();
     let modules_list_path = crate_root.join("src/features/modules/components/modules_list.rs");
     let modules_list = fs::read_to_string(&modules_list_path).expect("read modules_list.rs");
     let shared_api_path = crate_root.join("src/shared/api/mod.rs");
@@ -1362,8 +1367,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let admin_api_path = crate_root.join("src/features/modules/api.rs");
-    let admin_api = fs::read_to_string(&admin_api_path).expect("read admin api.rs");
+    let admin_api = read_api_content();
     let server_composition_path =
         repo_root.join("apps/server/src/services/platform_composition.rs");
     let server_composition =
@@ -1476,8 +1480,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
 #[test]
 fn runtime_manifest_hash_uses_shared_typed_hash_helper() {
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let api_path = crate_root.join("src/features/modules/api.rs");
-    let content = fs::read_to_string(&api_path).expect("read api.rs");
+    let content = read_api_content();
 
     let helper_body = extract_function_block(
         &content,

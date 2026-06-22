@@ -559,6 +559,7 @@ mod tests {
         format_tenant_activity_metrics, format_tenant_cache_metrics,
         format_tenant_locale_cache_metrics, render_auth_lifecycle_metrics,
     };
+    use rustok_cache::CacheService;
     use crate::middleware::locale::TenantLocaleCacheStats;
     use crate::middleware::tenant::TenantCacheStats;
     use crate::services::auth_lifecycle::AuthLifecycleService;

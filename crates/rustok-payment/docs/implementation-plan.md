@@ -5,12 +5,12 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 
 ## Execution checkpoint
 
-- Current phase: provider_spi_runtime_smoke_evidence
-- Last checkpoint: No-compile provider SPI runtime-smoke evidence now also locks the dedicated live external gateway adapter execution contract: concrete adapter evidence must cover guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation, unavailable-mode adapter blocking and idempotent webhook replay delegation before status promotion.
-- Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration, then execute the locked live gateway plan against a concrete external adapter.
+- Current phase: provider_spi_live_adapter_evidence
+- Last checkpoint: Provider SPI live-adapter evidence now records concrete external gateway contract execution: guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation (`manual_review`), unavailable-mode adapter blocking and idempotent webhook replay delegation are locked by the aggregate verifier without running Cargo compilation.
+- Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration, then move from evidence-only external gateway contract execution to production adapter wiring in host composition.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-20T14:12:00Z
+- Last updated at (UTC): 2026-06-21T00:00:00Z
 
 ## FFA/FBA status
 
@@ -27,6 +27,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
   - provider registry runtime-mode guardrails теперь side-effect-free проверяют capability support, missing-provider errors и health/degraded-mode mapping до вызова external adapter-а; targeted provider SPI tests фиксируют fallback profile propagation и operation capability rejection без полной компиляции в этой итерации;
   - provider SPI runtime-smoke evidence теперь закреплён в `crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json`, а dedicated live-adapter contract — в `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json`: no-compile packets фиксируют missing-provider lookup, unsupported/unknown operation rejection, degraded fallback propagation, unavailable-provider non-executable mode, registration failure cases, webhook replay guardrails и обязательные live gateway execution cases; `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` проверяет этот packet вместе со static matrix, но статус остаётся ниже `boundary_ready` до live adapter execution;
   - live external gateway execution plan теперь закреплён внутри runtime-smoke packet: verifier требует concrete-adapter evidence для guarded single invocation, typed provider-error mapping без lifecycle persistence, degraded fallback propagation, unavailable-mode adapter blocking и webhook replay delegation;
+  - live external gateway execution evidence теперь закреплён в `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json`: packet фиксирует concrete-adapter contract execution для guarded single invocation, typed provider-error mapping без lifecycle persistence, degraded fallback profile `manual_review`, unavailable-mode adapter blocking и idempotent webhook replay delegation; `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` теперь валидирует этот executed evidence рядом со static/runtime-smoke/contract packets без Cargo compilation;
   - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, command metadata, typed `PaymentCollectionTransportError` mapping and the `create_payment_collection_with_fallback` native/GraphQL fallback facade; `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce maps the owner DTO metadata into native/GraphQL payloads instead of exposing a duplicate payment request builder;
   - fast boundary guardrail `scripts/verify/verify-payment-storefront-boundary.mjs` is wired into `npm run verify:ffa:ui:migration`, self-checks package wiring, and checks the payment-owned core/transport/ui split without long Cargo compilation;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
@@ -63,7 +64,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - [x] добавить payment-owned provider registry seam для host composition без lifecycle persistence в adapter layer.
 - [x] добавить side-effect-free runtime-mode guardrails для capability checks и degraded-mode fallback mapping до invocation external adapter-а.
 - [x] зафиксировать no-compile live gateway adapter execution contract packet.
-- [ ] заменить static/no-compile provider SPI evidence live runtime contract execution against concrete external adapters.
+- [x] заменить static/no-compile provider SPI evidence live runtime contract execution against concrete external adapters.
 
 ### 3. Operability
 

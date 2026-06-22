@@ -26,13 +26,19 @@
       "name": "skip_asset_enrichment",
       "source_marker": "normalize_dimension(width)",
       "consumer_contract": "AI media enrichment can proceed without dimensions or MIME when source metadata is incomplete, while preserving URL and alt text when available."
+    },
+    {
+      "name": "proxy_storage_relative_url",
+      "source_marker": "pub fn requires_public_proxy",
+      "consumer_contract": "SEO and AI consumers must route storage-relative image descriptors through a host proxy instead of emitting raw storage paths as public metadata."
     }
   ],
   "assertions": [
     "get_image_descriptor requires PortContext deadline semantics before reading MediaService",
     "get_image_descriptor maps MediaError to typed PortError through media_error_to_port_error",
     "MediaImageDescriptor is the only cross-module image payload exposed by the provider port",
-    "descriptor normalization keeps query/fragment-safe MIME inference and positive-only dimensions"
+    "descriptor normalization keeps query/fragment-safe MIME inference and positive-only dimensions",
+    "public URL policy distinguishes direct-public descriptors from storage-relative proxy-required descriptors"
   ],
   "runtime_execution": "pending_compile_allowed_iteration"
 }

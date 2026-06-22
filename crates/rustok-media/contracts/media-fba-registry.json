@@ -33,7 +33,8 @@
       "profile": "seo_image_descriptor",
       "degraded_modes": [
         "omit_image_metadata",
-        "keep_existing_seo_image"
+        "keep_existing_seo_image",
+        "proxy_storage_relative_url"
       ],
       "fallback_profiles": [
         "embedded_native"
@@ -43,7 +44,8 @@
       "module": "ai-media",
       "profile": "ai_asset_descriptor",
       "degraded_modes": [
-        "skip_asset_enrichment"
+        "skip_asset_enrichment",
+        "proxy_storage_relative_url"
       ],
       "fallback_profiles": [
         "embedded_native"
@@ -103,7 +105,8 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "seo_descriptor_normalization_preserved"
+          "seo_descriptor_normalization_preserved",
+          "public_url_policy_preserved"
         ]
       },
       {
@@ -127,7 +130,8 @@
       "degraded_modes": [
         "omit_image_metadata",
         "keep_existing_seo_image",
-        "skip_asset_enrichment"
+        "skip_asset_enrichment",
+        "proxy_storage_relative_url"
       ],
       "source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
     },

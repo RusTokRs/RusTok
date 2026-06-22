@@ -9,6 +9,8 @@ use loco_rs::app::AppContext;
 use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
 use rustok_core::tenant_validation::TenantIdentifierValidator;
 #[cfg(feature = "redis-cache")]
+use redis::AsyncCommands;
+#[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
 use rustok_core::{CacheBackend, Error as CoreError};
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
