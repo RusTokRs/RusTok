@@ -257,7 +257,11 @@ impl CacheService {
     /// are not tied to a single backend instance: Redis health/configuration, default
     /// instrumentation state, and in-flight anti-stampede loaders.
     pub async fn prometheus_metrics(&self) -> String {
-        format_cache_service_prometheus_metrics(&self.health().await, self.in_flight_loads().await)
+        format_cache_service_prometheus_metrics(
+            &self.health().await,
+            self.in_flight_loads().await,
+            &self.invalidations.stats(),
+        )
     }
 
     /// Health check: verify Redis connectivity (if configured).
@@ -354,11 +358,28 @@ pub struct CacheInvalidationOutcome {
     pub redis_published: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CacheInvalidationStats {
+    pub local_published_total: u64,
+    pub redis_publish_success_total: u64,
+    pub redis_publish_failure_total: u64,
+    pub rejected_total: u64,
+}
+
 #[derive(Clone)]
 pub struct CacheInvalidationService {
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
     local: broadcast::Sender<CacheInvalidationMessage>,
+    stats: Arc<CacheInvalidationMetrics>,
+}
+
+#[derive(Default)]
+struct CacheInvalidationMetrics {
+    local_published_total: AtomicU64,
+    redis_publish_success_total: AtomicU64,
+    redis_publish_failure_total: AtomicU64,
+    rejected_total: AtomicU64,
 }
 
 impl CacheInvalidationService {
@@ -368,13 +389,17 @@ impl CacheInvalidationService {
         Self {
             redis_client,
             local,
+            stats: Arc::new(CacheInvalidationMetrics::default()),
         }
     }
 
     #[cfg(not(feature = "redis-cache"))]
     fn new() -> Self {
         let (local, _) = broadcast::channel(256);
-        Self { local }
+        Self {
+            local,
+            stats: Arc::new(CacheInvalidationMetrics::default()),
+        }
     }
 
     pub fn subscribe_local(&self) -> broadcast::Receiver<CacheInvalidationMessage> {
@@ -393,6 +418,21 @@ impl CacheInvalidationService {
         LocalCacheInvalidationSubscription {
             channel: channel.into(),
             receiver: self.local.subscribe(),
+        }
+    }
+
+    pub fn stats(&self) -> CacheInvalidationStats {
+        CacheInvalidationStats {
+            local_published_total: self.stats.local_published_total.load(Ordering::Relaxed),
+            redis_publish_success_total: self
+                .stats
+                .redis_publish_success_total
+                .load(Ordering::Relaxed),
+            redis_publish_failure_total: self
+                .stats
+                .redis_publish_failure_total
+                .load(Ordering::Relaxed),
+            rejected_total: self.stats.rejected_total.load(Ordering::Relaxed),
         }
     }
 
@@ -471,6 +511,7 @@ impl CacheInvalidationService {
     pub async fn publish(&self, message: CacheInvalidationMessage) -> CacheInvalidationOutcome {
         if let Err(error) = message.validate() {
             tracing::warn!(?error, "Ignoring invalid cache invalidation message");
+            self.stats.rejected_total.fetch_add(1, Ordering::Relaxed);
             return CacheInvalidationOutcome {
                 local_subscribers: 0,
                 redis_published: false,
@@ -483,6 +524,9 @@ impl CacheInvalidationService {
         };
 
         outcome.local_subscribers = self.local.send(message.clone()).unwrap_or(0);
+        self.stats
+            .local_published_total
+            .fetch_add(1, Ordering::Relaxed);
 
         #[cfg(feature = "redis-cache")]
         {
@@ -494,6 +538,19 @@ impl CacheInvalidationService {
                         .query_async(&mut conn)
                         .await;
                     outcome.redis_published = published.is_ok();
+                    if outcome.redis_published {
+                        self.stats
+                            .redis_publish_success_total
+                            .fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        self.stats
+                            .redis_publish_failure_total
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
+                } else {
+                    self.stats
+                        .redis_publish_failure_total
+                        .fetch_add(1, Ordering::Relaxed);
                 }
             }
         }
@@ -625,15 +682,24 @@ impl CacheLoadCoordinator {
 pub fn format_cache_service_prometheus_metrics(
     report: &CacheHealthReport,
     in_flight_loads: usize,
+    invalidation_stats: &CacheInvalidationStats,
 ) -> String {
     format!(
         "rustok_cache_redis_configured {redis_configured}\n\
 rustok_cache_redis_healthy {redis_healthy}\n\
 rustok_cache_metrics_enabled {metrics_enabled}\n\
-rustok_cache_in_flight_loads {in_flight_loads}\n",
+rustok_cache_in_flight_loads {in_flight_loads}\n\
+rustok_cache_invalidation_local_published_total {local_published_total}\n\
+rustok_cache_invalidation_redis_publish_success_total {redis_publish_success_total}\n\
+rustok_cache_invalidation_redis_publish_failure_total {redis_publish_failure_total}\n\
+rustok_cache_invalidation_rejected_total {rejected_total}\n",
         redis_configured = if report.redis_configured { 1 } else { 0 },
         redis_healthy = if report.redis_healthy { 1 } else { 0 },
         metrics_enabled = if report.metrics_enabled { 1 } else { 0 },
+        local_published_total = invalidation_stats.local_published_total,
+        redis_publish_success_total = invalidation_stats.redis_publish_success_total,
+        redis_publish_failure_total = invalidation_stats.redis_publish_failure_total,
+        rejected_total = invalidation_stats.rejected_total,
     )
 }
 
@@ -880,6 +946,42 @@ mod tests {
         assert_eq!(outcome.local_subscribers, 0);
         assert!(!outcome.redis_published);
         assert!(subscriber.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn invalidation_stats_track_local_publish_and_rejections() {
+        let service = CacheService::from_url(None);
+
+        service
+            .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
+            .await;
+        service
+            .publish_invalidation(CacheInvalidationMessage::new("cache.test", ""))
+            .await;
+
+        let stats = service.invalidations().stats();
+        assert_eq!(stats.local_published_total, 1);
+        assert_eq!(stats.redis_publish_success_total, 0);
+        assert_eq!(stats.redis_publish_failure_total, 0);
+        assert_eq!(stats.rejected_total, 1);
+    }
+
+    #[tokio::test]
+    async fn prometheus_metrics_include_invalidation_counters() {
+        let service = CacheService::from_url(None);
+
+        service
+            .publish_invalidation(CacheInvalidationMessage::new("cache.test", "key-1"))
+            .await;
+        service
+            .publish_invalidation(CacheInvalidationMessage::new("", "key-2"))
+            .await;
+
+        let metrics = service.prometheus_metrics().await;
+        assert!(metrics.contains("rustok_cache_invalidation_local_published_total 1"));
+        assert!(metrics.contains("rustok_cache_invalidation_rejected_total 1"));
+        assert!(metrics.contains("rustok_cache_invalidation_redis_publish_success_total 0"));
+        assert!(metrics.contains("rustok_cache_invalidation_redis_publish_failure_total 0"));
     }
 
     #[tokio::test]
