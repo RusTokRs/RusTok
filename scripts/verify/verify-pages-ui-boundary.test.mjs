@@ -45,6 +45,7 @@ pub fn is_publish_action_disabled() {}
 pub fn admin_page_list_item_view() {}
 pub fn admin_page_row_action_state() {}
 pub fn admin_page_row_action_labels() {}
+pub fn issue_banner_view() {}
 `;
 }
 
@@ -79,6 +80,7 @@ pub fn PagesAdmin() {
     let _item_view = core::admin_page_list_item_view;
     let _action_state = core::admin_page_row_action_state;
     let _action_labels = core::admin_page_row_action_labels;
+    let _issue_banner = core::issue_banner_view;
     ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
     ${rawServiceCall ? "let _service = PageService::new;" : ""}
 }
