@@ -41,5 +41,5 @@
       ]
     }
   ],
-  "notes": "Executable no-compile smoke exercises shared read-deadline semantics, locale fallback and typed PortError mapping while source-locking the embedded PostgreSQL fallback path."
+  "notes": "Executable no-compile smoke exercises shared read-deadline semantics, explicit/request locale preservation, fallback locale inheritance, typed PortError mapping, registry degraded-mode parity and source-locks the embedded PostgreSQL query/suggestion fallback path."
 }

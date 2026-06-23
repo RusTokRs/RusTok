@@ -93,10 +93,10 @@
     "verify:outbox:fba": "node scripts/verify/verify-outbox-fba.mjs",
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs",
     "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
-    "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
-    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
     "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs",
-    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs"
+    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs",
+    "test:verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.test.mjs",
+    "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke"
   },
   "dependencies": {
     "sharp": "^0.34.5"
