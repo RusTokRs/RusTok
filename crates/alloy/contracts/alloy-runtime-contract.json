@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "module": "alloy",
+  "crate": "alloy",
+  "role": "capability_runtime",
+  "status": "runtime_hardening",
+  "script_list_contract": {
+    "status_filter": "known_script_status_or_validation_error",
+    "page_min": 1,
+    "per_page_min": 1,
+    "per_page_max": 100,
+    "ordering": [
+      "name_asc",
+      "id_asc"
+    ],
+    "pagination_order": [
+      "filter",
+      "sort",
+      "offset",
+      "limit"
+    ],
+    "storage_parity": [
+      "sea_orm",
+      "in_memory"
+    ]
+  },
+  "execution_history_contract": {
+    "routes": {
+      "loco": [
+        "/executions",
+        "/scripts/{id}/executions"
+      ],
+      "axum": [
+        "/executions",
+        "/scripts/{id}/executions"
+      ],
+      "graphql": [
+        "scriptExecutionHistory",
+        "recentScriptExecutions",
+        "scriptExecutions"
+      ]
+    },
+    "page_min": 1,
+    "per_page_min": 1,
+    "per_page_max": 100,
+    "ordering": "newest_first",
+    "tenant_filter_before_offset": true,
+    "canonical_fields": [
+      "id",
+      "script_id",
+      "script_name",
+      "phase",
+      "outcome",
+      "duration_ms",
+      "error",
+      "user_id",
+      "tenant_id",
+      "created_at"
+    ]
+  },
+  "static_gates": {
+    "script": "scripts/verify/verify-alloy-runtime-contract.mjs",
+    "evidence": "crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json"
+  }
+}

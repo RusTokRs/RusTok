@@ -25,7 +25,7 @@ impl FulfillmentProviderCapabilities {
     pub const fn manual() -> Self {
         Self {
             rate_quote: false,
-            create_label: false,
+            create_label: true,
             ship: true,
             cancel: true,
             tracking_webhook_ingress: false,

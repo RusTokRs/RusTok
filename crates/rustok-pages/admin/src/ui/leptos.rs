@@ -948,33 +948,28 @@ pub fn PagesAdmin() -> impl IntoView {
                             </label>
 
                             <Show when=move || submit_issue.get().is_some()>
-                                <div class=move || {
-                                    submit_issue
-                                        .get()
-                                        .map(|issue| core::issue_banner_class(issue.kind))
-                                        .unwrap_or("hidden")
-                                }>
-                                    {move || {
-                                        submit_issue.get().map(move |issue| {
-                                            let validation_issue_label = validation_issue_label.get_value();
-                                            let sanitize_issue_label = sanitize_issue_label.get_value();
-                                            let runtime_issue_label = runtime_issue_label.get_value();
-                                            let validation_issue_guidance = validation_issue_guidance.get_value();
-                                            let sanitize_issue_guidance = sanitize_issue_guidance.get_value();
-                                            let runtime_issue_guidance = runtime_issue_guidance.get_value();
-                                            let feature_disabled_issue_guidance = feature_disabled_issue_guidance.get_value();
-                                            let banner = core::issue_banner_view(
-                                                &issue,
-                                                validation_issue_label.as_str(),
-                                                sanitize_issue_label.as_str(),
-                                                runtime_issue_label.as_str(),
-                                                validation_issue_guidance.as_str(),
-                                                sanitize_issue_guidance.as_str(),
-                                                runtime_issue_guidance.as_str(),
-                                                feature_disabled_issue_guidance.as_str(),
-                                            );
+                                {move || {
+                                    submit_issue.get().map(move |issue| {
+                                        let validation_issue_label = validation_issue_label.get_value();
+                                        let sanitize_issue_label = sanitize_issue_label.get_value();
+                                        let runtime_issue_label = runtime_issue_label.get_value();
+                                        let validation_issue_guidance = validation_issue_guidance.get_value();
+                                        let sanitize_issue_guidance = sanitize_issue_guidance.get_value();
+                                        let runtime_issue_guidance = runtime_issue_guidance.get_value();
+                                        let feature_disabled_issue_guidance = feature_disabled_issue_guidance.get_value();
+                                        let banner = core::issue_banner_view(
+                                            &issue,
+                                            validation_issue_label.as_str(),
+                                            sanitize_issue_label.as_str(),
+                                            runtime_issue_label.as_str(),
+                                            validation_issue_guidance.as_str(),
+                                            sanitize_issue_guidance.as_str(),
+                                            runtime_issue_guidance.as_str(),
+                                            feature_disabled_issue_guidance.as_str(),
+                                        );
 
-                                            view! {
+                                        view! {
+                                            <div class=banner.class_name>
                                                 <div class="space-y-1">
                                                     <div>
                                                         <strong>{banner.label}</strong>
@@ -983,11 +978,11 @@ pub fn PagesAdmin() -> impl IntoView {
                                                     </div>
                                                     <div class="text-xs opacity-80">{banner.guidance}</div>
                                                 </div>
-                                            }
-                                            .into_any()
-                                        })
-                                    }}
-                                </div>
+                                            </div>
+                                        }
+                                        .into_any()
+                                    })
+                                }}
                             </Show>
 
                             <button

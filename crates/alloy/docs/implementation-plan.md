@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Aligned in-memory script registry pagination with SeaORM ordering semantics so non-DB runtime/test paths filter first, sort by script name, then apply offset/limit deterministically; kept docs in sync without running compilation per operator request.
-- Next step: Run the Alloy validation/test gates when compilation is allowed, then promote the new in-memory ordering assertions and lightweight route/schema/pagination contract assertions into executable router/schema integration checks where host test fixtures permit.
+- Last checkpoint: Added a no-compile Alloy runtime static contract/evidence gate that source-locks script-list pagination/status semantics, execution-history transport routes, GraphQL history entry points and documentation sync; kept compilation skipped per operator request.
+- Next step: Run `npm run verify:alloy:runtime-contract` plus Alloy validation/test gates when compilation is allowed, then promote the static route/schema/pagination source locks into executable router/schema integration checks where host test fixtures permit.
 - Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `cargo xtask module validate alloy` и targeted tests. В этой итерации in-memory registry приведён к SeaORM-compatible deterministic ordering: filter сначала, затем сортировка по `name`/`id`, затем offset/limit. Это закрывает nondeterministic pagination в non-DB runtime/test paths и сохраняет строгий REST/Loco status-filter contract из прошлой итерации. `rustfmt --edition 2024` выполнен только для изменённого Alloy файла; обычный `rustfmt` без edition ранее падал на Rust 2015 default для async fn. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
-- Last updated at (UTC): 2026-06-22T00:00:00Z
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `npm run verify:alloy:runtime-contract`, `cargo xtask module validate alloy` и targeted tests. В этой итерации добавлены `crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json` и `scripts/verify/verify-alloy-runtime-contract.mjs`, чтобы без компиляции фиксировать REST/Loco/Axum/GraphQL execution-history routes, canonical response fields, status-filter validation, pagination bounds и in-memory/SeaORM ordering parity. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
+- Last updated at (UTC): 2026-06-23T00:00:00Z
 
 ## Область работ
 
@@ -39,6 +39,7 @@ contract приведены к единому формату.
 - [x] довести resource limits, timeout semantics и sandbox guarantees до стабильного production contract;
 - [x] удерживать audit log и execution history как каноническую операторскую поверхность с DB-level pagination и exact scoped total metadata;
 - [x] выровнять in-memory registry pagination с DB ordering contract для deterministic non-DB runtime/test paths;
+- [x] зафиксировать runtime route/schema/pagination contract в machine-readable static gate без компиляции;
 - [x] расширять integration helpers только через явные phase-aware contracts.
 
 ### 3. Operability
@@ -51,6 +52,7 @@ contract приведены к единому формату.
 
 - `cargo xtask module validate alloy`
 - `cargo xtask module test alloy`
+- `npm run verify:alloy:runtime-contract`
 - targeted runtime tests для script execution, scheduling, tenant isolation и bridge semantics
 
 ## Правила обновления
@@ -62,6 +64,7 @@ contract приведены к единому формату.
 
 ## Quality backlog
 
-- [ ] Актуализировать покрытие тестами по ключевым сценариям модуля.
+- [x] Актуализировать no-compile static coverage по ключевым route/schema/pagination сценариям модуля.
+- [ ] Повысить static coverage до executable Rust integration tests после снятия запрета на компиляцию.
 - [x] Проверить полноту и актуальность `README.md` и локальных docs.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля.

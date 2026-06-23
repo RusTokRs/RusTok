@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/alloy/contracts/alloy-runtime-contract.json",
+  "status": "runtime_hardening",
+  "cases": [
+    {
+      "name": "script_list_pagination_status_contract",
+      "assertions": [
+        "unknown_status_rejected",
+        "page_normalized_before_offset",
+        "per_page_clamped_1_to_100",
+        "in_memory_filter_sort_offset_limit",
+        "sea_orm_name_ordered_pagination"
+      ]
+    },
+    {
+      "name": "execution_history_transport_contract",
+      "assertions": [
+        "loco_routes_declared",
+        "axum_routes_declared",
+        "graphql_history_fields_declared",
+        "canonical_rest_fields_preserved",
+        "tenant_filter_before_offset_documented"
+      ]
+    },
+    {
+      "name": "documentation_sync_contract",
+      "assertions": [
+        "local_plan_names_static_gate",
+        "crate_readme_names_contract_file",
+        "local_docs_names_contract_file"
+      ]
+    }
+  ]
+}

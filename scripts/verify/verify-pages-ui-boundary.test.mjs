@@ -65,7 +65,7 @@ pub fn storefront_page_list_item_view() {}
 `;
 }
 
-function adminUiSource({ rawApiCall = false, rawServiceCall = false, omitDraftHelper = false } = {}) {
+function adminUiSource({ rawApiCall = false, rawServiceCall = false, omitDraftHelper = false, bypassIssueBannerViewClass = false } = {}) {
   return `
 use crate::core;
 use crate::transport;
@@ -81,6 +81,8 @@ pub fn PagesAdmin() {
     let _action_state = core::admin_page_row_action_state;
     let _action_labels = core::admin_page_row_action_labels;
     let _issue_banner = core::issue_banner_view;
+    let _issue_banner_class = banner.class_name;
+    ${bypassIssueBannerViewClass ? "let _bypass = core::issue_banner_class;" : ""}
     ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
     ${rawServiceCall ? "let _service = PageService::new;" : ""}
 }
@@ -224,6 +226,17 @@ test("pages UI boundary verifier rejects missing admin draft helper", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected missing draft helper fixture to fail");
     assert.match(result.stderr, /build_create_page_draft/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("pages UI boundary verifier rejects issue banner class bypass in admin UI", () => {
+  const root = withFixture({ bypassIssueBannerViewClass: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected issue banner class bypass fixture to fail");
+    assert.match(result.stderr, /must not bypass issue_banner_view/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
