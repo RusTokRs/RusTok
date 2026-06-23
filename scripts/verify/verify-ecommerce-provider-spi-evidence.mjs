@@ -102,6 +102,8 @@ const requiredLiveExecutionCases = [
 ];
 
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
+  const commerceCheckoutSource = readText(root, 'crates/rustok-commerce/src/services/checkout.rs');
+
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
     const evidencePath = `crates/rustok-${module}/contracts/evidence/${module}-provider-spi-static-matrix.json`;
@@ -407,6 +409,33 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     }
     if (!providerSource.includes('if !mode.can_execute')) {
       fail(`${module} provider SPI source lacks unavailable execution guard`);
+    }
+
+
+    const commerceExecutionMarkers =
+      module === 'payment'
+        ? [
+            'payment_provider_registry: PaymentProviderRegistry',
+            'pub fn with_provider_registries(',
+            '.execute_authorize(',
+            '.execute_capture(',
+            'execute_authorize_payment_provider',
+            'execute_capture_payment_provider',
+            'PaymentProviderOperationRequest {',
+            'idempotency_key: Some(format!',
+          ]
+        : [
+            'fulfillment_provider_registry: FulfillmentProviderRegistry',
+            'pub fn with_provider_registries(',
+            '.execute_create_label(',
+            'execute_fulfillment_label_provider',
+            'FulfillmentProviderOperationRequest {',
+            'idempotency_key: Some(format!',
+          ];
+    for (const marker of commerceExecutionMarkers) {
+      if (!commerceCheckoutSource.includes(marker)) {
+        fail(`commerce checkout orchestration lacks ${module} guarded execution marker ${marker}`);
+      }
     }
 
     for (const marker of [
