@@ -121,6 +121,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let issue_banner_view =
         Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
     let form_copy_view = blog_form_copy_view_model(ui_locale.as_deref());
+    let form_field_classes = core::blog_post_admin_editor_field_classes_view();
 
     let form_view_locale = ui_locale.clone();
     let form_view_model = Memo::new(move |_| {
@@ -664,12 +665,12 @@ pub fn BlogAdmin() -> impl IntoView {
 
                         <form class="mt-5 space-y-4" on:submit=submit_post>
                             <label class="block space-y-2">
-                                <span class="text-sm font-medium text-card-foreground">
+                                <span class=form_field_classes.label_text>
                                     {form_copy_view.title_label.clone()}
                                 </span>
                                 <input
                                     type="text"
-                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class=form_field_classes.text_input
                                     prop:value=title
                                     on:input=move |ev| {
                                         let title_input = core::blog_post_admin_title_input_view(
@@ -685,12 +686,12 @@ pub fn BlogAdmin() -> impl IntoView {
                             </label>
 
                             <label class="block space-y-2">
-                                <span class="text-sm font-medium text-card-foreground">
+                                <span class=form_field_classes.label_text>
                                     {form_copy_view.slug_label.clone()}
                                 </span>
                                 <input
                                     type="text"
-                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class=form_field_classes.text_input
                                     prop:value=slug
                                     on:input=move |ev| set_slug.set(event_target_value(&ev))
                                 />
@@ -698,23 +699,23 @@ pub fn BlogAdmin() -> impl IntoView {
 
                             <div class="grid gap-4 md:grid-cols-2">
                                 <label class="block space-y-2">
-                                    <span class="text-sm font-medium text-card-foreground">
+                                    <span class=form_field_classes.label_text>
                                         {form_copy_view.locale_label.clone()}
                                     </span>
                                     <input
                                         type="text"
-                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                        class=form_field_classes.text_input
                                         prop:value=locale
                                         on:input=move |ev| set_locale.set(event_target_value(&ev))
                                     />
                                 </label>
 
                                 <label class="block space-y-2">
-                                    <span class="text-sm font-medium text-card-foreground">
+                                    <span class=form_field_classes.label_text>
                                         {form_copy_view.body_format_label.clone()}
                                     </span>
                                     <select
-                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                        class=form_field_classes.text_input
                                         prop:value=body_format
                                         on:change=move |ev| {
                                             let body_format_change =
@@ -741,22 +742,22 @@ pub fn BlogAdmin() -> impl IntoView {
                             </div>
 
                             <label class="block space-y-2">
-                                <span class="text-sm font-medium text-card-foreground">
+                                <span class=form_field_classes.label_text>
                                     {form_copy_view.excerpt_label.clone()}
                                 </span>
                                 <textarea
-                                    class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class=form_field_classes.textarea_short
                                     prop:value=excerpt
                                     on:input=move |ev| set_excerpt.set(event_target_value(&ev))
                                 />
                             </label>
 
                             <label class="block space-y-2">
-                                <span class="text-sm font-medium text-card-foreground">
+                                <span class=form_field_classes.label_text>
                                     {form_copy_view.body_label.clone()}
                                 </span>
                                 <textarea
-                                    class="min-h-48 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class=form_field_classes.textarea_long
                                     prop:value=body
                                     on:input=move |ev| set_body.set(event_target_value(&ev))
                                 />
@@ -769,19 +770,19 @@ pub fn BlogAdmin() -> impl IntoView {
                             </Show>
 
                             <label class="block space-y-2">
-                                <span class="text-sm font-medium text-card-foreground">
+                                <span class=form_field_classes.label_text>
                                     {form_copy_view.tags_label.clone()}
                                 </span>
                                 <input
                                     type="text"
-                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class=form_field_classes.text_input
                                     placeholder=form_copy_view.tags_placeholder.clone()
                                     prop:value=tags_input
                                     on:input=move |ev| set_tags_input.set(event_target_value(&ev))
                                 />
                             </label>
 
-                            <label class="flex items-center gap-2 text-sm text-card-foreground">
+                            <label class=form_field_classes.checkbox_label>
                                 <input
                                     type="checkbox"
                                     prop:checked=publish_now
@@ -808,7 +809,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
                             <button
                                 type="submit"
-                                class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                                class=form_field_classes.submit_button
     disabled=move || form_view_model.get().submit_disabled
                             >
     {move || form_view_model.get().submit_label}
