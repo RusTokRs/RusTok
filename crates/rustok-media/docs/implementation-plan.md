@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: FBA media asset read provider metadata + public URL policy helpers
-- Last checkpoint: no-compile media slice added explicit read deadline guard helper for `MediaAssetReadPort`, delivery profile helpers and explicit public URL policy helpers on `MediaImageDescriptor`, cleanup report operability helpers, source-level tests, and extended `npm run verify:media:fba` static coverage without compilation. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
-- Next step: когда компиляции снова разрешены, запустить executable runtime contract/fallback smoke для `MediaAssetReadPort`, затем добрать DB-backed integration tests для `cleanup_storage_orphans` и подтвердить новые delivery profile/report helpers компиляцией.
+- Last checkpoint: no-compile media slice collapsed the explicit read deadline helper into shared `PortCallPolicy::read()` enforcement for `MediaAssetReadPort`, kept delivery/public URL policy helpers intact, and updated static `npm run verify:media:fba` coverage without compilation. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
+- Next step: когда компиляции снова разрешены, запустить executable runtime contract/fallback smoke для `MediaAssetReadPort` с проверкой shared read-policy deadline semantics, затем добрать DB-backed integration tests для `cleanup_storage_orphans` и подтвердить новые delivery profile/report helpers компиляцией.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-23T00:00:00Z
 
 ## FFA/FBA status
 
@@ -23,7 +23,7 @@
   - `admin/src/transport/` владеет текущим native-first + GraphQL fallback + REST upload transport facade без изменения внешних GraphQL/REST contracts; facade split зафиксирован через `graphql_adapter.rs`, `rest_adapter.rs` и `native_server_adapter.rs`;
   - `admin/src/ui/leptos.rs` является явным Leptos render adapter, а crate root только связывает модули и реэкспортирует `MediaAdmin`;
   - runtime hardening slice добавил service-level cleanup report/decision helpers и targeted unit coverage для upload policy + storage cleanup classification без transport changes;
-  - FBA provider metadata now exposes the media asset read boundary through `MediaAssetReadPort` / `media.asset_read.v1`: `crates/rustok-media/contracts/media-fba-registry.json`, `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, source-locked fallback smoke `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json`, source-locked typed error matrix `crates/rustok-media/contracts/evidence/media-port-error-matrix.json` and `scripts/verify/verify-media-fba.mjs` lock read-only deadline semantics, tenant UUID context validation, typed `PortError` retryability, SEO descriptor fallback/degraded profiles, storage-relative proxy policy and consumer metadata without promoting beyond `in_progress` before executable runtime smoke.
+  - FBA provider metadata now exposes the media asset read boundary through `MediaAssetReadPort` / `media.asset_read.v1`: `crates/rustok-media/contracts/media-fba-registry.json`, `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`, source-locked fallback smoke `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json`, source-locked typed error matrix `crates/rustok-media/contracts/evidence/media-port-error-matrix.json` and `scripts/verify/verify-media-fba.mjs` lock shared `PortCallPolicy::read()` deadline semantics, tenant UUID context validation, typed `PortError` retryability, SEO descriptor fallback/degraded profiles, storage-relative proxy policy and consumer metadata without promoting beyond `in_progress` before executable runtime smoke.
 
 ## Область работ
 
