@@ -25,6 +25,7 @@ pub mod metrics;
 pub mod migrations;
 pub mod module;
 pub mod permissions;
+pub mod ports;
 pub mod rbac;
 pub mod registry;
 pub mod resilience;
@@ -90,6 +91,10 @@ pub use module::{
     MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
+pub use ports::{
+    PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
+    PortOperationKind,
+};
 pub use permissions::{Action, Permission, Resource};
 pub use rbac::{PermissionScope, Rbac, SecurityContext};
 pub use registry::ModuleRegistry;
@@ -140,6 +145,10 @@ pub mod prelude {
     pub use crate::id::generate_id;
     pub use crate::metrics::{Counter, Gauge, Histogram, MetricsRegistry, Timer};
     pub use crate::permissions::{Action, Permission, Resource};
+    pub use crate::ports::{
+        PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
+        PortOperationKind,
+    };
     pub use crate::rbac::{PermissionScope, Rbac, SecurityContext};
     pub use crate::resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
     pub use crate::typed_error::{DomainError, ErrorCode, TypedResult};

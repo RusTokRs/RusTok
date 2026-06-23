@@ -111,3 +111,6 @@ config.*.local.toml
 modules.local.toml
 /target_codex_permissions/
 .github/pull_request_template.md
+
+# Athanor local store and outputs
+.athanor/

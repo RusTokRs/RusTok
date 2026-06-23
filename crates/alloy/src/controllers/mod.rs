@@ -20,6 +20,7 @@ use crate::{
     },
     model::{EntityProxy, Script, ScriptStatus},
     runner::ExecutionOutcome,
+    storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic},
 };
 
