@@ -41,11 +41,38 @@ const generatedMobileManifest = <MobileModuleEntry>[
     ],
   ),
   MobileModuleEntry(
+    moduleKey: 'rustok_fulfillment',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'fulfillment',
+    localeNamespace: 'fulfillment',
+    nav: MobileNavMeta(title: 'Fulfillment', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_order',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'orders',
+    localeNamespace: 'order',
+    nav: MobileNavMeta(title: 'Orders', icon: 'receipt_long'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
     moduleKey: 'rustok_pages',
     surfaceKind: MobileSurfaceKind.storefront,
     routeSegment: 'pages',
     localeNamespace: 'pages',
     nav: MobileNavMeta(title: 'Pages', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_payment',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'payment',
+    localeNamespace: 'payment',
+    nav: MobileNavMeta(title: 'Payment', icon: 'module'),
     childPages: <MobileChildPage>[
     ],
   ),

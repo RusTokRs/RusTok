@@ -34,10 +34,15 @@
 
 ## Проверка
 
-- cargo xtask module validate customer
-- cargo xtask module test customer
-- targeted commerce tests для customer-домена при изменении runtime wiring
-- targeted customer port tests для `CustomerReadPort` deadline/error/fallback smoke перед повышением FBA статуса
+- No-compile source/evidence gates для итераций без сборки:
+  - `node scripts/verify/verify-customer-fba-no-compile.mjs`
+  - `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`
+  - `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`
+- После снятия ограничения на компиляции:
+  - `cargo xtask module validate customer`
+  - `cargo xtask module test customer`
+  - targeted commerce tests для customer-домена при изменении runtime wiring
+  - targeted customer port tests для `CustomerReadPort` deadline/error/fallback smoke перед повышением FBA статуса
 
 ## Связанные документы
 

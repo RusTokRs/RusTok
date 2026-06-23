@@ -170,10 +170,10 @@ pub fn validate_moderation_decision(
 #[cfg(test)]
 mod tests {
     use super::{
+        BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
+        ContentAiApprovalMode, GeneratedBlogDraft, GeneratedModerationDecision,
         content_ai_policy_matrix, content_ai_sensitive_tools, content_ai_verticals,
-        normalize_moderation_decision, validate_moderation_decision, ContentAiApprovalMode,
-        GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG,
-        CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
+        normalize_moderation_decision, validate_moderation_decision,
     };
 
     #[test]
@@ -202,6 +202,17 @@ mod tests {
         );
     }
 
+    fn valid_blog_draft_payload() -> GeneratedBlogDraft {
+        GeneratedBlogDraft {
+            title: Some("Launch notes".to_string()),
+            slug: Some("launch-notes".to_string()),
+            body: Some("Published later by an editor".to_string()),
+            excerpt: Some("Short operator-facing summary".to_string()),
+            seo_title: Some("SEO launch notes".to_string()),
+            seo_description: Some("SEO description for launch notes".to_string()),
+        }
+    }
+
     #[test]
     fn accepts_partial_blog_draft_payload() {
         let payload = GeneratedBlogDraft {
@@ -213,13 +224,42 @@ mod tests {
     }
 
     #[test]
-    fn rejects_blank_blog_draft_body_when_provided() {
-        let payload = GeneratedBlogDraft {
-            title: Some("Title".to_string()),
-            body: Some(" ".to_string()),
-            ..GeneratedBlogDraft::default()
-        };
-        assert!(super::validate_blog_draft_payload(&payload).is_err());
+    fn accepts_full_blog_draft_payload_contract() {
+        assert!(super::validate_blog_draft_payload(&valid_blog_draft_payload()).is_ok());
+    }
+
+    #[test]
+    fn accepts_empty_blog_draft_payload_for_patch_style_generation() {
+        assert!(super::validate_blog_draft_payload(&GeneratedBlogDraft::default()).is_ok());
+    }
+
+    #[test]
+    fn rejects_blank_blog_draft_fields_when_provided() {
+        for field in [
+            "title",
+            "slug",
+            "body",
+            "excerpt",
+            "seo_title",
+            "seo_description",
+        ] {
+            let mut payload = valid_blog_draft_payload();
+            match field {
+                "title" => payload.title = Some(" ".to_string()),
+                "slug" => payload.slug = Some("\t".to_string()),
+                "body" => payload.body = Some("\n".to_string()),
+                "excerpt" => payload.excerpt = Some("   ".to_string()),
+                "seo_title" => payload.seo_title = Some("\r\n".to_string()),
+                "seo_description" => payload.seo_description = Some("\u{2003}".to_string()),
+                _ => unreachable!("unexpected blog draft field"),
+            }
+
+            let error = super::validate_blog_draft_payload(&payload).unwrap_err();
+            assert!(
+                error.contains(field),
+                "expected validation error for {field}, got {error}"
+            );
+        }
     }
 
     #[test]

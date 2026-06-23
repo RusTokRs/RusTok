@@ -131,6 +131,41 @@ pub fn issue_guidance<'a>(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueBannerView<'a> {
+    pub class_name: &'static str,
+    pub label: &'a str,
+    pub guidance: &'a str,
+}
+
+pub fn issue_banner_view<'a>(
+    issue: &WritePathIssue,
+    validation_label: &'a str,
+    sanitization_label: &'a str,
+    runtime_label: &'a str,
+    validation_guidance: &'a str,
+    sanitization_guidance: &'a str,
+    runtime_guidance: &'a str,
+    feature_disabled_guidance: &'a str,
+) -> IssueBannerView<'a> {
+    IssueBannerView {
+        class_name: issue_banner_class(issue.kind),
+        label: issue_label(
+            issue.kind,
+            validation_label,
+            sanitization_label,
+            runtime_label,
+        ),
+        guidance: issue_guidance(
+            issue,
+            validation_guidance,
+            sanitization_guidance,
+            runtime_guidance,
+            feature_disabled_guidance,
+        ),
+    }
+}
+
 pub fn is_builder_feature_disabled_issue(issue: &WritePathIssue) -> bool {
     let normalized = issue.message.to_ascii_lowercase();
     normalized.contains("feature disabled")
@@ -763,6 +798,20 @@ mod tests {
             ),
             "feature disabled guidance"
         );
+
+        let banner = issue_banner_view(
+            &issue,
+            "validation",
+            "sanitize",
+            "runtime",
+            "validation guidance",
+            "sanitize guidance",
+            "runtime guidance",
+            "feature disabled guidance",
+        );
+        assert_eq!(banner.label, "runtime");
+        assert_eq!(banner.guidance, "feature disabled guidance");
+        assert_eq!(banner.class_name, issue_banner_class(issue.kind));
 
         let validation = WritePathIssue::new("Validation error: title is required");
         assert!(!is_builder_feature_disabled_issue(&validation));

@@ -7,7 +7,7 @@
 ## Execution checkpoint
 
 - Current phase: wave1_readiness_hold
-- Last checkpoint: Wave 1 readiness draft guardrail теперь не только проверяет общий evidence packet shape, но и блокирует случайную подмену draft-а реальным rollout: tenant должен оставаться `pending-wave1-pilot-tenant`, change-set — в `draft:pages-wave1-readiness:*`, метрики — с `readiness_draft_pending_tenant_measurement:*`, approvals — pending, а rollback reason обязан явно держать Wave 1 on hold.
+- Last checkpoint: Admin write-path issue banner presentation moved behind a core-owned view model (`issue_banner_view`), so the Leptos adapter no longer owns error label/guidance selection policy while the typed builder error catalog remains unchanged.
 - Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем заменить Wave 1 readiness draft реальным tenant packet только вместе с owner sign-off и SLO/smoke evidence. Для no-compile Wave 1 hold использовать `npm run verify:page-builder:wave1-readiness-draft`; для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs`; для FBA rollout policy использовать `npm run verify:page-builder:consumer:pages`.
 - Open blockers: None.
 - Hand-off notes for next agent:
@@ -35,6 +35,7 @@
 - Last updated at (UTC): 2026-06-15T00:00:00Z
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 - Last updated at (UTC): 2026-06-20T01:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
@@ -52,6 +53,7 @@
 - Latest observability gate update: `crates/rustok-page-builder/contracts/page-builder-correlation-contract.json` и `verify-page-builder-correlation-evidence.mjs` фиксируют no-compile correlation chain `builder write -> pages publish -> storefront read` для Wave 0/Wave 1 packets и source markers в pages publish/storefront read paths.
 - Latest FFA maintenance update: admin table item state/fallback mapping (`admin_page_list_item_view`) и storefront published list item mapping (`storefront_page_list_item_view`) вынесены в `core`, а package-level `verify:pages:ui-boundary` scripts восстановлены после JSON drift без Cargo-компиляции.
 - Latest FFA maintenance update: admin table row action busy/label mapping (`admin_page_row_action_state`, `admin_page_row_action_labels`) вынесен в `admin/src/core.rs`, Leptos adapter оставлен thin render/callback layer, а `verify-pages-ui-boundary.mjs` закрепляет новые no-compile markers.
+- Latest FFA maintenance update: admin write-path issue banner view model (`issue_banner_view`) вынесен в `admin/src/core.rs`; Leptos adapter теперь только получает локализованные строки и рендерит core-owned class/label/guidance, а `verify-pages-ui-boundary.mjs` закрепляет no-compile marker.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).
@@ -61,6 +63,7 @@
 - PB-FBA-1B Next parity update: `apps/next-admin` save-flow отображает тот же typed catalog (`validation/sanitize/runtime/feature-disabled`) и operator guidance для `FEATURE_DISABLED`; baseline gate включает static parity-check для Next Admin.
 - PB-FBA-1B Leptos parity update: module-owned Leptos admin показывает localized operator guidance для `validation/sanitize/runtime/feature-disabled`; baseline gate включает static parity-check для `rustok-pages-admin`.
 - PB-FBA-1B Flutter parity update: `rustok_mobile/packages/app_core` содержит shared mapper для того же typed catalog и `FEATURE_DISABLED` guidance; baseline gate включает static parity-check для Flutter app-core.
+- PB-FBA-1B Flutter hand-off contract update: `crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json` и `verify-page-builder-flutter-handoff.mjs` фиксируют, что Wave hand-off требует device/runtime evidence по shared mobile mapper, но не переносит FBA thresholds или toggle semantics в mobile registry; фактический packet остаётся Wave 1 blocker.
 - PB-FBA-1D synthetic observability update: Wave 0 dry-run packet теперь содержит baseline metrics, pilot SLO thresholds/evaluation и 2 correlation trace samples (`builder_write -> pages_publish -> storefront_read`); `verify-page-builder-wave-evidence-packet.mjs` блокирует threshold drift, placeholder traces, missing spans и неполный correlation path. Дополнительный `verify-page-builder-correlation-evidence.mjs` закрепляет этот builder write -> pages publish -> storefront read контракт на уровне evidence packets, docs и source markers. Фактические tenant metrics/traces остаются Wave hand-off evidence.
 
 ## FFA/FBA status

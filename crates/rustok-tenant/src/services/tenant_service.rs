@@ -268,6 +268,7 @@ fn to_tenant_response(m: tenant::Model) -> TenantResponse {
         slug: m.slug,
         domain: m.domain,
         is_active: m.is_active,
+        default_locale: m.default_locale,
         settings: m.settings,
         created_at: m.created_at.to_rfc3339(),
         updated_at: m.updated_at.to_rfc3339(),

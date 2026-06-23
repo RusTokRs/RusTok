@@ -240,6 +240,81 @@ impl PaymentProviderRegistry {
             degraded_mode: registration.degraded_mode.clone(),
         })
     }
+    fn executable_provider(
+        &self,
+        provider_id: &str,
+        operation: &str,
+    ) -> PaymentResult<Arc<dyn PaymentProvider>> {
+        let mode = self.runtime_mode(provider_id, operation)?;
+        if !mode.can_execute {
+            return Err(PaymentError::Validation(format!(
+                "payment provider `{}` is unavailable for `{}`",
+                provider_id, operation
+            )));
+        }
+        self.provider(provider_id).ok_or_else(|| {
+            PaymentError::Validation(format!(
+                "payment provider `{}` is not registered",
+                provider_id
+            ))
+        })
+    }
+
+    /// Guard and invoke a provider authorize operation. The registry performs the
+    /// side-effect-free runtime-mode check before the adapter is called.
+    pub async fn execute_authorize(
+        &self,
+        provider_id: &str,
+        request: PaymentProviderOperationRequest,
+    ) -> PaymentResult<PaymentProviderOperationResult> {
+        self.executable_provider(provider_id, "authorize")?
+            .authorize(request)
+            .await
+    }
+
+    /// Guard and invoke a provider capture operation without persisting lifecycle state.
+    pub async fn execute_capture(
+        &self,
+        provider_id: &str,
+        request: PaymentProviderOperationRequest,
+    ) -> PaymentResult<PaymentProviderOperationResult> {
+        self.executable_provider(provider_id, "capture")?
+            .capture(request)
+            .await
+    }
+
+    /// Guard and invoke a provider cancel operation without persisting lifecycle state.
+    pub async fn execute_cancel(
+        &self,
+        provider_id: &str,
+        request: PaymentProviderOperationRequest,
+    ) -> PaymentResult<PaymentProviderOperationResult> {
+        self.executable_provider(provider_id, "cancel")?
+            .cancel(request)
+            .await
+    }
+
+    /// Guard and invoke a provider refund operation without persisting lifecycle state.
+    pub async fn execute_refund(
+        &self,
+        provider_id: &str,
+        request: PaymentProviderOperationRequest,
+    ) -> PaymentResult<PaymentProviderOperationResult> {
+        self.executable_provider(provider_id, "refund")?
+            .refund(request)
+            .await
+    }
+
+    /// Guard and invoke webhook normalization; replay-safe lifecycle handling remains in `PaymentService`.
+    pub async fn execute_webhook(
+        &self,
+        provider_id: &str,
+        request: PaymentProviderWebhookRequest,
+    ) -> PaymentResult<PaymentProviderWebhookResult> {
+        self.executable_provider(provider_id, "webhook_ingress")?
+            .handle_webhook(request)
+            .await
+    }
 }
 
 /// Transport-neutral request passed to provider adapters for payment operations.

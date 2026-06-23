@@ -5,12 +5,12 @@ manifest/doc contract path.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: fba_write_policy_alignment
+- Last checkpoint: EmailDeliveryPort переведён с package-local PortContext/PortError на shared `rustok_api::PortContext`/`PortError`; transactional delivery enforce-ит `PortCallPolicy::write()` через module-local policy helper, а email-owned request/receipt DTOs остались локальными.
+- Next step: Добавить targeted compile/runtime contract tests для shared write-policy mapping, когда компиляции снова разрешены.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 
 
 ## FFA/FBA status block
@@ -20,7 +20,7 @@ manifest/doc contract path.
 - Structural shape: `no_ui_boundary`
 - Evidence / notes:
   - capability-only module has no module-owned UI surface, so FFA remains `not_started`;
-  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with typed `PortContext`/`PortError`, deadline semantics, write idempotency semantics, disabled-provider noop preservation and static evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` verified by `npm run verify:email:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
+  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation and static evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` verified by `npm run verify:email:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
 
 ## Область работ
 
@@ -31,9 +31,9 @@ manifest/doc contract path.
 ## Текущее состояние
 
 - `EmailModule` зарегистрирован как обязательный core-модуль;
-- SMTP transport, template rendering и typed email helpers живут внутри модуля;
+- SMTP transport, template rendering, typed email helpers и email-owned delivery DTOs живут внутри модуля;
 - root `README.md`, local docs и `rustok-module.toml` входят в scoped audit path;
-- RBAC остаётся в вызывающем модуле или host runtime, а не в `rustok-email`.
+- RBAC остаётся в вызывающем модуле или host runtime, а shared write-policy context/error baseline приходит из `rustok-api`, не перенося delivery business logic в shared слой.
 
 ## Этапы
 
