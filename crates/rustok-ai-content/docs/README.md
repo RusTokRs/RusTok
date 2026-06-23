@@ -12,10 +12,11 @@
 
 - registration seam для `content_moderation` и `blog_draft`;
 - typed moderation contracts и approval integration hooks;
-- typed blog draft contract (`GeneratedBlogDraft`) и minimal non-empty title/body validation.
+- typed blog draft contract (`GeneratedBlogDraft`) и validation для all optional text fields: `title`, `slug`, `body`, `excerpt`, `seo_title`, `seo_description`.
 
 ## Проверка
 
+- `node scripts/verify/verify-ai-content-contract.mjs` — compile-free static gate для domain-owned descriptors, policy matrix и blog draft contract tests.
 - `cargo check -p rustok-ai-content`
 
 ## Связанные документы
