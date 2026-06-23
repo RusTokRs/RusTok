@@ -74,7 +74,7 @@ impl TenantReadPort for crate::TenantService {
             slug: tenant.slug,
             domain: tenant.domain,
             is_active: tenant.is_active,
-            default_locale: "en".to_string(),
+            default_locale: tenant.default_locale,
             settings: tenant.settings,
         })
     }

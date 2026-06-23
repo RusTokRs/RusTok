@@ -6,8 +6,8 @@
 ## Execution checkpoint
 
 - Current phase: iteration_2_fba_domain_resolution_hardening
-- Last checkpoint: `TenantReadPort` now includes id/slug/domain selectors, typed blank-domain validation, runtime smoke coverage authored in `crates/rustok-tenant/tests/integration.rs`, and source-locked FBA evidence via `npm run verify:tenant:fba`; no long compilation was run in this iteration.
-- Next step: Подключить tenant read-projection port к host resolver/provisioning orchestration path and execute authored runtime smoke when compilation is allowed; for FFA keep parity/evidence hardening for the native-only overview surface instead of mechanical UI expansion.
+- Last checkpoint: host tenant resolver cache-miss path now consumes module-owned `TenantReadPort` for id/slug/domain read projections while retaining host-owned cache, negative-cache and coalescing concerns; static FBA evidence source-locks this handoff and no long compilation was run in this iteration.
+- Next step: Подключить provisioning orchestration to the same read-projection boundary where it needs tenant facts and execute authored runtime smoke when compilation is allowed; for FFA keep parity/evidence hardening for the native-only overview surface instead of mechanical UI expansion.
 - Open blockers: None.
 - Hand-off notes for next agent: Не расширять scope на новый tenant feature set; в этой итерации держать фокус на lifecycle consistency и regression safety между модулем и host middleware/cache path.
 - Last updated at (UTC): 2026-06-21T00:00:00Z
@@ -51,6 +51,7 @@
 - [x] расширить server resolver regression matrix под lifecycle invalidation (positive + negative cache сценарии после tenant state transition);
 - [x] расширить `TenantReadPort` selector surface для host/provisioning consumers: id, slug и domain lookup используют единый typed `PortContext`/`PortError` contract, blank slug/domain selectors возвращают validation errors, inactive tenants остаются hidden unless `include_inactive=true`;
 - [x] зафиксировать migration note по deprecated `TenantService::toggle_module`: runtime module enable/disable path должен идти через host `ModuleLifecycleService` (`README.md`, `docs/README.md` и этот план синхронизированы; legacy method оставлен только как low-level/backfill test helper).
+- [x] подключить host resolver cache-miss path к `TenantReadPort`: `apps/server` строит typed id/slug/domain requests, требует read deadline semantics через `PortContext`, мапит inactive projection в forbidden negative cache, not-found в not-found negative cache и сохраняет cache coalescing/invalidation в host layer.
 
 
 ## FFA/FBA status
@@ -58,7 +59,7 @@
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
-- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement. FBA provider metadata now exposes the tenant read-projection boundary through `TenantReadPort` / `tenant.read_projection.v1`: `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json` and `scripts/verify/verify-tenant-fba.mjs` lock shared `rustok_api::PortContext`/`PortError` usage, `PortCallPolicy::read()` deadline semantics, inactive-tenant degraded-mode semantics and server-host consumer metadata. Runtime contract/fallback smoke cases are now authored in `crates/rustok-tenant/tests/integration.rs` for missing deadlines, blank slug/domain validation, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery; status stays `in_progress` because this iteration intentionally avoided long compilation.
+- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement. FBA provider metadata now exposes the tenant read-projection boundary through `TenantReadPort` / `tenant.read_projection.v1`: `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json` and `scripts/verify/verify-tenant-fba.mjs` lock shared `rustok_api::PortContext`/`PortError` usage, `PortCallPolicy::read()` deadline semantics, inactive-tenant degraded-mode semantics, server-host consumer metadata and the host resolver handoff in `apps/server/src/middleware/tenant.rs`. Runtime contract/fallback smoke cases are now authored in `crates/rustok-tenant/tests/integration.rs` for missing deadlines, blank slug/domain validation, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery; status stays `in_progress` because this iteration intentionally avoided long compilation.
 - Temporary parity note: the current tenant admin overview remains a native-only single-adapter state because there is no legacy GraphQL/REST tenant bootstrap UI contract to preserve for this surface; the existing server GraphQL tenant/module read paths remain unchanged outside this UI package.
 
 ## Проверка
@@ -68,6 +69,7 @@
 - `cargo test -p rustok-tenant --tests`
 - `cargo test -p rustok-server --test tenant_resolver_invariants_test`
 - `npm run verify:tenant:fba`
+- `node --check scripts/verify/verify-tenant-fba.mjs`
 - `cargo test -p rustok-tenant tenant_read_port --test integration` (authored but intentionally not run in no-compilation iteration; includes id/slug/domain selector coverage)
 - targeted tests для CRUD, module toggles, resolver invariants и cache integration path, включая lifecycle invalidation сценарии `slug_cache_invalidation_refreshes_deactivated_tenant_state`, `slug_negative_cache_invalidation_allows_created_tenant_to_resolve`, `host_cache_invalidation_refreshes_domain_change`, `uuid_cache_invalidation_refreshes_updated_tenant_state`
 - контрактные тесты покрывают все публичные use-case, включая tenant CRUD, module toggles и resolver-facing invariants

@@ -51,15 +51,36 @@ if (evidence.module_slug !== "forum" || evidence.wave !== "1" || evidence.mode !
   fail("evidence packet must describe live Wave 1 for the forum module");
 }
 
-function hasPath(root, dottedPath) {
+function getPath(root, dottedPath) {
   let current = root;
   for (const segment of dottedPath.split(".")) {
     if (current === null || typeof current !== "object" || !(segment in current)) {
-      return false;
+      return undefined;
     }
     current = current[segment];
   }
-  return current !== undefined && current !== null;
+  return current;
+}
+
+function assertMaterializedSection(dottedPath) {
+  const value = getPath(evidence, dottedPath);
+  if (value === undefined || value === null) {
+    fail(`evidence packet missing required refresh section ${dottedPath}`);
+  }
+  if (Array.isArray(value) && value.length === 0 && dottedPath !== "waivers") {
+    fail(`evidence refresh section ${dottedPath} must be a non-empty array`);
+  }
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  ) {
+    fail(`evidence refresh section ${dottedPath} must be a non-empty object`);
+  }
+  if (typeof value === "string" && value.trim().length === 0) {
+    fail(`evidence refresh section ${dottedPath} must be a non-empty string`);
+  }
 }
 
 const refreshPolicy = evidence.refresh_policy ?? {};
@@ -106,9 +127,7 @@ for (const requiredSection of [
   if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
     fail(`refresh_policy.required_sections missing ${requiredSection}`);
   }
-  if (!hasPath(evidence, requiredSection)) {
-    fail(`evidence packet missing required refresh section ${requiredSection}`);
-  }
+  assertMaterializedSection(requiredSection);
 }
 
 console.log("[verify-forum-wave-evidence-freshness] PASS");
