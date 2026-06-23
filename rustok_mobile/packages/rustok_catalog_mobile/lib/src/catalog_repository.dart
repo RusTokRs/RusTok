@@ -7,6 +7,16 @@ abstract interface class StorefrontCatalogRepository {
 
   Future<List<StorefrontCartLine>> cartLines();
 
+  Future<StorefrontCartSummary> cartSummary() async {
+    final lines = await cartLines();
+    return StorefrontCartSummary(
+      lines: lines,
+      totalQuantity: lines.fold<int>(0, (sum, line) => sum + line.quantity),
+      totalLabel: _cartSummaryTotalLabel(lines),
+      canStartCheckout: lines.isNotEmpty,
+    );
+  }
+
   Future<StorefrontCartWriteResult> createCart(StorefrontCreateCartDraft draft);
 
   Future<StorefrontCartWriteResult> addCartLine(StorefrontAddCartLineDraft draft);
@@ -33,6 +43,24 @@ final featuredProductsProvider =
 final cartLinesProvider = FutureProvider<List<StorefrontCartLine>>((ref) {
   return ref.watch(storefrontCatalogRepositoryProvider).cartLines();
 });
+
+final cartSummaryProvider = FutureProvider<StorefrontCartSummary>((ref) {
+  return ref.watch(storefrontCatalogRepositoryProvider).cartSummary();
+});
+
+String _cartSummaryTotalLabel(List<StorefrontCartLine> lines) {
+  final nonEmptyPrices = lines
+      .map((line) => line.priceLabel.trim())
+      .where((label) => label.isNotEmpty)
+      .toList(growable: false);
+  if (nonEmptyPrices.isEmpty) {
+    return 'Calculated at checkout';
+  }
+  if (nonEmptyPrices.length == 1) {
+    return nonEmptyPrices.single;
+  }
+  return 'Line totals shown below';
+}
 
 class StorefrontCreateCartDraft {
   const StorefrontCreateCartDraft({

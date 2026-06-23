@@ -14,7 +14,7 @@ UX do not drift into one host.
 - Keep tenant, locale, and GraphQL transport context host-owned.
 - Mirror the existing web storefront contract from `apps/storefront` and
   `apps/next-frontend` without introducing a Flutter-only backend API.
-- Mount module-owned catalog/cart mobile surfaces at `/catalog` and `/cart`, including create/add/update/remove cart actions through the host-owned repository boundary.
+- Mount module-owned catalog/cart mobile surfaces at `/catalog` and `/cart`, including create/add/update/remove cart actions through the host-owned repository boundary, module-owned cart summary presentation, and host-owned checkout intent routing.
 - Resolve manifest-driven module routes under `/modules/:routeSegment`, using the generated storefront mobile registry to mount known package surfaces, show registry-driven home links, and fallback placeholders for the rest.
 
 ## Interactions
@@ -34,7 +34,7 @@ UX do not drift into one host.
 - `../../tooling/tests/test_storefront_cart_graphql_contract.py` — pytest coverage for the verifier and its JSON evidence output.
 - `lib/registry/storefront_mobile_manifest.g.dart` — generated storefront registry from `provides.storefront_ui`.
 - `lib/registry/storefront_surface_registry.dart` — host adapter that maps generated storefront entries to mounted mobile package surfaces.
-- `lib/routes/storefront_router.dart` — route table, registry-driven module links, module-owned catalog/cart mounting, and generic manifest-backed module placeholders.
+- `lib/routes/storefront_router.dart` — route table, registry-driven module links, module-owned catalog/cart mounting, host-owned checkout intent placeholder, and generic manifest-backed module placeholders.
 
 ## Runtime defines
 
