@@ -46,11 +46,11 @@ for (const op of ['read_channel', 'list_channels_for_tenant']) {
   if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail(`${op} evidence case drift`);
 }
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'channel' || runtimeSmoke.status !== 'source_locked_runtime_fallback_smoke') fail('runtime smoke identity drift');
-if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-channel-fba.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
+if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'channel' || runtimeSmoke.status !== 'no_compile_executable_runtime_fallback_smoke') fail('runtime smoke identity drift');
+if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-channel-runtime-fallback-smoke.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
 if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile drift');
 for (const profile of registry.contract_tests.fallback_smoke.profiles) {
-  if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'source_locked_runtime_pending')) fail(`runtime smoke missing source-locked profile ${profile}`);
+  if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'no_compile_executable_locked')) fail(`runtime smoke missing executable no-compile profile ${profile}`);
 }
 for (const marker of ['impl ChannelReadPort for crate::ChannelService', 'context.require_policy(PortCallPolicy::read())?', 'ensure_tenant_scope', 'request.include_inactive || detail.channel.is_active', 'channel.tenant_id_invalid', 'channel.slug_empty', 'channel.host_target_empty']) {
   if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
