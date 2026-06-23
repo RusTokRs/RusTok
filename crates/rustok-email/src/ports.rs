@@ -1,82 +1,24 @@
 use async_trait::async_trait;
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 
 use crate::{EmailError, TransactionalEmailSender};
 
-/// Transport-agnostic context for email delivery boundary calls.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortContext {
-    pub tenant_id: String,
-    pub correlation_id: String,
-    pub deadline_ms: Option<u64>,
-    pub idempotency_key: Option<String>,
-}
-
-impl PortContext {
-    pub fn require_deadline_semantics(&self) -> Result<(), PortError> {
-        if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(PortError::new(
-                PortErrorKind::Timeout,
+/// Require shared write semantics for transactional email delivery calls.
+pub fn require_email_delivery_policy(context: &PortContext) -> Result<(), PortError> {
+    context
+        .require_policy(PortCallPolicy::write())
+        .map_err(|error| match error.kind {
+            PortErrorKind::Timeout => PortError::timeout(
                 "email.deadline_required",
                 "email delivery port calls require deadline semantics",
-                true,
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn require_write_semantics(&self) -> Result<(), PortError> {
-        self.require_deadline_semantics()?;
-        if self
-            .idempotency_key
-            .as_deref()
-            .unwrap_or_default()
-            .trim()
-            .is_empty()
-        {
-            return Err(PortError::new(
-                PortErrorKind::Validation,
+            ),
+            PortErrorKind::Validation => PortError::validation(
                 "email.idempotency_required",
                 "email delivery port calls require an idempotency key",
-                false,
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Transport-neutral error returned by email owner ports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortError {
-    pub kind: PortErrorKind,
-    pub code: String,
-    pub message: String,
-    pub retryable: bool,
-}
-
-impl PortError {
-    pub fn new(
-        kind: PortErrorKind,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        retryable: bool,
-    ) -> Self {
-        Self {
-            kind,
-            code: code.into(),
-            message: message.into(),
-            retryable,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PortErrorKind {
-    Validation,
-    Template,
-    Unavailable,
-    Timeout,
+            ),
+            _ => error,
+        })
 }
 
 /// Transport-neutral transactional delivery request owned by the email module.
@@ -119,7 +61,7 @@ impl EmailDeliveryPort for crate::EmailService {
         context: PortContext,
         request: EmailDeliveryRequest,
     ) -> Result<EmailDeliveryReceipt, PortError> {
-        context.require_write_semantics()?;
+        require_email_delivery_policy(&context)?;
         validate_delivery_request(&request)?;
         self.send_transactional(
             &request.template_id,
@@ -142,27 +84,21 @@ impl EmailDeliveryPort for crate::EmailService {
 
 fn validate_delivery_request(request: &EmailDeliveryRequest) -> Result<(), PortError> {
     if request.template_id.trim().is_empty() {
-        return Err(PortError::new(
-            PortErrorKind::Validation,
+        return Err(PortError::validation(
             "email.template_id_empty",
             "email delivery requires a non-empty template id",
-            false,
         ));
     }
     if request.locale.trim().is_empty() {
-        return Err(PortError::new(
-            PortErrorKind::Validation,
+        return Err(PortError::validation(
             "email.locale_empty",
             "email delivery requires a non-empty locale",
-            false,
         ));
     }
     if request.to.trim().is_empty() {
-        return Err(PortError::new(
-            PortErrorKind::Validation,
+        return Err(PortError::validation(
             "email.recipient_empty",
             "email delivery requires a non-empty recipient",
-            false,
         ));
     }
     Ok(())
@@ -170,29 +106,17 @@ fn validate_delivery_request(request: &EmailDeliveryRequest) -> Result<(), PortE
 
 fn map_email_error(error: EmailError) -> PortError {
     match error {
-        EmailError::Disabled => PortError::new(
-            PortErrorKind::Unavailable,
-            "email.disabled",
-            "email sending is disabled".to_string(),
-            false,
-        ),
-        EmailError::Template(message) => PortError::new(
-            PortErrorKind::Template,
-            "email.template_failed",
-            message,
-            false,
-        ),
-        EmailError::InvalidAddress(message) | EmailError::Build(message) => PortError::new(
-            PortErrorKind::Validation,
-            "email.delivery_invalid",
-            message,
-            false,
-        ),
-        EmailError::SmtpConfig(message) | EmailError::Send(message) => PortError::new(
-            PortErrorKind::Unavailable,
-            "email.delivery_failed",
-            message,
-            true,
-        ),
+        EmailError::Disabled => {
+            PortError::unavailable("email.disabled", "email sending is disabled".to_string())
+        }
+        EmailError::Template(message) => {
+            PortError::invariant_violation("email.template_failed", message)
+        }
+        EmailError::InvalidAddress(message) | EmailError::Build(message) => {
+            PortError::validation("email.delivery_invalid", message)
+        }
+        EmailError::SmtpConfig(message) | EmailError::Send(message) => {
+            PortError::unavailable("email.delivery_failed", message)
+        }
     }
 }

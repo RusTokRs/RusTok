@@ -13,6 +13,7 @@ const homePath = '/';
 const catalogPath = '/catalog';
 const cartPath = '/cart';
 const profilePath = '/profile';
+const checkoutPath = '/checkout';
 const storefrontModulesRootPath = '/modules';
 
 final storefrontRouterProvider = Provider<GoRouter>((ref) {
@@ -59,8 +60,13 @@ GoRouter buildStorefrontRouter({
               ],
               child: StorefrontCartScreen(
                 onContinueShopping: () => context.go(catalogPath),
+                onStartCheckout: () => context.go(checkoutPath),
               ),
             ),
+          ),
+          GoRoute(
+            path: checkoutPath,
+            builder: (context, state) => const StorefrontCheckoutIntentPage(),
           ),
           GoRoute(
             path: profilePath,
@@ -116,6 +122,12 @@ class StorefrontHomePage extends ConsumerWidget {
           subtitle: 'Prepare checkout without admin/operator affordances.',
           icon: Icons.shopping_cart_outlined,
           path: cartPath,
+        ),
+        const _SurfaceLinkCard(
+          title: 'Checkout',
+          subtitle: 'Host-owned checkout intent placeholder for cart packages.',
+          icon: Icons.lock_outline,
+          path: checkoutPath,
         ),
         const _StorefrontModuleLinksCard(registry: storefrontSurfaceRegistry),
       ],
@@ -253,6 +265,20 @@ class _SurfaceLinkCard extends StatelessWidget {
   }
 }
 
+
+class StorefrontCheckoutIntentPage extends StatelessWidget {
+  const StorefrontCheckoutIntentPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const StorefrontPlaceholderPage(
+      title: 'Checkout',
+      description: 'Checkout remains host-owned: cart packages emit an intent, while the storefront shell will wire the canonical backend checkout contract.',
+      icon: Icons.lock_outline,
+    );
+  }
+}
+
 class StorefrontPlaceholderPage extends StatelessWidget {
   const StorefrontPlaceholderPage({
     super.key,
@@ -320,6 +346,7 @@ class StorefrontModuleSurfacePage extends StatelessWidget {
           onContinueShopping: () => context.go(
             '$storefrontModulesRootPath/products',
           ),
+          onStartCheckout: () => context.go(checkoutPath),
         ),
       ),
       StorefrontMountedSurfaceKind.generic => StorefrontPlaceholderPage(

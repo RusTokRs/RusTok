@@ -33,7 +33,7 @@
     "next-intl": "^4.13.0",
     "next-seo": "^7.1.0",
     "openapi-fetch": "^0.17.0",
-    "posthog-js": "^1.391.2",
+    "posthog-js": "^1.392.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hot-toast": "^2.4.1",
@@ -47,15 +47,15 @@
     "@types/node": "^26.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.0",
-    "@typescript-eslint/eslint-plugin": "^8.61.1",
-    "@typescript-eslint/parser": "^8.61.1",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
     "autoprefixer": "^10.5.0",
     "eslint": "^10.5.0",
     "eslint-config-next": "^16.2.9",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.5.4",
-    "typescript-eslint": "^8.61.1"
+    "typescript-eslint": "^8.62.0"
   },
   "license": "BUSL-1.1"
 }

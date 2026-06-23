@@ -57,6 +57,31 @@ for (const row of evidence.static_source_assertions) {
   hasAll(read(row.path), row.must_contain, `static assertion ${row.name}`);
 }
 if ((evidence.runtime_closeout_required ?? []).length < 4) fail('runtime closeout requirements are incomplete');
+const artifactTemplate = evidence.consumer_runtime_artifact_template ?? {};
+if (artifactTemplate.status !== 'template_only_pending_consumer_runtime') fail('consumer runtime artifact template status drift');
+for (const requiredFile of [
+  'image-descriptor-in-process.json',
+  'provider-unavailable-omit-image-metadata.json',
+  'asset-unavailable-keep-existing-seo-image.json',
+  'relative-url-proxy-fallback.json',
+  'diagnostics-image-quality-before-after.json',
+]) {
+  if (!(artifactTemplate.required_files ?? []).includes(requiredFile)) fail(`consumer runtime artifact template misses ${requiredFile}`);
+  if (!(registry.contract_tests?.consumer_runtime_artifacts?.required_files ?? []).includes(requiredFile)) fail(`registry consumer runtime artifacts miss ${requiredFile}`);
+}
+for (const field of ['captured_at', 'provider_contract_version', 'consumer_profile', 'operation', 'profile', 'context', 'input', 'result', 'redactions_applied']) {
+  if (!(artifactTemplate.required_top_level_fields ?? []).includes(field)) fail(`consumer runtime artifact template misses field ${field}`);
+}
+for (const field of ['missing_image_alt', 'missing_image_size', 'seo_targets_checked', 'fallback_images_preserved', 'proxied_relative_urls']) {
+  if (!(artifactTemplate.counter_fields ?? []).includes(field)) fail(`consumer runtime artifact template misses counter ${field}`);
+}
+if (!(artifactTemplate.redaction_policy ?? []).some(rule => rule.includes('auth tokens'))) fail('consumer runtime artifact template misses auth token redaction');
+if ((evidence.consumer_runtime_drill_matrix ?? []).length < 3) fail('consumer runtime drill matrix is incomplete');
+for (const row of evidence.consumer_runtime_drill_matrix) {
+  if (!row.case || !row.operation || !row.profile) fail('consumer runtime drill row misses identity fields');
+  if ((row.required_evidence ?? []).length < 3) fail(`consumer runtime drill ${row.case} misses required evidence`);
+  if ((row.blocks_closeout_if ?? []).length < 2) fail(`consumer runtime drill ${row.case} misses blockers`);
+}
 
 const plan = read('crates/rustok-seo/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `in_progress`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'seo-media-consumer-static-matrix.json', 'source_locked_pending_consumer_runtime'], 'local plan');

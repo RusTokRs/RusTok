@@ -84,7 +84,8 @@ availability из побочных эффектов регистрации.
    outcome, duration, error, user/tenant context и creation time.
 5. Для списка scripts используйте только известные `status` значения; unknown
    status должен возвращать validation error и не должен расширять выборку до
-   all scripts.
+   all scripts. In-memory registry paths должны сохранять тот же порядок, что
+   SeaORM (`name`, затем `id`), и применять offset/limit после фильтрации.
 6. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.
