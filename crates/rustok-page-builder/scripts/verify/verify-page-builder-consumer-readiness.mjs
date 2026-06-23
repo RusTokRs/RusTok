@@ -49,6 +49,17 @@ function hasPath(root, dottedPath) {
   return current !== undefined && current !== null;
 }
 
+function getPath(root, dottedPath) {
+  let current = root;
+  for (const segment of dottedPath.split(".")) {
+    if (current === null || typeof current !== "object" || !(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
 if (!fs.existsSync(moduleTomlPath)) fail(`missing module manifest: ${moduleTomlPath}`);
 if (!fs.existsSync(implPlanPath)) fail(`missing implementation plan: ${implPlanPath}`);
 
@@ -424,6 +435,21 @@ if (arg === "forum") {
     }
     if (!hasPath(forumWave1Evidence, requiredSection)) {
       fail(`${arg}: Wave 1 evidence missing required refresh section '${requiredSection}'`);
+    }
+    const sectionValue = getPath(forumWave1Evidence, requiredSection);
+    if (Array.isArray(sectionValue) && sectionValue.length === 0 && requiredSection !== "waivers") {
+      fail(`${arg}: Wave 1 evidence refresh section '${requiredSection}' must be a non-empty array`);
+    }
+    if (
+      sectionValue !== null &&
+      typeof sectionValue === "object" &&
+      !Array.isArray(sectionValue) &&
+      Object.keys(sectionValue).length === 0
+    ) {
+      fail(`${arg}: Wave 1 evidence refresh section '${requiredSection}' must be a non-empty object`);
+    }
+    if (typeof sectionValue === "string" && sectionValue.trim().length === 0) {
+      fail(`${arg}: Wave 1 evidence refresh section '${requiredSection}' must be a non-empty string`);
     }
   }
 
