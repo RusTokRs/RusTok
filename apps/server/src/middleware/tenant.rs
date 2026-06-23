@@ -6,15 +6,19 @@ use axum::{
     response::Response,
 };
 use loco_rs::app::AppContext;
-use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
-use rustok_core::tenant_validation::TenantIdentifierValidator;
 #[cfg(feature = "redis-cache")]
 use redis::AsyncCommands;
+use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
 #[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
+use rustok_core::tenant_validation::TenantIdentifierValidator;
 use rustok_core::{CacheBackend, Error as CoreError};
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use rustok_tenant::{
+    PortActor, PortContext, PortError, PortErrorKind, TenantReadPort, TenantReadProjection,
+    TenantReadRequest, TenantReadSelector, TenantService,
+};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -25,7 +29,6 @@ use crate::common::{
     settings::{RustokSettings, SharedRustokSettings, TenantFallbackMode},
 };
 use crate::context::{TenantContext, TenantContextExtension};
-use crate::models::tenants;
 
 const TENANT_CACHE_VERSION: &str = "v1";
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
@@ -64,28 +67,67 @@ impl CachedTenantMiss {
     }
 }
 
-fn tenant_context_from_model(
-    tenant: Option<tenants::Model>,
+fn tenant_context_from_projection(
+    projection: TenantReadProjection,
 ) -> Result<TenantContext, CachedTenantMiss> {
-    match tenant {
-        Some(tenant) if tenant.is_active => Ok(TenantContext {
-            id: tenant.id,
-            name: tenant.name,
-            slug: tenant.slug,
-            domain: tenant.domain,
-            settings: tenant.settings,
-            default_locale: tenant.default_locale,
-            is_active: tenant.is_active,
-        }),
-        Some(tenant) => {
-            tracing::warn!(
-                tenant_id = %tenant.id,
-                slug = %tenant.slug,
-                "Rejecting request for disabled tenant"
-            );
-            Err(CachedTenantMiss::Disabled)
+    if !projection.is_active {
+        tracing::warn!(
+            tenant_id = %projection.id,
+            slug = %projection.slug,
+            "Rejecting request for disabled tenant"
+        );
+        return Err(CachedTenantMiss::Disabled);
+    }
+
+    Ok(TenantContext {
+        id: projection.id,
+        name: projection.name,
+        slug: projection.slug,
+        domain: projection.domain,
+        settings: projection.settings,
+        default_locale: projection.default_locale,
+        is_active: projection.is_active,
+    })
+}
+
+fn tenant_read_request(identifier: &ResolvedTenantIdentifier) -> TenantReadRequest {
+    let selector = match identifier.kind {
+        TenantIdentifierKind::Uuid => TenantReadSelector::Id(identifier.uuid),
+        TenantIdentifierKind::Slug => TenantReadSelector::Slug(identifier.value.clone()),
+        TenantIdentifierKind::Host => TenantReadSelector::Domain(identifier.value.clone()),
+    };
+
+    TenantReadRequest {
+        selector,
+        include_inactive: true,
+    }
+}
+
+fn tenant_read_context(identifier: &ResolvedTenantIdentifier) -> PortContext {
+    PortContext::new(
+        identifier.uuid.to_string(),
+        PortActor::service("rustok-server.tenant-resolver"),
+        "und",
+        format!(
+            "tenant-resolver:{}:{}",
+            identifier.kind.as_str(),
+            identifier.value
+        ),
+    )
+    .with_deadline(TENANT_CACHE_TTL)
+}
+
+fn tenant_port_error_to_core_error(error: PortError) -> CoreError {
+    match error.kind {
+        PortErrorKind::NotFound => CoreError::NotFound(error.message),
+        PortErrorKind::Validation => CoreError::Validation(error.message),
+        PortErrorKind::Timeout | PortErrorKind::Unavailable | PortErrorKind::InvariantViolation => {
+            CoreError::Database(sea_orm::DbErr::Custom(format!(
+                "tenant read port failed: {}",
+                error.message
+            )))
         }
-        None => Err(CachedTenantMiss::NotFound),
+        PortErrorKind::Conflict | PortErrorKind::Forbidden => CoreError::Forbidden(error.message),
     }
 }
 
@@ -667,32 +709,36 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     }
 
-    let db = ctx.db.clone();
-    let ident_kind = identifier.kind;
-    let ident_value = identifier.value.clone();
-    let ident_uuid = identifier.uuid;
+    let tenant_service = TenantService::new(ctx.db.clone());
+    let tenant_request = tenant_read_request(&identifier);
+    let tenant_port_context = tenant_read_context(&identifier);
     let negative_key_clone = negative_key.clone();
     let infra_clone = infra.clone();
 
     let context = infra
         .get_or_load_with_coalescing(&cache_key, || async move {
-            let tenant = match ident_kind {
-                TenantIdentifierKind::Uuid => tenants::Entity::find_by_id(&db, ident_uuid)
-                    .await
-                    .map_err(CoreError::Database)?,
-                TenantIdentifierKind::Slug => tenants::Entity::find_by_slug(&db, &ident_value)
-                    .await
-                    .map_err(CoreError::Database)?,
-                TenantIdentifierKind::Host => tenants::Entity::find_by_domain(&db, &ident_value)
-                    .await
-                    .map_err(CoreError::Database)?,
+            let projection = match tenant_service
+                .read_tenant(tenant_port_context, tenant_request)
+                .await
+            {
+                Ok(projection) => projection,
+                Err(error) if error.kind == PortErrorKind::NotFound => {
+                    infra_clone
+                        .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
+                        .await
+                        .map_err(|_| {
+                            CoreError::Cache("tenant negative cache write failed".to_string())
+                        })?;
+                    return Err(CoreError::NotFound(error.message));
+                }
+                Err(error) => return Err(tenant_port_error_to_core_error(error)),
             };
 
-            match tenant_context_from_model(tenant) {
+            match tenant_context_from_projection(projection) {
                 Ok(context) => Ok(context),
                 Err(CachedTenantMiss::Disabled) => {
                     infra_clone
-                        .set_negative(negative_key_clone, CachedTenantMiss::Disabled)
+                        .set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)
                         .await
                         .map_err(|_| {
                             CoreError::Cache("tenant negative cache write failed".to_string())
@@ -701,7 +747,7 @@ pub async fn resolve(
                 }
                 Err(CachedTenantMiss::NotFound) => {
                     infra_clone
-                        .set_negative(negative_key_clone, CachedTenantMiss::NotFound)
+                        .set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)
                         .await
                         .map_err(|_| {
                             CoreError::Cache("tenant negative cache write failed".to_string())
@@ -999,38 +1045,36 @@ fn cache_load_error_to_status(error: CoreError) -> StatusCode {
     match error {
         CoreError::NotFound(_) => StatusCode::NOT_FOUND,
         CoreError::Forbidden(_) => StatusCode::FORBIDDEN,
+        CoreError::Validation(_) => StatusCode::BAD_REQUEST,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
 #[cfg(test)]
 mod invalidation_tests {
+    use super::{
+        CachedTenantMiss, resolve_identifier, should_bypass_tenant_resolution,
+        subdomain_identifier, tenant_context_from_projection,
+    };
     #[cfg(feature = "redis-cache")]
     use super::{
-        parse_invalidation_payload, TenantInvalidationListenerState,
-        TenantInvalidationListenerStatus,
-    };
-    use super::{
-        resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
-        tenant_context_from_model, CachedTenantMiss,
+        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
+        parse_invalidation_payload,
     };
     use crate::common::{RustokSettings, TenantFallbackMode};
-    use crate::models::tenants;
     use axum::{body::Body, http::Request};
-    use chrono::Utc;
+    use rustok_tenant::TenantReadProjection;
     use uuid::Uuid;
 
-    fn sample_tenant(is_active: bool) -> tenants::Model {
-        tenants::Model {
+    fn sample_tenant_projection(is_active: bool) -> TenantReadProjection {
+        TenantReadProjection {
             id: Uuid::new_v4(),
             name: "Demo tenant".to_string(),
             slug: "demo".to_string(),
             domain: Some("demo.example.test".to_string()),
-            settings: serde_json::json!({}),
-            default_locale: "en".to_string(),
             is_active,
-            created_at: Utc::now().into(),
-            updated_at: Utc::now().into(),
+            default_locale: "en".to_string(),
+            settings: serde_json::json!({}),
         }
     }
 
@@ -1118,10 +1162,10 @@ mod invalidation_tests {
     }
 
     #[test]
-    fn tenant_context_from_model_maps_active_tenant() {
-        let tenant = sample_tenant(true);
+    fn tenant_context_from_projection_maps_active_tenant() {
+        let tenant = sample_tenant_projection(true);
 
-        let context = tenant_context_from_model(Some(tenant.clone())).expect("active tenant");
+        let context = tenant_context_from_projection(tenant.clone()).expect("active tenant");
 
         assert_eq!(context.id, tenant.id);
         assert_eq!(context.slug, tenant.slug);
@@ -1130,24 +1174,13 @@ mod invalidation_tests {
     }
 
     #[test]
-    fn tenant_context_from_model_rejects_disabled_tenant_as_forbidden() {
-        let result = tenant_context_from_model(Some(sample_tenant(false)));
+    fn tenant_context_from_projection_rejects_disabled_tenant_as_forbidden() {
+        let result = tenant_context_from_projection(sample_tenant_projection(false));
 
         assert!(matches!(result, Err(CachedTenantMiss::Disabled)));
         assert_eq!(
             CachedTenantMiss::Disabled.status_code(),
             axum::http::StatusCode::FORBIDDEN
-        );
-    }
-
-    #[test]
-    fn tenant_context_from_model_maps_missing_tenant_to_not_found() {
-        let result = tenant_context_from_model(None);
-
-        assert!(matches!(result, Err(CachedTenantMiss::NotFound)));
-        assert_eq!(
-            CachedTenantMiss::NotFound.status_code(),
-            axum::http::StatusCode::NOT_FOUND
         );
     }
 
