@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use rustok_api::{PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 
 use crate::models::IndexDocument;
 
@@ -59,6 +59,142 @@ pub struct IndexRebuildOutcome {
     pub completed: u64,
     pub failed: u64,
     pub truncated: u64,
+}
+
+
+const MAX_INDEX_LIST_LIMIT: u32 = 100;
+
+fn is_blank(value: &str) -> bool {
+    value.trim().is_empty()
+}
+
+/// Validate a single-document read request before any adapter performs a lookup.
+pub fn validate_index_read_request(request: &IndexReadRequest) -> Result<(), PortError> {
+    match &request.selector {
+        IndexReadSelector::DocumentId(_) => Ok(()),
+        IndexReadSelector::Slug {
+            doc_type,
+            locale,
+            slug,
+        } => {
+            if is_blank(doc_type) {
+                return Err(PortError::validation(
+                    "index.read_selector_doc_type_empty",
+                    "index read slug selector requires a document type",
+                ));
+            }
+            if is_blank(locale) {
+                return Err(PortError::validation(
+                    "index.read_selector_locale_empty",
+                    "index read slug selector requires a locale",
+                ));
+            }
+            if is_blank(slug) {
+                return Err(PortError::validation(
+                    "index.read_selector_slug_empty",
+                    "index read slug selector requires a slug",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Validate a list request and keep cross-module reads bounded.
+pub fn validate_index_list_request(request: &IndexListRequest) -> Result<(), PortError> {
+    if is_blank(&request.doc_type) {
+        return Err(PortError::validation(
+            "index.list_doc_type_empty",
+            "index list request requires a document type",
+        ));
+    }
+    if request.limit == 0 {
+        return Err(PortError::validation(
+            "index.list_limit_invalid",
+            "index list request limit must be greater than zero",
+        ));
+    }
+    if request.limit > MAX_INDEX_LIST_LIMIT {
+        return Err(PortError::validation(
+            "index.list_limit_too_large",
+            "index list request limit exceeds the module boundary maximum",
+        ));
+    }
+    Ok(())
+}
+
+/// Validate rebuild requests before scheduling any write-like rebuild work.
+pub fn validate_index_rebuild_request(request: &IndexRebuildRequest) -> Result<(), PortError> {
+    if is_blank(&request.owner_module) {
+        return Err(PortError::validation(
+            "index.rebuild_owner_module_empty",
+            "index rebuild request requires an owner module",
+        ));
+    }
+    if is_blank(&request.entity_type) {
+        return Err(PortError::validation(
+            "index.rebuild_entity_type_empty",
+            "index rebuild request requires an entity type",
+        ));
+    }
+    let _dry_run_preserved = request.dry_run;
+    Ok(())
+}
+
+/// Ensure read adapters never leak another tenant's indexed projection.
+pub fn ensure_index_document_tenant_scope(
+    expected_tenant_id: Uuid,
+    document: &IndexDocument,
+) -> Result<(), PortError> {
+    if document.tenant_id != expected_tenant_id {
+        return Err(PortError::new(
+            PortErrorKind::Forbidden,
+            "index.tenant_scope_mismatch",
+            "index document belongs to a different tenant",
+            false,
+        ));
+    }
+    Ok(())
+}
+
+/// Typed degraded-mode error for hosts that expose read-only index operations.
+pub fn index_rebuild_disabled_error() -> PortError {
+    PortError::new(
+        PortErrorKind::Unavailable,
+        "index.rebuild_disabled",
+        "index rebuild orchestration is disabled for this runtime profile",
+        true,
+    )
+}
+
+/// Shared no-compile smoke harness for in-process adapters.
+pub fn validate_index_read_smoke(
+    context: &PortContext,
+    request: &IndexReadRequest,
+) -> Result<(), PortError> {
+    require_index_read_policy(context)?;
+    validate_index_read_request(request)?;
+    Ok(())
+}
+
+/// Shared no-compile smoke harness for list adapters.
+pub fn validate_index_list_smoke(
+    context: &PortContext,
+    request: &IndexListRequest,
+) -> Result<(), PortError> {
+    require_index_read_policy(context)?;
+    validate_index_list_request(request)?;
+    Ok(())
+}
+
+/// Shared no-compile smoke harness for rebuild adapters.
+pub fn validate_index_rebuild_smoke(
+    context: &PortContext,
+    request: &IndexRebuildRequest,
+) -> Result<(), PortError> {
+    require_index_rebuild_policy(context)?;
+    validate_index_rebuild_request(request)?;
+    Ok(())
 }
 
 /// Transport-neutral owner boundary for indexed read projections.

@@ -8,8 +8,10 @@ const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(exp
 
 const registryPath = 'crates/rustok-index/contracts/index-fba-registry.json';
 const evidencePath = 'crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json';
+const runtimeSmokePath = 'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
+const runtimeSmoke = json(runtimeSmokePath);
 const manifest = read('crates/rustok-index/rustok-module.toml');
 const plan = read('crates/rustok-index/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
@@ -35,8 +37,8 @@ for (const marker of ['trait IndexReadModelPort', 'trait IndexRebuildPort', 'Por
   if (!ports.includes(marker) && !registryPath.includes(marker) && !evidencePath.includes(marker)) fail(`source/metadata missing ${marker}`);
 }
 if (!ports.includes('Serialize, Deserialize')) fail('index FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('IndexReadModelPort') || !plan.includes('index-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `index` | admin | `in_progress` | `in_progress`') || !central.includes(registryPath)) fail('central readiness board drift');
+if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('IndexReadModelPort') || !plan.includes('index-contract-test-static-matrix.json') || !plan.includes('index-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `index` | admin | `in_progress` | `in_progress`') || !central.includes(registryPath) || !central.includes('index-runtime-fallback-smoke.json')) fail('central readiness board drift');
 if (!unified.includes('`index` добавлен как provider track') || !unified.includes(registryPath)) fail('unified FBA plan drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'index' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-index-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
@@ -46,4 +48,13 @@ for (const registryCase of registry.contract_tests.cases) {
   if (!evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail(`${registryCase.operation} evidence case drift`);
 }
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-console.log('[verify-index-fba] Index FBA provider metadata, port semantics and static evidence are consistent');
+if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'index' || runtimeSmoke.status !== 'no_compile_executable_runtime_fallback_smoke') fail('runtime smoke identity drift');
+if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-index-runtime-fallback-smoke.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
+if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile drift');
+for (const profile of registry.contract_tests.fallback_smoke.profiles) {
+  if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'no_compile_executable_locked')) fail(`runtime smoke missing executable no-compile profile ${profile}`);
+}
+for (const marker of ['validate_index_read_request', 'validate_index_list_request', 'validate_index_rebuild_request', 'ensure_index_document_tenant_scope', 'index.rebuild_disabled']) {
+  if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
+}
+console.log('[verify-index-fba] Index FBA provider metadata, port semantics and static evidence and source-locked runtime fallback smoke are consistent');

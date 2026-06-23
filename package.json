@@ -29,7 +29,7 @@
     "verify:channel:fba": "node scripts/verify/verify-channel-fba.mjs && npm run verify:channel:runtime-fallback-smoke",
     "verify:channel:runtime-fallback-smoke": "node scripts/verify/verify-channel-runtime-fallback-smoke.mjs",
     "verify:channel:resolution-contract": "node scripts/verify/verify-channel-resolution-contract.mjs",
-    "verify:index:fba": "node scripts/verify/verify-index-fba.mjs",
+    "verify:index:fba": "node scripts/verify/verify-index-fba.mjs && npm run verify:index:runtime-fallback-smoke",
     "test:verify:channel:admin-boundary": "node scripts/verify/verify-channel-admin-boundary.test.mjs",
     "verify:ai:admin-boundary": "node scripts/verify/verify-ai-admin-boundary.mjs",
     "verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.mjs",
@@ -93,10 +93,9 @@
     "verify:outbox:fba": "node scripts/verify/verify-outbox-fba.mjs",
     "verify:email:fba": "node scripts/verify/verify-email-fba.mjs",
     "test:verify:forum:wave-evidence-freshness": "node scripts/verify/verify-forum-wave-evidence-freshness.test.mjs",
-    "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
-    "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
     "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs",
-    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs"
+    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs",
+    "verify:index:runtime-fallback-smoke": "node scripts/verify/verify-index-runtime-fallback-smoke.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

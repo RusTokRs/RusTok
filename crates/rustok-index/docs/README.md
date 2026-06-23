@@ -23,6 +23,7 @@ ingestion и cross-module query substrate.
 - зависит от `rustok-core` и стабильных integration contracts модулей-источников;
 - может использоваться `apps/server` и другими platform consumers как internal query/read-model layer;
 - FBA owner ports (`IndexReadModelPort`, `IndexRebuildPort`) используют shared `rustok_api::PortContext`/`PortError` и `PortCallPolicy` вместо package-local deadline/error shims;
+- adapter-side FBA guardrails включают validation helpers для read/list/rebuild requests, tenant-scope guard `ensure_index_document_tenant_scope` и typed degraded-mode error `index.rebuild_disabled`;
 - не должен схлопываться с `rustok-search`: `search` может читать projections, но `index` не становится search module;
 - event-driven consumers модуля публикуются через `IndexModule::register_event_listeners(...)` и собираются сервером из `ModuleRegistry`, а не через отдельный host-owned dispatcher path;
 - текущие module-owned consumers включают `content_indexer`, `product_indexer` и `flex_indexer` для standalone Flex read-model slice `index_flex_entries`;
@@ -32,6 +33,8 @@ ingestion и cross-module query substrate.
 
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
+- `npm run verify:index:fba`
+- `npm run verify:index:runtime-fallback-smoke`
 - targeted tests для ingestion, rebuild, link-aware queries и consistency semantics при изменении контракта
 
 ## Связанные документы

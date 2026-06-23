@@ -36,8 +36,10 @@
 - `IndexerContext`
 - `IndexerRuntimeConfig`
 - `IndexReadModelPort` / `IndexRebuildPort`
+- `validate_index_read_request`, `validate_index_list_request`, `validate_index_rebuild_request` and `ensure_index_document_tenant_scope` for adapter-side FBA guardrails
 
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Runtime fallback smoke evidence](./contracts/evidence/index-runtime-fallback-smoke.json)
 - [Platform docs index](../../docs/index.md)
