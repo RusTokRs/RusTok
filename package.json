@@ -96,7 +96,8 @@
     "verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.mjs",
     "test:verify:pages:ui-boundary": "node scripts/verify/verify-pages-ui-boundary.test.mjs",
     "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs",
-    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs"
+    "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs",
+    "verify:ai:domain-verticals": "node scripts/verify/verify-ai-domain-verticals.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
