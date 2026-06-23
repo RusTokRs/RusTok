@@ -1,79 +1,22 @@
 use async_trait::async_trait;
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 
-/// Transport-agnostic context for outbox owner boundary calls.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortContext {
-    pub tenant_id: String,
-    pub correlation_id: String,
-    pub deadline_ms: Option<u64>,
-    pub idempotency_key: Option<String>,
-}
-
-impl PortContext {
-    pub fn require_deadline_semantics(&self) -> Result<(), PortError> {
-        if self.deadline_ms.unwrap_or_default() == 0 {
-            return Err(PortError::new(
-                PortErrorKind::Timeout,
+/// Require shared write semantics for relay control calls.
+pub fn require_outbox_relay_policy(context: &PortContext) -> Result<(), PortError> {
+    context
+        .require_policy(PortCallPolicy::write())
+        .map_err(|error| match error.kind {
+            PortErrorKind::Timeout => PortError::timeout(
                 "outbox.deadline_required",
                 "outbox port calls require deadline semantics",
-                true,
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn require_write_semantics(&self) -> Result<(), PortError> {
-        self.require_deadline_semantics()?;
-        if self
-            .idempotency_key
-            .as_deref()
-            .unwrap_or_default()
-            .trim()
-            .is_empty()
-        {
-            return Err(PortError::new(
-                PortErrorKind::Validation,
+            ),
+            PortErrorKind::Validation => PortError::validation(
                 "outbox.idempotency_required",
                 "outbox write-like port calls require an idempotency key",
-                false,
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Transport-neutral error returned by outbox owner ports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PortError {
-    pub kind: PortErrorKind,
-    pub code: String,
-    pub message: String,
-    pub retryable: bool,
-}
-
-impl PortError {
-    pub fn new(
-        kind: PortErrorKind,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        retryable: bool,
-    ) -> Self {
-        Self {
-            kind,
-            code: code.into(),
-            message: message.into(),
-            retryable,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PortErrorKind {
-    Validation,
-    Unavailable,
-    Timeout,
+            ),
+            _ => error,
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,7 +51,7 @@ impl OutboxRelayPort for crate::OutboxRelay {
         context: PortContext,
         _request: OutboxRelayRunOnceRequest,
     ) -> Result<OutboxRelayRunOnceProjection, PortError> {
-        context.require_write_semantics()?;
+        require_outbox_relay_policy(&context)?;
         let claimed_count = crate::OutboxRelay::process_pending_once(self)
             .await
             .map_err(map_outbox_error)?;
@@ -125,10 +68,5 @@ impl OutboxRelayPort for crate::OutboxRelay {
 }
 
 fn map_outbox_error(error: rustok_core::Error) -> PortError {
-    PortError::new(
-        PortErrorKind::Unavailable,
-        "outbox.relay_failed",
-        error.to_string(),
-        true,
-    )
+    PortError::unavailable("outbox.relay_failed", error.to_string())
 }

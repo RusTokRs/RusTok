@@ -48,6 +48,8 @@ void main() {
     );
     expect(find.text('Starter hoodie'), findsOneWidget);
     expect(find.text('1×'), findsOneWidget);
+    expect(find.text('Order summary'), findsOneWidget);
+    expect(find.text('Checkout'), findsOneWidget);
 
     await tester.tap(find.text('Continue shopping'));
     expect(openedCatalog, isTrue);

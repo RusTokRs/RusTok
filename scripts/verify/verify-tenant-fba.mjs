@@ -17,6 +17,7 @@ const cargo = read('crates/rustok-tenant/Cargo.toml');
 const lib = read('crates/rustok-tenant/src/lib.rs');
 const ports = read('crates/rustok-tenant/src/ports.rs');
 const integrationTests = read('crates/rustok-tenant/tests/integration.rs');
+const serverTenantMiddleware = read('apps/server/src/middleware/tenant.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
 if (registry.module !== 'tenant' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
@@ -44,6 +45,10 @@ const evidenceCase = evidence.cases.find((entry) => entry.operation === 'read_te
 if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'runtime_cases_authored_uncompiled' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('read_tenant evidence case drift');
 if (evidence.fallback_smoke.status !== 'runtime_smoke_authored_uncompiled') fail('fallback smoke status drift');
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
+if (evidence.host_integration?.status !== 'source_locked_uncompiled' || evidence.host_integration?.source !== 'apps/server/src/middleware/tenant.rs') fail('host integration evidence drift');
+for (const marker of ['TenantReadPort', 'TenantService::new(ctx.db.clone())', 'tenant_read_request(&identifier)', 'tenant_read_context(&identifier)', '.read_tenant(tenant_port_context, tenant_request)', 'TenantReadSelector::Id', 'TenantReadSelector::Slug', 'TenantReadSelector::Domain', 'include_inactive: true', 'tenant_context_from_projection', 'CachedTenantMiss::Disabled', 'set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)', 'set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)', 'get_or_load_with_coalescing']) {
+  if (!serverTenantMiddleware.includes(marker)) fail(`server tenant middleware missing ${marker}`);
+}
 for (const marker of ['tenant_read_port_requires_deadline_and_valid_slug', 'tenant_read_port_preserves_projection_and_inactive_degraded_mode', 'tenant_read_port_resolves_domain_and_validates_blank_domain', 'PortErrorKind::Timeout', 'PortErrorKind::Validation', 'PortErrorKind::NotFound', 'include_inactive: true', 'TenantReadSelector::Domain', 'tenant.domain_empty']) {
   if (!integrationTests.includes(marker)) fail(`integration tests missing ${marker}`);
 }

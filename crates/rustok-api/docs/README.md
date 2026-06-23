@@ -16,7 +16,7 @@ request/auth/tenant/channel/GraphQL контракты, которые нужн�
 - request context types, transport-agnostic port context/error/policy primitives и auth/tenant/channel host contracts;
 - `UiRouteContext`, `UiRouteQueryUpdate`, `normalize_ui_text`, `parse_ui_csv` и прочие module-agnostic UI host contracts;
 - GraphQL helper types и error helpers shared across modules;
-- reusable read/write/event-replay/best-effort port enforcement без module-specific business logic; consumer migration закреплена в `rustok-region` и продолжена для tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order и index read ports;
+- reusable read/write/event-replay/best-effort port enforcement без module-specific business logic; consumer migration закреплена в `rustok-region` и продолжена для tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery и outbox relay ports;
 - request-level locale/tenant/channel resolution primitives, не принадлежащие domain crates;
 - отсутствие module-specific resolvers, controllers и business logic.
 

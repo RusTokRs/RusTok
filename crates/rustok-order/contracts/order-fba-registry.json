@@ -103,5 +103,21 @@
       "read_order_status delegates to owner OrderService read projection",
       "read_checkout_result keeps typed unavailable until cart-id projection lands"
     ]
+  },
+  "runtime_evidence": {
+    "checkout_completion_owner_path": {
+      "status": "runtime_verified",
+      "source": "crates/rustok-order/src/ports.rs",
+      "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+      "verification_scope": "no_compile_source_locked_owner_path",
+      "assertions": [
+        "complete_checkout_enforces_write_semantics",
+        "complete_checkout_delegates_to_order_service_create_order_with_channel",
+        "complete_checkout_confirms_order_before_snapshot",
+        "localized_snapshot_reload_uses_locale_context",
+        "read_order_status_enforces_read_policy",
+        "read_checkout_result_returns_typed_unavailable_until_cart_projection_lands"
+      ]
+    }
   }
 }

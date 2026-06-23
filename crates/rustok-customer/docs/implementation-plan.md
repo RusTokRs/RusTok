@@ -6,12 +6,12 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 ## Execution checkpoint
 
-- Current phase: customer_identity_normalization_and_tenant_guard_slice
-- Last checkpoint: Customer identity guard slice normalized create/update email uniqueness before persistence and authored no-compile tests for trimmed duplicate email rejection plus tenant-scoped duplicate `user_id` linkage; FBA read-projection runtime smoke remains source-locked and promotion remains blocked until compiled execution.
-- Next step: Когда компиляции снова разрешены, выполнить targeted customer service/port tests for normalized identity guards and read-projection runtime smoke, then decide whether FBA can move above `in_progress`; до этого держать fast verifier `npm run verify:ecommerce:fba` зелёным без долгих сборок.
+- Current phase: customer_docs_and_no_compile_verification_slice
+- Last checkpoint: Customer docs/readiness slice audited README/local docs against the current customer boundary, made the no-compile verification gates explicit, and kept FBA read-projection runtime smoke source-locked with promotion blocked until compiled execution.
+- Next step: Когда компиляции снова разрешены, выполнить targeted customer service/port tests for normalized identity guards and read-projection runtime smoke, then decide whether FBA can move above `in_progress`; до этого держать fast no-compile gates (`node scripts/verify/verify-customer-fba-no-compile.mjs`, `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`, `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`) зелёными без долгих сборок.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и держать central readiness board синхронизированным.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 
 ## FFA/FBA status
 
@@ -67,6 +67,15 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 - `cargo xtask module test customer`
 - targeted tests для customer CRUD/lookup, ownership guard и optional profile bridge
 
+## No-compile verification gates
+
+Пока компиляции запрещены, customer-инкременты проверяются быстрыми source/evidence gates:
+
+- `node scripts/verify/verify-customer-fba-no-compile.mjs` — сверяет `CustomerReadPort`, `rustok-module.toml`, `Cargo.toml`, local plan и central readiness board с `customer-fba-registry.json`;
+- `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs` — сверяет static contract-test matrix с registry contract cases/profiles/assertions;
+- `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` — удерживает provider/evidence surface family-wide без запуска Rust-компиляции;
+- compiled gates (`cargo xtask module validate customer`, `cargo xtask module test customer`, targeted `cargo test -p rustok-customer ...`) остаются обязательными перед повышением FBA выше `in_progress`, но не запускаются в этой итерации по явному ограничению.
+
 ## Правила обновления
 
 1. При изменении customer runtime contract сначала обновлять этот файл.
@@ -78,5 +87,5 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 ## Quality backlog
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: normalized email uniqueness, update duplicate checks, tenant-scoped user linkage and read-projection smoke are source-locked; compiled execution pending by request.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля.

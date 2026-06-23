@@ -44,33 +44,45 @@ class StorefrontCatalogScreen extends ConsumerWidget {
 }
 
 class StorefrontCartScreen extends ConsumerWidget {
-  const StorefrontCartScreen({super.key, this.onContinueShopping});
+  const StorefrontCartScreen({
+    super.key,
+    this.onContinueShopping,
+    this.onStartCheckout,
+  });
 
   final VoidCallback? onContinueShopping;
+  final VoidCallback? onStartCheckout;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lines = ref.watch(cartLinesProvider);
-    return lines.when(
+    final summary = ref.watch(cartSummaryProvider);
+    return summary.when(
       loading: () => const _CenteredProgress(label: 'Loading cart…'),
       error: (error, _) => _StorefrontErrorView(
         title: 'Cart is unavailable',
         message: error.toString(),
       ),
-      data: (items) {
-        if (items.isEmpty) {
+      data: (summary) {
+        if (summary.isEmpty) {
           return _EmptyCartSurface(onContinueShopping: onContinueShopping);
         }
 
         return ListView.separated(
           padding: const EdgeInsets.all(16),
-          itemCount: items.length + 1,
+          itemCount: summary.lines.length + 2,
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             if (index == 0) {
-              return _CartHeader(onContinueShopping: onContinueShopping);
+              return _CartHeader(
+                summary: summary,
+                onContinueShopping: onContinueShopping,
+                onStartCheckout: onStartCheckout,
+              );
             }
-            return _CartLineTile(line: items[index - 1]);
+            if (index == 1) {
+              return _CartSummaryCard(summary: summary);
+            }
+            return _CartLineTile(line: summary.lines[index - 2]);
           },
         );
       },
@@ -103,9 +115,15 @@ class _CatalogHeader extends StatelessWidget {
 }
 
 class _CartHeader extends StatelessWidget {
-  const _CartHeader({this.onContinueShopping});
+  const _CartHeader({
+    required this.summary,
+    this.onContinueShopping,
+    this.onStartCheckout,
+  });
 
+  final StorefrontCartSummary summary;
   final VoidCallback? onContinueShopping;
+  final VoidCallback? onStartCheckout;
 
   @override
   Widget build(BuildContext context) {
@@ -116,9 +134,19 @@ class _CartHeader extends StatelessWidget {
         subtitle: const Text(
           'Customer checkout preview without admin affordances.',
         ),
-        trailing: TextButton(
-          onPressed: onContinueShopping,
-          child: const Text('Continue shopping'),
+        trailing: Wrap(
+          spacing: 8,
+          children: [
+            TextButton(
+              onPressed: onContinueShopping,
+              child: const Text('Continue shopping'),
+            ),
+            FilledButton.icon(
+              onPressed: summary.canStartCheckout ? onStartCheckout : null,
+              icon: const Icon(Icons.lock_outline),
+              label: const Text('Checkout'),
+            ),
+          ],
         ),
       ),
     );
@@ -201,6 +229,7 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
             StorefrontAddCartLineDraft(variantId: variantId),
           );
       ref.invalidate(cartLinesProvider);
+      ref.invalidate(cartSummaryProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${product.title} added to cart')),
@@ -217,6 +246,44 @@ class _ProductCardState extends ConsumerState<_ProductCard> {
         setState(() => _busy = false);
       }
     }
+  }
+}
+
+
+class _CartSummaryCard extends StatelessWidget {
+  const _CartSummaryCard({required this.summary});
+
+  final StorefrontCartSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Icon(Icons.receipt_long_outlined),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Order summary',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text('${summary.totalQuantity} item(s)'),
+                ],
+              ),
+            ),
+            Text(
+              summary.totalLabel,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -284,6 +351,7 @@ class _CartLineTileState extends ConsumerState<_CartLineTile> {
             ),
           );
       ref.invalidate(cartLinesProvider);
+      ref.invalidate(cartSummaryProvider);
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -304,6 +372,7 @@ class _CartLineTileState extends ConsumerState<_CartLineTile> {
             line.lineId,
           );
       ref.invalidate(cartLinesProvider);
+      ref.invalidate(cartSummaryProvider);
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -350,6 +419,7 @@ class _EmptyCartSurfaceState extends ConsumerState<_EmptyCartSurface> {
             const StorefrontCreateCartDraft(),
           );
       ref.invalidate(cartLinesProvider);
+      ref.invalidate(cartSummaryProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cart started')),

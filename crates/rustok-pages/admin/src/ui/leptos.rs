@@ -959,18 +959,15 @@ pub fn PagesAdmin() -> impl IntoView {
                                             let validation_issue_label = validation_issue_label.get_value();
                                             let sanitize_issue_label = sanitize_issue_label.get_value();
                                             let runtime_issue_label = runtime_issue_label.get_value();
-                                            let label = core::issue_label(
-                                                issue.kind,
-                                                validation_issue_label.as_str(),
-                                                sanitize_issue_label.as_str(),
-                                                runtime_issue_label.as_str(),
-                                            );
                                             let validation_issue_guidance = validation_issue_guidance.get_value();
                                             let sanitize_issue_guidance = sanitize_issue_guidance.get_value();
                                             let runtime_issue_guidance = runtime_issue_guidance.get_value();
                                             let feature_disabled_issue_guidance = feature_disabled_issue_guidance.get_value();
-                                            let guidance = core::issue_guidance(
+                                            let banner = core::issue_banner_view(
                                                 &issue,
+                                                validation_issue_label.as_str(),
+                                                sanitize_issue_label.as_str(),
+                                                runtime_issue_label.as_str(),
                                                 validation_issue_guidance.as_str(),
                                                 sanitize_issue_guidance.as_str(),
                                                 runtime_issue_guidance.as_str(),
@@ -980,11 +977,11 @@ pub fn PagesAdmin() -> impl IntoView {
                                             view! {
                                                 <div class="space-y-1">
                                                     <div>
-                                                        <strong>{label}</strong>
+                                                        <strong>{banner.label}</strong>
                                                         {": "}
                                                         {issue.message}
                                                     </div>
-                                                    <div class="text-xs opacity-80">{guidance}</div>
+                                                    <div class="text-xs opacity-80">{banner.guidance}</div>
                                                 </div>
                                             }
                                             .into_any()

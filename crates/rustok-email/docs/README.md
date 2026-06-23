@@ -13,7 +13,7 @@ typed email rendering и delivery helpers для auth и operational notificatio
 
 - SMTP configuration и sender wiring на уровне модуля;
 - typed rendering contract для password reset и соседних email flows;
-- delivery abstractions и email-related error model;
+- delivery abstractions и email-related error model на shared `rustok_api::PortContext`/`PortError` + `PortCallPolicy::write()` baseline;
 - отсутствие собственной RBAC vocabulary и UI surface.
 
 ## Интеграция

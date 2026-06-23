@@ -106,6 +106,7 @@ for (const marker of [
   "admin_page_list_item_view",
   "admin_page_row_action_state",
   "admin_page_row_action_labels",
+  "issue_banner_view",
 ]) {
   assertContains(adminCore, marker, `${files.adminCore}: expected admin core-owned helper ${marker}`);
 }
@@ -134,6 +135,7 @@ assertContains(adminUi, "core::is_publish_action_disabled", `${files.adminUi}: a
 assertContains(adminUi, "core::admin_page_list_item_view", `${files.adminUi}: admin UI must use core-owned table item view mapping`);
 assertContains(adminUi, "core::admin_page_row_action_state", `${files.adminUi}: admin UI must use core-owned table action busy mapping`);
 assertContains(adminUi, "core::admin_page_row_action_labels", `${files.adminUi}: admin UI must use core-owned table action label mapping`);
+assertContains(adminUi, "core::issue_banner_view", `${files.adminUi}: admin UI must use core-owned issue banner view mapping`);
 assertContains(adminUi, "transport::fetch_pages", `${files.adminUi}: admin UI must call transport facade`);
 assertContains(storefrontUi, "use crate::core;", `${files.storefrontUi}: storefront UI must consume core layer`);
 assertContains(storefrontUi, "use crate::transport;", `${files.storefrontUi}: storefront UI must consume transport layer`);
