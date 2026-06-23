@@ -8,9 +8,11 @@
     {
       "name": "EmailDeliveryPort",
       "owner": "email",
-      "operations": ["send_transactional_email"],
-      "context": "crates/rustok-email/src/ports.rs::PortContext",
-      "error": "crates/rustok-email/src/ports.rs::PortError",
+      "operations": [
+        "send_transactional_email"
+      ],
+      "context": "rustok_api::PortContext",
+      "error": "rustok_api::PortError",
       "idempotency_required": true,
       "deadline_required": true
     }
@@ -19,8 +21,14 @@
     {
       "module": "auth-commerce-workflow",
       "profile": "transactional_email_delivery",
-      "degraded_modes": ["skip_disabled_provider", "surface_delivery_retry_needed"],
-      "fallback_profiles": ["embedded_disabled_noop", "embedded_smtp"]
+      "degraded_modes": [
+        "skip_disabled_provider",
+        "surface_delivery_retry_needed"
+      ],
+      "fallback_profiles": [
+        "embedded_disabled_noop",
+        "embedded_smtp"
+      ]
     }
   ],
   "evidence": {
@@ -37,18 +45,36 @@
     "status": "planned_cases_locked",
     "source": "crates/rustok-email/contracts/email-fba-registry.json",
     "runner": "scripts/verify/verify-email-fba.mjs",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
       {
         "operation": "send_transactional_email",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_preserved", "disabled_provider_noop_preserved", "template_error_not_retryable"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_preserved",
+          "disabled_provider_noop_preserved",
+          "template_error_not_retryable"
+        ]
       }
     ],
     "fallback_smoke": {
       "status": "planned",
-      "profiles": ["embedded_disabled_noop", "embedded_smtp"],
-      "degraded_modes": ["skip_disabled_provider", "surface_delivery_retry_needed"]
+      "profiles": [
+        "embedded_disabled_noop",
+        "embedded_smtp"
+      ],
+      "degraded_modes": [
+        "skip_disabled_provider",
+        "surface_delivery_retry_needed"
+      ]
     }
   }
 }

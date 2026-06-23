@@ -10240,6 +10240,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "lettre",
+ "rustok-api",
  "rustok-core",
  "sea-orm-migration",
  "serde",
@@ -10601,6 +10602,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "sea-orm",
