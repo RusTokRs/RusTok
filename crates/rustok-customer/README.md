@@ -32,4 +32,14 @@
 - `dto::*`
 - `entities::*`
 
+## Verification
+
+No-compile customer boundary checks for source/evidence-only iterations:
+
+- `node scripts/verify/verify-customer-fba-no-compile.mjs`
+- `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`
+- `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`
+
+Compiled module gates (`cargo xtask module validate customer`, `cargo xtask module test customer`, and targeted `cargo test -p rustok-customer ...`) remain required before promoting FBA beyond `in_progress`, but are intentionally not part of no-compile iterations.
+
 See also `docs/README.md`.
