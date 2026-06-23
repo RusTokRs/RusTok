@@ -970,7 +970,12 @@ Notes: <known deviations or waivers>
   - [x] закрепить Next Admin typed-error parity (`validation/sanitize/runtime/feature-disabled`) и operator guidance через static baseline gate;
   - [x] закрепить Leptos admin typed-error parity и localized operator guidance через static baseline gate;
   - [x] закрепить Flutter app-core typed-error parity и operator guidance через static baseline gate;
-  - [ ] собрать device/runtime evidence packet для Flutter adapters в Wave hand-off.
+  - [~] собрать device/runtime evidence packet для Flutter adapters в Wave hand-off (machine-readable hand-off contract и no-compile gate зафиксированы; фактический device/runtime packet остаётся Wave hand-off задачей).
+
+
+#### PB-FBA-1B Flutter Wave hand-off contract
+
+Для закрытия Flutter parity без преждевременного открытия pilot rollout зафиксирован отдельный machine-readable contract `crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json`. Он удерживает границу: Flutter предоставляет только device/runtime evidence по shared app-core mapper (`validation/sanitize/runtime/feature-disabled`, `FEATURE_DISABLED`, operator guidance и no local toggle policy), но не дублирует FBA registry thresholds или control-plane toggle semantics в mobile registry. Gate `verify-page-builder-flutter-handoff.mjs` добавлен в aggregate no-compile baseline, поэтому Wave 1 promotion остаётся заблокированным до фактического device/runtime packet и owner approvals.
 
 #### Week 2 — закрыть P2/P3
 

@@ -7,7 +7,7 @@
 ## Responsibilities
 
 - Own content moderation AI contracts.
-- Own blog draft generated payload contracts and validation.
+- Own blog draft generated payload contracts and validation for all optional text fields.
 - Keep content policy wiring outside `rustok-ai` core runtime.
 
 ## Interactions
@@ -21,6 +21,7 @@
 - `register_content_ai_vertical_handlers`
 - `validate_blog_draft_payload`
 - `validate_moderation_decision`
+- `content_ai_policy_matrix`
 
 ## Docs
 

@@ -41,7 +41,9 @@ data-size pressure returns `ScriptError::ResourceLimit`. Use
 Script-list REST reads use the same `page >= 1` and `per_page` 1..100
 normalization before storage pagination. If callers provide a `status` query
 filter, it must match a known script status; unknown values return validation
-errors instead of silently widening the operator query to all scripts.
+errors instead of silently widening the operator query to all scripts. In-memory
+storage uses the same filter-first, name-ordered pagination contract as SeaORM
+so local runtime paths and tests do not depend on `HashMap` iteration order.
 
 ## Execution history surfaces
 

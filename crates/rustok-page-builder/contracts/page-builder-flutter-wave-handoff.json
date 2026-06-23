@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "artifact": "page_builder_flutter_wave_handoff_contract",
+  "module_slug": "page_builder",
+  "consumer_module_slug": "pages",
+  "mobile_surface": "rustok_mobile/packages/app_core",
+  "builder_contract_version": "1.0",
+  "consumer_min_version": "1.0",
+  "handoff_scope": "device_runtime_evidence_only",
+  "non_goals": [
+    "duplicate_fba_registry_thresholds_in_mobile_registry",
+    "duplicate_control_plane_toggle_semantics_in_mobile_registry",
+    "introduce_mobile_local_error_catalog"
+  ],
+  "required_error_catalog": [
+    "validation",
+    "sanitize",
+    "runtime",
+    "feature-disabled"
+  ],
+  "required_stable_codes": [
+    "FEATURE_DISABLED"
+  ],
+  "required_toggle_guidance": [
+    "builder.enabled",
+    "builder.preview.enabled",
+    "builder.properties.enabled",
+    "builder.publish.enabled",
+    "builder.legacy_bridge_readonly"
+  ],
+  "required_device_evidence_sections": {
+    "metadata": [
+      "device_class",
+      "os_version",
+      "app_build",
+      "module_manifest_version",
+      "builder_contract_version",
+      "consumer_min_version"
+    ],
+    "profiles": [
+      "all_on",
+      "publish_off",
+      "preview_off",
+      "builder_off"
+    ],
+    "runtime_checks": [
+      "error_mapping_parity",
+      "feature_disabled_guidance",
+      "read_path_no_builder_capability_requirement",
+      "offline_or_timeout_maps_to_runtime",
+      "no_mobile_local_toggle_policy"
+    ],
+    "observability": [
+      "trace_id",
+      "profile",
+      "device_timestamp",
+      "correlation_path",
+      "result"
+    ],
+    "approvals": [
+      "mobile_owner",
+      "runtime_owner",
+      "pages_owner"
+    ]
+  },
+  "wave_gate_policy": {
+    "wave0": "contract_static_gate_only",
+    "wave1": "attach_device_runtime_packet_before_pilot_promotion",
+    "waivers_block_wave1": true
+  },
+  "source_markers": {
+    "flutter_error_mapper": "class PageBuilderErrorMapper",
+    "flutter_error_catalog": "class PageBuilderErrorCatalog",
+    "central_plan": "device/runtime evidence packet для Flutter adapters",
+    "flutter_research_plan": "Flutter Wave hand-off должен приложить device/runtime evidence"
+  }
+}

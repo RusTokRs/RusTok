@@ -61,6 +61,15 @@ void main() {
       find.text('Customer checkout preview without admin affordances.'),
       findsOneWidget,
     );
+    expect(find.text('Order summary'), findsOneWidget);
+
+    router.go(checkoutPath);
+    await tester.pumpAndSettle();
+    expect(find.text('Checkout'), findsWidgets);
+    expect(
+      find.textContaining('Checkout remains host-owned'),
+      findsOneWidget,
+    );
 
     router.go(homePath);
     await tester.pumpAndSettle();

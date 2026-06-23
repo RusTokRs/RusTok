@@ -2,12 +2,12 @@
 
 ## Execution checkpoint
 
-- Current phase: provider SPI live-adapter execution evidence hardening
-- Last checkpoint: Payment and fulfillment provider SPI live-adapter execution evidence now sits beside the locked static/runtime-smoke/contract packets: concrete external gateway/carrier cases cover guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation, unavailable-mode adapter blocking and webhook/tracking replay delegation through `verify-ecommerce-provider-spi-evidence.mjs` without Cargo compilation.
-- Next step: Finish moving payment/order/fulfillment async native/GraphQL adapters fully behind owner storefront packages when host routing can depend on those adapters without circular orchestration, then move provider SPI from evidence-only external gateway/carrier contract execution toward production adapter wiring; keep Next commerce pages behind the shared module guard.
+- Current phase: provider SPI guarded runtime invocation seam hardening
+- Last checkpoint: Payment and fulfillment provider registries now expose guarded async invocation seams (`execute_*`) that resolve side-effect-free runtime mode before adapter calls, block unavailable providers before side effects, preserve degraded fallback metadata and keep webhook/tracking replay delegation in owner services; the no-compile verifier now source-locks those seams together with live-adapter evidence packets.
+- Next step: Wire commerce/payment/fulfillment orchestration to the new owner registry `execute_*` seams where runtime composition can pass provider registries safely, then finish moving payment/order/fulfillment async native/GraphQL adapters fully behind owner storefront packages; keep Next commerce pages behind the shared module guard.
 - Open blockers: None.
 - Hand-off notes for next agent: After each post-order operator UI/page addition, update this checkpoint block and central registry evidence; keep the Next host route as a thin auth/options adapter only.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-22T00:00:00Z
 
 
 ## FFA/FBA status
@@ -28,11 +28,11 @@
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FBA-readiness gate включён для уже готовых ecommerce slices до расширения roadmap новыми marketplace/provider модулями: проверяются service-contract ownership, typed request context/errors, explicit cross-module ports/events и отсутствие business logic в transport/UI adapters.
   - consumer-side FBA metadata теперь закреплена в `crates/rustok-commerce/contracts/commerce-fba-registry.json`: commerce явно перечисляет provider contracts для pricing/inventory/order/payment/fulfillment/product/customer/cart, checkout profiles, degraded modes и fallback profiles, `src/fba.rs` публикует typed embedded registry entrypoint для runtime/composition кода, а aggregate verifier сверяет эти записи с owner provider registries;
-  - provider SPI live-adapter executed evidence теперь закреплён для payment/fulfillment в `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json` и `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-evidence.json`; verifier требует pass-cases для guarded invocation, typed error mapping, degraded fallback, unavailable blocking и webhook/tracking replay delegation без запуска Cargo compilation;
+  - provider SPI live-adapter executed evidence теперь закреплён для payment/fulfillment в `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json` и `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-evidence.json`; verifier требует pass-cases для guarded invocation, typed error mapping, degraded fallback, unavailable blocking и webhook/tracking replay delegation без запуска Cargo compilation, а `src/providers.rs` теперь содержит source-locked owner registry `execute_*` seams для guarded async invocation до production adapter wiring;
   - provider registry evidence зафиксирован для `crates/rustok-pricing/contracts/pricing-fba-registry.json`, `crates/rustok-inventory/contracts/inventory-fba-registry.json`, `crates/rustok-order/contracts/order-fba-registry.json`, `crates/rustok-payment/contracts/payment-fba-registry.json`, `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`, `crates/rustok-product/contracts/product-fba-registry.json`, `crates/rustok-customer/contracts/customer-fba-registry.json` и `crates/rustok-cart/contracts/cart-fba-registry.json`, чтобы commerce local plan не расходился с consumer registry;
   - Phase 11 provider SPI baseline начат без vendor-specific adapters: payment-owned `src/providers.rs` фиксирует manual provider capabilities и adapter trait для authorize/capture/cancel/refund, fulfillment-owned `src/providers.rs` фиксирует manual carrier capabilities и adapter trait для quote/label/cancel, а lifecycle persistence остаётся в `PaymentService` / `FulfillmentService`;
   - provider SPI static + runtime-smoke evidence теперь закрепляет payment/fulfillment operation cases, typed webhook adapter operations, owner-side external adapter registration source contracts, owner provider registry composition seams, registration failure cases, side-effect-free runtime-mode guardrails and live external gateway/carrier execution-plan requirements и dedicated live-adapter contract packets в `crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json`, `crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json`, `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json`, `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`, `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json` и `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-contract.json`; aggregate `npm run verify:ecommerce:fba` запускает `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` вместе с registry/port evidence gates, но FBA статус остаётся `in_progress` до runtime execution;
-- Last verified at (UTC): 2026-06-21T00:00:00Z
+- Last verified at (UTC): 2026-06-22T00:00:00Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа
@@ -157,7 +157,7 @@ Fluid Frontend Architecture (FFA) и Fluid Backend Architecture (FBA):
 - полноценный promotion/discount domain поверх price rules, а не только `compare_at_amount` и service-level `apply_discount`;
 - отдельный tax domain: foundation уже начат (tax lines + totals), `rustok-tax` уже вынес default `region_default` calculation в отдельный module boundary, а provider seam и typed `provider_id` tax-line contract уже введены; backlog теперь смещается в richer tax rules и внешние tax engines вместо продолжения hardcoded region-only runtime;
 - post-order слой уровня Medusa: returns, exchanges, claims, order changes, draft/edit flows, refund transport;
-- provider registry для payment/fulfillment, webhook ingestion и внешний gateway/carrier story.
+- provider registry для payment/fulfillment, webhook ingestion и внешний gateway/carrier story; начат guarded invocation seam (`execute_*`) в owner registries, но commerce orchestration ещё не переведён на production adapter wiring.
 
 ## Backlog противоречий
 
@@ -684,6 +684,7 @@ Deliverables:
 - [x] явные fallback semantics для manual/default providers;
 - [x] no-compile external gateway/carrier registration failure and remote degraded/unavailable runtime-mode smoke evidence.
 - [x] no-compile live-adapter execution contract packets for payment/fulfillment gateway/carrier runtime cases.
+- [x] owner registry guarded async invocation seams (`execute_*`) for payment/fulfillment adapter calls source-locked by the provider SPI verifier.
 - [x] live external gateway/carrier adapter registration and remote failure/degraded-mode execution evidence.
 
 Обязательные проверки:

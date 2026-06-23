@@ -36,12 +36,39 @@
     "child_pages": []
   },
   {
+    "module_slug": "fulfillment",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "fulfillment",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "fulfillment",
+    "child_pages": []
+  },
+  {
+    "module_slug": "order",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "orders",
+    "nav_icon": "receipt_long",
+    "permissions": [],
+    "locale_namespace": "order",
+    "child_pages": []
+  },
+  {
     "module_slug": "pages",
     "surface_kind": "storefront_mobile",
     "route_segment": "pages",
     "nav_icon": "module",
     "permissions": [],
     "locale_namespace": "pages",
+    "child_pages": []
+  },
+  {
+    "module_slug": "payment",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "payment",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "payment",
     "child_pages": []
   },
   {

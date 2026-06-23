@@ -17,6 +17,7 @@ tracing.workspace = true
 tokio.workspace = true
 
 rustok-core.workspace = true
+rustok-api.workspace = true
 rustok-events.workspace = true
 
 [dev-dependencies]

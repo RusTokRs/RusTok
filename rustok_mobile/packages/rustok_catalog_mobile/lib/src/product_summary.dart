@@ -33,3 +33,19 @@ class StorefrontCartLine {
   final int quantity;
   final String priceLabel;
 }
+
+class StorefrontCartSummary {
+  const StorefrontCartSummary({
+    required this.lines,
+    required this.totalQuantity,
+    required this.totalLabel,
+    required this.canStartCheckout,
+  });
+
+  final List<StorefrontCartLine> lines;
+  final int totalQuantity;
+  final String totalLabel;
+  final bool canStartCheckout;
+
+  bool get isEmpty => lines.isEmpty;
+}

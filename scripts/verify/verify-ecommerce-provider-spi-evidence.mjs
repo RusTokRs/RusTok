@@ -370,11 +370,45 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
       'pub fn validate(&self, expected_provider_id: &str)',
       'pub fn register_external(',
       'pub fn runtime_mode(',
+      'fn executable_provider(',
     ]) {
       if (!providerSource.includes(marker)) {
         fail(`${module} provider SPI source lacks external registration marker ${marker}`);
       }
     }
+    const executionMarkers =
+      module === 'payment'
+        ? [
+            'pub async fn execute_authorize(',
+            'pub async fn execute_capture(',
+            'pub async fn execute_cancel(',
+            'pub async fn execute_refund(',
+            'pub async fn execute_webhook(',
+            '.authorize(request)',
+            '.capture(request)',
+            '.cancel(request)',
+            '.refund(request)',
+            '.handle_webhook(request)',
+          ]
+        : [
+            'pub async fn execute_quote_rates(',
+            'pub async fn execute_create_label(',
+            'pub async fn execute_cancel(',
+            'pub async fn execute_tracking_webhook(',
+            '.quote_rates(request)',
+            '.create_label(request)',
+            '.cancel(request)',
+            '.handle_tracking_webhook(request)',
+          ];
+    for (const marker of executionMarkers) {
+      if (!providerSource.includes(marker)) {
+        fail(`${module} provider SPI source lacks guarded execution marker ${marker}`);
+      }
+    }
+    if (!providerSource.includes('if !mode.can_execute')) {
+      fail(`${module} provider SPI source lacks unavailable execution guard`);
+    }
+
     for (const marker of [
       'descriptor.provider_id',
       'descriptor.provider_id != registration.descriptor.provider_id',

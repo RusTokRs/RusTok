@@ -32,7 +32,7 @@ impl ScriptRegistry for InMemoryStorage {
     async fn find(&self, query: ScriptQuery) -> ScriptResult<Vec<Script>> {
         let guard = self.scripts.read().await;
 
-        let result = match query {
+        let mut result: Vec<Script> = match query {
             ScriptQuery::ById(id) => guard.get(&id).cloned().into_iter().collect(),
             ScriptQuery::ByName(name) => guard
                 .values()
@@ -78,6 +78,12 @@ impl ScriptRegistry for InMemoryStorage {
                 .collect(),
             ScriptQuery::All => guard.values().cloned().collect(),
         };
+
+        result.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.id.cmp(&right.id))
+        });
 
         Ok(result)
     }
@@ -167,5 +173,69 @@ impl ScriptRegistry for InMemoryStorage {
         })?;
         script.reset_errors();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named_script(name: &str, status: ScriptStatus) -> Script {
+        let mut script = Script::new(name, "40 + 2", ScriptTrigger::Manual);
+        script.status = status;
+        script
+    }
+
+    #[tokio::test]
+    async fn find_returns_scripts_in_sea_orm_compatible_name_order() {
+        let storage = InMemoryStorage::new();
+        storage
+            .save(named_script("zeta", ScriptStatus::Draft))
+            .await
+            .unwrap();
+        storage
+            .save(named_script("alpha", ScriptStatus::Active))
+            .await
+            .unwrap();
+        storage
+            .save(named_script("middle", ScriptStatus::Paused))
+            .await
+            .unwrap();
+
+        let names = storage
+            .find(ScriptQuery::All)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|script| script.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["alpha", "middle", "zeta"]);
+    }
+
+    #[tokio::test]
+    async fn paginated_status_query_keeps_total_and_name_order_after_filtering() {
+        let storage = InMemoryStorage::new();
+        storage
+            .save(named_script("gamma_active", ScriptStatus::Active))
+            .await
+            .unwrap();
+        storage
+            .save(named_script("beta_draft", ScriptStatus::Draft))
+            .await
+            .unwrap();
+        storage
+            .save(named_script("alpha_active", ScriptStatus::Active))
+            .await
+            .unwrap();
+
+        let page = storage
+            .find_paginated(ScriptQuery::ByStatus(ScriptStatus::Active), 1, 1)
+            .await
+            .unwrap();
+
+        assert_eq!(page.total, 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].name, "gamma_active");
     }
 }
