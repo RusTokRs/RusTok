@@ -191,6 +191,25 @@ node scripts/verify/verify-inventory-admin-boundary.test.mjs
 ---
 
 
+
+### `verify-ai-domain-verticals.mjs`
+**AI domain vertical ownership guardrail** — быстрый source-level gate для `rustok-ai-product`, `rustok-ai-content` и `rustok-ai-order` без Rust-компиляции.
+
+Что проверяет:
+- product/content/order support crates владеют task/tool constants, descriptor registration APIs и generated payload validators;
+- runtime composition в `rustok-ai` consumes domain-owned registration APIs вместо hard-coded slug literals;
+- content moderation sensitive-tool defaults merge-ятся в runtime policy через `content_ai_sensitive_tools`;
+- локальные implementation plans и `rustok-ai` plan фиксируют compile-free evidence gate.
+
+Пример:
+
+```bash
+npm run verify:ai:domain-verticals
+./scripts/verify/verify-all.sh ai-domain-verticals
+```
+
+---
+
 ### `verify-ai-admin-boundary.mjs` / `verify-tenant-admin-boundary.mjs`
 **FFA admin guardrails** — быстрые source-level checks для module-owned admin UI splits без полной Rust-компиляции.
 
