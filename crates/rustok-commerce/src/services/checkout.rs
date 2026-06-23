@@ -6,10 +6,14 @@ use validator::Validate;
 use rustok_cart::error::CartError;
 use rustok_core::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_fulfillment::error::FulfillmentError;
+use rustok_fulfillment::providers::{
+    FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
+};
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
+use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
@@ -59,7 +63,9 @@ pub struct CheckoutService {
     cart_service: CartService,
     order_service: OrderService,
     payment_service: PaymentService,
+    payment_provider_registry: PaymentProviderRegistry,
     fulfillment_service: FulfillmentService,
+    fulfillment_provider_registry: FulfillmentProviderRegistry,
     context_service: StoreContextService,
 }
 
@@ -70,9 +76,27 @@ impl CheckoutService {
             cart_service: CartService::new(db.clone()),
             order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
+            payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
             fulfillment_service: FulfillmentService::new(db.clone()),
+            fulfillment_provider_registry: FulfillmentProviderRegistry::with_manual_provider(),
             context_service: StoreContextService::new(db),
         }
+    }
+
+    /// Override payment and fulfillment provider registries assembled by runtime composition.
+    ///
+    /// Checkout keeps lifecycle persistence in owner services, but adapter side effects
+    /// are routed through owner registry `execute_*` seams so unavailable providers are
+    /// blocked before external calls and degraded registration metadata remains visible
+    /// to orchestration.
+    pub fn with_provider_registries(
+        mut self,
+        payment_provider_registry: PaymentProviderRegistry,
+        fulfillment_provider_registry: FulfillmentProviderRegistry,
+    ) -> Self {
+        self.payment_provider_registry = payment_provider_registry;
+        self.fulfillment_provider_registry = fulfillment_provider_registry;
+        self
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, actor_id = %actor_id))]
@@ -303,33 +327,70 @@ impl CheckoutService {
             };
 
             let authorized_payment = match payment_collection.status.as_str() {
-                "pending" => match self
-                    .payment_service
-                    .authorize_collection(
-                        tenant_id,
-                        payment_collection.id,
-                        AuthorizePaymentInput {
-                            provider_id: None,
-                            provider_payment_id: None,
-                            amount: Some(cart.total_amount),
-                            metadata: input.metadata.clone(),
-                        },
-                    )
-                    .await
-                {
-                    Ok(collection) => collection,
-                    Err(error) => {
-                        self.compensate_payment_and_order(
-                            tenant_id,
-                            actor_id,
-                            payment_collection.id,
-                            order.id,
-                            "payment_authorization_failed",
+                "pending" => {
+                    let provider_id = payment_collection
+                        .provider_id
+                        .clone()
+                        .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+                    let provider_result = match self
+                        .payment_provider_registry
+                        .execute_authorize(
+                            provider_id.as_str(),
+                            PaymentProviderOperationRequest {
+                                tenant_id,
+                                collection_id: payment_collection.id,
+                                amount: cart.total_amount,
+                                currency_code: cart.currency_code.clone(),
+                                idempotency_key: Some(format!(
+                                    "checkout:{}:authorize:{}",
+                                    cart.id, payment_collection.id
+                                )),
+                                metadata: input.metadata.clone(),
+                            },
                         )
-                        .await;
-                        return Err(stage_error("authorize_payment")(error));
+                        .await
+                    {
+                        Ok(result) => result,
+                        Err(error) => {
+                            self.compensate_payment_and_order(
+                                tenant_id,
+                                actor_id,
+                                payment_collection.id,
+                                order.id,
+                                "payment_provider_authorization_failed",
+                            )
+                            .await;
+                            return Err(stage_error("execute_authorize_payment_provider")(error));
+                        }
+                    };
+                    match self
+                        .payment_service
+                        .authorize_collection(
+                            tenant_id,
+                            payment_collection.id,
+                            AuthorizePaymentInput {
+                                provider_id: Some(provider_result.provider_id),
+                                provider_payment_id: provider_result.external_reference,
+                                amount: Some(provider_result.authorized_amount),
+                                metadata: provider_result.metadata,
+                            },
+                        )
+                        .await
+                    {
+                        Ok(collection) => collection,
+                        Err(error) => {
+                            self.compensate_payment_and_order(
+                                tenant_id,
+                                actor_id,
+                                payment_collection.id,
+                                order.id,
+                                "payment_authorization_failed",
+                            )
+                            .await;
+                            return Err(stage_error("authorize_payment")(error));
+                        }
                     }
-                },
+                }
                 "authorized" | "captured" => payment_collection.clone(),
                 status => {
                     self.compensate_payment_and_order(
@@ -378,31 +439,68 @@ impl CheckoutService {
             };
 
             let captured_payment = match authorized_payment.status.as_str() {
-                "authorized" => match self
-                    .payment_service
-                    .capture_collection(
-                        tenant_id,
-                        authorized_payment.id,
-                        rustok_payment::dto::CapturePaymentInput {
-                            amount: Some(cart.total_amount),
-                            metadata: input.metadata.clone(),
-                        },
-                    )
-                    .await
-                {
-                    Ok(collection) => collection,
-                    Err(error) => {
-                        self.compensate_payment_and_order(
-                            tenant_id,
-                            actor_id,
-                            authorized_payment.id,
-                            order.id,
-                            "payment_capture_failed",
+                "authorized" => {
+                    let provider_id = authorized_payment
+                        .provider_id
+                        .clone()
+                        .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
+                    let provider_result = match self
+                        .payment_provider_registry
+                        .execute_capture(
+                            provider_id.as_str(),
+                            PaymentProviderOperationRequest {
+                                tenant_id,
+                                collection_id: authorized_payment.id,
+                                amount: cart.total_amount,
+                                currency_code: cart.currency_code.clone(),
+                                idempotency_key: Some(format!(
+                                    "checkout:{}:capture:{}",
+                                    cart.id, authorized_payment.id
+                                )),
+                                metadata: input.metadata.clone(),
+                            },
                         )
-                        .await;
-                        return Err(stage_error("capture_payment")(error));
+                        .await
+                    {
+                        Ok(result) => result,
+                        Err(error) => {
+                            self.compensate_payment_and_order(
+                                tenant_id,
+                                actor_id,
+                                authorized_payment.id,
+                                order.id,
+                                "payment_provider_capture_failed",
+                            )
+                            .await;
+                            return Err(stage_error("execute_capture_payment_provider")(error));
+                        }
+                    };
+                    match self
+                        .payment_service
+                        .capture_collection(
+                            tenant_id,
+                            authorized_payment.id,
+                            rustok_payment::dto::CapturePaymentInput {
+                                amount: Some(provider_result.captured_amount),
+                                metadata: provider_result.metadata,
+                            },
+                        )
+                        .await
+                    {
+                        Ok(collection) => collection,
+                        Err(error) => {
+                            self.compensate_payment_and_order(
+                                tenant_id,
+                                actor_id,
+                                authorized_payment.id,
+                                order.id,
+                                "payment_capture_failed",
+                            )
+                            .await;
+                            return Err(stage_error("capture_payment")(error));
+                        }
                     }
-                },
+                }
                 "captured" => authorized_payment,
                 status => {
                     self.compensate_payment_and_order(
@@ -712,11 +810,28 @@ impl CheckoutService {
                         carrier: None,
                         tracking_number: None,
                         items: Some(items),
-                        metadata: group_metadata,
+                        metadata: group_metadata.clone(),
                     },
                 )
                 .await
                 .map_err(stage_error("create_fulfillment"))?;
+
+            self.fulfillment_provider_registry
+                .execute_create_label(
+                    MANUAL_PROVIDER_ID,
+                    FulfillmentProviderOperationRequest {
+                        tenant_id,
+                        fulfillment_id: fulfillment.id,
+                        idempotency_key: Some(format!(
+                            "checkout:{}:fulfillment_label:{}",
+                            cart.id, fulfillment.id
+                        )),
+                        metadata: group_metadata,
+                    },
+                )
+                .await
+                .map_err(stage_error("execute_fulfillment_label_provider"))?;
+
             fulfillments.push(fulfillment);
         }
 

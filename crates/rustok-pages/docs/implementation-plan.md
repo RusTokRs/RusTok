@@ -7,7 +7,7 @@
 ## Execution checkpoint
 
 - Current phase: wave1_readiness_hold
-- Last checkpoint: Admin write-path issue banner presentation moved behind a core-owned view model (`issue_banner_view`), so the Leptos adapter no longer owns error label/guidance selection policy while the typed builder error catalog remains unchanged.
+- Last checkpoint: Admin write-path issue banner class rendering now consumes the `issue_banner_view` view model directly, so the Leptos adapter no longer bypasses core for banner CSS/label/guidance policy while the typed builder error catalog remains unchanged.
 - Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем заменить Wave 1 readiness draft реальным tenant packet только вместе с owner sign-off и SLO/smoke evidence. Для no-compile Wave 1 hold использовать `npm run verify:page-builder:wave1-readiness-draft`; для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs`; для FBA rollout policy использовать `npm run verify:page-builder:consumer:pages`.
 - Open blockers: None.
 - Hand-off notes for next agent:
@@ -36,6 +36,7 @@
 - Last updated at (UTC): 2026-06-20T00:00:00Z
 - Last updated at (UTC): 2026-06-20T01:00:00Z
 - Last updated at (UTC): 2026-06-22T00:00:00Z
+- Last updated at (UTC): 2026-06-23T00:00:00Z
 - Latest maintenance update: Leptos admin package now exposes capability surfaces `preview/tree/properties/publish` for `grapesjs_v1` and keeps legacy `blocks` compatibility visible in the same write-path.
 - Latest maintenance update: зафиксирован typed builder error catalog parity (`validation/sanitize/runtime/feature-disabled`) для admin UI + service/runtime с опорой на `WritePathIssueKind`, `PagesError::FeatureDisabled`, manifest/registry binding и `verify-page-builder-error-catalog-binding.mjs`.
 - Latest maintenance update: create-page draft normalization теперь собирается в `admin/src/core.rs` и переиспользует `rustok-api::normalize_ui_text` / `parse_ui_csv`, а Leptos слой остаётся thin bind/render adapter.
@@ -54,6 +55,7 @@
 - Latest FFA maintenance update: admin table item state/fallback mapping (`admin_page_list_item_view`) и storefront published list item mapping (`storefront_page_list_item_view`) вынесены в `core`, а package-level `verify:pages:ui-boundary` scripts восстановлены после JSON drift без Cargo-компиляции.
 - Latest FFA maintenance update: admin table row action busy/label mapping (`admin_page_row_action_state`, `admin_page_row_action_labels`) вынесен в `admin/src/core.rs`, Leptos adapter оставлен thin render/callback layer, а `verify-pages-ui-boundary.mjs` закрепляет новые no-compile markers.
 - Latest FFA maintenance update: admin write-path issue banner view model (`issue_banner_view`) вынесен в `admin/src/core.rs`; Leptos adapter теперь только получает локализованные строки и рендерит core-owned class/label/guidance, а `verify-pages-ui-boundary.mjs` закрепляет no-compile marker.
+- Latest FFA maintenance update: admin issue-banner CSS policy теперь также заблокирована no-compile guardrail: Leptos adapter рендерит `banner.class_name` из `issue_banner_view`, а прямой вызов `core::issue_banner_class` из UI считается boundary regression.
 
 - PB-FBA-1 platform sync note: central plan `docs/modules/tiptap-page-builder-implementation-plan.md` now содержит delivery slices и exit criteria для Wave 0 hand-off; pages track должен обновляться синхронно по dependency notes.
 - PB-FBA-1 execution note: sync с central section `8.5 Execution backlog` принят как active queue (`PB-FBA-1A..1D`, фокус Week1=P0/P1, Week2=P2/P3).

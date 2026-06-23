@@ -47,7 +47,7 @@ for (const op of port.read_operations) {
   if (idx === -1) fail(`ports.rs missing read operation ${op}`);
   const next = implPorts.indexOf('\n    async fn ', idx + 1);
   const body = implPorts.slice(idx, next === -1 ? implPorts.length : next);
-  if (!body.includes('context.require_deadline_semantics()?') && !body.includes('require_media_read_policy(&context)?')) fail(`${op} does not require deadline semantics`);
+  if (!body.includes('context.require_policy(PortCallPolicy::read())?') && !body.includes('require_media_read_policy(&context)?')) fail(`${op} does not require shared read policy`);
   if (body.includes('context.require_write_semantics()?')) fail(`${op} unexpectedly requires write semantics`);
 }
 
@@ -82,7 +82,7 @@ for (const mapping of portErrorMatrix.error_mappings) {
   if (!ports.includes(mapping.code)) fail(`ports.rs missing port error code ${mapping.code}`);
 }
 if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid tenant context guard');
-if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_deadline_semantics()?')) fail('ports.rs missing explicit media read deadline guard helper');
+if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_policy(PortCallPolicy::read())')) fail('ports.rs missing explicit media read policy guard helper');
 
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy'], 'local plan');

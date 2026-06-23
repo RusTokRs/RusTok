@@ -87,7 +87,6 @@ impl MediaAssetReadPort for MediaService {
 }
 
 fn require_media_read_policy(context: &PortContext) -> Result<(), PortError> {
-    context.require_deadline_semantics()?;
     context.require_policy(PortCallPolicy::read())
 }
 

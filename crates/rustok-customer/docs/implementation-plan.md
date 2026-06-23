@@ -7,11 +7,11 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 ## Execution checkpoint
 
 - Current phase: customer_docs_and_no_compile_verification_slice
-- Last checkpoint: Customer docs/readiness slice audited README/local docs against the current customer boundary, made the no-compile verification gates explicit, and kept FBA read-projection runtime smoke source-locked with promotion blocked until compiled execution.
-- Next step: Когда компиляции снова разрешены, выполнить targeted customer service/port tests for normalized identity guards and read-projection runtime smoke, then decide whether FBA can move above `in_progress`; до этого держать fast no-compile gates (`node scripts/verify/verify-customer-fba-no-compile.mjs`, `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`, `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`) зелёными без долгих сборок.
+- Last checkpoint: Customer read-port policy cleanup removed redundant direct deadline checks; `CustomerReadPort` now relies on shared `PortCallPolicy::read()` as the single read gate while keeping no-compile FBA evidence and docs promotion blockers unchanged.
+- Next step: Когда компиляции снова разрешены, выполнить targeted customer service/port tests for normalized identity guards and read-projection runtime smoke, включая проверку `PortCallPolicy::read()` deadline semantics, then decide whether FBA can move above `in_progress`; до этого держать fast no-compile gates (`node scripts/verify/verify-customer-fba-no-compile.mjs`, `node scripts/verify/verify-ecommerce-fba-contract-evidence.mjs`, `node scripts/verify/verify-ecommerce-provider-spi-evidence.mjs`) зелёными без долгих сборок.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и держать central readiness board синхронизированным.
-- Last updated at (UTC): 2026-06-22T00:00:00Z
+- Last updated at (UTC): 2026-06-23T00:00:00Z
 
 ## FFA/FBA status
 

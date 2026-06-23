@@ -19,7 +19,7 @@ infrastructure для event runtime платформы.
 ## Интеграция
 
 - используется `apps/server` для migrations, runtime relay bootstrap и event transport wiring;
-- зависит от `rustok-core` для module contracts и event transport abstractions;
+- зависит от `rustok-core` для module contracts и event transport abstractions, а от `rustok-api` — для shared `PortContext`/`PortError` и write-policy primitives;
 - может форвардить доставку в downstream transports вроде `rustok-iggy`, не владея provider-specific delivery semantics;
 - остаётся `Core` module независимо от того, что часть bootstrap wiring живёт в host runtime.
 
