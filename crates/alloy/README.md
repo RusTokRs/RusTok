@@ -44,6 +44,10 @@ filter, it must match a known script status; unknown values return validation
 errors instead of silently widening the operator query to all scripts. In-memory
 storage uses the same filter-first, name-ordered pagination contract as SeaORM
 so local runtime paths and tests do not depend on `HashMap` iteration order.
+The machine-readable static contract lives in
+`crates/alloy/contracts/alloy-runtime-contract.json`; its evidence matrix lives in
+`crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json` and is checked
+without compilation by `npm run verify:alloy:runtime-contract`.
 
 ## Execution history surfaces
 
