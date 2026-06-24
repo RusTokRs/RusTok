@@ -538,7 +538,7 @@ impl CommerceFulfillmentMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let collection = PaymentService::new(db.clone())
+        let collection = crate::PaymentOrchestrationService::new(db.clone())
             .cancel_collection(
                 tenant_id,
                 id,
@@ -547,7 +547,8 @@ impl CommerceFulfillmentMutation {
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         Ok(collection.into())
     }
@@ -567,7 +568,7 @@ impl CommerceFulfillmentMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let refund = PaymentService::new(db.clone())
+        let refund = crate::PaymentOrchestrationService::new(db.clone())
             .create_refund(
                 tenant_id,
                 payment_collection_id,
@@ -577,7 +578,8 @@ impl CommerceFulfillmentMutation {
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         Ok(refund.into())
     }

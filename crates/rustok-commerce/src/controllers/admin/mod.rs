@@ -298,6 +298,13 @@ pub fn routes() -> Routes {
         )
 }
 
+pub(crate) fn map_payment_orchestration_error(error: crate::PaymentOrchestrationError) -> Error {
+    match error {
+        crate::PaymentOrchestrationError::Payment(error) => map_payment_error(error),
+        crate::PaymentOrchestrationError::Provider(error) => Error::BadRequest(error.to_string()),
+    }
+}
+
 pub(crate) fn map_payment_error(error: rustok_payment::error::PaymentError) -> Error {
     match error {
         rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)

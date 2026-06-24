@@ -192,10 +192,10 @@ pub async fn cancel_payment_collection(
         "Permission denied: payments:update required",
     )?;
 
-    let collection = PaymentService::new(ctx.db.clone())
+    let collection = crate::PaymentOrchestrationService::new(ctx.db.clone())
         .cancel_collection(tenant.id, id, input)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(super::map_payment_orchestration_error)?;
 
     Ok(Json(collection))
 }
@@ -226,10 +226,10 @@ pub async fn create_refund(
         "Permission denied: payments:update required",
     )?;
 
-    let refund = PaymentService::new(ctx.db.clone())
+    let refund = crate::PaymentOrchestrationService::new(ctx.db.clone())
         .create_refund(tenant.id, id, input)
         .await
-        .map_err(super::map_payment_error)?;
+        .map_err(super::map_payment_orchestration_error)?;
 
     Ok((StatusCode::CREATED, Json(refund)))
 }
