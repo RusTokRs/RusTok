@@ -957,6 +957,13 @@ pub fn PagesAdmin() -> impl IntoView {
                                         let sanitize_issue_guidance = sanitize_issue_guidance.get_value();
                                         let runtime_issue_guidance = runtime_issue_guidance.get_value();
                                         let feature_disabled_issue_guidance = feature_disabled_issue_guidance.get_value();
+                                        let guidance = core::issue_guidance(
+                                            &issue,
+                                            validation_issue_guidance.as_str(),
+                                            sanitize_issue_guidance.as_str(),
+                                            runtime_issue_guidance.as_str(),
+                                            feature_disabled_issue_guidance.as_str(),
+                                        );
                                         let banner = core::issue_banner_view(
                                             &issue,
                                             validation_issue_label.as_str(),
@@ -976,7 +983,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                                         {": "}
                                                         {issue.message}
                                                     </div>
-                                                    <div class="text-xs opacity-80">{banner.guidance}</div>
+                                                    <div class="text-xs opacity-80">{guidance}</div>
                                                 </div>
                                             </div>
                                         }

@@ -30,6 +30,7 @@ const checks = [
   "verify-page-builder-toggle-profiles-consistency.mjs",
   "verify-page-builder-control-plane-dry-run.mjs",
   "verify-page-builder-transport-bridge.mjs",
+  "verify-page-builder-endpoint-adapters.mjs",
   "verify-page-builder-terminology.mjs",
 ];
 

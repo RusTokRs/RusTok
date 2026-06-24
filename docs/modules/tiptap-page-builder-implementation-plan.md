@@ -397,12 +397,12 @@ Notes: <known deviations or waivers>
 **Итерация PB-FBA-1 (contract hardening + metadata parity)**
 
 - [~] Зафиксировать в `rustok-pages` machine-readable матрицу capability fallback (`builder_off`, `preview_off`, `publish_off`) и связать её с runtime error catalog (toggle profiles + degraded modes + error-catalog binding зафиксированы в manifest/registry/runtime gate; cross-runtime parity evidence остаётся в Wave hand-off).
-- [ ] Закрыть contract-parity по consumer adapters (Next/Leptos/Flutter) на уровне одинаковых error semantics, без требования UI 1:1.
-- [ ] Зафиксировать anti-drift checks: `contract_version` между provider/consumer должен валидироваться в CI.
+- [~] Закрыть contract-parity по consumer adapters (Next/Leptos/Flutter) на уровне одинаковых error semantics, без требования UI 1:1 (provider-side endpoint adapter seam для GraphQL/Leptos закреплён; host wiring и mobile hand-off evidence остаются в Wave gate).
+- [~] Зафиксировать anti-drift checks: `contract_version` между provider/consumer должен валидироваться в CI (baseline aggregate теперь включает endpoint adapter seam guard; CI wiring остаётся release-gate задачей).
 
 **Итерация PB-FBA-2 (operability + fallback verification)**
 
-- [ ] Добавить обязательный fallback regression gate: отключение `builder.enabled` не ломает `list/read/menu` surfaces и не вызывает 5xx.
+- [~] Добавить обязательный fallback regression gate: отключение `builder.enabled` не ломает `list/read/menu` surfaces и не вызывает 5xx (provider/consumer no-compile gates есть; runtime CI regression остаётся Wave 1 блокером).
 - [~] Привязать tenant-switch операции к control-plane audit trail (before/after snapshots + keep/rollback decision) — execution log template и обязательные артефакты уже зафиксированы в Phase 3.3/3.4, остаётся operational evidence из Wave 0.
 - [ ] Вынести унифицированные SLO threshold checks в release-gate для wave-переходов (`preview p95`, `publish p95`, sanitize failure rate).
 

@@ -1,3 +1,4 @@
+pub mod adapters;
 pub mod dto;
 pub mod health;
 pub mod rollout;
