@@ -129,7 +129,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@faker-js/faker": "^10.5.0",
-    "@types/node": "26.0.0",
+    "@types/node": "26.0.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.2",
     "@types/sort-by": "^1.2.3",
