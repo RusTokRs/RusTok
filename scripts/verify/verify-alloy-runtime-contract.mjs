@@ -37,8 +37,18 @@ sameArray(contract.execution_history_contract?.routes?.graphql, ['scriptExecutio
 sameArray(contract.execution_history_contract?.canonical_fields, ['id', 'script_id', 'script_name', 'phase', 'outcome', 'duration_ms', 'error', 'user_id', 'tenant_id', 'created_at'], 'execution canonical fields');
 if (contract.execution_history_contract?.tenant_filter_before_offset !== true) fail('tenant filter ordering drift');
 
+if (contract.sandbox_contract?.profiles?.default?.max_operations !== 50000 || contract.sandbox_contract?.profiles?.default?.timeout_ms !== 100) fail('default sandbox profile drift');
+if (contract.sandbox_contract?.profiles?.strict?.max_operations !== 10000 || contract.sandbox_contract?.profiles?.strict?.timeout_ms !== 50 || contract.sandbox_contract?.profiles?.strict?.max_call_depth !== 8) fail('strict sandbox profile drift');
+if (contract.sandbox_contract?.profiles?.relaxed?.max_operations !== 500000 || contract.sandbox_contract?.profiles?.relaxed?.timeout_ms !== 5000) fail('relaxed sandbox profile drift');
+if (contract.sandbox_contract?.operator_surface !== 'EngineConfig::limits') fail('sandbox operator surface drift');
+sameArray(contract.sandbox_contract?.rhai_native_limit_mapping, ['ErrorTooManyOperations_to_OperationLimit', 'ErrorDataTooLarge_to_ResourceLimit'], 'rhai native limit mapping');
+if (contract.scheduler_hook_contract?.scheduler_phase !== 'Scheduled' || contract.scheduler_hook_contract?.scheduler_tenant_context !== 'script_tenant_id') fail('scheduler context drift');
+sameArray(contract.scheduler_hook_contract?.running_flag_reset, ['load_error', 'completed_success', 'completed_aborted', 'completed_failed'], 'scheduler running flag reset');
+sameArray(contract.scheduler_hook_contract?.hook_phases, ['Before', 'After', 'OnCommit'], 'hook phases');
+sameArray(contract.scheduler_hook_contract?.before_outcomes, ['Continue', 'Rejected', 'Error'], 'before hook outcomes');
+
 if (evidence.generated_from !== contractPath || evidence.status !== contract.status) fail('evidence header drift');
-sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract'], 'evidence cases');
+sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract'], 'evidence cases');
 
 const dto = read('crates/alloy/src/api/dto.rs');
 hasAll(dto, [
@@ -79,6 +89,66 @@ hasAll(sea, [
   '.offset(offset)',
   '.limit(limit)'
 ], 'sea orm storage');
+
+const engineConfig = read('crates/alloy/src/engine/config.rs');
+hasAll(engineConfig, [
+  'max_operations: 50_000',
+  'timeout: Duration::from_millis(100)',
+  'max_call_depth: 16',
+  'max_string_size: 64 * 1024',
+  'max_array_size: 10_000',
+  'max_map_depth: 16',
+  'pub fn relaxed() -> Self',
+  'max_operations: 500_000',
+  'timeout: Duration::from_secs(5)',
+  'pub fn strict() -> Self',
+  'max_operations: 10_000',
+  'timeout: Duration::from_millis(50)',
+  'max_call_depth: 8',
+  'pub fn limits(&self) -> EngineLimits'
+], 'engine config sandbox limits');
+
+const engineRuntime = read('crates/alloy/src/engine/runtime.rs');
+hasAll(engineRuntime, [
+  'let timeout = self.config.timeout',
+  'let max_ops = self.config.max_operations',
+  'if elapsed > timeout',
+  'ScriptError::Timeout',
+  'EvalAltResult::ErrorTooManyOperations',
+  'ScriptError::OperationLimit { limit: op_limit }',
+  'EvalAltResult::ErrorDataTooLarge',
+  'ScriptError::ResourceLimit { resource: kind }'
+], 'engine runtime timeout and native limit mapping');
+
+const executor = read('crates/alloy/src/runner/executor.rs');
+hasAll(executor, [
+  'if elapsed > self.engine.config().timeout',
+  'Script exceeded timeout',
+  'self.record_execution(&result, &ctx_with_entity).await'
+], 'executor timeout observability and audit persistence');
+
+const scheduler = read('crates/alloy/src/scheduler/runner.rs');
+hasAll(scheduler, [
+  'job.running = true',
+  'self.mark_finished(script_id).await',
+  'ExecutionContext::new(ExecutionPhase::Scheduled)',
+  '.with_tenant(script.tenant_id.to_string())',
+  'self.update_schedule(&script).await',
+  'job.running = false',
+  'scheduler_tick_persists_execution_log_with_script_tenant'
+], 'scheduler phase tenant and running flag contract');
+
+const hookExecutor = read('crates/alloy/src/integration/hook_executor.rs');
+hasAll(hookExecutor, [
+  'pub enum BeforeHookResult',
+  'Continue(HashMap<String, Dynamic>)',
+  'Rejected(String)',
+  'HookOutcome::Continue { changes }',
+  'HookOutcome::Rejected { reason }',
+  'HookOutcome::Error { error }',
+  'pub async fn run_on_commit',
+  'Vec<crate::runner::ExecutionResult>'
+], 'hook executor typed outcome contract');
 
 const axumRoutes = read('crates/alloy/src/api/routes.rs');
 hasAll(axumRoutes, [

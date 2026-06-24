@@ -30,6 +30,26 @@
         "crate_readme_names_contract_file",
         "local_docs_names_contract_file"
       ]
+    },
+    {
+      "name": "sandbox_limits_timeout_contract",
+      "assertions": [
+        "default_strict_relaxed_profiles_locked",
+        "operator_limits_surface_exposes_effective_budget",
+        "timeout_returns_script_error_timeout",
+        "rhai_limit_errors_map_to_runtime_errors",
+        "executor_warns_on_budget_overrun"
+      ]
+    },
+    {
+      "name": "scheduler_hook_runtime_contract",
+      "assertions": [
+        "scheduler_uses_scheduled_phase",
+        "scheduler_context_carries_script_tenant",
+        "scheduler_running_flag_resets_after_load_error_or_completion",
+        "before_hook_outcomes_are_typed",
+        "on_commit_returns_execution_results"
+      ]
     }
   ]
 }

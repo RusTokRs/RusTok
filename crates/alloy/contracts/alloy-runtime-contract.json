@@ -61,5 +61,54 @@
   "static_gates": {
     "script": "scripts/verify/verify-alloy-runtime-contract.mjs",
     "evidence": "crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json"
+  },
+  "sandbox_contract": {
+    "profiles": {
+      "default": {
+        "max_operations": 50000,
+        "timeout_ms": 100,
+        "max_call_depth": 16,
+        "max_string_size": 65536,
+        "max_array_size": 10000,
+        "max_map_size": 16
+      },
+      "strict": {
+        "max_operations": 10000,
+        "timeout_ms": 50,
+        "max_call_depth": 8
+      },
+      "relaxed": {
+        "max_operations": 500000,
+        "timeout_ms": 5000
+      }
+    },
+    "operator_surface": "EngineConfig::limits",
+    "timeout_enforcement": "post_eval_elapsed_budget_returns_timeout",
+    "rhai_native_limit_mapping": [
+      "ErrorTooManyOperations_to_OperationLimit",
+      "ErrorDataTooLarge_to_ResourceLimit"
+    ],
+    "executor_timeout_observability": "warn_after_execution_budget_exceeded"
+  },
+  "scheduler_hook_contract": {
+    "scheduler_phase": "Scheduled",
+    "scheduler_tenant_context": "script_tenant_id",
+    "running_flag_reset": [
+      "load_error",
+      "completed_success",
+      "completed_aborted",
+      "completed_failed"
+    ],
+    "hook_phases": [
+      "Before",
+      "After",
+      "OnCommit"
+    ],
+    "before_outcomes": [
+      "Continue",
+      "Rejected",
+      "Error"
+    ],
+    "on_commit_returns": "Vec<ExecutionResult>"
   }
 }
