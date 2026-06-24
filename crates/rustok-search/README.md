@@ -63,7 +63,7 @@
 
 - `SearchQueryPort` and `SearchSuggestionPort` define the transport-neutral `search.query.v1` provider boundary for storefront/admin consumers.
 - The in-process PostgreSQL provider is `PgSearchEngine`; both query execution and suggestions require read deadline semantics, use `PortContext.locale` as the fallback locale, and map module errors to `PortError`.
-- `contracts/search-fba-registry.json`, `contracts/evidence/search-contract-test-static-matrix.json`, and `contracts/evidence/search-runtime-fallback-smoke.json` are checked by `npm run verify:search:fba` without compiling the workspace.
+- `contracts/search-fba-registry.json`, `contracts/evidence/search-contract-test-static-matrix.json`, `contracts/evidence/search-runtime-fallback-smoke.json`, and `contracts/evidence/search-runtime-contract-smoke.json` are checked by `npm run verify:search:fba` without compiling the workspace.
 
 ## Current status
 
