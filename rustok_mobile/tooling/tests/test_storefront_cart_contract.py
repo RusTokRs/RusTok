@@ -28,3 +28,17 @@ def test_storefront_catalog_package_does_not_fallback_product_id_as_variant_id()
     assert "bool get canAddToCart" in product
     assert "StorefrontAddCartLineDraft(variantId: variantId)" in screens
     assert "StorefrontAddCartLineDraft(variantId: product.id)" not in screens
+
+
+def test_storefront_checkout_intent_stays_host_owned() -> None:
+    router = read("rustok_mobile/apps/rustok_frontend_mobile/lib/routes/storefront_router.dart")
+    package_screens = read("rustok_mobile/packages/rustok_catalog_mobile/lib/src/catalog_screens.dart")
+
+    assert "class StorefrontCheckoutIntentPage extends ConsumerWidget" in router
+    assert "storefrontCartIdStoreProvider" in router
+    assert "tenant: ${runtime.tenantSlug} · locale: ${runtime.locale}" in router
+    assert "Checkout remains host-owned" in router
+    assert "context.go(checkoutPath)" in router
+    assert "/api/flutter" not in router
+    assert "/api/mobile" not in router
+    assert "StorefrontCheckoutIntentPage" not in package_screens
