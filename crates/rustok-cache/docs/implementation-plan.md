@@ -6,11 +6,11 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Invalidation contract усилен validation guardrails, channel-scoped local subscriptions и service-level counters для local publish / Redis publish success-failure / rejected messages; tenant anti-stampede path уже переведён на `CacheService::load_or_fill`, а cache capability экспортирует service-level Prometheus gauges для Redis health/configuration, metrics toggle, in-flight loaders и invalidation counters.
-- Next step: Добавить compile/test evidence при снятии ограничения на компиляции и расширить real-Redis/multi-instance интеграционные сценарии поверх нового channel-scoped subscription contract.
+- Last checkpoint: Invalidation contract усилен validation guardrails, channel-scoped local subscriptions, service-level counters и source-level real-Redis integration сценариями; Redis subscription adapter теперь reject-ит пустые channel до подключения и отбрасывает invalid payloads без вызова handler-а. Tenant anti-stampede path уже переведён на `CacheService::load_or_fill`, а cache capability экспортирует service-level Prometheus gauges для Redis health/configuration, metrics toggle, in-flight loaders и invalidation counters.
+- Next step: Добавить compile/test evidence при снятии ограничения на компиляции и прогнать ignored real-Redis сценарий с `RUSTOK_CACHE_REAL_REDIS_URL` поверх channel-scoped subscription contract.
 - Open blockers: Compile/test evidence отложен по явному ограничению итерации: без компиляций.
-- Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем добавить real-Redis pub/sub integration evidence для `try_new`/publish guardrails и `subscribe_local_channel` parity.
-- Last updated at (UTC): 2026-06-22T00:00:00Z
+- Hand-off notes for next agent: Проверить `cargo test -p rustok-cache --lib` при разрешённых компиляциях; затем прогнать `RUSTOK_CACHE_REAL_REDIS_URL=redis://... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture` для real-Redis pub/sub evidence.
+- Last updated at (UTC): 2026-06-24T00:00:00Z
 
 ## Область работ
 
@@ -45,7 +45,7 @@ manifest/doc contract.
 
 - [x] довести Prometheus metrics export до production-ready service-level слоя, включая invalidation publish/rejection counters;
 - [x] добавить baseline hit/miss/invalidation/entry stats и health diagnostics в cache factory contract;
-- [ ] покрыть multi-instance и real-Redis сценарии интеграционными тестами;
+- [x] добавить source-level ignored real-Redis pub/sub integration сценарий для publish/subscription parity;
 - [x] документировать publisher/local fan-out guarantees для generic invalidation contract;
 - [x] документировать listener/reconnect guarantees после выноса subscription adapter в `rustok-cache`.
 
@@ -65,6 +65,6 @@ manifest/doc contract.
 ## Quality backlog
 
 - [x] Актуализировать покрытие тестами по ключевым сценариям модуля: добавлены source-level тесты для invalidation validation guardrails, channel-scoped local subscription parity, invalidation counters и Prometheus counter formatting без запуска компиляции.
-- [ ] Добавить compile/test evidence для нового invalidation coverage при снятии ограничения на компиляции.
-- [ ] Проверить полноту и актуальность `README.md` и локальных docs.
-- [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.
+- [ ] Добавить compile/test evidence для нового invalidation coverage и ignored real-Redis сценария при снятии ограничения на компиляции.
+- [x] Проверить полноту и актуальность `README.md` и локальных docs: listener contract синхронизирован с Redis subscription validation и invalid payload rejection.
+- [x] Зафиксировать/обновить verification gates для текущего состояния модуля: добавлен explicit ignored gate для real Redis pub/sub (`RUSTOK_CACHE_REAL_REDIS_URL=... cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture`).
