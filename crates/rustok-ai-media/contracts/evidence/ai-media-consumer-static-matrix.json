@@ -9,20 +9,40 @@
   "cases": [
     {
       "operation": "get_image_descriptor",
-      "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "ai_descriptor_shape_preserved", "degraded_skip_asset_enrichment_on_unavailable"],
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "ai_descriptor_shape_preserved",
+        "degraded_skip_asset_enrichment_on_unavailable"
+      ],
       "runtime_evidence": "pending"
     },
     {
       "operation": "get_asset",
-      "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "image_size_validation_preserved"],
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "image_size_validation_preserved"
+      ],
       "runtime_evidence": "pending"
     }
   ],
   "fallback_smoke": {
     "status": "planned",
-    "profiles": ["embedded_native"],
-    "degraded_modes": ["skip_asset_enrichment"]
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "skip_asset_enrichment",
+      "proxy_storage_relative_url"
+    ]
   }
 }
