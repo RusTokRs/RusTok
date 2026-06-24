@@ -98,6 +98,7 @@
 - [Инструмент workspace CLI `xtask`](../xtask/README.md)
 - [Главный README по верификации](./verification/README.md)
 - [Проверка Flex multilingual contract](../scripts/verify/verify-flex-multilingual-contract.mjs)
+- [Проверка Flex standalone contract guardrails](../scripts/verify/verify-flex-standalone-contract.mjs)
 - [Сводный план верификации](./verification/PLATFORM_VERIFICATION_PLAN.md)
 - [Верификация foundation-слоя](./verification/platform-foundation-verification-plan.md)
 - [Верификация API-поверхностей](./verification/platform-api-surfaces-verification-plan.md)
