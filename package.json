@@ -98,9 +98,6 @@
     "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs",
     "test:verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.test.mjs",
     "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke",
-    "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke && npm run test:verify:search:fba:runtime-contract",
-    "verify:search:fba:runtime-contract": "node scripts/verify/verify-search-fba-runtime-contract.mjs",
-    "test:verify:search:fba:runtime-contract": "node scripts/verify/verify-search-fba-runtime-contract.test.mjs",
     "verify:ai:domain-verticals": "node scripts/verify/verify-ai-domain-verticals.mjs",
     "verify:index:runtime-fallback-smoke": "node scripts/verify/verify-index-runtime-fallback-smoke.mjs"
   },

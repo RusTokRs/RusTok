@@ -6,11 +6,11 @@ contract приведены к единому формату.
 ## Execution checkpoint
 
 - Current phase: runtime_hardening
-- Last checkpoint: Added a no-compile Alloy runtime static contract/evidence gate that source-locks script-list pagination/status semantics, execution-history transport routes, GraphQL history entry points and documentation sync; kept compilation skipped per operator request.
-- Next step: Run `npm run verify:alloy:runtime-contract` plus Alloy validation/test gates when compilation is allowed, then promote the static route/schema/pagination source locks into executable router/schema integration checks where host test fixtures permit.
+- Last checkpoint: Expanded the no-compile Alloy runtime static contract/evidence gate to source-lock sandbox profiles/timeout mapping, Rhai native limit-error mapping, scheduler phase/tenant/running-flag semantics and typed hook outcomes in addition to script-list and execution-history transport contracts; kept compilation skipped per operator request.
+- Next step: Run Alloy validation/test gates when compilation is allowed, then promote the static route/schema/pagination/sandbox/scheduler/hook source locks into executable router/schema/runtime integration checks where host test fixtures permit.
 - Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `npm run verify:alloy:runtime-contract`, `cargo xtask module validate alloy` и targeted tests. В этой итерации добавлены `crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json` и `scripts/verify/verify-alloy-runtime-contract.mjs`, чтобы без компиляции фиксировать REST/Loco/Axum/GraphQL execution-history routes, canonical response fields, status-filter validation, pagination bounds и in-memory/SeaORM ordering parity. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
-- Last updated at (UTC): 2026-06-23T00:00:00Z
+- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `npm run verify:alloy:runtime-contract`, `cargo xtask module validate alloy` и targeted tests. No-compile gate (`crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`, `scripts/verify/verify-alloy-runtime-contract.mjs`) теперь фиксирует REST/Loco/Axum/GraphQL execution-history routes, canonical response fields, status-filter validation, pagination bounds, in-memory/SeaORM ordering parity, sandbox profiles/timeout mapping, Rhai limit-error mapping, scheduler phase/tenant/running-flag recovery и typed hook outcomes. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
+- Last updated at (UTC): 2026-06-24T00:00:00Z
 
 ## Область работ
 
@@ -39,7 +39,7 @@ contract приведены к единому формату.
 - [x] довести resource limits, timeout semantics и sandbox guarantees до стабильного production contract;
 - [x] удерживать audit log и execution history как каноническую операторскую поверхность с DB-level pagination и exact scoped total metadata;
 - [x] выровнять in-memory registry pagination с DB ordering contract для deterministic non-DB runtime/test paths;
-- [x] зафиксировать runtime route/schema/pagination contract в machine-readable static gate без компиляции;
+- [x] зафиксировать runtime route/schema/pagination/sandbox/scheduler/hook contract в machine-readable static gate без компиляции;
 - [x] расширять integration helpers только через явные phase-aware contracts.
 
 ### 3. Operability

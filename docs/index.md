@@ -83,6 +83,7 @@
 - [Тестирование](./guides/testing.md)
 - [Быстрый старт по observability](./guides/observability-quickstart.md)
 - [Runtime guardrails](./guides/runtime-guardrails.md)
+- [Alloy runtime hardening contract](../crates/alloy/contracts/alloy-runtime-contract.json)
 - [ADR: control-plane lifecycle and migration ordering contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
 - [Валидация входных данных](./guides/input-validation.md)
 - [Обработка ошибок](./guides/error-handling.md)
