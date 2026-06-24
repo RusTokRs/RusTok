@@ -46,6 +46,8 @@ pub fn admin_page_list_item_view() {}
 pub fn admin_page_row_action_state() {}
 pub fn admin_page_row_action_labels() {}
 pub fn issue_banner_view() {}
+pub fn compatibility_warning_view() {}
+pub fn page_properties_view() {}
 `;
 }
 
@@ -62,6 +64,8 @@ pub fn page_status_label() {}
 pub fn selected_page_empty_state() {}
 pub fn load_error_message() {}
 pub fn storefront_page_list_item_view() {}
+pub fn published_pages_empty_state() {}
+pub fn published_pages_header_view() {}
 `;
 }
 
@@ -81,6 +85,8 @@ pub fn PagesAdmin() {
     let _action_state = core::admin_page_row_action_state;
     let _action_labels = core::admin_page_row_action_labels;
     let _issue_banner = core::issue_banner_view;
+    let _compatibility_warning = core::compatibility_warning_view;
+    let _page_properties = core::page_properties_view;
     let _issue_banner_class = banner.class_name;
     ${bypassIssueBannerViewClass ? "let _bypass = core::issue_banner_class;" : ""}
     ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
@@ -100,6 +106,8 @@ pub fn PagesView() {
     let _empty = core::selected_page_empty_state;
     let _load_error = core::load_error_message;
     let _item_view = core::storefront_page_list_item_view;
+    let _published_empty = core::published_pages_empty_state;
+    let _published_header = core::published_pages_header_view;
     ${rawApiCall ? "let _raw = api::fetch_storefront_pages;" : ""}
 }
 `;

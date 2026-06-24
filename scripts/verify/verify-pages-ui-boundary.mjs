@@ -107,6 +107,8 @@ for (const marker of [
   "admin_page_row_action_state",
   "admin_page_row_action_labels",
   "issue_banner_view",
+  "compatibility_warning_view",
+  "page_properties_view",
 ]) {
   assertContains(adminCore, marker, `${files.adminCore}: expected admin core-owned helper ${marker}`);
 }
@@ -121,6 +123,8 @@ for (const marker of [
   "selected_page_empty_state",
   "load_error_message",
   "storefront_page_list_item_view",
+  "published_pages_empty_state",
+  "published_pages_header_view",
 ]) {
   assertContains(storefrontCore, marker, `${files.storefrontCore}: expected storefront core-owned helper ${marker}`);
 }
@@ -136,6 +140,8 @@ assertContains(adminUi, "core::admin_page_list_item_view", `${files.adminUi}: ad
 assertContains(adminUi, "core::admin_page_row_action_state", `${files.adminUi}: admin UI must use core-owned table action busy mapping`);
 assertContains(adminUi, "core::admin_page_row_action_labels", `${files.adminUi}: admin UI must use core-owned table action label mapping`);
 assertContains(adminUi, "core::issue_banner_view", `${files.adminUi}: admin UI must use core-owned issue banner view mapping`);
+assertContains(adminUi, "core::compatibility_warning_view", `${files.adminUi}: admin UI must use core-owned compatibility warning view mapping`);
+assertContains(adminUi, "core::page_properties_view", `${files.adminUi}: admin UI must use core-owned properties panel view mapping`);
 assertContains(adminUi, "banner.class_name", `${files.adminUi}: admin UI must render core-owned issue banner class from the view model`);
 assertNotContains(adminUi, "core::issue_banner_class", `${files.adminUi}: admin UI must not bypass issue_banner_view for banner class policy`);
 assertContains(adminUi, "transport::fetch_pages", `${files.adminUi}: admin UI must call transport facade`);
@@ -145,6 +151,8 @@ assertContains(storefrontUi, "core::selected_page_title", `${files.storefrontUi}
 assertContains(storefrontUi, "core::selected_page_empty_state", `${files.storefrontUi}: storefront UI must use core-owned selected-page empty state`);
 assertContains(storefrontUi, "core::load_error_message", `${files.storefrontUi}: storefront UI must use core-owned load error composition`);
 assertContains(storefrontUi, "core::storefront_page_list_item_view", `${files.storefrontUi}: storefront UI must use core-owned list item view mapping`);
+assertContains(storefrontUi, "core::published_pages_empty_state", `${files.storefrontUi}: storefront UI must use core-owned published-pages empty state`);
+assertContains(storefrontUi, "core::published_pages_header_view", `${files.storefrontUi}: storefront UI must use core-owned published-pages header mapping`);
 assertContains(storefrontUi, "transport::fetch_pages", `${files.storefrontUi}: storefront UI must call transport facade`);
 for (const [source, label] of [
   [adminUi, files.adminUi],
