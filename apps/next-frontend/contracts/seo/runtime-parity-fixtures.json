@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-21T00:00:00Z",
+  "updatedAt": "2026-06-24T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -209,7 +209,7 @@
   ],
   "d8EvidencePacket": {
     "status": "lightweight_static_baseline",
-    "capturedAt": "2026-06-21T00:00:00Z",
+    "capturedAt": "2026-06-24T00:00:00Z",
     "compilationPolicy": "not_run_by_request",
     "coveredBatches": [
       "D8.1 fixture invariants",
@@ -957,5 +957,107 @@
       "customer/user identifiers"
     ],
     "closeoutRule": "Every liveArtifactManifestTemplate.requiredFiles item must conform to this shape or document an explicit equivalent CI artifact URL."
-  }
+  },
+  "liveEvidenceArtifactTemplates": [
+    {
+      "file": "backend-graphql-rest-parity.json",
+      "surface": "backend_graphql_rest_parity",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "GraphQL seoPageContext success",
+        "REST /api/seo/page-context success",
+        "semantic error sample for BAD_USER_INPUT",
+        "semantic error sample for PERMISSION_DENIED",
+        "tenant/module disabled NOT_FOUND sample"
+      ],
+      "blocksCloseoutIf": [
+        "GraphQL and REST disagree on canonical document fields",
+        "error envelope lacks errors[].extensions.code",
+        "tenant/module gating does not fail closed"
+      ]
+    },
+    {
+      "file": "outbox-index-before-after-counters.json",
+      "surface": "outbox_index_pipeline",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "before counters pending/sent/retry/failed/dead_letter/replay_mode",
+        "after counters pending/sent/retry/failed/dead_letter/replay_mode",
+        "idempotency key duplicate replay sample",
+        "forward-only replay transition sample"
+      ],
+      "blocksCloseoutIf": [
+        "one idempotency key produces multiple state transitions",
+        "dead_letter grows without owner remediation",
+        "replay mode regresses to an earlier state"
+      ]
+    },
+    {
+      "file": "next-runtime-robots-sitemap-metadata.json",
+      "surface": "next_frontend_runtime",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "robots.ts runtime result plus fallback reason",
+        "sitemap.ts runtime result plus fallback reason",
+        "home metadata runtime sample",
+        "product metadata runtime sample",
+        "blog metadata runtime sample"
+      ],
+      "blocksCloseoutIf": [
+        "runtime adapter uses blanket catch",
+        "JSON-LD blocks are dropped",
+        "route/query normalization differs from fixture route ownership"
+      ]
+    },
+    {
+      "file": "leptos-storefront-page-context-smoke.json",
+      "surface": "leptos_storefront_runtime",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "server function page context success",
+        "GraphQL fallback page context success",
+        "host effective locale sample",
+        "rendered head canonical/robots/schema sample"
+      ],
+      "blocksCloseoutIf": [
+        "package-local locale fallback is introduced",
+        "SeoPageContext route+document shape changes",
+        "GraphQL fallback bypasses semantic errors"
+      ]
+    },
+    {
+      "file": "media-descriptor-fallback-smoke.json",
+      "surface": "media_descriptor_fallback_smoke",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "image-descriptor-in-process success",
+        "provider-unavailable omit_image_metadata",
+        "asset-unavailable keep_existing_seo_image",
+        "relative-url proxy fallback",
+        "diagnostics image quality before/after counters"
+      ],
+      "blocksCloseoutIf": [
+        "SEO reads media storage internals directly",
+        "fallback mode is not one of registered degraded modes",
+        "existing SEO image is erased on asset unavailable"
+      ]
+    },
+    {
+      "file": "owner-signoff.md",
+      "surface": "owner_signoff",
+      "status": "template_only_pending_d8_runtime",
+      "mustCapture": [
+        "Platform foundation signed row",
+        "Frontends signed row",
+        "Domain modules signed row",
+        "linked redacted artifacts",
+        "high-severity defect disposition"
+      ],
+      "blocksCloseoutIf": [
+        "any owner remains pending",
+        "required live artifact is missing",
+        "high-severity defect lacks remediation owner"
+      ]
+    }
+  ]
 }
