@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: parity/evidence hardening + FBA provider metadata
-- Last checkpoint: Search FFA Phase B считается закрытой на slice #40; slice #41 добавил fast guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`; FBA slice #1 добавил provider registry `crates/rustok-search/contracts/search-fba-registry.json`, нейтральные `SearchQueryPort`/`SearchSuggestionPort` contracts и static matrix `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`; FBA slice #2 закрыл source-locked PostgreSQL implementation path для `SearchSuggestionPort`; FBA slice #3 перевёл ports на shared `PortCallPolicy::read()`; FBA slice #4 добавил executable no-compile runtime fallback smoke `scripts/verify/verify-search-fba-runtime-smoke.mjs` для deadline/locale/error/fallback semantics, проверяемый через `npm run verify:search:fba` без компиляции; FBA slice #5 расширил smoke registry/degraded-mode parity, source-lock для embedded PostgreSQL suggestion path и fixture regression suite `scripts/verify/verify-search-fba-runtime-smoke.test.mjs`.
-- Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths и расширить executable no-compile smoke до реального runtime contract test перед повышением FBA выше `in_progress`.
+- Last checkpoint: Search FFA Phase B считается закрытой на slice #40; slice #41 добавил fast guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`; FBA slice #1 добавил provider registry `crates/rustok-search/contracts/search-fba-registry.json`, нейтральные `SearchQueryPort`/`SearchSuggestionPort` contracts и static matrix `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`; FBA slice #2 закрыл source-locked PostgreSQL implementation path для `SearchSuggestionPort`; FBA slice #3 перевёл ports на shared `PortCallPolicy::read()`; FBA slice #4 добавил executable no-compile runtime fallback smoke `scripts/verify/verify-search-fba-runtime-smoke.mjs` для deadline/locale/error/fallback semantics, проверяемый через `npm run verify:search:fba` без компиляции; FBA slice #5 расширил smoke registry/degraded-mode parity, source-lock для embedded PostgreSQL suggestion path и fixture regression suite `scripts/verify/verify-search-fba-runtime-smoke.test.mjs`; FBA slice #6 добавил executable no-compile runtime contract smoke `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json` / `scripts/verify/verify-search-fba-runtime-contract.mjs`, который source-locks real provider operation order и consumer profile parity без компиляции.
+- Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths; следующий блокер перед повышением FBA выше `in_progress` — live runtime contract execution с реальным provider invocation, так как no-compile runtime contract smoke уже добавлен.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-23T00:00:00Z
+- Last updated at (UTC): 2026-06-24T00:00:00Z
 
 
 ## FFA/FBA status
@@ -22,7 +22,7 @@
   - FBA slice #3 перевёл `SearchQueryPort` и `SearchSuggestionPort` с ad-hoc deadline check на shared `PortCallPolicy::read()`, сохранив locale propagation и typed `PortError` mapping без изменения native/GraphQL transport.
   - module plan синхронизирован с central FFA/FBA readiness board;
   - FBA provider registry `crates/rustok-search/contracts/search-fba-registry.json` объявляет `SearchQueryPort`/`SearchSuggestionPort` (`search.query.v1`) для storefront/admin consumers с typed `PortContext`/`PortError`, read deadline semantics, degraded modes и fallback profiles;
-  - static evidence `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`, executable no-compile runtime fallback smoke `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json` + `scripts/verify/verify-search-fba-runtime-smoke.mjs`, fixture regression suite `scripts/verify/verify-search-fba-runtime-smoke.test.mjs` и fast verifier `scripts/verify/verify-search-fba.mjs` удерживают metadata/port/source drift без компиляции; статус остаётся ниже `boundary_ready` до настоящего runtime contract execution;
+  - static evidence `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`, executable no-compile runtime fallback smoke `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json` + `scripts/verify/verify-search-fba-runtime-smoke.mjs`, runtime contract smoke `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json` + `scripts/verify/verify-search-fba-runtime-contract.mjs`, fixture regression suites `scripts/verify/verify-search-fba-runtime-smoke.test.mjs` / `scripts/verify/verify-search-fba-runtime-contract.test.mjs` и fast verifier `scripts/verify/verify-search-fba.mjs` удерживают metadata/port/source drift без компиляции; статус остаётся ниже `boundary_ready` до настоящего runtime contract execution;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - Phase B slices #17-18 extracted admin route-query update semantics and preview form/request normalization into `admin/src/core.rs`; native/GraphQL transport was not modified;
   - Phase B slice #19 promoted reusable UI text/CSV and route-query update semantics to `rustok-api`, consumed by `leptos-ui-routing` and search admin core;
@@ -50,7 +50,7 @@
   - Phase B slice #40 добавил `DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest` и `build_storefront_suggestion_fetch_request` в `storefront/src/core.rs`; storefront Leptos suggestions resource больше не владеет inline autocomplete min-length gate или query trim policy.
   - Phase B closure decision: search FFA больше не расширяется без нового функционального surface; текущий кодовый split достаточен для `phase_b_ready`, а дальнейшая работа переводится в parity/evidence hardening.
   - Slice #41 evidence hardening добавил `verify-search-ui-boundary.mjs` и fixture tests, проверяющие admin/storefront crate-root wiring, Leptos-free core helpers, запрет raw `api::*`/adapter calls из UI и storefront native-first + GraphQL fallback split.
-- Last verified at (UTC): 2026-06-23T00:00:00Z
+- Last verified at (UTC): 2026-06-24T00:00:00Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -169,3 +169,5 @@
 - [x] FBA slice #4: executable no-compile runtime fallback smoke `scripts/verify/verify-search-fba-runtime-smoke.mjs` проверяет read deadline enforcement, context locale fallback, typed `PortError` mapping и embedded PostgreSQL fallback source markers для `SearchQueryPort`/`SearchSuggestionPort`; агрегирован в `npm run verify:search:fba` без компиляции.
 
 - [x] FBA slice #5: runtime fallback smoke усилен registry/degraded-mode parity, explicit locale preservation, tenant payload preservation, source-lock markers для `pg_engine.rs`/`suggestions.rs` и fixture regression suite `scripts/verify/verify-search-fba-runtime-smoke.test.mjs`; добавлен no-compile test script `npm run test:verify:search:fba`.
+
+- [x] FBA slice #6: runtime contract smoke добавил no-compile проверку реального in-process provider order для `SearchQueryPort`/`SearchSuggestionPort`: shared read policy выполняется до locale fallback, embedded PostgreSQL execution и typed `PortError` mapping; registry, README, local plan и central readiness board синхронизированы, а `npm run verify:search:fba` / `npm run test:verify:search:fba` включают новый guardrail.

@@ -90,6 +90,10 @@ availability из побочных эффектов регистрации.
    `crates/alloy/contracts/alloy-runtime-contract.json`, evidence matrix — в
    `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`; быстрый
    no-compile gate запускается командой `npm run verify:alloy:runtime-contract`.
+   Тот же contract теперь фиксирует default/strict/relaxed sandbox profiles,
+   timeout/native Rhai error mapping, scheduler `Scheduled` phase + tenant
+   propagation, reset `running` flag после load/completion paths и typed hook
+   outcomes (`Continue`, `Rejected`, `Error`) без запуска компиляции.
 6. Не обходите GraphQL/HTTP/module wiring при debugging production scripts; эти
    surfaces входят в supported capability contract и удерживают audit и
    permission checks в едином path.

@@ -652,6 +652,49 @@ pub fn blog_post_admin_editor_field_classes_view() -> BlogPostAdminEditorFieldCl
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlogPostAdminTableClassesViewModel {
+    pub empty_state: &'static str,
+    pub total_label: &'static str,
+    pub table_container: &'static str,
+    pub table: &'static str,
+    pub table_head: &'static str,
+    pub header_cell: &'static str,
+    pub actions_header_cell: &'static str,
+    pub table_body: &'static str,
+    pub row: &'static str,
+    pub title_cell: &'static str,
+    pub title_text: &'static str,
+    pub excerpt_text: &'static str,
+    pub muted_cell: &'static str,
+    pub actions_cell: &'static str,
+    pub actions_group: &'static str,
+    pub primary_action_button: &'static str,
+    pub destructive_action_button: &'static str,
+}
+
+pub fn blog_post_admin_table_classes_view() -> BlogPostAdminTableClassesViewModel {
+    BlogPostAdminTableClassesViewModel {
+        empty_state: "rounded-xl border border-dashed border-border p-12 text-center",
+        total_label: "text-sm text-muted-foreground",
+        table_container: "overflow-hidden rounded-xl border border-border",
+        table: "w-full text-sm",
+        table_head: "border-b border-border bg-muted/50",
+        header_cell: "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+        actions_header_cell: "px-4 py-3",
+        table_body: "divide-y divide-border",
+        row: "transition-colors hover:bg-muted/30",
+        title_cell: "px-4 py-3 align-top",
+        title_text: "font-medium text-foreground",
+        excerpt_text: "mt-1 text-xs text-muted-foreground",
+        muted_cell: "px-4 py-3 align-top text-xs text-muted-foreground",
+        actions_cell: "px-4 py-3 align-top text-right",
+        actions_group: "flex flex-wrap justify-end gap-2",
+        primary_action_button: "text-xs font-medium text-primary hover:underline",
+        destructive_action_button: "text-xs font-medium text-destructive hover:underline",
+    }
+}
+
 pub fn blog_post_admin_form_view(
     editing_post_id: Option<&str>,
     busy_key: Option<&str>,
@@ -1781,6 +1824,17 @@ mod tests {
         assert_eq!(form_copy.title_label, "Title");
         assert_eq!(form_copy.tags_placeholder, "news, launch");
         assert_eq!(form_copy.publish_now_label, "Publish immediately");
+
+        let table_classes = blog_post_admin_table_classes_view();
+        assert_eq!(
+            table_classes.primary_action_button,
+            "text-xs font-medium text-primary hover:underline"
+        );
+        assert_eq!(
+            table_classes.destructive_action_button,
+            "text-xs font-medium text-destructive hover:underline"
+        );
+        assert_eq!(table_classes.table, "w-full text-sm");
 
         let create_form = blog_post_admin_form_view(
             None,

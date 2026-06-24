@@ -21,6 +21,7 @@
 ./scripts/verify/verify-deployment-profiles.sh
 ./scripts/verify/verify-migration-smoke.sh
 node scripts/verify/verify-flex-multilingual-contract.mjs
+node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs
@@ -47,6 +48,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Аудит безопасности | `./scripts/verify/verify-security.sh` |
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
 | Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
+| Проверка no-compile guardrails standalone Flex Phase 5 | `node scripts/verify/verify-flex-standalone-contract.mjs` |
 | Проверка runtime-context/cache-key invariants | `node scripts/verify/verify-runtime-context-invariants.mjs` |
 | Большой FFA UI migration gate | `npm run verify:ffa:ui:migration` |
 | Sweep по всем `core_transport_ui` строкам readiness board | `node scripts/verify/verify-ffa-ui-boundary-sweep.mjs` |

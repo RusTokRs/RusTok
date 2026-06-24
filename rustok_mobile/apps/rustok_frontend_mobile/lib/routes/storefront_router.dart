@@ -266,15 +266,70 @@ class _SurfaceLinkCard extends StatelessWidget {
 }
 
 
-class StorefrontCheckoutIntentPage extends StatelessWidget {
+class StorefrontCheckoutIntentPage extends ConsumerWidget {
   const StorefrontCheckoutIntentPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const StorefrontPlaceholderPage(
-      title: 'Checkout',
-      description: 'Checkout remains host-owned: cart packages emit an intent, while the storefront shell will wire the canonical backend checkout contract.',
-      icon: Icons.lock_outline,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final runtime = ref.watch(storefrontRuntimeContextProvider);
+    final cartId = ref.watch(storefrontCartIdStoreProvider).read();
+    final hasCart = cartId != null && cartId.trim().isNotEmpty;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.lock_outline),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Checkout',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Checkout remains host-owned: cart packages emit an intent, while the storefront shell wires the canonical backend checkout contract.',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'tenant: ${runtime.tenantSlug} · locale: ${runtime.locale}',
+                ),
+                Text(
+                  hasCart
+                      ? 'cart: $cartId'
+                      : 'cart: not started yet — return to cart before checkout.',
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => context.go(cartPath),
+                      icon: const Icon(Icons.shopping_cart_outlined),
+                      label: const Text('Back to cart'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: hasCart
+                          ? null
+                          : () => context.go(catalogPath),
+                      icon: const Icon(Icons.storefront_outlined),
+                      label: const Text('Open catalog'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

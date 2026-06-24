@@ -173,31 +173,36 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
     let module_route_base = route_context.module_route_base(route_segment.as_str());
 
     if items.is_empty() {
+        let empty_state = core::published_pages_empty_state(t(
+            locale.as_deref(),
+            "pages.list.empty",
+            "No published pages are available for storefront rendering yet.",
+        ));
+
         return view! {
             <article class="rounded-2xl border border-dashed border-border p-6">
                 <p class="text-sm text-muted-foreground">
-                    {t(
-                        locale.as_deref(),
-                        "pages.list.empty",
-                        "No published pages are available for storefront rendering yet.",
-                    )}
+                    {empty_state.body}
                 </p>
             </article>
         }
         .into_any();
     }
 
+    let header = core::published_pages_header_view(
+        t(locale.as_deref(), "pages.list.title", "Published pages"),
+        &t(locale.as_deref(), "pages.list.total", "{count} total"),
+        total,
+    );
+
     view! {
         <div class="space-y-3">
             <div class="flex items-center justify-between gap-3">
                 <h3 class="text-lg font-semibold text-card-foreground">
-                    {t(locale.as_deref(), "pages.list.title", "Published pages")}
+                    {header.title}
                 </h3>
                 <span class="text-sm text-muted-foreground">
-                    {core::count_label(
-                        &t(locale.as_deref(), "pages.list.total", "{count} total"),
-                        total,
-                    )}
+                    {header.total_label}
                 </span>
             </div>
             <div class="grid gap-3 md:grid-cols-2">

@@ -17,7 +17,8 @@
 - Перенесены `IMAGE_ASSET_TASK_SLUG`, `IMAGE_ASSET_TOOL_NAME`, descriptor registry и `register_media_ai_vertical_handlers` adapter API.
 - Перенесена canonical image-size normalization/validation (`WIDTHxHEIGHT`, numeric bounds `1..=4096`) в media-owned pure helper, consumed by `rustok-ai` direct media runtime.
 - Runtime fallback smoke evidence для `MediaAssetReadPort` source-level профиля закрыт в `contracts/evidence/ai-media-runtime-fallback-smoke.json`; следующий шаг: расширить media-owned generated artifact contract при разрешённых проверках.
-- Last updated at (UTC): 2026-06-20T00:00:00Z
+- Added compile-free static evidence coverage in the unified `scripts/verify/verify-ai-domain-verticals.mjs` gate for descriptor ownership, runtime binding seams, and validation/policy tests without compilation.
+- Last updated at (UTC): 2026-06-24T00:00:00Z
 
 ## FFA/FBA status
 
