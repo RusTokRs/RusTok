@@ -71,7 +71,7 @@
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs",
     "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs",
-    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs && npm run verify:search:fba:runtime-smoke",
+    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs && npm run verify:search:fba:runtime-smoke && npm run verify:search:fba:runtime-contract",
     "test:verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.test.mjs",
     "test:verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.test.mjs",
     "test:verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.test.mjs",

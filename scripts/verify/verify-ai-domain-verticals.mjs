@@ -21,13 +21,19 @@ const files = {
   product: 'crates/rustok-ai-product/src/lib.rs',
   content: 'crates/rustok-ai-content/src/lib.rs',
   order: 'crates/rustok-ai-order/src/lib.rs',
+  media: 'crates/rustok-ai-media/src/lib.rs',
+  alloy: 'crates/rustok-ai-alloy/src/lib.rs',
   commerceBinding: 'crates/rustok-ai/src/direct_domain_commerce.rs',
   contentBinding: 'crates/rustok-ai/src/direct_domain_content.rs',
   serviceHelpers: 'crates/rustok-ai/src/service/helpers.rs',
   orderBinding: 'crates/rustok-ai/src/direct_domain_orders.rs',
+  mediaBinding: 'crates/rustok-ai/src/direct_domain_media.rs',
+  alloyBinding: 'crates/rustok-ai/src/direct_domain_alloy.rs',
   productPlan: 'crates/rustok-ai-product/docs/implementation-plan.md',
   contentPlan: 'crates/rustok-ai-content/docs/implementation-plan.md',
   orderPlan: 'crates/rustok-ai-order/docs/implementation-plan.md',
+  mediaPlan: 'crates/rustok-ai-media/docs/implementation-plan.md',
+  alloyPlan: 'crates/rustok-ai-alloy/docs/implementation-plan.md',
   aiPlan: 'crates/rustok-ai/docs/implementation-plan.md',
 };
 
@@ -36,13 +42,19 @@ for (const file of Object.values(files)) assertExists(file);
 const product = read(files.product);
 const content = read(files.content);
 const order = read(files.order);
+const media = read(files.media);
+const alloy = read(files.alloy);
 const commerceBinding = read(files.commerceBinding);
 const contentBinding = read(files.contentBinding);
 const orderBinding = read(files.orderBinding);
+const mediaBinding = read(files.mediaBinding);
+const alloyBinding = read(files.alloyBinding);
 const serviceHelpers = read(files.serviceHelpers);
 const productPlan = read(files.productPlan);
 const contentPlan = read(files.contentPlan);
 const orderPlan = read(files.orderPlan);
+const mediaPlan = read(files.mediaPlan);
+const alloyPlan = read(files.alloyPlan);
 const aiPlan = read(files.aiPlan);
 
 assertOrdered(product, [
@@ -115,13 +127,55 @@ assertIncludes(orderBinding, 'ORDER_OPS_ASSISTANT_TASK_SLUG', 'order runtime bin
 assertNotIncludes(orderBinding, '"order_analytics"', 'order runtime binding must not own order slugs');
 assertNotIncludes(orderBinding, '"order_ops_assistant"', 'order runtime binding must not own order slugs');
 
-for (const [label, plan] of [['product plan', productPlan], ['content plan', contentPlan], ['order plan', orderPlan]]) {
+
+assertOrdered(media, [
+  'IMAGE_ASSET_TASK_SLUG: &str = "image_asset"',
+  'IMAGE_ASSET_TOOL_NAME: &str = "direct.media.generate_image"',
+  'pub struct MediaAiVerticalDescriptor',
+  'pub const MEDIA_AI_VERTICALS',
+  'pub fn register_media_ai_vertical_handlers',
+  'pub fn normalize_image_size',
+], 'rustok-ai-media source contract');
+for (const marker of [
+  'test_normalize_image_size',
+  'width == 0 || height == 0 || width > 4096 || height > 4096',
+]) assertIncludes(media, marker, 'rustok-ai-media contract tests/validation');
+assertIncludes(mediaBinding, 'register_media_ai_vertical_handlers', 'media runtime binding');
+assertIncludes(mediaBinding, 'IMAGE_ASSET_TASK_SLUG', 'media runtime binding');
+assertNotIncludes(mediaBinding, '"image_asset"', 'media runtime binding must not own media slugs');
+assertIncludes(mediaPlan, 'ai-media-runtime-fallback-smoke.json', 'media plan fallback evidence');
+
+assertOrdered(alloy, [
+  'ALLOY_CODE_TASK_SLUG: &str = "alloy_code"',
+  'ALLOY_CODE_TOOL_NAME: &str = "direct.alloy.run_script"',
+  'pub struct AlloyAiVerticalDescriptor',
+  'pub struct AlloyScriptExecutionPolicy',
+  'pub const ALLOY_AI_VERTICALS',
+  'pub const ALLOY_SCRIPT_ALLOWED_OPERATIONS',
+  'pub const ALLOY_SCRIPT_EXECUTION_POLICY',
+  'pub fn register_alloy_ai_vertical_handlers',
+  'pub fn alloy_script_execution_policy',
+  'pub fn validate_runtime_payload',
+], 'rustok-ai-alloy source contract');
+for (const marker of [
+  'test_validate_runtime_payload',
+  'test_alloy_descriptor_records_runtime_policy',
+  'test_alloy_execution_policy_records_allowed_operations',
+]) assertIncludes(alloy, marker, 'rustok-ai-alloy contract tests/policy');
+assertIncludes(alloyBinding, 'register_alloy_ai_vertical_handlers', 'alloy runtime binding');
+assertIncludes(alloyBinding, 'ALLOY_CODE_TASK_SLUG', 'alloy runtime binding');
+assertNotIncludes(alloyBinding, '"alloy_code"', 'alloy runtime binding must not own alloy slugs');
+assertIncludes(alloyPlan, 'ai-alloy-policy-registry.json', 'alloy plan policy evidence');
+
+for (const [label, plan] of [['product plan', productPlan], ['content plan', contentPlan], ['order plan', orderPlan], ['media plan', mediaPlan], ['alloy plan', alloyPlan]]) {
   assertIncludes(plan, 'Execution checkpoint', label);
   assertIncludes(plan, 'rustok-ai', label);
 }
 assertIncludes(productPlan, 'compile-free static verification', 'product plan evidence');
 assertIncludes(contentPlan, 'compile-free static verification', 'content plan evidence');
 assertIncludes(orderPlan, 'compile-free static verification', 'order plan evidence');
+assertIncludes(mediaPlan, 'static evidence', 'media plan evidence');
+assertIncludes(alloyPlan, 'static evidence', 'alloy plan evidence');
 assertIncludes(aiPlan, 'scripts/verify/verify-ai-domain-verticals.mjs', 'rustok-ai plan evidence');
 
 if (failures.length > 0) {

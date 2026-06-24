@@ -530,6 +530,57 @@ pub fn legacy_block_snapshot_label(block: &PageBlock) -> String {
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompatibilityWarningView {
+    pub title: String,
+    pub messages: Vec<String>,
+}
+
+pub fn compatibility_warning_view(
+    body_format: &str,
+    existing_blocks: &[PageBlock],
+    title: String,
+    non_grapes_message: String,
+    existing_blocks_message: String,
+) -> Option<CompatibilityWarningView> {
+    let mut messages = Vec::new();
+
+    if !body_format.eq_ignore_ascii_case(GRAPESJS_FORMAT) {
+        messages.push(non_grapes_message);
+    }
+
+    if !existing_blocks.is_empty() {
+        messages.push(existing_blocks_message);
+    }
+
+    if messages.is_empty() {
+        None
+    } else {
+        Some(CompatibilityWarningView { title, messages })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PagePropertiesView {
+    pub body_format: String,
+    pub template: String,
+    pub channel_count: String,
+    pub locale: String,
+}
+
+pub fn page_properties_view(
+    body_format: String,
+    channel_slugs_text: &str,
+    locale: String,
+) -> PagePropertiesView {
+    PagePropertiesView {
+        body_format,
+        template: "default".to_string(),
+        channel_count: channel_count_label(channel_slugs_text),
+        locale,
+    }
+}
+
 pub fn status_badge_css(status: &str) -> String {
     format!(
         "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {}",

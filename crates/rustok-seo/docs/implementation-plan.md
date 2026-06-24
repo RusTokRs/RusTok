@@ -5,7 +5,7 @@
 ## Execution checkpoint
 
 - Current phase: `fba_media_consumer_static_metadata`
-- Last checkpoint: no-compile D8/D9/FBA evidence seed is tightened: `runtime-parity-fixtures.json` contains live artifact schema/sign-off guards, and `seo-media-consumer-static-matrix.json` now contains a consumer runtime artifact template plus three media descriptor fallback drills; `verify-seo-runtime-fixtures.mjs` and `verify-seo-fba.mjs` validate these closeout guards without compilation.
+- Last checkpoint: no-compile D8/D9 evidence seed now includes concrete per-file live artifact templates for backend GraphQL/REST parity, outbox/index counters, Next runtime robots/sitemap/metadata, Leptos storefront page-context smoke, media descriptor fallback smoke and owner sign-off; `verify-seo-runtime-fixtures.mjs` validates that each required closeout artifact has capture requirements and closeout blockers without compilation.
 - Next step: собрать live CI/runtime evidence packet против поднятого backend/hosts, включая SEO image descriptor fallback smoke для `MediaAssetReadPort` по файлам `image-descriptor-in-process.json`, `provider-unavailable-omit-image-metadata.json`, `asset-unavailable-keep-existing-seo-image.json`, `relative-url-proxy-fallback.json`, `diagnostics-image-quality-before-after.json`, приложить before/after counters и перевести owner sign-off rows из pending в signed; до этого не считать D8/D9 или FBA boundary readiness закрытыми по static evidence.
 - Open blockers:
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
@@ -16,7 +16,7 @@
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для replay mode сохранять forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) без backward transitions.
   - Для Next runtime adapter сохранять semantic error mapping (`BAD_USER_INPUT` / `PERMISSION_DENIED` / `NOT_FOUND` / transport failures) и не возвращаться к blanket `catch {}`.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-24T00:00:00Z
 
 ## FFA/FBA status block
 
@@ -297,6 +297,7 @@
   - [x] D.4a Compile-free host runtime entrypoint matrix для Next robots/sitemap/metadata и Leptos SSR head preflight.
   - [x] D.4a.1 Live evidence capture template для backend parity, outbox/index pipeline, Next runtime, Leptos runtime и Next Admin operator smoke.
   - [x] D.4a.2 Live artifact manifest template добавлен: backend parity, before/after outbox/index counters, Next/Leptos host smokes, media descriptor fallback smoke и owner sign-off attachment list.
+  - [x] D.4a.2.1 Concrete live artifact templates добавлены для всех required files (`backend-graphql-rest-parity.json`, `outbox-index-before-after-counters.json`, `next-runtime-robots-sitemap-metadata.json`, `leptos-storefront-page-context-smoke.json`, `media-descriptor-fallback-smoke.json`, `owner-signoff.md`) с must-capture checklist и closeout blockers без запуска backend/hosts.
   - [x] D.4a.3 FBA media consumer runtime artifact template добавлен: in-process descriptor success, unavailable-provider `omit_image_metadata`, unavailable-asset `keep_existing_seo_image`, relative URL proxy fallback, diagnostics before/after counters и redaction policy.
   - [ ] D.4b Live evidence packet + high-severity defect closure.
 

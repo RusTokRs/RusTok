@@ -473,6 +473,13 @@ impl CacheInvalidationService {
         R: FnOnce() -> ReadyFut,
         ReadyFut: Future<Output = ()>,
     {
+        if let Err(error) = CacheInvalidationMessage::try_new(channel, "subscription-probe") {
+            self.stats.rejected_total.fetch_add(1, Ordering::Relaxed);
+            return Err(format!(
+                "invalid cache invalidation subscription channel: {error:?}"
+            ));
+        }
+
         let Some(client) = &self.redis_client else {
             return Err("redis invalidation subscription is not configured".to_string());
         };
@@ -502,7 +509,17 @@ impl CacheInvalidationService {
                 continue;
             };
 
-            handler(CacheInvalidationMessage::new(channel, key)).await;
+            match CacheInvalidationMessage::try_new(channel, key) {
+                Ok(message) => handler(message).await,
+                Err(error) => {
+                    tracing::warn!(
+                        ?error,
+                        channel = channel,
+                        "Ignoring invalid cache invalidation message from Redis pub/sub"
+                    );
+                    self.stats.rejected_total.fetch_add(1, Ordering::Relaxed);
+                }
+            }
         }
 
         Err("pubsub stream closed".to_string())
@@ -1013,6 +1030,80 @@ mod tests {
         assert_eq!(tenant_subscriber.channel(), "tenant.cache.invalidate");
         assert_eq!(tenant_message.key, "tenant-a");
         assert_eq!(rbac_message.key, "role:admin");
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    async fn redis_subscription_rejects_empty_channel_before_connecting() {
+        let service = CacheService::from_url(None);
+
+        let error = service
+            .invalidations()
+            .consume_subscription(" ", |_| async {})
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("invalid cache invalidation subscription channel"));
+        assert_eq!(service.invalidations().stats().rejected_total, 1);
+    }
+
+    #[cfg(feature = "redis-cache")]
+    #[tokio::test]
+    #[ignore = "requires a live Redis instance; set RUSTOK_CACHE_REAL_REDIS_URL"]
+    async fn real_redis_publish_and_subscription_share_validated_channel_contract() {
+        let Ok(redis_url) = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL") else {
+            eprintln!("skipping real Redis cache invalidation test: RUSTOK_CACHE_REAL_REDIS_URL is not set");
+            return;
+        };
+        let service = CacheService::from_url(Some(&redis_url));
+        let channel = format!(
+            "cache.integration.{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let key = "tenant:real-redis";
+        let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+        let (message_tx, mut message_rx) = tokio::sync::mpsc::unbounded_channel();
+        let listener = service.invalidations();
+        let listener_channel = channel.clone();
+
+        let listener_task = tokio::spawn(async move {
+            listener
+                .consume_subscription_with_ready(
+                    &listener_channel,
+                    move || async move {
+                        let _ = ready_tx.send(());
+                    },
+                    move |message| {
+                        let message_tx = message_tx.clone();
+                        async move {
+                            let _ = message_tx.send(message);
+                        }
+                    },
+                )
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(5), ready_rx)
+            .await
+            .expect("Redis subscription did not become ready")
+            .expect("Redis subscription ready signal dropped");
+
+        let outcome = service
+            .publish_invalidation(CacheInvalidationMessage::try_new(&channel, key).unwrap())
+            .await;
+        assert!(outcome.redis_published);
+
+        let message = tokio::time::timeout(Duration::from_secs(5), message_rx.recv())
+            .await
+            .expect("Redis invalidation message was not received")
+            .expect("Redis invalidation receiver closed");
+        assert_eq!(message.channel, channel);
+        assert_eq!(message.key, key);
+
+        listener_task.abort();
     }
 
     #[tokio::test]

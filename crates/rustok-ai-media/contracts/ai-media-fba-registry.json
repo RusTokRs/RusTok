@@ -11,10 +11,21 @@
       "registry": "crates/rustok-media/contracts/media-fba-registry.json",
       "contract_version": "media.asset_read.v1",
       "port": "MediaAssetReadPort",
-      "operations": ["get_image_descriptor", "get_asset"],
-      "required_profiles": ["in_process", "remote_adapter_placeholder"],
-      "fallback_profiles": ["embedded_native"],
-      "degraded_modes": ["skip_asset_enrichment"],
+      "operations": [
+        "get_image_descriptor",
+        "get_asset"
+      ],
+      "required_profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "skip_asset_enrichment",
+        "proxy_storage_relative_url"
+      ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError"
     }
@@ -36,23 +47,40 @@
     "status": "planned_cases_locked",
     "source": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
     "runner": "scripts/verify/verify-ai-media-fba.mjs",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
       {
         "provider": "media",
         "operation": "get_image_descriptor",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "ai_descriptor_shape_preserved", "degraded_skip_asset_enrichment_on_unavailable"]
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "ai_descriptor_shape_preserved",
+          "degraded_skip_asset_enrichment_on_unavailable"
+        ]
       },
       {
         "provider": "media",
         "operation": "get_asset",
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "image_size_validation_preserved"]
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "image_size_validation_preserved"
+        ]
       }
     ],
     "fallback_smoke": {
       "status": "planned",
-      "profiles": ["embedded_native"],
-      "degraded_modes": ["skip_asset_enrichment"]
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "skip_asset_enrichment",
+        "proxy_storage_relative_url"
+      ]
     }
   }
 }
