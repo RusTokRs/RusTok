@@ -7,7 +7,7 @@ use crate::dto::{
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
 use rustok_core::{Action, Permission, Resource};
 
 #[async_trait]
@@ -347,7 +347,7 @@ where
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;
         context
-            .require_write_semantics()
+            .require_policy(PortCallPolicy::write())
             .map_err(PageBuilderServiceError::from_port_error)?;
         self.inner.publish(context, input).await
     }

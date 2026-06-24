@@ -7,8 +7,8 @@ SPI и post-order delivery changes ещё остаются в активном b
 
 ## Execution checkpoint
 
-- Current phase: provider_spi_live_adapter_evidence
-- Last checkpoint: Provider SPI live-adapter evidence now records concrete external carrier contract execution: guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation (`manual_shipping`), unavailable-mode adapter blocking and idempotent tracking webhook replay delegation are locked by the aggregate verifier without running Cargo compilation.
+- Current phase: provider_spi_live_adapter_evidence and shared port policy parity
+- Last checkpoint: FBA maintenance slice перевёл select-shipping-option write path на shared `PortCallPolicy::write()` и сохранил list path на `PortCallPolicy::read()`; earlier checkpoint: Provider SPI live-adapter evidence now records concrete external carrier contract execution: guarded single invocation, typed provider-error mapping without lifecycle persistence, degraded fallback propagation (`manual_shipping`), unavailable-mode adapter blocking and idempotent tracking webhook replay delegation are locked by the aggregate verifier without running Cargo compilation.
 - Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then move from evidence-only external carrier contract execution to production adapter wiring in host composition.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
@@ -20,8 +20,8 @@ SPI и post-order delivery changes ещё остаются в активном b
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
-  - FBA maintenance slice перевёл read-only `list_seller_shipping_options` path на shared `PortCallPolicy::read()`, оставив select/write path на idempotent write semantics и сохранив existing FBA metadata без runtime surface changes.
-  - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует `PortContext::require_write_semantics` и мапит `FulfillmentError` в `PortError`;
+  - FBA maintenance slice перевёл read-only `list_seller_shipping_options` path на shared `PortCallPolicy::read()`, а select/write path — на shared `PortCallPolicy::write()`, сохранив существующие FBA metadata без изменений runtime surface.
+  - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует shared `PortCallPolicy::write()` и мапит `FulfillmentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `ShippingSelectionPort` и DTO для seller-aware shipping options/selection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - registry теперь фиксирует `contract_tests.status = planned_cases_locked`: для каждой port operation задана in-process/remote-adapter-placeholder case matrix, baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) с явным deadline enforcement для read path и `write_idempotency_required` только на write operations; fallback smoke profile set; static evidence packet `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates) and `npm run verify:ecommerce:fba-contract-evidence`; это закрывает metadata/evidence anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
