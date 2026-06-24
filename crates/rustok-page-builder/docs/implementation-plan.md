@@ -40,7 +40,7 @@
   - machine-readable registry фиксирует provider/consumer versions, fallback profiles, health states, degradation reasons и SLO thresholds;
   - baseline verification gates покрывают provider/consumer anti-drift, Wave evidence template, synthetic Wave 0 packet, Wave 1 readiness draft и correlation evidence `builder write -> pages publish -> storefront read`;
   - runtime health contract фиксирует `ready/degraded/unavailable`, degradation reasons, pilot SLO thresholds и typed SLO evaluation evidence в коде;
-  - первый migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext` и enforce write semantics для `publish` без изменения DTO contract.
+  - migration slice перевёл `PageBuilderCapabilityService` на явный `PortContext` и shared `PortCallPolicy::write()` для `publish` без изменения DTO contract.
   - server-side handler seam добавил permission map `preview/tree -> pages:read`, `properties -> pages:update`, `publish -> pages:publish` с `pages:manage` override и registry/manifest anti-drift проверкой.
   - provider runtime теперь exposes typed error catalog `validation/sanitize/runtime/feature-disabled` и стабильный degraded-mode code `FEATURE_DISABLED` для transport adapters.
   - transport bridge slice фиксирует canonical dispatch helpers для GraphQL и Leptos server-function adapters; no-compile guardrail `verify-page-builder-transport-bridge.mjs` проверяет, что adapters не обходят `AuthorizedPageBuilderHandlers::handle` и typed error mapping.

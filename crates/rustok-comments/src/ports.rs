@@ -41,7 +41,7 @@ pub trait CommentsThreadPort: Send + Sync {
     ) -> Result<CommentRecord, PortError>;
 
     async fn delete_comment(&self, context: PortContext, comment_id: Uuid)
-    -> Result<(), PortError>;
+        -> Result<(), PortError>;
 }
 
 #[async_trait]
@@ -51,7 +51,7 @@ impl CommentsThreadPort for CommentsService {
         context: PortContext,
         request: CreateCommentInput,
     ) -> Result<CommentRecord, PortError> {
-        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.create_comment(tenant_id, SecurityContext::system(), request)
             .await
@@ -105,7 +105,7 @@ impl CommentsThreadPort for CommentsService {
         comment_id: Uuid,
         request: UpdateCommentInput,
     ) -> Result<CommentRecord, PortError> {
-        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.update_comment(tenant_id, SecurityContext::system(), comment_id, request)
             .await
@@ -117,7 +117,7 @@ impl CommentsThreadPort for CommentsService {
         context: PortContext,
         comment_id: Uuid,
     ) -> Result<(), PortError> {
-        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.delete_comment(tenant_id, SecurityContext::system(), comment_id)
             .await
