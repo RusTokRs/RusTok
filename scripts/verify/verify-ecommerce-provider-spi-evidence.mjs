@@ -103,6 +103,7 @@ const requiredLiveExecutionCases = [
 
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
   const commerceCheckoutSource = readText(root, 'crates/rustok-commerce/src/services/checkout.rs');
+  const commercePaymentOrchestrationSource = readText(root, 'crates/rustok-commerce/src/services/payment_orchestration.rs');
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
@@ -435,6 +436,23 @@ export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules
     for (const marker of commerceExecutionMarkers) {
       if (!commerceCheckoutSource.includes(marker)) {
         fail(`commerce checkout orchestration lacks ${module} guarded execution marker ${marker}`);
+      }
+    }
+
+    if (module === 'payment') {
+      for (const marker of [
+        'PaymentOrchestrationService',
+        'payment_provider_registry: PaymentProviderRegistry',
+        '.execute_cancel(',
+        '.execute_refund(',
+        'cancel_payment_collection',
+        'create_refund',
+        'PaymentProviderOperationRequest {',
+        'idempotency_key: Some(format!',
+      ]) {
+        if (!commercePaymentOrchestrationSource.includes(marker)) {
+          fail(`commerce payment orchestration lacks guarded post-order execution marker ${marker}`);
+        }
       }
     }
 
