@@ -45,7 +45,7 @@
 ## D8/D9 SEO closeout contract
 
 - This host owns the compile-free SEO evidence fixture and verifier used for D8 lightweight gates.
-- The verifier intentionally does not compile the app; it checks contract shape, fallback semantics, route ownership, smoke assertions, docs sync rows, owner sign-off rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template and the deferred live evidence plan.
+- The verifier intentionally does not compile the app; it checks contract shape, fallback semantics, route ownership, smoke assertions, docs sync rows, owner sign-off rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template, concrete per-file artifact templates and the deferred live evidence plan.
 - Before final closeout, this host must attach live evidence for runtime `robots.ts`, `sitemap.ts`, home metadata and at least product/blog non-home metadata routes against a running backend.
 
 ## Взаимодействия
@@ -74,4 +74,4 @@
 - Минимальный non-home smoke baseline сейчас фиксирует два owner route: `/modules/product?slug=demo-product` и `/modules/blog?slug=release-notes`; эти маршруты проверяют metadata adapter assertions для canonical, robots, social metadata и JSON-LD blocks.
 - Allowlist допустимых long-tail differences ограничен host-level деталями: `metadataBase`, request-local CSP nonce и whitespace-only JSON-LD serialization differences; semantic payload equality остаётся обязательной.
 - Лёгкая проверка без компиляции запускается командой `npm run verify:seo-runtime-fixtures` из `apps/next-frontend`; она дополнительно проверяет существование docs rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template и ключевые static symbols для Next SEO adapter, Rust renderer, Next Admin transport и Leptos storefront SEO runtime wiring.
-- Live closeout artifact set теперь явно должен включать backend GraphQL/REST parity sample, before/after outbox/index counters, Next runtime robots/sitemap/metadata sample, Leptos `SeoPageContext` smoke, media descriptor fallback smoke и owner sign-off notes; пока этих файлов нет, D8/D9 остаются pending.
+- Live closeout artifact set теперь явно должен включать backend GraphQL/REST parity sample, before/after outbox/index counters, Next runtime robots/sitemap/metadata sample, Leptos `SeoPageContext` smoke, media descriptor fallback smoke и owner sign-off notes; для каждого файла fixture хранит отдельный must-capture checklist и blockers, а пока live files не приложены, D8/D9 остаются pending.

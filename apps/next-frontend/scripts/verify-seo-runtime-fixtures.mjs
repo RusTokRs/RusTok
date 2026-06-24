@@ -324,6 +324,34 @@ assert(
   "Live artifact manifest template must include auth token redaction",
 );
 
+const liveEvidenceArtifactTemplates = fixtures.liveEvidenceArtifactTemplates ?? [];
+assert(
+  liveEvidenceArtifactTemplates.length >= 6,
+  "Expected concrete live evidence artifact templates for D8 closeout files",
+);
+const liveTemplateFiles = new Set(liveEvidenceArtifactTemplates.map((row) => row.file));
+for (const requiredFile of liveArtifactManifestTemplate.requiredFiles ?? []) {
+  const row = liveEvidenceArtifactTemplates.find((item) => item.file === requiredFile);
+  assert(row, `Missing concrete live evidence artifact template: ${requiredFile}`);
+  assert(
+    row.status === "template_only_pending_d8_runtime",
+    `Live evidence artifact template must stay pending until runtime capture: ${requiredFile}`,
+  );
+  assert(row.surface, `Live evidence artifact template misses surface: ${requiredFile}`);
+  assert(
+    Array.isArray(row.mustCapture) && row.mustCapture.length >= 3,
+    `Live evidence artifact template misses capture checklist: ${requiredFile}`,
+  );
+  assert(
+    Array.isArray(row.blocksCloseoutIf) && row.blocksCloseoutIf.length >= 3,
+    `Live evidence artifact template misses closeout blockers: ${requiredFile}`,
+  );
+}
+assert(
+  liveTemplateFiles.has("media-descriptor-fallback-smoke.json"),
+  "Live evidence templates must include SEO media descriptor fallback smoke",
+);
+
 const liveArtifactSchemaTemplate = fixtures.liveArtifactSchemaTemplate ?? {};
 assert(
   liveArtifactSchemaTemplate.status === "template_only_pending_d8_runtime",
@@ -371,5 +399,6 @@ console.log(
     + `${fixtures.incidentEvidenceTemplates.length} incident templates, `
     + `${fixtures.ownerCloseoutCriteria.length} owner closeout rows, `
     + `${unitCoverageInventory.length} unit inventory rows, `
-    + `${integrationMatrixPlan.length} integration plan rows`,
+    + `${integrationMatrixPlan.length} integration plan rows, `
+    + `${liveEvidenceArtifactTemplates.length} live artifact templates`,
 );
