@@ -913,6 +913,7 @@ fn BlogPostsTable(
     on_delete: Callback<String>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let table_classes = core::blog_post_admin_table_classes_view();
     let table = core::blog_post_admin_posts_table_view_from_items(
         items,
         total,
@@ -941,8 +942,8 @@ fn BlogPostsTable(
     );
     if table.is_empty {
         return view! {
-            <div class="rounded-xl border border-dashed border-border p-12 text-center">
-                <p class="text-sm text-muted-foreground">
+            <div class=table_classes.empty_state>
+                <p class=table_classes.total_label>
                     {table.empty_message}
                 </p>
             </div>
@@ -952,21 +953,21 @@ fn BlogPostsTable(
 
     view! {
         <div class="space-y-4">
-            <div class="text-sm text-muted-foreground">
+            <div class=table_classes.total_label>
                 {table.total_label.clone()}
             </div>
-            <div class="overflow-hidden rounded-xl border border-border">
-                <table class="w-full text-sm">
-                    <thead class="border-b border-border bg-muted/50">
+            <div class=table_classes.table_container>
+                <table class=table_classes.table>
+                    <thead class=table_classes.table_head>
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table.title_header.clone()}</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table.slug_header.clone()}</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table.status_header.clone()}</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">{table.locale_header.clone()}</th>
-                            <th class="px-4 py-3"></th>
+                            <th class=table_classes.header_cell>{table.title_header.clone()}</th>
+                            <th class=table_classes.header_cell>{table.slug_header.clone()}</th>
+                            <th class=table_classes.header_cell>{table.status_header.clone()}</th>
+                            <th class=table_classes.header_cell>{table.locale_header.clone()}</th>
+                            <th class=table_classes.actions_header_cell></th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-border">
+                    <tbody class=table_classes.table_body>
                         {table.rows
                             .into_iter()
                             .map(|row| {
@@ -979,23 +980,23 @@ fn BlogPostsTable(
                                 let post_locale_archive = row.locale.clone();
 
                                 view! {
-                                    <tr class="transition-colors hover:bg-muted/30">
-                                        <td class="px-4 py-3 align-top">
-                                            <div class="font-medium text-foreground">{row.title.clone()}</div>
-                                            <div class="mt-1 text-xs text-muted-foreground">
+                                    <tr class=table_classes.row>
+                                        <td class=table_classes.title_cell>
+                                            <div class=table_classes.title_text>{row.title.clone()}</div>
+                                            <div class=table_classes.excerpt_text>
                                                 {row.excerpt.clone()}
                                             </div>
                                         </td>
-                                        <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.slug.clone()}</td>
-                                        <td class="px-4 py-3 align-top">
+                                        <td class=table_classes.muted_cell>{row.slug.clone()}</td>
+                                        <td class=table_classes.title_cell>
                                             <StatusBadge status=row.status.clone() />
                                         </td>
-                                        <td class="px-4 py-3 align-top text-xs text-muted-foreground">{row.locale.clone()}</td>
-                                        <td class="px-4 py-3 align-top text-right">
-                                            <div class="flex flex-wrap justify-end gap-2">
+                                        <td class=table_classes.muted_cell>{row.locale.clone()}</td>
+                                        <td class=table_classes.actions_cell>
+                                            <div class=table_classes.actions_group>
                                                 <button
                                                     type="button"
-                                                    class="text-xs font-medium text-primary hover:underline"
+                                                    class=table_classes.primary_action_button
                                                     disabled=row.is_busy
                                                     on:click={
                                                         move |_| on_edit.run((post_id_edit.clone(), post_locale_edit.clone()))
@@ -1005,7 +1006,7 @@ fn BlogPostsTable(
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    class="text-xs font-medium text-primary hover:underline"
+                                                    class=table_classes.primary_action_button
                                                     disabled=row.is_busy
                                                     on:click={
                                                         move |_| on_toggle_publish.run((
@@ -1021,7 +1022,7 @@ fn BlogPostsTable(
                                                     view! {
                                                         <button
                                                             type="button"
-                                                            class="text-xs font-medium text-primary hover:underline"
+                                                            class=table_classes.primary_action_button
                                                             disabled=row.is_busy
                                                             on:click={
                                                                 move |_| on_archive.run((post_id_archive.clone(), post_locale_archive.clone()))
@@ -1036,7 +1037,7 @@ fn BlogPostsTable(
                                                 }}
                                                 <button
                                                     type="button"
-                                                    class="text-xs font-medium text-destructive hover:underline"
+                                                    class=table_classes.destructive_action_button
                                                     disabled=row.is_busy
                                                     on:click={
                                                         move |_| on_delete.run(post_id_delete.clone())
