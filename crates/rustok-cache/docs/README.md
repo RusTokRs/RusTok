@@ -41,4 +41,15 @@ fallback/in-memory cache semantics и cache health contract для host runtime.
 
 ## Listener/reconnect guarantees
 
-`CacheInvalidationService::consume_subscription(channel, handler)` держит один Redis pub/sub stream до закрытия или ошибки и отдаёт каждое сообщение в domain handler как `CacheInvalidationMessage`. `CacheInvalidationMessage::try_new()` фиксирует валидируемый constructor для call sites, которые хотят fail-fast до publish; `publish()` дополнительно отбрасывает пустой channel/key без local/Redis fan-out и увеличивает rejected counter. Retry/backoff остаются за host/runtime listener-ом, чтобы каждый домен мог публиковать собственный health status и reconnect telemetry; `apps/server` tenant listener использует этот adapter внутри существующего retry-loop. `CacheInvalidationService::stats()` и `CacheService::prometheus_metrics()` публикуют counters для local fan-out, Redis publish success/failure и rejected messages. В non-Redis сборке subscription adapter недоступен, full local fan-out через `subscribe_local()` остаётся baseline contract для single-instance runtime и тестов, а `subscribe_local_channel(channel)` даёт namespace-filtered receiver для multi-listener сценариев без Redis.
+`CacheInvalidationService::consume_subscription(channel, handler)` держит один Redis pub/sub stream до закрытия или ошибки и отдаёт каждое сообщение в domain handler как `CacheInvalidationMessage`. `CacheInvalidationMessage::try_new()` фиксирует валидируемый constructor для call sites, которые хотят fail-fast до publish; `publish()` дополнительно отбрасывает пустой channel/key без local/Redis fan-out и увеличивает rejected counter. Redis subscription adapter также reject-ит пустой channel до подключения и игнорирует invalid pub/sub payloads до вызова domain handler-а. Retry/backoff остаются за host/runtime listener-ом, чтобы каждый домен мог публиковать собственный health status и reconnect telemetry; `apps/server` tenant listener использует этот adapter внутри существующего retry-loop. `CacheInvalidationService::stats()` и `CacheService::prometheus_metrics()` публикуют counters для local fan-out, Redis publish success/failure и rejected messages. В non-Redis сборке subscription adapter недоступен, full local fan-out через `subscribe_local()` остаётся baseline contract для single-instance runtime и тестов, а `subscribe_local_channel(channel)` даёт namespace-filtered receiver для multi-listener сценариев без Redis.
+
+
+## Optional real-Redis gate
+
+Когда компиляции и внешний Redis разрешены, текущий ignored gate для multi-instance/pub-sub parity запускается так:
+
+```bash
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture
+```
+
+Gate проверяет, что `publish_invalidation` и `consume_subscription_with_ready` работают через один validated channel contract и доставляют key payload через Redis pub/sub.
