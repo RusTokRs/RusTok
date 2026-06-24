@@ -63,7 +63,7 @@
 - `redactions_applied` с подтверждением удаления auth tokens, cookies, tenant secrets и user/customer identifiers;
 - `result.passed`, `result.high_severity_defects` и `result.owner_review_required`.
 
-Owner sign-off переводится из `pending_live_runtime_evidence` в `signed` только после того, как все required artifacts из `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` приложены, high-severity defects отсутствуют или имеют владельца remediation, а owner просмотрел redacted samples.
+Owner sign-off переводится из `pending_live_runtime_evidence` в `signed` только после того, как все required artifacts из `apps/next-frontend/contracts/seo/runtime-parity-fixtures.json` приложены, каждый artifact удовлетворяет своему `liveEvidenceArtifactTemplates[].mustCapture`, high-severity defects отсутствуют или имеют владельца remediation, а owner просмотрел redacted samples.
 
 ## Live incident evidence template (D9)
 
@@ -78,5 +78,6 @@ Use this block when D8 live backend/host evidence is available. Do not mark D9 l
 - Sample `last_error` for remaining failed/dead-letter rows:
 - Cursor transition observed:
 - Semantic error parity sample (`BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, transport):
+- Required artifact template file matched:
 - Storefront smoke evidence: runtime page context, robots/sitemap source, product/blog metadata route
 - Stop criteria triggered: yes/no; if yes, remediation owner and rollback/containment action

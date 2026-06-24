@@ -1127,7 +1127,7 @@ _Легенда статусов: `⬜ Planned` — не начато, `🟡 In 
 
 - **FFA в плане отмечен:** ✅ Да. FFA-baseline явно зафиксирован в `Phase 0 — Foundation` и отдельно закреплён в anti-drift guardrail разделе.
 - **Текущий фокус выполнения:** `Phase 1 — Pilot module` остаётся `🟡 In progress` для admin/operator flow, но его ключевые seams уже закрыты: module-owned package, shared GraphQL transport, `toggleModule`, hydrated `me.permissions`, retry/compensation actions и dedicated operation history/recovery screen используют существующие lifecycle GraphQL contracts без feature-local transport-клиентов. `Phase 2 — Registry/codegen` работает как supporting track: admin и storefront registry/codegen проверяются локальными deterministic checks, а storefront registry уже используется для package discovery и generated home navigation.
-- **Storefront track:** `rustok_frontend_mobile` отделён от admin/operator host; catalog/cart package работает через host-owned repository seam, durable cart id seam и source-backed GraphQL contract verifier для `storefrontSearch`, `storefrontCart` и create/add/update/remove cart mutations.
+- **Storefront track:** `rustok_frontend_mobile` отделён от admin/operator host; catalog/cart package работает через host-owned repository seam, durable cart id seam, host-owned checkout intent surface и source-backed GraphQL contract verifier для `storefrontSearch`, `storefrontCart` и create/add/update/remove cart mutations.
 - **Следующая точка контроля:** превратить source-backed storefront verifier в live schema/test-server CI job, когда доступен Flutter SDK или lightweight server harness; до этого не расширять Flutter API surface и не добавлять package-local transport/storage fallback chains.
 
 #### Ближайший execution backlog (Phase 1 pilot)
@@ -1355,6 +1355,19 @@ Storefront track получил первый детерминированный 
 - package expansion gate — новые package-backed storefront routes разрешены только после появления module-owned package и host-owned repository adapter, а manifest-only routes остаются generic placeholders.
 
 **Не делать в PR-P:** не добавлять `/api/flutter`, `/api/mobile`, package-local GraphQL clients, tenant/locale/cart fallback chains или server-side FBA metadata в Flutter registry. Это hardening existing contract, а не расширение platform surface.
+
+
+#### PR-Q evidence pack (storefront checkout intent seam)
+
+**Checkout intent surface:** `rustok_mobile/apps/rustok_frontend_mobile/lib/routes/storefront_router.dart`.
+
+Storefront mobile host закрыл следующий небольшой FFA-safe шаг вокруг checkout handoff без расширения backend/mobile API:
+- host-owned checkout route — `/checkout` теперь читает `StorefrontRuntimeContext` и `storefrontCartIdStoreProvider`, показывает tenant/locale/cart context и остаётся частью storefront shell, а не module-owned catalog package;
+- package boundary — `rustok_catalog_mobile` по-прежнему только вызывает `onStartCheckout`, не создаёт checkout API, GraphQL client, tenant resolver или cart storage;
+- fallback policy — если cart id ещё не сохранён host-owned seam-ом, checkout page отправляет пользователя обратно в cart/catalog вместо создания Flutter-only checkout endpoint;
+- no-compile guardrail — `test_storefront_cart_contract.py` фиксирует, что checkout intent stays host-owned, не содержит `/api/flutter` или `/api/mobile`, и не переносится в package screens.
+
+Следующий storefront шаг остаётся прежним: подключить реальный live schema/test-server producer для `--live-results` и затем расширять package mappings только при появлении новых module-owned storefront packages.
 
 #### PR-P evidence pack (storefront live-schema promotion seam)
 

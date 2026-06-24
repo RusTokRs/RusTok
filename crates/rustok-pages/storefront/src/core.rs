@@ -127,6 +127,32 @@ pub fn label_value_pair(label: &str, value: &str) -> String {
     format!("{}: {}", label, value)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedPagesEmptyState {
+    pub body: String,
+}
+
+pub fn published_pages_empty_state(body: String) -> PublishedPagesEmptyState {
+    PublishedPagesEmptyState { body }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedPagesHeaderView {
+    pub title: String,
+    pub total_label: String,
+}
+
+pub fn published_pages_header_view(
+    title: String,
+    total_template: &str,
+    total: u64,
+) -> PublishedPagesHeaderView {
+    PublishedPagesHeaderView {
+        title,
+        total_label: count_label(total_template, total),
+    }
+}
+
 pub fn load_error_message(label: &str, error: &str) -> String {
     format!("{}: {}", label, error)
 }
