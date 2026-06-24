@@ -620,10 +620,16 @@ pub fn PagesAdmin() -> impl IntoView {
     let project_parse_error = Signal::derive(move || parsed_project.get().err());
 
     let compatibility_warning = Signal::derive(move || {
-        !body_format
-            .get()
-            .eq_ignore_ascii_case(core::GRAPESJS_FORMAT)
-            || !existing_blocks.get().is_empty()
+        core::compatibility_warning_view(
+            &body_format.get(),
+            &existing_blocks.get(),
+            compatibility_title.get_value(),
+            compatibility_non_grapes.get_value(),
+            compatibility_existing_blocks.get_value(),
+        )
+    });
+    let page_properties = Signal::derive(move || {
+        core::page_properties_view(body_format.get(), &channel_slugs_text.get(), locale.get())
     });
 
     view! {
@@ -795,13 +801,13 @@ pub fn PagesAdmin() -> impl IntoView {
                             >
                                 <dl class="grid grid-cols-[auto,1fr] gap-x-3 gap-y-2 text-xs text-muted-foreground">
                                     <dt class="font-medium text-card-foreground">{body_format_label.clone()}</dt>
-                                    <dd>{move || body_format.get()}</dd>
+                                    <dd>{move || page_properties.get().body_format}</dd>
                                     <dt class="font-medium text-card-foreground">{template_label.clone()}</dt>
-                                    <dd>{"default"}</dd>
+                                    <dd>{move || page_properties.get().template}</dd>
                                     <dt class="font-medium text-card-foreground">{channels_count_label.clone()}</dt>
-                                    <dd>{move || core::channel_count_label(&channel_slugs_text.get())}</dd>
+                                    <dd>{move || page_properties.get().channel_count}</dd>
                                     <dt class="font-medium text-card-foreground">{locale_property_label.clone()}</dt>
-                                    <dd>{move || locale.get()}</dd>
+                                    <dd>{move || page_properties.get().locale}</dd>
                                 </dl>
                             </CapabilityCard>
 
@@ -860,18 +866,17 @@ pub fn PagesAdmin() -> impl IntoView {
                             </CapabilityCard>
                         </div>
 
-                        <Show when=move || compatibility_warning.get()>
-                            <div class="mt-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                                <div class="font-semibold">{compatibility_title.get_value()}</div>
-                                <ul class="mt-2 list-disc space-y-1 pl-4">
-                                    <Show when=move || !body_format.get().eq_ignore_ascii_case(core::GRAPESJS_FORMAT)>
-                                        <li>{move || compatibility_non_grapes.get_value()}</li>
-                                    </Show>
-                                    <Show when=move || !existing_blocks.get().is_empty()>
-                                        <li>{move || compatibility_existing_blocks.get_value()}</li>
-                                    </Show>
-                                </ul>
-                            </div>
+                        <Show when=move || compatibility_warning.get().is_some()>
+                            {move || {
+                                compatibility_warning.get().map(|warning| view! {
+                                    <div class="mt-4 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                                        <div class="font-semibold">{warning.title}</div>
+                                        <ul class="mt-2 list-disc space-y-1 pl-4">
+                                            {warning.messages.into_iter().map(|message| view! { <li>{message}</li> }).collect_view()}
+                                        </ul>
+                                    </div>
+                                })
+                            }}
                         </Show>
 
                         <form class="mt-5 space-y-4" on:submit=submit_page>
