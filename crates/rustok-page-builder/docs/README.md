@@ -25,6 +25,7 @@
 - `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` и typed error catalog (`validation/sanitize/runtime/feature-disabled`) для contract package без привязки к transport adapters;
 - `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, `ReferencePageBuilderService` для compile-free provider baseline, feature-flag guard и server-side handler seam с RBAC permission checks;
 - `src/transport.rs` — canonical transport bridge для GraphQL, Leptos `#[server]` и future mobile adapters поверх `AuthorizedPageBuilderHandlers::handle`;
+- `src/adapters.rs` — endpoint adapter seam с framework-neutral GraphQL/Leptos payload wrappers и handler-функциями `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, которые делегируют только в canonical dispatch helpers;
 - `src/health.rs` — типизированные provider health states, degradation reasons, `ProviderHealthEvidence` и evaluator pilot SLO thresholds для release-gate evidence;
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
@@ -44,6 +45,8 @@ Baseline DTO package теперь содержит `PageBuilderContractMetadata:
 `PageBuilderCapabilityRequest` и `PageBuilderCapabilityResponse` задают tagged-envelope для transport adapters: GraphQL resolvers, Leptos `#[server]` functions и future mobile bridge могут принимать один canonical request envelope и dispatch через `AuthorizedPageBuilderHandlers::handle`. Такой seam удерживает RBAC, rollout guard и write-semantics enforcement в одном месте и не позволяет transport layer повторно изобретать имена capability или локальные error envelopes.
 
 Первый transport bridge slice добавил `PageBuilderTransportKind`, `PageBuilderTransportSuccess`, `PageBuilderTransportError`, `dispatch_transport_envelope`, `dispatch_graphql_envelope` и `dispatch_leptos_server_function_envelope`. GraphQL/server-function adapters должны вызывать эти dispatch helpers, а затем маппить success/error envelope в свой framework-specific result; `PageBuilderTransportError` берёт `kind` и `stable_code` из `PageBuilderServiceError::kind()` / `stable_code()`, поэтому transport не владеет отдельным error catalog.
+
+Endpoint adapter seam теперь закреплён в `src/adapters.rs`: `PageBuilderGraphqlEndpointInput` и `PageBuilderLeptosServerFunctionInput` принимают canonical `PageBuilderCapabilityRequest`, а `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint` возвращают единый `PageBuilderEndpointResult` поверх `PageBuilderTransportSuccess` / `PageBuilderTransportError`. Это даёт реальные host-facing точки подключения для GraphQL resolver-ов и Leptos `#[server]` wrappers без добавления framework-specific dependency в reference module и без transport-local capability/error aliases.
 
 ## Reference provider baseline
 

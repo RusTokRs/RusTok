@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-search/contracts/search-fba-registry.json",
+  "runner": "scripts/verify/verify-search-fba-runtime-contract.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "search.query.v1",
+  "provider": "PgSearchEngine",
+  "source_markers": {
+    "provider_source": "crates/rustok-search/src/ports.rs",
+    "engine_source": "crates/rustok-search/src/pg_engine.rs",
+    "suggestion_source": "crates/rustok-search/src/suggestions.rs"
+  },
+  "cases": [
+    {
+      "operation": "execute_search",
+      "port": "SearchQueryPort",
+      "request_type": "SearchQuery",
+      "runtime_order": [
+        "require_read_policy",
+        "apply_context_locale_fallback",
+        "execute_embedded_postgres_query",
+        "map_typed_port_error"
+      ],
+      "source_markers": [
+        "impl SearchQueryPort for PgSearchEngine",
+        "context.require_policy(PortCallPolicy::read())?",
+        "request.locale.get_or_insert_with(|| context.locale.clone())",
+        "self.search(request)",
+        ".map_err(search_error_to_port_error)"
+      ],
+      "consumer_paths": [
+        "storefront.site_search",
+        "admin.search_playground"
+      ]
+    },
+    {
+      "operation": "suggest",
+      "port": "SearchSuggestionPort",
+      "request_type": "SearchSuggestionQuery",
+      "runtime_order": [
+        "require_read_policy",
+        "apply_context_locale_fallback",
+        "execute_embedded_postgres_suggestions",
+        "map_typed_port_error"
+      ],
+      "source_markers": [
+        "impl SearchSuggestionPort for PgSearchEngine",
+        "context.require_policy(PortCallPolicy::read())?",
+        "request.locale.get_or_insert_with(|| context.locale.clone())",
+        "SearchSuggestionService::suggestions(self.connection(), request)",
+        ".map_err(search_error_to_port_error)"
+      ],
+      "consumer_paths": [
+        "storefront.site_search"
+      ]
+    }
+  ],
+  "notes": "No-compile runtime contract smoke for the real in-process provider path. It source-locks operation order so deadline checks happen before locale fallback and embedded PostgreSQL execution, with typed PortError mapping at the boundary."
+}

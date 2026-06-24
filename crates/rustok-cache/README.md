@@ -38,4 +38,15 @@ in-memory cache implementations.
 
 ## Invalidation listener contract
 
-With the `redis-cache` feature enabled, `CacheInvalidationService::consume_subscription(channel, handler)` owns Redis pub/sub connection/subscription setup for one channel and invokes the supplied handler for each invalidation message. Invalidation messages can be pre-validated with `CacheInvalidationMessage::try_new`, and `publish_invalidation` drops empty channel/key messages before local or Redis fan-out. Host runtimes keep their domain-specific retry loop, health status, and telemetry around this adapter; `CacheInvalidationService::stats()` and `CacheService::prometheus_metrics()` expose local publish, Redis publish success/failure, and validation rejection counters; without Redis, `subscribe_local()` remains the full single-instance/test fan-out contract and `subscribe_local_channel(channel)` mirrors Redis channel filtering for namespace-specific listeners.
+With the `redis-cache` feature enabled, `CacheInvalidationService::consume_subscription(channel, handler)` owns Redis pub/sub connection/subscription setup for one channel and invokes the supplied handler for each invalidation message. Invalidation messages can be pre-validated with `CacheInvalidationMessage::try_new`, and `publish_invalidation` drops empty channel/key messages before local or Redis fan-out. The subscription adapter rejects empty channels before connecting to Redis and drops invalid pub/sub payloads before calling the handler. Host runtimes keep their domain-specific retry loop, health status, and telemetry around this adapter; `CacheInvalidationService::stats()` and `CacheService::prometheus_metrics()` expose local publish, Redis publish success/failure, and validation rejection counters; without Redis, `subscribe_local()` remains the full single-instance/test fan-out contract and `subscribe_local_channel(channel)` mirrors Redis channel filtering for namespace-specific listeners.
+
+
+## Optional real-Redis verification
+
+When compilation and external services are allowed, run the ignored integration check with a dedicated Redis URL:
+
+```bash
+RUSTOK_CACHE_REAL_REDIS_URL=redis://127.0.0.1:6379 cargo test -p rustok-cache real_redis_publish_and_subscription_share_validated_channel_contract -- --ignored --nocapture
+```
+
+The test verifies that validated publish messages and `consume_subscription_with_ready` share the same channel contract across Redis pub/sub.
