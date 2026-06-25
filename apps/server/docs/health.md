@@ -39,7 +39,9 @@ binary `migrate_legacy_richtext` требует `mod-content`. Reduced/headless 
 - `cache_backend` — базовая проверка tenant cache path;
 - `tenant_cache_invalidation` — не-критичная проверка Redis pubsub listener для cross-instance invalidation;
 - `event_transport` — критичная проверка инициализации event transport;
-- `search_backend` — не-критичная проверка search connectivity.
+- `search_backend` — не-критичная проверка search connectivity;
+- `email_backend` — не-критичная конфигурационная проверка email transport: `smtp` должен быть включён,
+  `loco` должен иметь инициализированный `ctx.mailer`, `none` явно отражается как degraded.
 
 ### Runtime worker checks
 
@@ -98,6 +100,16 @@ Worker/readiness metrics:
 
 - `rustok_runtime_worker_state{worker="outbox_relay|build_executor|remote_executor_reaper|seo_bulk"}`:
   `-1 = missing`, `0 = disabled`, `1 = running`, `2 = stopped`.
+- `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — количество restart-циклов relay supervisor
+  после неожиданного завершения внутреннего worker task.
+
+Email backend metrics:
+
+- `rustok_email_backend_state{provider="none|smtp|loco"}`:
+  `0 = disabled`, `1 = enabled`, `2 = degraded/miswired`.
+- `rustok_email_send_success_total`
+- `rustok_email_send_failure_total`
+- `rustok_email_send_skipped_total`
 
 Outbox relay metrics:
 
@@ -105,6 +117,23 @@ Outbox relay metrics:
 - `rustok_outbox_pending_lag_seconds`
 - `rustok_outbox_retries_total`
 - `rustok_outbox_dlq_total`
+- `rustok_outbox_relay_processed_total`
+- `rustok_outbox_relay_success_total`
+- `rustok_outbox_relay_failure_total`
+- `rustok_outbox_relay_retry_total`
+- `rustok_outbox_relay_dlq_total`
+- `rustok_outbox_relay_latency_ms_total`
+- `rustok_outbox_relay_latency_samples`
+
+Search metrics:
+
+- `rustok_search_queries_total{surface,engine,status}` — search throughput и error rate по `status`;
+- `rustok_search_query_duration_seconds{surface,engine}` — latency histogram для search query path;
+- `rustok_search_slow_queries_total{surface,engine}`;
+- `rustok_search_indexing_operations_total{operation,entity,status}`;
+- `rustok_search_indexing_duration_seconds{operation,entity}`;
+- `rustok_search_max_lag_seconds`;
+- `rustok_search_lagging_tenants_total`.
 
 Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
 

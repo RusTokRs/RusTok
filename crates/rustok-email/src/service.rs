@@ -59,7 +59,22 @@ impl EmailService {
 
     /// Build the password-reset URL from config + token.
     pub fn password_reset_url(config: &EmailConfig, token: &str) -> String {
-        format!("{}?token={}", config.reset_base_url, token)
+        if let Ok(mut url) = url::Url::parse(&config.reset_base_url) {
+            url.query_pairs_mut().append_pair("token", token);
+            return url.to_string();
+        }
+
+        let encoded_token: String =
+            url::form_urlencoded::byte_serialize(token.as_bytes()).collect();
+        let separator = if config.reset_base_url.contains('?') {
+            "&"
+        } else {
+            "?"
+        };
+        format!(
+            "{}{}token={}",
+            config.reset_base_url, separator, encoded_token
+        )
     }
 }
 
@@ -224,5 +239,51 @@ impl TransactionalEmailSender for SmtpEmailSender {
         Err(EmailError::Template(format!(
             "No template provider handles '{template_id}'"
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_with_reset_base_url(reset_base_url: &str) -> EmailConfig {
+        EmailConfig {
+            reset_base_url: reset_base_url.to_string(),
+            ..EmailConfig::default()
+        }
+    }
+
+    #[test]
+    fn password_reset_url_percent_encodes_token() {
+        let config = config_with_reset_base_url("https://admin.example.test/reset-password");
+
+        let url = EmailService::password_reset_url(&config, "abc+/=&?");
+
+        assert_eq!(
+            url,
+            "https://admin.example.test/reset-password?token=abc%2B%2F%3D%26%3F"
+        );
+    }
+
+    #[test]
+    fn password_reset_url_preserves_existing_query() {
+        let config =
+            config_with_reset_base_url("https://admin.example.test/reset-password?tenant=demo");
+
+        let url = EmailService::password_reset_url(&config, "reset-token");
+
+        assert_eq!(
+            url,
+            "https://admin.example.test/reset-password?tenant=demo&token=reset-token"
+        );
+    }
+
+    #[test]
+    fn password_reset_url_encodes_token_for_relative_fallback() {
+        let config = config_with_reset_base_url("/reset-password?tenant=demo");
+
+        let url = EmailService::password_reset_url(&config, "abc+/=&?");
+
+        assert_eq!(url, "/reset-password?tenant=demo&token=abc%2B%2F%3D%26%3F");
     }
 }

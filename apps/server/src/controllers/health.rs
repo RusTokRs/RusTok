@@ -18,7 +18,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
-use crate::common::settings::{EventTransportKind, RustokSettings};
+use crate::common::settings::{EmailProvider, EventTransportKind, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
@@ -252,6 +252,7 @@ pub async fn ready(
             .await,
         );
         checks.push(check_runtime_guardrails(&ctx).await);
+        checks.push(email_backend_check(&settings, ctx.mailer.is_some()));
         checks.extend(check_runtime_workers(&ctx, &settings));
 
         #[cfg(feature = "mod-media")]
@@ -534,6 +535,34 @@ fn runtime_worker_check(
         name: name.to_string(),
         kind: "worker",
         criticality,
+        status,
+        latency_ms: 0,
+        reason,
+    }
+}
+
+fn email_backend_check(settings: &RustokSettings, loco_mailer_initialized: bool) -> ReadinessCheck {
+    let (status, reason) = match settings.email.provider {
+        EmailProvider::None => (
+            ReadinessStatus::Degraded,
+            Some("email provider disabled by configuration".to_string()),
+        ),
+        EmailProvider::Smtp if !settings.email.enabled => (
+            ReadinessStatus::Degraded,
+            Some("smtp email provider disabled by configuration".to_string()),
+        ),
+        EmailProvider::Smtp => (ReadinessStatus::Ok, None),
+        EmailProvider::Loco if !loco_mailer_initialized => (
+            ReadinessStatus::Degraded,
+            Some("loco email provider selected but ctx.mailer is not initialized".to_string()),
+        ),
+        EmailProvider::Loco => (ReadinessStatus::Ok, None),
+    };
+
+    ReadinessCheck {
+        name: "email_backend".to_string(),
+        kind: "dependency",
+        criticality: DependencyCriticality::NonCritical,
         status,
         latency_ms: 0,
         reason,
@@ -942,5 +971,47 @@ mod tests {
             .reason
             .as_deref()
             .is_some_and(|reason| reason.contains("disabled")));
+    }
+
+    #[test]
+    fn email_backend_is_degraded_when_disabled() {
+        let mut settings = RustokSettings::default();
+        settings.email.provider = EmailProvider::None;
+
+        let check = email_backend_check(&settings, false);
+
+        assert_eq!(check.name, "email_backend");
+        assert_eq!(check.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(check.status, ReadinessStatus::Degraded);
+        assert!(check
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("disabled")));
+    }
+
+    #[test]
+    fn email_backend_is_ready_when_smtp_enabled() {
+        let mut settings = RustokSettings::default();
+        settings.email.provider = EmailProvider::Smtp;
+        settings.email.enabled = true;
+
+        let check = email_backend_check(&settings, false);
+
+        assert_eq!(check.status, ReadinessStatus::Ok);
+        assert!(check.reason.is_none());
+    }
+
+    #[test]
+    fn email_backend_is_degraded_when_loco_mailer_is_missing() {
+        let mut settings = RustokSettings::default();
+        settings.email.provider = EmailProvider::Loco;
+
+        let check = email_backend_check(&settings, false);
+
+        assert_eq!(check.status, ReadinessStatus::Degraded);
+        assert!(check
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("not initialized")));
     }
 }

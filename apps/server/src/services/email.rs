@@ -1,6 +1,7 @@
 // Re-export from rustok-email for backward compatibility.
 pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Cached SMTP transport stored in `shared_store` to reuse the connection pool.
@@ -14,6 +15,17 @@ use rustok_email::{EmailError, RenderedEmail};
 
 use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::error::{Error, Result};
+
+static EMAIL_SEND_SUCCESS_TOTAL: AtomicU64 = AtomicU64::new(0);
+static EMAIL_SEND_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
+static EMAIL_SEND_SKIPPED_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EmailDeliveryMetricsSnapshot {
+    pub success_total: u64,
+    pub failure_total: u64,
+    pub skipped_total: u64,
+}
 
 #[derive(Debug, Clone)]
 pub struct EmailVerificationEmail {
@@ -36,6 +48,29 @@ pub trait BuiltInAuthEmailSender: Send + Sync {
 
 #[derive(Default)]
 struct DisabledBuiltInAuthEmailSender;
+
+pub fn email_delivery_metrics_snapshot() -> EmailDeliveryMetricsSnapshot {
+    EmailDeliveryMetricsSnapshot {
+        success_total: EMAIL_SEND_SUCCESS_TOTAL.load(Ordering::Relaxed),
+        failure_total: EMAIL_SEND_FAILURE_TOTAL.load(Ordering::Relaxed),
+        skipped_total: EMAIL_SEND_SKIPPED_TOTAL.load(Ordering::Relaxed),
+    }
+}
+
+fn record_email_send_result(result: &std::result::Result<(), EmailError>) {
+    match result {
+        Ok(()) => {
+            EMAIL_SEND_SUCCESS_TOTAL.fetch_add(1, Ordering::Relaxed);
+        }
+        Err(_) => {
+            EMAIL_SEND_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+fn record_email_send_skipped() {
+    EMAIL_SEND_SKIPPED_TOTAL.fetch_add(1, Ordering::Relaxed);
+}
 
 /// Loco bridge: convert `EmailError` → `loco_rs::Error`.
 pub fn email_err(err: EmailError) -> Error {
@@ -213,6 +248,7 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
             recipient = %email.to,
             "Password reset email provider disabled; skipping outbound send"
         );
+        record_email_send_skipped();
         Ok(())
     }
 
@@ -224,6 +260,7 @@ impl BuiltInAuthEmailSender for DisabledBuiltInAuthEmailSender {
             recipient = %email.to,
             "Email verification provider disabled; skipping outbound send"
         );
+        record_email_send_skipped();
         Ok(())
     }
 }
@@ -234,7 +271,14 @@ impl BuiltInAuthEmailSender for LocoMailerAdapter {
         &self,
         email: PasswordResetEmail,
     ) -> std::result::Result<(), EmailError> {
-        let rendered = render_password_reset(&self.locale, &email.reset_url)?;
+        let rendered = match render_password_reset(&self.locale, &email.reset_url) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let result = Err(error);
+                record_email_send_result(&result);
+                return result;
+            }
+        };
 
         let msg = Email {
             from: Some(self.from.clone()),
@@ -247,17 +291,27 @@ impl BuiltInAuthEmailSender for LocoMailerAdapter {
             cc: None,
         };
 
-        self.mailer
+        let result = self
+            .mailer
             .mail(&msg)
             .await
-            .map_err(|e| EmailError::Send(e.to_string()))
+            .map_err(|e| EmailError::Send(e.to_string()));
+        record_email_send_result(&result);
+        result
     }
 
     async fn send_email_verification(
         &self,
         email: EmailVerificationEmail,
     ) -> std::result::Result<(), EmailError> {
-        let rendered = render_email_verification(&self.locale, &email.verification_token)?;
+        let rendered = match render_email_verification(&self.locale, &email.verification_token) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let result = Err(error);
+                record_email_send_result(&result);
+                return result;
+            }
+        };
 
         let msg = Email {
             from: Some(self.from.clone()),
@@ -270,10 +324,13 @@ impl BuiltInAuthEmailSender for LocoMailerAdapter {
             cc: None,
         };
 
-        self.mailer
+        let result = self
+            .mailer
             .mail(&msg)
             .await
-            .map_err(|e| EmailError::Send(e.to_string()))
+            .map_err(|e| EmailError::Send(e.to_string()));
+        record_email_send_result(&result);
+        result
     }
 }
 
@@ -283,16 +340,34 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
         &self,
         email: PasswordResetEmail,
     ) -> std::result::Result<(), EmailError> {
-        let rendered = render_password_reset(&self.locale, &email.reset_url)?;
-        self.sender.send_rendered(&email.to, &rendered).await
+        let rendered = match render_password_reset(&self.locale, &email.reset_url) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let result = Err(error);
+                record_email_send_result(&result);
+                return result;
+            }
+        };
+        let result = self.sender.send_rendered(&email.to, &rendered).await;
+        record_email_send_result(&result);
+        result
     }
 
     async fn send_email_verification(
         &self,
         email: EmailVerificationEmail,
     ) -> std::result::Result<(), EmailError> {
-        let rendered = render_email_verification(&self.locale, &email.verification_token)?;
-        self.sender.send_rendered(&email.to, &rendered).await
+        let rendered = match render_email_verification(&self.locale, &email.verification_token) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let result = Err(error);
+                record_email_send_result(&result);
+                return result;
+            }
+        };
+        let result = self.sender.send_rendered(&email.to, &rendered).await;
+        record_email_send_result(&result);
+        result
     }
 }
 
@@ -454,5 +529,31 @@ mod tests {
         assert_eq!(regional.subject, base.subject);
         assert_eq!(regional.text, base.text);
         assert_eq!(regional.html, base.html);
+    }
+
+    #[tokio::test]
+    async fn disabled_email_sender_records_skipped_metric() {
+        let sender = DisabledBuiltInAuthEmailSender;
+        let before = email_delivery_metrics_snapshot();
+
+        sender
+            .send_password_reset(PasswordResetEmail {
+                to: "user@example.test".to_string(),
+                reset_url: "https://example.test/reset?token=t".to_string(),
+            })
+            .await
+            .unwrap();
+        sender
+            .send_email_verification(EmailVerificationEmail {
+                to: "user@example.test".to_string(),
+                verification_token: "verify-token".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let after = email_delivery_metrics_snapshot();
+        assert_eq!(after.skipped_total, before.skipped_total + 2);
+        assert_eq!(after.success_total, before.success_total);
+        assert_eq!(after.failure_total, before.failure_total);
     }
 }

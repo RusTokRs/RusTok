@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,6 +10,8 @@ use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
+
+static OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct EventRuntime {
@@ -22,6 +25,17 @@ pub struct EventRuntime {
 pub struct RelayRuntimeConfig {
     pub interval: Duration,
     pub relay: OutboxRelay,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutboxRelaySupervisorMetricsSnapshot {
+    pub restart_total: u64,
+}
+
+pub fn outbox_relay_supervisor_metrics_snapshot() -> OutboxRelaySupervisorMetricsSnapshot {
+    OutboxRelaySupervisorMetricsSnapshot {
+        restart_total: OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.load(Ordering::Relaxed),
+    }
 }
 
 pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
@@ -112,6 +126,7 @@ pub fn spawn_outbox_relay_worker(
                         tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
                         return;
                     }
+                    OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.fetch_add(1, Ordering::Relaxed);
                     if let Err(panic) = result {
                         tracing::error!(
                             "Outbox relay worker panicked: {:?}. Restarting in 5s.",
@@ -126,6 +141,8 @@ pub fn spawn_outbox_relay_worker(
                                 return;
                             }
                         }
+                    } else {
+                        tracing::warn!("Outbox relay worker exited unexpectedly. Restarting.");
                     }
                     // Inner task completed normally (shouldn't happen); loop back.
                 }

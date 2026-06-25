@@ -6,14 +6,17 @@ use axum::{
 };
 use loco_rs::{app::AppContext, controller::Routes};
 
-use crate::common::settings::{EventTransportKind, RustokSettings};
+use crate::common::settings::{EmailProvider, EventTransportKind, RustokSettings};
 use crate::error::Result;
 use crate::services::app_lifecycle::{
     BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
 };
-use crate::services::event_transport_factory::EventRuntime;
+use crate::services::event_transport_factory::{
+    outbox_relay_supervisor_metrics_snapshot, EventRuntime, OutboxRelaySupervisorMetricsSnapshot,
+};
 use chrono::Utc;
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
+use rustok_outbox::RelayMetricsSnapshot;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     Statement,
@@ -29,6 +32,7 @@ use crate::middleware::rate_limit::{
 use crate::middleware::tenant::{tenant_cache_stats, TenantCacheStats};
 use crate::models::_entities::tenants::{Column as TenantsColumn, Entity as TenantsEntity};
 use crate::services::auth_lifecycle::AuthLifecycleService;
+use crate::services::email::{email_delivery_metrics_snapshot, EmailDeliveryMetricsSnapshot};
 use crate::services::rbac_consistency::{load_rbac_consistency_stats, RbacConsistencyStats};
 use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
 use crate::services::runtime_guardrails::{
@@ -64,6 +68,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             payload.push_str(&render_tenant_locale_cache_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
             payload.push_str(&render_runtime_worker_metrics(&ctx));
+            payload.push_str(&render_email_backend_metrics(&ctx));
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
             payload.push_str(&render_search_metrics(&ctx).await);
@@ -329,7 +334,20 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
         .map(|event| (Utc::now() - event.created_at).num_seconds().max(0))
         .unwrap_or(0);
 
-    format_outbox_metrics(backlog_size, dlq_total, retries_total, pending_lag_seconds)
+    let mut payload =
+        format_outbox_metrics(backlog_size, dlq_total, retries_total, pending_lag_seconds);
+    let relay_metrics = ctx
+        .shared_store
+        .get::<Arc<EventRuntime>>()
+        .and_then(|runtime| {
+            runtime
+                .relay_config
+                .as_ref()
+                .map(|relay_config| relay_config.relay.metrics())
+        })
+        .unwrap_or_default();
+    payload.push_str(&format_outbox_relay_runtime_metrics(relay_metrics));
+    payload
 }
 
 fn format_outbox_metrics(
@@ -346,6 +364,24 @@ rustok_outbox_pending_lag_seconds {pending_lag_seconds}\n\
 outbox_backlog_size {backlog_size}\n\
 outbox_dlq_total {dlq_total}\n\
 outbox_retries_total {retries_total}\n",
+    )
+}
+
+fn format_outbox_relay_runtime_metrics(snapshot: RelayMetricsSnapshot) -> String {
+    format!(
+        "rustok_outbox_relay_processed_total {processed_total}\n\
+rustok_outbox_relay_success_total {success_total}\n\
+rustok_outbox_relay_failure_total {failure_total}\n\
+rustok_outbox_relay_retry_total {retry_total}\n\
+rustok_outbox_relay_dlq_total {dlq_total}\n\
+rustok_outbox_relay_latency_ms_total {latency_ms_total}\n\
+rustok_outbox_relay_latency_samples {processed_total}\n",
+        processed_total = snapshot.processed_total,
+        success_total = snapshot.success_total,
+        failure_total = snapshot.failure_total,
+        retry_total = snapshot.retry_total,
+        dlq_total = snapshot.dlq_total,
+        latency_ms_total = snapshot.latency_ms_total,
     )
 }
 
@@ -380,6 +416,9 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
             .get_ref::<RemoteExecutorReaperHandle>()
             .map(|handle| handle.is_finished()),
     ));
+    payload.push_str(&format_runtime_worker_restart_metrics(
+        outbox_relay_supervisor_metrics_snapshot(),
+    ));
 
     #[cfg(feature = "mod-seo")]
     payload.push_str(&format_runtime_worker_state(
@@ -406,6 +445,53 @@ fn format_runtime_worker_state(
     };
 
     format!("rustok_runtime_worker_state{{worker=\"{worker}\"}} {state}\n")
+}
+
+fn format_runtime_worker_restart_metrics(snapshot: OutboxRelaySupervisorMetricsSnapshot) -> String {
+    format!(
+        "rustok_runtime_worker_restarts_total{{worker=\"outbox_relay\"}} {restart_total}\n",
+        restart_total = snapshot.restart_total,
+    )
+}
+
+fn render_email_backend_metrics(ctx: &AppContext) -> String {
+    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+    let mut payload = format_email_backend_state(
+        &settings.email.provider,
+        settings.email.enabled,
+        ctx.mailer.is_some(),
+    );
+    payload.push_str(&format_email_delivery_metrics(
+        email_delivery_metrics_snapshot(),
+    ));
+    payload
+}
+
+fn format_email_backend_state(
+    provider: &EmailProvider,
+    smtp_enabled: bool,
+    loco_mailer_initialized: bool,
+) -> String {
+    let (provider_label, state) = match provider {
+        EmailProvider::None => ("none", 0),
+        EmailProvider::Smtp if smtp_enabled => ("smtp", 1),
+        EmailProvider::Smtp => ("smtp", 0),
+        EmailProvider::Loco if loco_mailer_initialized => ("loco", 1),
+        EmailProvider::Loco => ("loco", 2),
+    };
+
+    format!("rustok_email_backend_state{{provider=\"{provider_label}\"}} {state}\n")
+}
+
+fn format_email_delivery_metrics(snapshot: EmailDeliveryMetricsSnapshot) -> String {
+    format!(
+        "rustok_email_send_success_total {success_total}\n\
+rustok_email_send_failure_total {failure_total}\n\
+rustok_email_send_skipped_total {skipped_total}\n",
+        success_total = snapshot.success_total,
+        failure_total = snapshot.failure_total,
+        skipped_total = snapshot.skipped_total,
+    )
 }
 
 async fn render_rbac_metrics(ctx: &AppContext) -> String {
@@ -639,13 +725,18 @@ fn format_rbac_metrics(
 #[cfg(test)]
 mod tests {
     use super::{
-        format_outbox_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
-        format_runtime_worker_state, format_tenant_activity_metrics, format_tenant_cache_metrics,
+        format_email_backend_state, format_email_delivery_metrics, format_outbox_metrics,
+        format_outbox_relay_runtime_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
+        format_runtime_worker_restart_metrics, format_runtime_worker_state,
+        format_tenant_activity_metrics, format_tenant_cache_metrics,
         format_tenant_locale_cache_metrics, render_auth_lifecycle_metrics,
     };
+    use crate::common::settings::EmailProvider;
     use crate::middleware::locale::TenantLocaleCacheStats;
     use crate::middleware::tenant::TenantCacheStats;
     use crate::services::auth_lifecycle::AuthLifecycleService;
+    use crate::services::email::EmailDeliveryMetricsSnapshot;
+    use crate::services::event_transport_factory::OutboxRelaySupervisorMetricsSnapshot;
     use crate::services::rbac_service::RbacService;
     use crate::services::runtime_guardrails::{
         EventBusGuardrailSnapshot, EventTransportGuardrailSnapshot, RateLimitGuardrailSnapshot,
@@ -653,6 +744,7 @@ mod tests {
         RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
     };
     use rustok_cache::CacheService;
+    use rustok_outbox::RelayMetricsSnapshot;
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
         let has_exact_line = payload.lines().any(|line| {
@@ -762,6 +854,28 @@ mod tests {
     }
 
     #[test]
+    fn outbox_relay_runtime_metrics_include_throughput_and_latency_counters() {
+        let payload = format_outbox_relay_runtime_metrics(RelayMetricsSnapshot {
+            success_total: 8,
+            failure_total: 2,
+            retry_total: 3,
+            dlq_total: 1,
+            latency_ms_total: 250,
+            processed_total: 10,
+        });
+
+        assert_metric_line(&payload, "rustok_outbox_relay_processed_total");
+        assert_metric_line(&payload, "rustok_outbox_relay_success_total");
+        assert_metric_line(&payload, "rustok_outbox_relay_failure_total");
+        assert_metric_line(&payload, "rustok_outbox_relay_retry_total");
+        assert_metric_line(&payload, "rustok_outbox_relay_dlq_total");
+        assert_metric_line(&payload, "rustok_outbox_relay_latency_ms_total");
+        assert_metric_line(&payload, "rustok_outbox_relay_latency_samples");
+        assert!(payload.contains("rustok_outbox_relay_processed_total 10"));
+        assert!(payload.contains("rustok_outbox_relay_latency_ms_total 250"));
+    }
+
+    #[test]
     fn runtime_worker_metrics_encode_disabled_running_stopped_and_missing_states() {
         assert_eq!(
             format_runtime_worker_state("build_executor", false, None),
@@ -779,6 +893,52 @@ mod tests {
             format_runtime_worker_state("outbox_relay", true, None),
             "rustok_runtime_worker_state{worker=\"outbox_relay\"} -1\n"
         );
+    }
+
+    #[test]
+    fn runtime_worker_restart_metrics_include_outbox_relay_counter() {
+        let payload = format_runtime_worker_restart_metrics(OutboxRelaySupervisorMetricsSnapshot {
+            restart_total: 4,
+        });
+
+        assert_metric_labeled_line(
+            &payload,
+            "rustok_runtime_worker_restarts_total",
+            "{worker=\"outbox_relay\"}",
+        );
+        assert!(payload.contains("rustok_runtime_worker_restarts_total{worker=\"outbox_relay\"} 4"));
+    }
+
+    #[test]
+    fn email_backend_metrics_encode_disabled_enabled_and_degraded_states() {
+        assert_eq!(
+            format_email_backend_state(&EmailProvider::None, false, false),
+            "rustok_email_backend_state{provider=\"none\"} 0\n"
+        );
+        assert_eq!(
+            format_email_backend_state(&EmailProvider::Smtp, true, false),
+            "rustok_email_backend_state{provider=\"smtp\"} 1\n"
+        );
+        assert_eq!(
+            format_email_backend_state(&EmailProvider::Loco, true, false),
+            "rustok_email_backend_state{provider=\"loco\"} 2\n"
+        );
+    }
+
+    #[test]
+    fn email_delivery_metrics_include_success_failure_and_skipped_counters() {
+        let payload = format_email_delivery_metrics(EmailDeliveryMetricsSnapshot {
+            success_total: 3,
+            failure_total: 2,
+            skipped_total: 1,
+        });
+
+        assert_metric_line(&payload, "rustok_email_send_success_total");
+        assert_metric_line(&payload, "rustok_email_send_failure_total");
+        assert_metric_line(&payload, "rustok_email_send_skipped_total");
+        assert!(payload.contains("rustok_email_send_success_total 3"));
+        assert!(payload.contains("rustok_email_send_failure_total 2"));
+        assert!(payload.contains("rustok_email_send_skipped_total 1"));
     }
 
     #[tokio::test]
