@@ -10,7 +10,6 @@ default = []
 server = [
   "dep:async-graphql",
   "dep:axum",
-  "dep:rustok-core",
   "dep:sea-orm",
 ]
 loco-adapter = ["server", "dep:loco-rs", "dep:rustok-outbox"]
@@ -20,7 +19,7 @@ async-graphql = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 base64.workspace = true
 loco-rs = { workspace = true, optional = true }
-rustok-core = { workspace = true, optional = true }
+rustok-core.workspace = true
 rustok-outbox = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde.workspace = true

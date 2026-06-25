@@ -1,24 +1,20 @@
 # RUSTSEC-2023-0071 remediation note
 
-## Summary
+## Статус
 
-`cargo deny` reports `RUSTSEC-2023-0071` through `rsa 0.9.10`.
+Устранено 25 июня 2026 года.
 
-In this workspace, `rsa` is currently pulled transitively and cannot be moved to a fixed release with a plain `cargo update -p rsa --workspace` under the currently resolved dependency constraints.
+Workspace переведён с backend `jsonwebtoken/rust_crypto` на
+`jsonwebtoken/aws_lc_rs`. Поддержка `HS256` и `RS256` сохранена, а транзитивная
+зависимость от `rsa 0.9.10` удалена.
 
-## Reproduction
+## Проверка
 
 ```bash
 cargo tree -i rsa@0.9.10 --workspace
-cargo update -p rsa --workspace
+cargo deny check advisories
+cargo test -p rustok-auth --lib
 ```
 
-The update command currently reports no lockfile changes.
-
-## Temporary policy
-
-`deny.toml` temporarily ignores `RUSTSEC-2023-0071` to keep CI green while upstream dependency updates are prepared.
-
-## Required follow-up
-
-Re-run dependency refresh in a future bump cycle and remove the ignore once `rsa 0.9.10` is no longer present in `Cargo.lock`.
+Первая команда не должна находить обратных зависимостей. Исключение
+`RUSTSEC-2023-0071` удалено из `deny.toml`.

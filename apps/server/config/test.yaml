@@ -19,7 +19,7 @@ database:
 
 auth:
   jwt:
-    secret: test-secret
+    secret: test-secret-key-for-rustok-tests-32bytes
     expiration: 3600
 
 settings:

@@ -165,7 +165,7 @@ utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
 rhai = "1.24"
 argon2 = "0.5"
-jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.4.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
 password-hash = "0.6"
 sha2 = "0.11"

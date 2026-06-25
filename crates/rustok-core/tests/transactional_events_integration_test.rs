@@ -1,6 +1,6 @@
 mod support;
 
-use rustok_core::events::DomainEvent;
+use rustok_core::events::{DomainEvent, MemoryTransport};
 use rustok_outbox::entity::SysEventStatus;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
@@ -225,4 +225,31 @@ async fn test_pending_status_after_publish() {
 
     let pending_count = count_for_tenant(&events, tenant_id);
     assert_eq!(pending_count, 1);
+}
+
+#[tokio::test]
+async fn test_transactional_publish_rejects_non_outbox_transport() {
+    let db = setup_test_db().await;
+    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let txn = db.begin().await.unwrap();
+
+    let result = event_bus
+        .publish_in_tx(
+            &txn,
+            Uuid::new_v4(),
+            None,
+            DomainEvent::NodeCreated {
+                node_id: Uuid::new_v4(),
+                kind: "post".to_string(),
+                author_id: None,
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("requires OutboxTransport"));
+    txn.rollback().await.unwrap();
 }

@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use sea_orm::{
     sea_query::{LockBehavior, LockType},
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::from_value;
 use uuid::Uuid;

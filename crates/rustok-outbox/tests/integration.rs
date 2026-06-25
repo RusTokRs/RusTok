@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -24,6 +25,18 @@ struct MockTransport {
     remaining_failures: Mutex<HashMap<Uuid, usize>>,
 }
 
+#[derive(Default)]
+struct TrackingTransport {
+    active: AtomicUsize,
+    max_active: AtomicUsize,
+}
+
+impl TrackingTransport {
+    fn max_active(&self) -> usize {
+        self.max_active.load(Ordering::SeqCst)
+    }
+}
+
 impl MockTransport {
     async fn fail_n_times_for(&self, event_id: Uuid, n: usize) {
         self.remaining_failures.lock().await.insert(event_id, n);
@@ -46,6 +59,25 @@ impl EventTransport for MockTransport {
         }
 
         self.delivered.lock().await.push(envelope.id);
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::Outbox
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[async_trait]
+impl EventTransport for TrackingTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> Result<()> {
+        let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_active.fetch_max(active, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        self.active.fetch_sub(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -183,6 +215,54 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn relay_reclaims_stale_claims() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    let envelope = seed_event(&db).await?;
+    let mut claimed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record")
+        .into();
+    claimed.claimed_by = Set(Some("dead-worker".to_string()));
+    claimed.claimed_at = Set(Some(Utc::now() - chrono::Duration::seconds(10)));
+    claimed.update(&db).await?;
+
+    let relay =
+        OutboxRelay::new(db.clone(), Arc::new(MockTransport::default())).with_config(RelayConfig {
+            claim_ttl: std::time::Duration::from_millis(1),
+            ..Default::default()
+        });
+
+    assert_eq!(relay.process_pending_once().await?, 1);
+    let record = entity::Entity::find_by_id(envelope.id)
+        .one(&db)
+        .await?
+        .expect("event record");
+    assert_eq!(record.status, SysEventStatus::Dispatched);
+    assert!(record.claimed_by.is_none());
+    assert!(record.claimed_at.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_bounds_parallel_dispatch() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    for _ in 0..4 {
+        seed_event(&db).await?;
+    }
+    let transport = Arc::new(TrackingTransport::default());
+    let relay = OutboxRelay::new(db, transport.clone()).with_config(RelayConfig {
+        batch_size: 4,
+        max_concurrency: 2,
+        ..Default::default()
+    });
+
+    assert_eq!(relay.process_pending_once().await?, 4);
+    assert_eq!(transport.max_active(), 2);
+    Ok(())
+}
+
 async fn setup_db() -> TestResult<Option<DatabaseConnection>> {
     let database_url = match std::env::var("RUSTOK_OUTBOX_TEST_DATABASE_URL")
         .or_else(|_| std::env::var("DATABASE_URL"))
@@ -220,6 +300,13 @@ async fn setup_db() -> TestResult<Option<DatabaseConnection>> {
     Ok(Some(db))
 }
 
+async fn setup_sqlite_db() -> TestResult<DatabaseConnection> {
+    let db = Database::connect("sqlite::memory:").await?;
+    let schema_manager = SchemaManager::new(&db);
+    SysEventsMigration.up(&schema_manager).await?;
+    Ok(db)
+}
+
 async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
     let envelope = EventEnvelope::new(
         Uuid::nil(),
@@ -245,7 +332,9 @@ async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
         created_at: Set(Utc::now()),
         dispatched_at: Set(None),
     };
-    model.insert(db).await?;
+    entity::Entity::insert(model)
+        .exec_without_returning(db)
+        .await?;
 
     Ok(envelope)
 }
