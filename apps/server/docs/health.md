@@ -41,6 +41,24 @@ binary `migrate_legacy_richtext` требует `mod-content`. Reduced/headless 
 - `event_transport` — критичная проверка инициализации event transport;
 - `search_backend` — не-критичная проверка search connectivity.
 
+### Runtime worker checks
+
+В full runtime `/health/ready` дополнительно сверяет обязательные фоновые workers с фактическими
+handles в `AppContext.shared_store`.
+
+Проверки публикуются в `checks` с `kind = "worker"`:
+
+- `worker:outbox_relay` — критичный worker, если `rustok.events.transport = "outbox"` и runtime
+  построил relay config;
+- `worker:build_executor` — критичный worker, если `rustok.build.enabled = true`;
+- `worker:remote_executor_reaper` — критичный worker, если `rustok.registry.remote_executor.enabled = true`;
+- `worker:seo_bulk` — критичный worker, если включён SEO bulk worker и сборка содержит `mod-seo`.
+
+Если worker отключён настройками, check остаётся `ok` и `non_critical` с reason
+`worker disabled by runtime settings`. Если обязательный worker не зарегистрирован в `shared_store`
+или его task уже завершился, check становится `critical` + `unhealthy`. Это не даёт считать full
+runtime ready до запуска обязательного relay/worker lifecycle.
+
 ### Registry-only mode
 
 В `settings.rustok.runtime.host_mode = "registry_only"` readiness выравнивается под реально поднятый surface:
@@ -75,6 +93,18 @@ Prometheus surface теперь также публикует:
 - `rustok_runtime_guardrail_remote_executor_active_claims`
 - `rustok_runtime_guardrail_remote_executor_expired_claims`
 - `rustok_runtime_guardrail_remote_executor_config{setting="lease_ttl_ms|requeue_scan_interval_ms"}`
+
+Worker/readiness metrics:
+
+- `rustok_runtime_worker_state{worker="outbox_relay|build_executor|remote_executor_reaper|seo_bulk"}`:
+  `-1 = missing`, `0 = disabled`, `1 = running`, `2 = stopped`.
+
+Outbox relay metrics:
+
+- `rustok_outbox_backlog_size`
+- `rustok_outbox_pending_lag_seconds`
+- `rustok_outbox_retries_total`
+- `rustok_outbox_dlq_total`
 
 Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
 

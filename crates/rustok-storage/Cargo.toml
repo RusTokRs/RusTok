@@ -22,8 +22,8 @@ chrono = { workspace = true }
 mime_guess = "2.0"
 
 # Optional S3 backend
-aws-sdk-s3 = { version = "1", optional = true }
-aws-config  = { version = "1", optional = true }
+aws-sdk-s3 = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio", "sigv4a"] }
+aws-config  = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["mime_guess"]

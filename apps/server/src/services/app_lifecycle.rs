@@ -68,6 +68,10 @@ impl OutboxRelayWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
+    }
 }
 
 pub struct BuildWorkerHandle {
@@ -79,6 +83,10 @@ impl BuildWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
     }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
+    }
 }
 
 pub struct RemoteExecutorReaperHandle {
@@ -89,6 +97,10 @@ pub struct RemoteExecutorReaperHandle {
 impl RemoteExecutorReaperHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
     }
 }
 
@@ -102,6 +114,10 @@ pub struct SeoBulkWorkerHandle {
 impl SeoBulkWorkerHandle {
     pub fn instance_id(&self) -> u64 {
         self.instance_id
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self._handle.is_finished()
     }
 }
 

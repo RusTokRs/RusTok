@@ -1,52 +1,45 @@
-# RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104 remediation note
+# RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104: устранение
 
-## Summary
+## Статус
 
-`rustls-webpki` advisory fixes require `>=0.103.13`, but the workspace currently reaches `rustls-webpki 0.101.7` through `rustls 0.21.x` pulled by `aws-smithy-http-client 1.1.13` (via `aws-config` / `aws-sdk-s3`).
+Закрыто: 2026-06-25.
 
-At the moment, `cargo update` cannot move this chain to a non-vulnerable `rustls-webpki` because upstream semver constraints in the resolved AWS SDK dependency graph still pin the legacy `rustls 0.21` line.
+Workspace больше не содержит `rustls-webpki 0.101.7` и `rustls 0.21.12`. Ветка AWS SDK/S3 переведена на modern TLS path через `aws-smithy-http-client` с `rustls 0.23.40` и `rustls-webpki 0.103.13`.
 
-## Reproduction
+## Что изменено
+
+- В `crates/rustok-storage/Cargo.toml` для `aws-sdk-s3` и `aws-config` отключены default features.
+- Для S3 backend явно включены только необходимые runtime/TLS features:
+  - `behavior-version-latest`;
+  - `default-https-client`;
+  - `rt-tokio`;
+  - `sigv4a` для `aws-sdk-s3`.
+- Legacy feature `rustls`, которая тянула `rustls 0.21.x`, больше не включается.
+- Из `deny.toml` удалены временные ignores:
+  - `RUSTSEC-2026-0098`;
+  - `RUSTSEC-2026-0099`;
+  - `RUSTSEC-2026-0104`.
+
+## Проверка
+
+Выполнены локальные проверки:
 
 ```bash
+cargo check -p rustok-storage --features s3
 cargo tree -i rustls-webpki@0.101.7 --workspace
-cargo update -p rustls-webpki@0.101.7 --precise 0.103.13 --workspace
-```
-
-The second command fails with:
-
-- `failed to select a version for the requirement rustls-webpki = "^0.101.7"`
-- required by `rustls v0.21.12` from `aws-smithy-http-client v1.1.13`
-
-## Temporary policy
-
-`deny.toml` advisory ignores were added for:
-
-- `RUSTSEC-2026-0098`
-- `RUSTSEC-2026-0099`
-- `RUSTSEC-2026-0104`
-
-This is a temporary unblock until the AWS SDK chain can be updated to a `rustls` line that accepts fixed `rustls-webpki` versions.
-
-Latest local triage on 2026-06-25 updated `aws-smithy-http-client` from `1.1.12` to
-`1.1.13`, but the dependency tree still retains the legacy `rustls 0.21` branch:
-
-```bash
-cargo update -p aws-config@1.8.18 -p aws-sdk-s3@1.137.0 -p aws-smithy-runtime@1.11.3 -p aws-smithy-http-client@1.1.12
-cargo tree -i rustls-webpki@0.101.7 --workspace
-```
-
-The remaining path is still `rustok-storage` S3 support via `aws-config` /
-`aws-sdk-s3`. Keep the ignore entries release-blocking unless the rollout either
-updates this chain or explicitly disables S3 support in the production build.
-
-## Required follow-up
-
-In a future dependency refresh, run:
-
-```bash
-cargo update -p aws-config -p aws-sdk-s3 -p aws-smithy-runtime -p aws-smithy-http-client
+cargo tree -i rustls@0.21.12 --workspace
 cargo tree -i rustls-webpki --workspace
 ```
 
-Then remove all three ignore entries from `deny.toml` after `rustls-webpki 0.101.7` is no longer present in `Cargo.lock`.
+Ожидаемый результат:
+
+- `rustls-webpki@0.101.7` не найден;
+- `rustls@0.21.12` не найден;
+- `rustls-webpki` резолвится в `0.103.13`;
+- S3 backend компилируется с обновлённым набором features.
+
+Финальный gate для advisory policy:
+
+```bash
+cargo deny check advisories
+```

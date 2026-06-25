@@ -95,6 +95,8 @@ pub struct EmailSettings {
     #[serde(default)]
     pub provider: EmailProvider,
     #[serde(default)]
+    pub allow_disabled_in_production: bool,
+    #[serde(default)]
     pub smtp: SmtpSettings,
     #[serde(default = "default_email_from")]
     pub from: String,
@@ -130,6 +132,7 @@ impl Default for EmailSettings {
         Self {
             enabled: false,
             provider: EmailProvider::Smtp,
+            allow_disabled_in_production: false,
             smtp: SmtpSettings::default(),
             from: default_email_from(),
             reset_base_url: default_reset_base_url(),
@@ -723,6 +726,17 @@ impl RustokSettings {
             )));
         }
 
+        if is_production_environment()
+            && email_delivery_is_disabled(&parsed.email)
+            && !parsed.email.allow_disabled_in_production
+            && !email_disabled_production_override_enabled()
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.email is disabled in production; configure an email provider or set rustok.email.allow_disabled_in_production=true / RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION=true as an explicit emergency override",
+            )));
+        }
+
         let backpressure = &parsed.events.backpressure;
         if backpressure.enabled {
             if backpressure.max_queue_depth == 0 {
@@ -1202,11 +1216,40 @@ fn default_smtp_port() -> u16 {
     1025
 }
 
+fn email_delivery_is_disabled(settings: &EmailSettings) -> bool {
+    matches!(settings.provider, EmailProvider::None)
+        || matches!(settings.provider, EmailProvider::Smtp) && !settings.enabled
+}
+
+fn is_production_environment() -> bool {
+    ["RUST_ENV", "APP_ENV", "LOCO_ENV"].iter().any(|key| {
+        std::env::var(key)
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "prod" | "production"
+                )
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn email_disabled_production_override_enabled() -> bool {
+    std::env::var("RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION")
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        BuildDeploymentBackendKind, EventTransportKind, GuardrailRolloutMode, RateLimitBackendKind,
-        RelayTargetKind, RustokSettings,
+        BuildDeploymentBackendKind, EmailProvider, EventTransportKind, GuardrailRolloutMode,
+        RateLimitBackendKind, RelayTargetKind, RustokSettings,
     };
     use std::sync::{Mutex, OnceLock};
 
@@ -1214,6 +1257,10 @@ mod tests {
     const RUNTIME_HOST_MODE_ENV: &str = "RUSTOK_RUNTIME_HOST_MODE";
     const RUSTOK_REDIS_URL_ENV: &str = "RUSTOK_REDIS_URL";
     const REDIS_URL_ENV: &str = "REDIS_URL";
+    const RUST_ENV_ENV: &str = "RUST_ENV";
+    const APP_ENV_ENV: &str = "APP_ENV";
+    const LOCO_ENV_ENV: &str = "LOCO_ENV";
+    const EMAIL_DISABLED_PROD_OVERRIDE_ENV: &str = "RUSTOK_EMAIL_ALLOW_DISABLED_IN_PRODUCTION";
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -1347,6 +1394,132 @@ mod tests {
         let err =
             RustokSettings::from_settings(&Some(bad_dlq)).expect_err("dlq validation expected");
         assert!(err.to_string().contains("dlq.max_attempts must be > 0"));
+    }
+
+    #[test]
+    fn rejects_disabled_smtp_email_in_production_without_override() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
+        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
+        let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
+        let _rust_env_guard = EnvVarGuard::set(RUST_ENV_ENV, "production");
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "provider": "smtp",
+                    "enabled": false
+                }
+            }
+        });
+
+        let err = RustokSettings::from_settings(&Some(raw)).expect_err("email validation");
+        assert!(err
+            .to_string()
+            .contains("rustok.email is disabled in production"));
+    }
+
+    #[test]
+    fn rejects_none_email_provider_in_production_without_override() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
+        let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
+        let _app_env_guard = EnvVarGuard::set(APP_ENV_ENV, "prod");
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "provider": "none"
+                }
+            }
+        });
+
+        let err = RustokSettings::from_settings(&Some(raw)).expect_err("email validation");
+        assert!(err
+            .to_string()
+            .contains("rustok.email is disabled in production"));
+    }
+
+    #[test]
+    fn accepts_enabled_smtp_email_in_production() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _rust_env_guard = EnvVarGuard::clear(RUST_ENV_ENV);
+        let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
+        let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
+        let _loco_env_guard = EnvVarGuard::set(LOCO_ENV_ENV, "production");
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "enabled": true,
+                    "provider": "smtp",
+                    "from": "no-reply@example.com",
+                    "reset_base_url": "https://example.com/reset-password"
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
+        assert_eq!(settings.email.provider, EmailProvider::Smtp);
+        assert!(settings.email.enabled);
+    }
+
+    #[test]
+    fn accepts_disabled_email_in_production_with_config_override() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
+        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
+        let _override_guard = EnvVarGuard::clear(EMAIL_DISABLED_PROD_OVERRIDE_ENV);
+        let _rust_env_guard = EnvVarGuard::set(RUST_ENV_ENV, "production");
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "provider": "none",
+                    "allow_disabled_in_production": true
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
+        assert_eq!(settings.email.provider, EmailProvider::None);
+        assert!(settings.email.allow_disabled_in_production);
+    }
+
+    #[test]
+    fn accepts_disabled_email_in_production_with_env_override() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+        let _app_env_guard = EnvVarGuard::clear(APP_ENV_ENV);
+        let _loco_env_guard = EnvVarGuard::clear(LOCO_ENV_ENV);
+        let _rust_env_guard = EnvVarGuard::set(RUST_ENV_ENV, "production");
+        let _override_guard = EnvVarGuard::set(EMAIL_DISABLED_PROD_OVERRIDE_ENV, "true");
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "email": {
+                    "provider": "none"
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
+        assert_eq!(settings.email.provider, EmailProvider::None);
     }
 
     #[test]

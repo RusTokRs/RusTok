@@ -51,6 +51,16 @@ settings:
       oauth_requests_per_minute: 30
       oauth_burst: 5
       trusted_auth_dimensions: true
+    email:
+      enabled: true
+      provider: smtp
+      from: no-reply@example.com
+      reset_base_url: https://admin.example.com/reset-password
+      smtp:
+        host: smtp.example.com
+        port: 587
+        username: CHANGE_ME
+        password: CHANGE_ME
     runtime:
       guardrails:
         rollout: observe

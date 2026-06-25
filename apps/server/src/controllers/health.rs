@@ -18,13 +18,17 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
-use crate::common::settings::RustokSettings;
+use crate::common::settings::{EventTransportKind, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
 use crate::middleware::tenant::{
     tenant_invalidation_listener_snapshot, TenantInvalidationListenerStatus,
 };
+use crate::services::app_lifecycle::{
+    BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
+};
+use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
 };
@@ -248,6 +252,7 @@ pub async fn ready(
             .await,
         );
         checks.push(check_runtime_guardrails(&ctx).await);
+        checks.extend(check_runtime_workers(&ctx, &settings));
 
         #[cfg(feature = "mod-media")]
         checks.push(
@@ -452,6 +457,87 @@ async fn check_event_transport(ctx: &AppContext) -> std::result::Result<(), Stri
         .get::<Arc<dyn EventTransport>>()
         .map(|_| ())
         .ok_or_else(|| "event transport not initialized in shared_store".to_string())
+}
+
+fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<ReadinessCheck> {
+    let relay_required = settings.events.transport == EventTransportKind::Outbox
+        && ctx
+            .shared_store
+            .get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
+            .and_then(|runtime| runtime.relay_config.clone())
+            .is_some();
+
+    let mut checks = vec![runtime_worker_check(
+        "worker:outbox_relay",
+        relay_required,
+        ctx.shared_store
+            .get_ref::<OutboxRelayWorkerHandle>()
+            .map(|handle| handle.is_finished()),
+    )];
+
+    checks.push(runtime_worker_check(
+        "worker:build_executor",
+        settings.build.enabled,
+        ctx.shared_store
+            .get_ref::<BuildWorkerHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+
+    checks.push(runtime_worker_check(
+        "worker:remote_executor_reaper",
+        settings.registry.remote_executor.enabled,
+        ctx.shared_store
+            .get_ref::<RemoteExecutorReaperHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+
+    #[cfg(feature = "mod-seo")]
+    checks.push(runtime_worker_check(
+        "worker:seo_bulk",
+        settings.runtime.background_workers.seo_bulk_enabled,
+        ctx.shared_store
+            .get_ref::<crate::services::app_lifecycle::SeoBulkWorkerHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+
+    checks
+}
+
+fn runtime_worker_check(
+    name: &str,
+    required: bool,
+    handle_finished: Option<bool>,
+) -> ReadinessCheck {
+    let (criticality, status, reason) = if !required {
+        (
+            DependencyCriticality::NonCritical,
+            ReadinessStatus::Ok,
+            Some("worker disabled by runtime settings".to_string()),
+        )
+    } else {
+        match handle_finished {
+            Some(false) => (DependencyCriticality::Critical, ReadinessStatus::Ok, None),
+            Some(true) => (
+                DependencyCriticality::Critical,
+                ReadinessStatus::Unhealthy,
+                Some("required worker task has stopped".to_string()),
+            ),
+            None => (
+                DependencyCriticality::Critical,
+                ReadinessStatus::Unhealthy,
+                Some("required worker handle is missing".to_string()),
+            ),
+        }
+    };
+
+    ReadinessCheck {
+        name: name.to_string(),
+        kind: "worker",
+        criticality,
+        status,
+        latency_ms: 0,
+        reason,
+    }
 }
 
 async fn check_rate_limit_backend(
@@ -810,5 +896,51 @@ mod tests {
 
         assert!(!profile.includes_runtime_dependencies());
         assert!(!profile.includes_module_health());
+    }
+
+    #[test]
+    fn required_runtime_worker_missing_is_unhealthy() {
+        let check = runtime_worker_check("worker:outbox_relay", true, None);
+
+        assert_eq!(check.kind, "worker");
+        assert_eq!(check.criticality, DependencyCriticality::Critical);
+        assert_eq!(check.status, ReadinessStatus::Unhealthy);
+        assert!(check
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("missing")));
+    }
+
+    #[test]
+    fn required_runtime_worker_finished_is_unhealthy() {
+        let check = runtime_worker_check("worker:outbox_relay", true, Some(true));
+
+        assert_eq!(check.criticality, DependencyCriticality::Critical);
+        assert_eq!(check.status, ReadinessStatus::Unhealthy);
+        assert!(check
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("stopped")));
+    }
+
+    #[test]
+    fn required_runtime_worker_running_is_ready() {
+        let check = runtime_worker_check("worker:outbox_relay", true, Some(false));
+
+        assert_eq!(check.criticality, DependencyCriticality::Critical);
+        assert_eq!(check.status, ReadinessStatus::Ok);
+        assert!(check.reason.is_none());
+    }
+
+    #[test]
+    fn disabled_runtime_worker_is_non_critical_ready() {
+        let check = runtime_worker_check("worker:build_executor", false, None);
+
+        assert_eq!(check.criticality, DependencyCriticality::NonCritical);
+        assert_eq!(check.status, ReadinessStatus::Ok);
+        assert!(check
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("disabled")));
     }
 }

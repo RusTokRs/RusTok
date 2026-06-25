@@ -6,12 +6,20 @@ use axum::{
 };
 use loco_rs::{app::AppContext, controller::Routes};
 
+use crate::common::settings::{EventTransportKind, RustokSettings};
 use crate::error::Result;
+use crate::services::app_lifecycle::{
+    BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
+};
+use crate::services::event_transport_factory::EventRuntime;
+use chrono::Utc;
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    Statement,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::middleware::locale::{tenant_locale_cache_stats, TenantLocaleCacheStats};
@@ -55,6 +63,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             payload.push_str(&render_tenant_activity_metrics(&ctx).await);
             payload.push_str(&render_tenant_locale_cache_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
+            payload.push_str(&render_runtime_worker_metrics(&ctx));
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
             payload.push_str(&render_search_metrics(&ctx).await);
@@ -310,18 +319,93 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
         .and_then(|row| row.try_get::<i64>("", "total").ok())
         .unwrap_or(0);
 
-    format_outbox_metrics(backlog_size, dlq_total, retries_total)
+    let pending_lag_seconds = SysEventsEntity::find()
+        .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
+        .order_by_asc(SysEventsColumn::CreatedAt)
+        .one(&ctx.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|event| (Utc::now() - event.created_at).num_seconds().max(0))
+        .unwrap_or(0);
+
+    format_outbox_metrics(backlog_size, dlq_total, retries_total, pending_lag_seconds)
 }
 
-fn format_outbox_metrics(backlog_size: u64, dlq_total: u64, retries_total: i64) -> String {
+fn format_outbox_metrics(
+    backlog_size: u64,
+    dlq_total: u64,
+    retries_total: i64,
+    pending_lag_seconds: i64,
+) -> String {
     format!(
         "rustok_outbox_backlog_size {backlog_size}\n\
 rustok_outbox_dlq_total {dlq_total}\n\
 rustok_outbox_retries_total {retries_total}\n\
+rustok_outbox_pending_lag_seconds {pending_lag_seconds}\n\
 outbox_backlog_size {backlog_size}\n\
 outbox_dlq_total {dlq_total}\n\
 outbox_retries_total {retries_total}\n",
     )
+}
+
+fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
+    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+    let relay_required = settings.events.transport == EventTransportKind::Outbox
+        && ctx
+            .shared_store
+            .get::<Arc<EventRuntime>>()
+            .and_then(|runtime| runtime.relay_config.clone())
+            .is_some();
+
+    let mut payload = String::new();
+    payload.push_str(&format_runtime_worker_state(
+        "outbox_relay",
+        relay_required,
+        ctx.shared_store
+            .get_ref::<OutboxRelayWorkerHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+    payload.push_str(&format_runtime_worker_state(
+        "build_executor",
+        settings.build.enabled,
+        ctx.shared_store
+            .get_ref::<BuildWorkerHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+    payload.push_str(&format_runtime_worker_state(
+        "remote_executor_reaper",
+        settings.registry.remote_executor.enabled,
+        ctx.shared_store
+            .get_ref::<RemoteExecutorReaperHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+
+    #[cfg(feature = "mod-seo")]
+    payload.push_str(&format_runtime_worker_state(
+        "seo_bulk",
+        settings.runtime.background_workers.seo_bulk_enabled,
+        ctx.shared_store
+            .get_ref::<crate::services::app_lifecycle::SeoBulkWorkerHandle>()
+            .map(|handle| handle.is_finished()),
+    ));
+
+    payload
+}
+
+fn format_runtime_worker_state(
+    worker: &str,
+    required: bool,
+    handle_finished: Option<bool>,
+) -> String {
+    let state = match (required, handle_finished) {
+        (false, _) => 0,
+        (true, Some(false)) => 1,
+        (true, Some(true)) => 2,
+        (true, None) => -1,
+    };
+
+    format!("rustok_runtime_worker_state{{worker=\"{worker}\"}} {state}\n")
 }
 
 async fn render_rbac_metrics(ctx: &AppContext) -> String {
@@ -556,10 +640,9 @@ fn format_rbac_metrics(
 mod tests {
     use super::{
         format_outbox_metrics, format_rbac_metrics, format_runtime_guardrail_metrics,
-        format_tenant_activity_metrics, format_tenant_cache_metrics,
+        format_runtime_worker_state, format_tenant_activity_metrics, format_tenant_cache_metrics,
         format_tenant_locale_cache_metrics, render_auth_lifecycle_metrics,
     };
-    use rustok_cache::CacheService;
     use crate::middleware::locale::TenantLocaleCacheStats;
     use crate::middleware::tenant::TenantCacheStats;
     use crate::services::auth_lifecycle::AuthLifecycleService;
@@ -569,6 +652,7 @@ mod tests {
         RateLimitPolicySnapshot, RemoteExecutorGuardrailSnapshot, RuntimeGuardrailRollout,
         RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
     };
+    use rustok_cache::CacheService;
 
     fn assert_metric_line(payload: &str, metric_name: &str) {
         let has_exact_line = payload.lines().any(|line| {
@@ -662,17 +746,39 @@ mod tests {
 
     #[test]
     fn outbox_metrics_include_canonical_names_and_compatibility_aliases() {
-        let payload = format_outbox_metrics(11, 2, 7);
+        let payload = format_outbox_metrics(11, 2, 7, 42);
 
         assert_metric_line(&payload, "rustok_outbox_backlog_size");
         assert_metric_line(&payload, "rustok_outbox_dlq_total");
         assert_metric_line(&payload, "rustok_outbox_retries_total");
+        assert_metric_line(&payload, "rustok_outbox_pending_lag_seconds");
         assert_metric_line(&payload, "outbox_backlog_size");
         assert_metric_line(&payload, "outbox_dlq_total");
         assert_metric_line(&payload, "outbox_retries_total");
         assert!(payload.contains("rustok_outbox_backlog_size 11"));
         assert!(payload.contains("rustok_outbox_dlq_total 2"));
         assert!(payload.contains("rustok_outbox_retries_total 7"));
+        assert!(payload.contains("rustok_outbox_pending_lag_seconds 42"));
+    }
+
+    #[test]
+    fn runtime_worker_metrics_encode_disabled_running_stopped_and_missing_states() {
+        assert_eq!(
+            format_runtime_worker_state("build_executor", false, None),
+            "rustok_runtime_worker_state{worker=\"build_executor\"} 0\n"
+        );
+        assert_eq!(
+            format_runtime_worker_state("outbox_relay", true, Some(false)),
+            "rustok_runtime_worker_state{worker=\"outbox_relay\"} 1\n"
+        );
+        assert_eq!(
+            format_runtime_worker_state("outbox_relay", true, Some(true)),
+            "rustok_runtime_worker_state{worker=\"outbox_relay\"} 2\n"
+        );
+        assert_eq!(
+            format_runtime_worker_state("outbox_relay", true, None),
+            "rustok_runtime_worker_state{worker=\"outbox_relay\"} -1\n"
+        );
     }
 
     #[tokio::test]

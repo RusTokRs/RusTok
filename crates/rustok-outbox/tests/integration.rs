@@ -12,8 +12,8 @@ use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_outbox::{OutboxRelay, RelayConfig, SysEventsMigration};
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
-    DatabaseConnection, EntityTrait, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
 };
 use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 use tokio::sync::Mutex;
@@ -260,6 +260,40 @@ async fn relay_bounds_parallel_dispatch() -> TestResult<()> {
 
     assert_eq!(relay.process_pending_once().await?, 4);
     assert_eq!(transport.max_active(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn relay_processes_baseline_batch_with_bounded_latency() -> TestResult<()> {
+    let db = setup_sqlite_db().await?;
+    for _ in 0..32 {
+        seed_event(&db).await?;
+    }
+    let transport = Arc::new(TrackingTransport::default());
+    let relay = OutboxRelay::new(db.clone(), transport.clone()).with_config(RelayConfig {
+        batch_size: 32,
+        max_concurrency: 8,
+        ..Default::default()
+    });
+
+    let started = std::time::Instant::now();
+    assert_eq!(relay.process_pending_once().await?, 32);
+    let elapsed = started.elapsed();
+
+    assert_eq!(transport.max_active(), 8);
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "relay baseline batch took too long: {elapsed:?}"
+    );
+
+    let remaining_pending = entity::Entity::find()
+        .filter(entity::Column::Status.eq(SysEventStatus::Pending))
+        .all(&db)
+        .await?;
+    assert!(
+        remaining_pending.is_empty(),
+        "baseline batch left pending events"
+    );
     Ok(())
 }
 

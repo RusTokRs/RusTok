@@ -2,6 +2,7 @@ use async_graphql::{Context, FieldError, Object, Result};
 use rust_decimal::Decimal;
 use rustok_api::{graphql::require_module_enabled, AuthContext, TenantContext};
 use rustok_core::Permission;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{

@@ -1,6 +1,5 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{CartService, PricingService, StoreContextService};
