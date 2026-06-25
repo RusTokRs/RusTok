@@ -1,33 +1,16 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rust_decimal::Decimal;
-use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
-    AuthContext, RequestContext, TenantContext,
-};
-use rustok_core::{locale_tags_match, Permission};
-use rustok_inventory::check_variant_availability_for_public_channel;
-use rustok_pricing::PriceResolutionContext;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use serde_json::Value;
-use std::str::FromStr;
+use rustok_api::{graphql::require_module_enabled, AuthContext, TenantContext};
+use rustok_core::Permission;
 use uuid::Uuid;
 
 use crate::{
-    entities::{price_list, product, product_translation, product_variant, variant_translation},
-    storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
-    storefront_shipping::{
-        effective_shipping_profile_slug, enrich_cart_delivery_groups,
-        is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
-    },
-    CartService, CatalogService, CheckoutService, CreateReturnDecisionInput, CustomerService,
     ExchangeDifferenceRefundInput, FulfillmentOrchestrationService, FulfillmentService,
     OrderService, PaymentService, PostOrderOrchestrationService,
-    PricingService, ReturnClaimDecisionInput, ReturnDecisionInput, ReturnExchangeDecisionInput,
-    ReturnRefundDecisionInput, ShippingProfileService, StoreContextService,
 };
 
-use super::helpers::*;
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::helpers::*;
 
 #[derive(Default)]
 pub struct CommerceFulfillmentMutation;
@@ -207,18 +190,18 @@ impl CommerceFulfillmentMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let order_service = OrderService::new(db.clone(), event_bus.clone());
-        let orchestration_service = PostOrderOrchestrationService::new(db.clone(), event_bus.clone());
+        let orchestration_service =
+            PostOrderOrchestrationService::new(db.clone(), event_bus.clone());
 
         // Fetch the order change to inspect its change_type
-        let order_change = order_service
-            .get_order_change(tenant_id, id)
-            .await?;
+        let order_change = order_service.get_order_change(tenant_id, id).await?;
 
         let result = match order_change.change_type.as_str() {
             "exchange" => {
                 let difference_refund = if let Some(diff) = input.difference_refund {
-                    let amount = Decimal::from_str(&diff.amount)
-                        .map_err(|e| FieldError::new(format!("invalid difference refund amount: {e}")))?;
+                    let amount = Decimal::from_str(&diff.amount).map_err(|e| {
+                        FieldError::new(format!("invalid difference refund amount: {e}"))
+                    })?;
                     let metadata = parse_optional_metadata(diff.metadata.as_deref())?;
                     Some(ExchangeDifferenceRefundInput {
                         amount,
@@ -867,5 +850,4 @@ impl CommerceFulfillmentMutation {
 
         Ok(fulfillment.into())
     }
-
 }

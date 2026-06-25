@@ -46,6 +46,4 @@ impl AppContext {
             search,
         })
     }
-
-    pub fn start_background_tasks(&self) {}
 }

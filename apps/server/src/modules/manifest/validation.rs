@@ -1,6 +1,5 @@
 use super::types::*;
-use crate::services::build_service::ModuleSpec as BuildModuleSpec;
-use rustok_core::{normalize_locale_tag, ModuleRegistry};
+use rustok_core::normalize_locale_tag;
 use semver::{Version, VersionReq};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -1180,8 +1179,6 @@ pub fn validate_module_ui_wiring(
     Ok(())
 }
 
-
-
 pub fn module_package_ui_surface_flags(
     spec: &ManifestModuleSpec,
 ) -> Result<ModuleUiSurfaceFlags, ManifestError> {
@@ -1646,7 +1643,10 @@ pub fn validate_admin_surfaces(
     Ok(normalized)
 }
 
-pub fn validate_catalog_metadata(slug: &str, spec: &ManifestModuleSpec) -> Result<(), ManifestError> {
+pub fn validate_catalog_metadata(
+    slug: &str,
+    spec: &ManifestModuleSpec,
+) -> Result<(), ManifestError> {
     let ownership = spec.ownership.trim();
     if !is_valid_module_ownership(ownership) {
         return Err(ManifestError::InvalidModuleOwnership {
@@ -1791,7 +1791,6 @@ pub fn validate_marketplace_asset_url(
     Ok(())
 }
 
-
 pub fn resolve_module_specs(
     manifest: &ModulesManifest,
 ) -> Result<HashMap<String, ManifestModuleSpec>, ManifestError> {
@@ -1889,4 +1888,3 @@ pub fn validate_url(value: &str, field: &str) -> Result<(), ManifestError> {
     })?;
     Ok(())
 }
-

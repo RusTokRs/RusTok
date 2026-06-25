@@ -9,16 +9,16 @@ use loco_rs::app::AppContext;
 #[cfg(feature = "redis-cache")]
 use redis::AsyncCommands;
 use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
+use rustok_core::tenant_validation::TenantIdentifierValidator;
 #[cfg(feature = "redis-cache")]
 use rustok_core::EventConsumerRuntime;
-use rustok_core::tenant_validation::TenantIdentifierValidator;
 use rustok_core::{CacheBackend, Error as CoreError};
 use rustok_tenant::{
     PortActor, PortContext, PortError, PortErrorKind, TenantReadPort, TenantReadProjection,
     TenantReadRequest, TenantReadSelector, TenantService,
 };
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -441,21 +441,6 @@ impl TenantCacheInfrastructure {
                 Ok(None)
             }
         }
-    }
-
-    async fn set_cached_tenant(
-        &self,
-        cache_key: String,
-        context: &TenantContext,
-    ) -> Result<(), StatusCode> {
-        let bytes = serde_json::to_vec(context).map_err(|e| {
-            tracing::error!("Tenant cache serialization error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-        self.tenant_cache
-            .set(cache_key, bytes)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
     }
 
     async fn check_negative(
@@ -1052,14 +1037,14 @@ fn cache_load_error_to_status(error: CoreError) -> StatusCode {
 
 #[cfg(test)]
 mod invalidation_tests {
-    use super::{
-        CachedTenantMiss, resolve_identifier, should_bypass_tenant_resolution,
-        subdomain_identifier, tenant_context_from_projection,
-    };
     #[cfg(feature = "redis-cache")]
     use super::{
-        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
-        parse_invalidation_payload,
+        parse_invalidation_payload, TenantInvalidationListenerState,
+        TenantInvalidationListenerStatus,
+    };
+    use super::{
+        resolve_identifier, should_bypass_tenant_resolution, subdomain_identifier,
+        tenant_context_from_projection, CachedTenantMiss,
     };
     use crate::common::{RustokSettings, TenantFallbackMode};
     use axum::{body::Body, http::Request};

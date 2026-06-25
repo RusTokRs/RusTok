@@ -61,7 +61,6 @@ pub struct IndexRebuildOutcome {
     pub truncated: u64,
 }
 
-
 const MAX_INDEX_LIST_LIMIT: u32 = 100;
 
 fn is_blank(value: &str) -> bool {

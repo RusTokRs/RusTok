@@ -1,7 +1,4 @@
 use super::*;
-use serial_test::serial;
-use std::collections::HashMap;
-use tempfile::tempdir;
 
 mod tests {
     use super::{
@@ -1689,4 +1686,3 @@ leptos_locales_path = "storefront/locales"
         ));
     }
 }
-

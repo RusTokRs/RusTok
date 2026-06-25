@@ -1,12 +1,10 @@
 use async_graphql::{Context, FieldError, Result};
 use rust_decimal::Decimal;
-use rustok_api::{graphql::GraphQLError, AuthContext, RequestContext, TenantContext};
-use rustok_core::{locale_tags_match, Permission};
+use rustok_api::{graphql::GraphQLError, AuthContext, RequestContext};
+use rustok_core::locale_tags_match;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_pricing::{PriceResolutionContext, PricingService};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
-use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
@@ -16,14 +14,12 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    CartService, CatalogService, CreateReturnDecisionInput, CustomerService,
-    ExchangeDifferenceRefundInput, FulfillmentOrchestrationService, FulfillmentService,
-    OrderService, PaymentService, PostOrderOrchestrationService,
-    ReturnClaimDecisionInput, ReturnDecisionInput, ReturnExchangeDecisionInput,
-    ReturnRefundDecisionInput, ShippingProfileService, StoreContextService,
+    CartService, CreateReturnDecisionInput, CustomerService, FulfillmentService, OrderService,
+    PaymentService, ReturnClaimDecisionInput, ReturnDecisionInput, ReturnExchangeDecisionInput,
+    ReturnRefundDecisionInput, ShippingProfileService,
 };
 
-use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
+use super::super::types::*;
 
 pub(crate) fn convert_create_product_input(
     input: CreateProductInput,
@@ -151,7 +147,10 @@ pub(crate) fn validate_admin_cart_promotion_target(
     }
 }
 
-pub(crate) fn parse_required_promotion_decimal(value: Option<&str>, field: &str) -> Result<Decimal> {
+pub(crate) fn parse_required_promotion_decimal(
+    value: Option<&str>,
+    field: &str,
+) -> Result<Decimal> {
     let Some(value) = value else {
         return Err(async_graphql::Error::new(format!(
             "{field} is required for the selected promotion kind"
@@ -311,7 +310,10 @@ pub(crate) async fn build_exchange_resolution_return_completion(
     }
 
     let existing_return = order_service.get_return(tenant_id, return_id).await?;
-    let preview_val = parse_json_payload(exchange_input.preview.as_str(), "Invalid JSON preview payload")?;
+    let preview_val = parse_json_payload(
+        exchange_input.preview.as_str(),
+        "Invalid JSON preview payload",
+    )?;
     let metadata_val = parse_optional_metadata(exchange_input.metadata.as_deref())?;
 
     let preview = attach_return_order_change_context_gql(preview_val, return_id, "exchange")?;
@@ -361,7 +363,8 @@ pub(crate) async fn build_claim_resolution_return_completion(
     }
 
     let existing_return = order_service.get_return(tenant_id, return_id).await?;
-    let preview_val = parse_json_payload(claim_input.preview.as_str(), "Invalid JSON preview payload")?;
+    let preview_val =
+        parse_json_payload(claim_input.preview.as_str(), "Invalid JSON preview payload")?;
     let metadata_val = parse_optional_metadata(claim_input.metadata.as_deref())?;
 
     let preview = attach_return_order_change_context_gql(preview_val, return_id, "claim")?;
@@ -506,7 +509,10 @@ pub(crate) fn build_return_claim_decision_input(
     })
 }
 
-pub(crate) fn graphql_decision_requires_payments_update(action: &str, has_refund_payload: bool) -> bool {
+pub(crate) fn graphql_decision_requires_payments_update(
+    action: &str,
+    has_refund_payload: bool,
+) -> bool {
     if has_refund_payload {
         return true;
     }

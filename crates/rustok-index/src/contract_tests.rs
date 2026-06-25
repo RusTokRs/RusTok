@@ -42,3 +42,16 @@ async fn index_module_registers_registry_owned_event_listeners() {
         vec!["content_indexer", "flex_indexer", "product_indexer"]
     );
 }
+
+#[test]
+fn index_module_registers_default_runtime_config() {
+    use rustok_core::ModuleRegistry;
+
+    use crate::{IndexModule, IndexerRuntimeConfig};
+
+    let extensions = ModuleRegistry::new()
+        .register(IndexModule)
+        .build_runtime_extensions();
+
+    assert!(extensions.contains::<IndexerRuntimeConfig>());
+}

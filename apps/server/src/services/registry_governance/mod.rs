@@ -404,10 +404,9 @@ struct RegistryPublishArtifactFiles {
     storefront_manifest: Option<String>,
 }
 
-
 pub mod publishing;
-pub mod validation;
 pub mod releases;
+pub mod validation;
 
 // #[cfg(test)]
 // mod tests;
@@ -422,12 +421,10 @@ pub(crate) use publishing::{
 };
 pub(crate) use releases::request_ui_packages;
 pub(crate) use validation::{
-    compare_semver_desc, dedupe_message_list, deserialize_message_list,
-    derive_follow_up_gate_snapshots, derive_validation_stage_snapshots, normalize_actor,
-    rejected_publish_request_can_retry, validate_registry_artifact_bundle,
+    compare_semver_desc, dedupe_message_list, derive_follow_up_gate_snapshots,
+    derive_validation_stage_snapshots, deserialize_message_list, normalize_actor,
     validation_stage_details_value,
 };
-
 
 impl RegistryGovernanceService {
     pub fn new(db: DatabaseConnection) -> Self {
@@ -801,7 +798,9 @@ pub(crate) fn principal_from_json(value: &serde_json::Value) -> RegistryPrincipa
     RegistryPrincipalRef::from_json_value(value)
 }
 
-pub(crate) fn optional_principal_from_json(value: &Option<serde_json::Value>) -> Option<RegistryPrincipalRef> {
+pub(crate) fn optional_principal_from_json(
+    value: &Option<serde_json::Value>,
+) -> Option<RegistryPrincipalRef> {
     value.as_ref().map(principal_from_json)
 }
 
@@ -809,7 +808,9 @@ pub(crate) fn principal_display_label(value: &serde_json::Value) -> String {
     principal_from_json(value).label().to_string()
 }
 
-pub(crate) fn optional_principal_display_label(value: &Option<serde_json::Value>) -> Option<String> {
+pub(crate) fn optional_principal_display_label(
+    value: &Option<serde_json::Value>,
+) -> Option<String> {
     optional_principal_from_json(value).map(|principal| principal.label().to_string())
 }
 
@@ -983,7 +984,10 @@ pub(crate) fn normalize_reason_code(
     Ok(normalized)
 }
 
-pub(crate) fn normalize_required_reason(reason: &str, action_label: &str) -> anyhow::Result<String> {
+pub(crate) fn normalize_required_reason(
+    reason: &str,
+    action_label: &str,
+) -> anyhow::Result<String> {
     let normalized = reason.trim();
     if normalized.is_empty() {
         return Err(malformed_error(format!(

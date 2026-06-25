@@ -25,8 +25,8 @@
 - Does not publish its own RBAC surface.
 - Admin access to indexing operations is enforced by `apps/server` through the permissions
   of the domain being managed, not through direct role checks inside the module.
-- Current code still contains early search-oriented scaffolding that is planned to move
-  into a dedicated search capability/module over time.
+- Product-facing search belongs to `rustok-search`; this crate does not expose a second
+  search-engine contract.
 
 ## Entry points
 

@@ -1,16 +1,14 @@
+use crate::i18n::t;
+use crate::model::{AppType, OAuthApp};
+use crate::transport::{
+    create_oauth_app, list_oauth_apps, revoke_oauth_app, rotate_oauth_app_secret, update_oauth_app,
+    CreateOAuthAppInput, CreateOAuthAppResult, UpdateOAuthAppInput,
+};
+use crate::ui::components::{Button, Input};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{Badge, BadgeVariant};
-use uuid::Uuid;
-
-use crate::model::{OAuthApp, AppType};
-use crate::transport::{
-    list_oauth_apps, create_oauth_app, update_oauth_app, rotate_oauth_app_secret,
-    revoke_oauth_app, CreateOAuthAppInput, UpdateOAuthAppInput, CreateOAuthAppResult,
-};
-use crate::ui::components::{Button, Input};
-use crate::i18n::t;
 use rustok_api::UiRouteContext;
 
 #[derive(Clone, PartialEq)]
@@ -492,10 +490,7 @@ pub fn RotateSecretDialog(
 
             set_submitting.set(false);
             match result {
-                Ok(response) => on_success(
-                    response.client_secret.clone(),
-                    response.app,
-                ),
+                Ok(response) => on_success(response.client_secret.clone(), response.app),
                 Err(err) => set_error.set(Some(err.to_string())),
             }
         });

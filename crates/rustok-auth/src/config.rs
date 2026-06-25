@@ -4,6 +4,11 @@ use crate::error::{AuthError, Result};
 
 const DEFAULT_ACCESS_EXPIRATION_SECS: u64 = 900; // 15 minutes
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30; // 30 days
+const MIN_HS256_SECRET_BYTES: usize = 32;
+const MIN_ACCESS_EXPIRATION_SECS: u64 = 60;
+const MAX_ACCESS_EXPIRATION_SECS: u64 = 60 * 60 * 24;
+const MIN_REFRESH_EXPIRATION_SECS: u64 = 60 * 5;
+const MAX_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 365;
 
 /// JWT signing algorithm selector.
 ///
@@ -197,12 +202,65 @@ where
 
 /// Validate auth config invariants owned by `rustok-auth`.
 pub fn validate_auth_config(config: &AuthConfig) -> Result<()> {
-    if config.algorithm == JwtAlgorithm::RS256
-        && (config.rsa_private_key_pem.is_none() || config.rsa_public_key_pem.is_none())
-    {
+    if config.issuer.trim().is_empty() {
         return Err(AuthError::Internal(
-            "RS256 requires both rsa_private_key_pem and rsa_public_key_pem".to_string(),
+            "JWT issuer must not be empty".to_string(),
         ));
+    }
+    if config.audience.trim().is_empty() {
+        return Err(AuthError::Internal(
+            "JWT audience must not be empty".to_string(),
+        ));
+    }
+    if !(MIN_ACCESS_EXPIRATION_SECS..=MAX_ACCESS_EXPIRATION_SECS)
+        .contains(&config.access_expiration)
+    {
+        return Err(AuthError::Internal(format!(
+            "JWT access_expiration must be between {MIN_ACCESS_EXPIRATION_SECS} and {MAX_ACCESS_EXPIRATION_SECS} seconds"
+        )));
+    }
+    if !(MIN_REFRESH_EXPIRATION_SECS..=MAX_REFRESH_EXPIRATION_SECS)
+        .contains(&config.refresh_expiration)
+    {
+        return Err(AuthError::Internal(format!(
+            "JWT refresh_expiration must be between {MIN_REFRESH_EXPIRATION_SECS} and {MAX_REFRESH_EXPIRATION_SECS} seconds"
+        )));
+    }
+    if config.refresh_expiration < config.access_expiration {
+        return Err(AuthError::Internal(
+            "JWT refresh_expiration must be greater than or equal to access_expiration".to_string(),
+        ));
+    }
+
+    match config.algorithm {
+        JwtAlgorithm::HS256 => {
+            if config.secret.as_bytes().len() < MIN_HS256_SECRET_BYTES {
+                return Err(AuthError::Internal(format!(
+                    "HS256 secret must contain at least {MIN_HS256_SECRET_BYTES} bytes"
+                )));
+            }
+            if config.rsa_private_key_pem.is_some() || config.rsa_public_key_pem.is_some() {
+                return Err(AuthError::Internal(
+                    "HS256 configuration must not include RSA key material".to_string(),
+                ));
+            }
+        }
+        JwtAlgorithm::RS256 => {
+            let private_key = config
+                .rsa_private_key_pem
+                .as_deref()
+                .filter(|key| !key.trim().is_empty());
+            let public_key = config
+                .rsa_public_key_pem
+                .as_deref()
+                .filter(|key| !key.trim().is_empty());
+            if private_key.is_none() || public_key.is_none() {
+                return Err(AuthError::Internal(
+                    "RS256 requires both non-empty rsa_private_key_pem and rsa_public_key_pem"
+                        .to_string(),
+                ));
+            }
+        }
     }
 
     Ok(())
@@ -255,6 +313,75 @@ mod tests {
             900,
             AuthSettingsOverrides {
                 algorithm: Some(JwtAlgorithm::RS256),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_auth_config_rejects_weak_hs256_secret() {
+        let result = build_auth_config_with_env(
+            "short-secret".to_string(),
+            900,
+            AuthSettingsOverrides::default(),
+            |_| panic!("env resolver should not be called"),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_auth_config_rejects_blank_issuer_and_audience() {
+        for overrides in [
+            AuthSettingsOverrides {
+                issuer: Some("  ".to_string()),
+                ..AuthSettingsOverrides::default()
+            },
+            AuthSettingsOverrides {
+                audience: Some(String::new()),
+                ..AuthSettingsOverrides::default()
+            },
+        ] {
+            assert!(build_auth_config_with_env(secret(), 900, overrides, |_| {
+                panic!("env resolver should not be called")
+            })
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn build_auth_config_rejects_invalid_ttl_bounds() {
+        assert!(build_auth_config_with_env(
+            secret(),
+            MIN_ACCESS_EXPIRATION_SECS - 1,
+            AuthSettingsOverrides::default(),
+            |_| panic!("env resolver should not be called"),
+        )
+        .is_err());
+
+        assert!(build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                refresh_expiration: Some(300),
+                ..AuthSettingsOverrides::default()
+            },
+            |_| panic!("env resolver should not be called"),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn build_auth_config_rejects_rsa_material_with_hs256() {
+        let result = build_auth_config_with_env(
+            secret(),
+            900,
+            AuthSettingsOverrides {
+                rsa_private_key_pem: Some("private".to_string()),
+                rsa_public_key_pem: Some("public".to_string()),
                 ..AuthSettingsOverrides::default()
             },
             |_| panic!("env resolver should not be called"),

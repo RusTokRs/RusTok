@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
@@ -8,10 +7,10 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use rustok_api::UiRouteContext;
 
-use crate::ui::components::{Button, Input, PageHeader};
 use crate::i18n::t;
-use crate::model::{GraphqlUser, CreateUserInput};
-use crate::transport::{fetch_users, create_user};
+use crate::model::{CreateUserInput, GraphqlUser};
+use crate::transport::{create_user, fetch_users};
+use crate::ui::components::{Button, Input, PageHeader};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -51,9 +50,8 @@ fn users_table_skeleton() -> impl IntoView {
 pub fn Users() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = StoredValue::new(route_context.locale);
-    let t_local = move |key: &str, fallback: &str| {
-        locale.with_value(|l| t(l.as_deref(), key, fallback))
-    };
+    let t_local =
+        move |key: &str, fallback: &str| locale.with_value(|l| t(l.as_deref(), key, fallback));
 
     let token = use_token();
     let tenant = use_tenant();
@@ -154,7 +152,8 @@ pub fn Users() -> impl IntoView {
 
     let refresh = Callback::new(move |_| set_refresh_counter.update(|value| *value += 1));
     let next_page = Callback::new(move |_| set_page.update(|value| *value += 1));
-    let previous_page = Callback::new(move |_| set_page.update(|value| *value = (*value - 1).max(1)));
+    let previous_page =
+        Callback::new(move |_| set_page.update(|value| *value = (*value - 1).max(1)));
 
     let (show_create_modal, set_show_create_modal) = signal(false);
     let (new_email, set_new_email) = signal(String::new());
@@ -179,7 +178,10 @@ pub fn Users() -> impl IntoView {
         set_show_create_modal.set(false);
     });
 
-    let create_user_msg = StoredValue::new(t_local("users.create.errorRequired", "Email and password are required."));
+    let create_user_msg = StoredValue::new(t_local(
+        "users.create.errorRequired",
+        "Email and password are required.",
+    ));
 
     let create_user_action = Callback::new(move |_| {
         let email_val = new_email.get();

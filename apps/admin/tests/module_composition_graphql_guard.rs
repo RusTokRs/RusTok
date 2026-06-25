@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-
 fn read_client_content() -> String {
     let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let client_path = crate_root.join("src/features/modules/api/client.rs");
@@ -18,7 +17,13 @@ fn read_api_content() -> String {
     let api_dir = crate_root.join("src/features/modules/api");
     if api_dir.exists() {
         let mut content = String::new();
-        for filename in ["types.rs", "manifest.rs", "server.rs", "client.rs", "mod.rs"] {
+        for filename in [
+            "types.rs",
+            "manifest.rs",
+            "server.rs",
+            "client.rs",
+            "mod.rs",
+        ] {
             if let Ok(file_content) = fs::read_to_string(api_dir.join(filename)) {
                 content.push_str(&file_content);
                 content.push('\n');
@@ -31,10 +36,8 @@ fn read_api_content() -> String {
     }
 }
 
-
 #[test]
 fn native_module_composition_endpoints_are_not_declared() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for endpoint in [
@@ -52,7 +55,6 @@ fn native_module_composition_endpoints_are_not_declared() {
 
 #[test]
 fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for forbidden in [
@@ -71,7 +73,6 @@ fn module_composition_helpers_do_not_use_raw_sql_for_platform_state_or_builds() 
 
 #[test]
 fn module_composition_client_helpers_do_not_call_native_paths() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for native_call in [
@@ -89,7 +90,6 @@ fn module_composition_client_helpers_do_not_call_native_paths() {
 
 #[test]
 fn module_composition_helpers_do_not_use_native_graphql_fallback_combiner() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for helper in [
@@ -110,7 +110,6 @@ fn module_composition_helpers_do_not_use_native_graphql_fallback_combiner() {
 
 #[test]
 fn module_composition_helpers_use_graphql_contract_payloads() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     assert_graphql_only_helper(
@@ -149,7 +148,6 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
 
 #[test]
 fn module_composition_helpers_forward_auth_context_without_local_overrides() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for signature in [
@@ -191,7 +189,6 @@ fn module_composition_helpers_forward_auth_context_without_local_overrides() {
 
 #[test]
 fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for signature in [
@@ -219,7 +216,9 @@ fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
             "graphQLErrors",
         ] {
             assert!(
-                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(forbidden),
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(forbidden),
                 "{signature} must not branch on runtime taxonomy fragment `{forbidden}`"
             );
         }
@@ -228,7 +227,6 @@ fn module_composition_helpers_do_not_branch_on_runtime_error_taxonomy() {
 
 #[test]
 fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for signature in [
@@ -258,7 +256,6 @@ fn module_composition_helpers_do_not_implement_local_retry_or_compensation_flows
 
 #[test]
 fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_contract() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let lifecycle_taxonomy_fragments = [
@@ -309,7 +306,6 @@ fn module_composition_helpers_preserve_server_owned_lifecycle_parity_matrix_cont
 
 #[test]
 fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let status_fragments = [
@@ -343,7 +339,6 @@ fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy()
 
 #[test]
 fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let manifest_contract_fragments = [
@@ -374,7 +369,6 @@ fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
 
 #[test]
 fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let control_plane_error_fragments = [
@@ -407,7 +401,6 @@ fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
 
 #[test]
 fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let pipeline_fragments = [
@@ -441,7 +434,6 @@ fn module_composition_helpers_do_not_parse_build_or_release_pipeline_contract() 
 
 #[test]
 fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let graphql_error_shape_fragments = [
@@ -473,7 +465,6 @@ fn module_composition_helpers_do_not_parse_graphql_error_payload_shapes() {
 
 #[test]
 fn module_composition_helpers_do_not_map_graphql_taxonomy_to_transport_error_variants() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let forbidden_transport_remap_fragments = [
@@ -505,7 +496,6 @@ fn module_composition_helpers_do_not_map_graphql_taxonomy_to_transport_error_var
 
 #[test]
 fn module_composition_helpers_do_not_use_local_serverfn_error_normalizers() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let forbidden_local_normalizer_fragments = [
@@ -534,7 +524,6 @@ fn module_composition_helpers_do_not_use_local_serverfn_error_normalizers() {
 
 #[test]
 fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let cases = [
@@ -586,7 +575,9 @@ fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
         );
         for forbidden in forbidden_list {
             assert!(
-                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(forbidden),
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(forbidden),
                 "{signature} must not cross-wire foreign mutation constant `{forbidden}`"
             );
         }
@@ -595,7 +586,6 @@ fn module_composition_helpers_do_not_cross_wire_foreign_mutation_contracts() {
 
 #[test]
 fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let cases = [
@@ -664,7 +654,6 @@ fn module_composition_helpers_use_typed_responses_and_direct_payload_returns() {
 
 #[test]
 fn module_composition_mutation_constants_are_declared_once() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_api_content();
 
     for constant in [
@@ -683,7 +672,6 @@ fn module_composition_mutation_constants_are_declared_once() {
 
 #[test]
 fn module_composition_helpers_reference_single_canonical_mutation_and_request_call() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let cases: &[(&str, &str, &[&str])] = &[
@@ -729,7 +717,9 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
         );
         for foreign in foreign_mutations {
             assert!(
-                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(foreign),
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(foreign),
                 "{signature} must not reference foreign mutation constant `{foreign}`"
             );
         }
@@ -742,7 +732,6 @@ fn module_composition_helpers_reference_single_canonical_mutation_and_request_ca
 
 #[test]
 fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallback_combiner() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let rollback_body = extract_function_block(&content, "pub async fn rollback_build(")
@@ -773,7 +762,6 @@ fn rollback_build_helper_is_the_only_module_api_helper_with_native_graphql_fallb
 
 #[test]
 fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     struct Case<'a> {
@@ -888,7 +876,9 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
 
         for forbidden in case.foreign_mutations {
             assert!(
-                !helper_body.replace("UNINSTALL_MODULE_MUTATION", "").contains(forbidden),
+                !helper_body
+                    .replace("UNINSTALL_MODULE_MUTATION", "")
+                    .contains(forbidden),
                 "{} must not reference foreign mutation `{forbidden}`",
                 case.signature
             );
@@ -930,7 +920,6 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
 
 #[test]
 fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     let helper_body = extract_function_block(&content, "pub async fn toggle_module(")
@@ -971,7 +960,6 @@ fn toggle_module_helper_preserves_server_owned_lifecycle_taxonomy_contract() {
 
 #[test]
 fn module_graphql_mutation_constants_have_stable_operation_shapes() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_api_content();
 
     let cases: &[(&str, &[&str], &[&str])] = &[
@@ -1155,7 +1143,6 @@ fn module_recovery_helpers_use_canonical_graphql_surface() {
 
 #[test]
 fn module_composition_helper_signatures_are_unique() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_client_content();
 
     for signature in [
@@ -1479,7 +1466,6 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
 
 #[test]
 fn runtime_manifest_hash_uses_shared_typed_hash_helper() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = read_api_content();
 
     let helper_body = extract_function_block(

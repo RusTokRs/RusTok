@@ -6,8 +6,8 @@ pub(crate) use presentation::{
     build_product_detail_header_view_model, build_product_list_item_view_model,
     build_variant_card_view_model, default_variant_price_editor_currency,
     format_adjustment_preview, format_effective_context, format_price_list_option_label,
-    format_price_scope, format_variant_count_label, format_variant_price_editor_title,
-    pricing_product_list_item_class, summarize_pricing,
+    format_variant_count_label, format_variant_price_editor_title, pricing_product_list_item_class,
+    summarize_pricing,
 };
 #[cfg(feature = "ssr")]
 pub(crate) use requests::parse_optional_currency_code;

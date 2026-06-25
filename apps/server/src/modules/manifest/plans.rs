@@ -1,6 +1,4 @@
 use super::types::*;
-use crate::services::build_service::ModuleSpec as BuildModuleSpec;
-use std::path::{Path, PathBuf};
 
 pub fn admin_frontend_build_plan(
     manifest: &ModulesManifest,
@@ -106,5 +104,3 @@ pub fn executable_suffix(cargo_target: Option<&str>) -> &'static str {
         None => std::env::consts::EXE_EXTENSION,
     }
 }
-
-

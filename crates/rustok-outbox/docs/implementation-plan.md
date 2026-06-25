@@ -6,7 +6,7 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: fba_write_policy_alignment
-- Last checkpoint: OutboxRelayPort переведён с package-local PortContext/PortError на shared `rustok_api::PortContext`/`PortError`; relay control enforce-ит `PortCallPolicy::write()` через module-local policy helper, а relay-owned request/projection DTOs остались локальными.
+- Last checkpoint: OutboxRelayPort использует canonical `rustok_core::ports` primitives без dependency cycle через `rustok-api`; relay control enforce-ит `PortCallPolicy::write()` через module-local policy helper, а relay-owned request/projection DTOs остались локальными.
 - Next step: Расширить relay/backlog/DLQ evidence без долгой full-workspace компиляции и затем добавить targeted runtime contract/fallback smoke, когда компиляции снова разрешены.
 - Open blockers: None.
 - Hand-off notes for next agent: Сохранять read-only admin UI поверх module-owned transport facade; не переносить relay/runtime ownership в host UI.
@@ -23,7 +23,7 @@ manifest/doc contract.
   - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build), `node scripts/verify/verify-outbox-admin-boundary.mjs`, `node scripts/verify/verify-outbox-admin-boundary.test.mjs`;
   - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build);
   - compile-free FFA evidence: `npm run verify:outbox:admin-boundary` validates that UI uses only the module-owned transport facade, `core.rs` remains Leptos/server-function free, generated native server functions stay private to `transport/native_server_adapter.rs`, and host-provided `UiRouteContext.locale` remains the locale source;
-  - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
+  - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with canonical `rustok_core::ports::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
 
 ## Область работ
 

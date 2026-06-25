@@ -7,46 +7,40 @@
     clippy::useless_format
 )]
 
-use leptos::prelude::*;
 use super::detail::governance_form::GovernanceForm;
 use super::detail::metadata_checklist_view::MetadataChecklistView;
 use super::detail::version_trail::VersionTrailView;
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
 
-use crate::entities::module::model::{
-    MarketplaceModuleVersion, RegistryReleaseLifecycle,
-};
+use crate::entities::module::model::{MarketplaceModuleVersion, RegistryReleaseLifecycle};
 use crate::entities::module::{MarketplaceModule, ModuleSettingField, TenantModule};
 use crate::features::modules::api::{self, RegistryMutationResult, RegistryPublishStatusContract};
-use crate::shared::ui::{Button, Input};
+use crate::shared::ui::Button;
 use crate::{use_i18n, Locale};
 
 use super::detail::{
-    humanize_setting_key, humanize_token,
     governance::{
+        automated_check_label, curl_snippet_for_live_api_action,
+        destructive_governance_confirmation_message, follow_up_gate_label,
+        follow_up_gate_status_summary, governance_action_reason_code_required,
+        governance_action_reason_code_validation_message, governance_action_reason_required,
+        governance_event_summary, governance_event_title, latest_validation_event,
+        latest_validation_job_event, lifecycle_detail_lines, merge_governance_actions,
+        moderation_history_badge_label, moderation_history_badge_status,
+        moderation_history_context_lines, moderation_history_events, registry_governance_hint,
+        registry_live_api_action_lines, registry_mutation_result_summary,
+        registry_next_action_lines, registry_operator_command_lines,
+        registry_request_is_review_ready, registry_request_status_badge_classes,
+        registry_review_policy_lines, registry_validation_outcome_summary, status_eq,
+        validation_feedback_badge_classes, validation_job_event_context_lines,
+        validation_stage_recent_history, validation_stage_status_summary,
         RegistryAutomatedCheckItem,
-        registry_governance_hint, registry_request_status_badge_classes,
-        governance_action_available, merge_governance_actions,
-        governance_action_reason_required, governance_action_reason_code_required,
-        governance_action_reason_code_validation_message,
-        governance_reason_code_placeholder, governance_reason_placeholder, governance_action_requirement_hint,
-        approval_override_warning_lines,
-        registry_mutation_result_summary, destructive_governance_action_label, destructive_governance_confirmation_message,
-        curl_snippet_for_live_api_action, lifecycle_detail_lines, latest_validation_event,
-        latest_validation_job_event,
-        automated_check_label, validation_job_event_context_lines,
-        registry_request_is_review_ready, registry_validation_outcome_summary,
-        registry_review_policy_lines,
-        moderation_history_context_lines, registry_live_api_action_lines, registry_operator_command_lines,
-        governance_event_summary, governance_event_title, moderation_history_badge_status,
-        follow_up_gate_label, moderation_history_badge_label,
-        validation_feedback_badge_classes, validation_stage_recent_history,
-        follow_up_gate_status_summary, validation_stage_status_summary, status_eq,
-        registry_next_action_lines, moderation_history_events,
     },
-    json_editor::{ComplexSettingEditor, setting_option_label, setting_option_draft_value},
-    metadata::{marketplace_metadata_checklist, metadata_status_badge_classes, metadata_status_panel_classes},
+    humanize_setting_key, humanize_token,
+    json_editor::{setting_option_draft_value, setting_option_label, ComplexSettingEditor},
+    metadata::marketplace_metadata_checklist,
 };
 
 fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
@@ -96,8 +90,14 @@ fn setting_field_hint(field: &ModuleSettingField, locale: Locale) -> Option<Stri
             min,
             max
         )),
-        (Some(min), None) => parts.push(format!("{}: {}", tr(locale, "Min", "РњРёРЅРёРјСѓРј"), min)),
-        (None, Some(max)) => parts.push(format!("{}: {}", tr(locale, "Max", "РњР°РєСЃРёРјСѓРј"), max)),
+        (Some(min), None) => {
+            parts.push(format!("{}: {}", tr(locale, "Min", "РњРёРЅРёРјСѓРј"), min))
+        }
+        (None, Some(max)) => parts.push(format!(
+            "{}: {}",
+            tr(locale, "Max", "РњР°РєСЃРёРјСѓРј"),
+            max
+        )),
         (None, None) => {}
     }
     if !field.options.is_empty() {

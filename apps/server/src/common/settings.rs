@@ -158,6 +158,12 @@ pub struct EventSettings {
     pub allow_relay_target_fallback: bool,
     #[serde(default = "default_relay_interval_ms")]
     pub relay_interval_ms: u64,
+    #[serde(default = "default_relay_batch_size")]
+    pub relay_batch_size: u64,
+    #[serde(default = "default_relay_max_concurrency")]
+    pub relay_max_concurrency: usize,
+    #[serde(default = "default_relay_claim_ttl_ms")]
+    pub relay_claim_ttl_ms: u64,
     #[serde(default = "default_event_channel_capacity")]
     pub channel_capacity: usize,
     #[serde(default)]
@@ -535,6 +541,9 @@ impl Default for EventSettings {
             relay_target: RelayTargetKind::default(),
             allow_relay_target_fallback: false,
             relay_interval_ms: default_relay_interval_ms(),
+            relay_batch_size: default_relay_batch_size(),
+            relay_max_concurrency: default_relay_max_concurrency(),
+            relay_claim_ttl_ms: default_relay_claim_ttl_ms(),
             channel_capacity: default_event_channel_capacity(),
             relay_retry_policy: RelayRetryPolicy::default(),
             dlq: DlqSettings::default(),
@@ -690,6 +699,27 @@ impl RustokSettings {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "rustok.events.channel_capacity must be > 0",
+            )));
+        }
+
+        if parsed.events.relay_batch_size == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_batch_size must be > 0",
+            )));
+        }
+
+        if parsed.events.relay_max_concurrency == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_max_concurrency must be > 0",
+            )));
+        }
+
+        if parsed.events.relay_claim_ttl_ms == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_claim_ttl_ms must be > 0",
             )));
         }
 
@@ -1060,6 +1090,18 @@ fn default_trusted_auth_dimensions() -> bool {
 
 fn default_relay_interval_ms() -> u64 {
     1_000
+}
+
+fn default_relay_batch_size() -> u64 {
+    100
+}
+
+fn default_relay_max_concurrency() -> usize {
+    8
+}
+
+fn default_relay_claim_ttl_ms() -> u64 {
+    60_000
 }
 
 fn default_event_channel_capacity() -> usize {

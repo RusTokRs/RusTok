@@ -44,15 +44,17 @@ impl TransactionalEventBus {
         let envelope = self.build_envelope(tenant_id, actor_id, event)?;
         let envelope_id = envelope.id;
 
-        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
-            outbox.write_to_outbox(txn, envelope).await?;
-        } else {
-            tracing::warn!(
-                "EventTransport doesn't support transactional writes. \
-                 Event may be lost if transaction fails."
-            );
-            self.transport.publish(envelope).await?;
-        }
+        let outbox = self
+            .transport
+            .as_any()
+            .downcast_ref::<OutboxTransport>()
+            .ok_or_else(|| {
+                rustok_core::Error::Validation(format!(
+                    "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",
+                    self.transport.reliability_level()
+                ))
+            })?;
+        outbox.write_to_outbox(txn, envelope).await?;
 
         Ok(envelope_id)
     }

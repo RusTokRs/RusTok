@@ -1,8 +1,6 @@
 use crate::models::build::DeploymentProfile;
-use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use thiserror::Error;
 use utoipa::ToSchema;
 
@@ -276,7 +274,6 @@ pub struct CatalogModuleVersion {
     pub signature: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModulePackageManifest {
     #[serde(default)]
@@ -461,7 +458,6 @@ fn format_change(prefix: char, slug: &str, version: Option<&str>) -> String {
         _ => format!("{prefix}{slug}"),
     }
 }
-
 
 #[derive(Debug, Error)]
 pub enum ManifestError {

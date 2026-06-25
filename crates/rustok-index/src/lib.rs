@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
-    RusToKModule,
+    ModuleRuntimeExtensions, RusToKModule,
 };
 use sea_orm_migration::MigrationTrait;
 
@@ -69,6 +69,10 @@ impl RusToKModule for IndexModule {
             ctx.db.clone(),
             runtime,
         ));
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        extensions.get_or_insert_with(IndexerRuntimeConfig::load);
     }
 }
 

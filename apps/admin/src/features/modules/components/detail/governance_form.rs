@@ -1,17 +1,16 @@
-use leptos::prelude::*;
-use crate::Locale;
-use crate::features::modules::api::{RegistryMutationResult, RegistryPublishStatusContract};
 use crate::entities::module::model::RegistryGovernanceActionLifecycle;
+use crate::features::modules::api::{RegistryMutationResult, RegistryPublishStatusContract};
 use crate::shared::ui::{Button, Input};
+use crate::Locale;
+use leptos::prelude::*;
 
 use super::{
-    tr, humanize_token,
     governance::{
-        governance_action_available,
+        approval_override_warning_lines, destructive_governance_action_label,
+        governance_action_available, governance_action_requirement_hint,
         governance_reason_code_placeholder, governance_reason_placeholder,
-        governance_action_requirement_hint, approval_override_warning_lines,
-        destructive_governance_action_label, status_eq,
     },
+    humanize_token, tr,
 };
 
 #[component]
@@ -49,6 +48,8 @@ pub fn GovernanceForm(
     on_yank_release: Callback<()>,
     on_refresh: Callback<()>,
 ) -> impl IntoView {
+    let _ = set_governance_intent_action;
+
     view! {
         <div class="mt-3 space-y-3 rounded-lg border border-border bg-background p-3">
             <div class="flex flex-wrap items-center justify-between gap-3">

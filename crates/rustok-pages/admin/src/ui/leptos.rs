@@ -1123,7 +1123,6 @@ fn PagesTable(
                         {items
                             .into_iter()
                             .map(|page| {
-                                let page_id = page.id.clone();
                                 let item_view = core::admin_page_list_item_view(
                                     &page,
                                     editing_page_id.as_deref(),

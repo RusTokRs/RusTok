@@ -47,9 +47,12 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
             let relay_config = RelayRuntimeConfig {
                 interval: Duration::from_millis(settings.events.relay_interval_ms),
                 relay: OutboxRelay::new(ctx.db.clone(), relay_target).with_config(RelayConfig {
+                    batch_size: settings.events.relay_batch_size,
                     max_attempts,
                     backoff_base: Duration::from_millis(relay_policy.base_backoff_ms),
                     backoff_max: Duration::from_millis(relay_policy.max_backoff_ms),
+                    max_concurrency: settings.events.relay_max_concurrency,
+                    claim_ttl: Duration::from_millis(settings.events.relay_claim_ttl_ms),
                     ..RelayConfig::default()
                 }),
             };

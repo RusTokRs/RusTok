@@ -5,8 +5,9 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::{LockBehavior, LockType},
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseBackend, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::from_value;
 use uuid::Uuid;
@@ -24,6 +25,8 @@ pub struct RelayConfig {
     pub max_attempts: i32,
     pub backoff_base: Duration,
     pub backoff_max: Duration,
+    pub max_concurrency: usize,
+    pub claim_ttl: Duration,
     pub worker_id: String,
 }
 
@@ -34,6 +37,8 @@ impl Default for RelayConfig {
             max_attempts: 5,
             backoff_base: Duration::from_secs(1),
             backoff_max: Duration::from_secs(60),
+            max_concurrency: 8,
+            claim_ttl: Duration::from_secs(60),
             worker_id: format!("relay-{}", Uuid::new_v4()),
         }
     }
@@ -126,29 +131,61 @@ impl OutboxRelay {
 
     pub async fn process_pending_once(&self) -> Result<usize> {
         let claimed = self.claim_batch().await?;
-        for model in &claimed {
-            self.process_claimed_event(model).await?;
+        let claimed_count = claimed.len();
+        let max_concurrency = self.config.max_concurrency.max(1);
+        let mut tasks = tokio::task::JoinSet::new();
+        let mut first_error = None;
+
+        for model in claimed {
+            while tasks.len() >= max_concurrency {
+                Self::collect_dispatch_result(&mut tasks, &mut first_error).await;
+            }
+
+            let relay = self.clone();
+            tasks.spawn(async move { relay.process_claimed_event(&model).await });
         }
-        Ok(claimed.len())
+
+        while !tasks.is_empty() {
+            Self::collect_dispatch_result(&mut tasks, &mut first_error).await;
+        }
+
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+
+        Ok(claimed_count)
     }
 
     async fn claim_batch(&self) -> Result<Vec<entity::Model>> {
         let now = Utc::now();
+        let stale_before = now
+            - chrono::Duration::from_std(self.config.claim_ttl)
+                .unwrap_or_else(|_| chrono::Duration::seconds(60));
         let worker_id = self.config.worker_id.clone();
 
         let txn = self.db.begin().await?;
-        let candidates = entity::Entity::find()
+        let candidates_query = entity::Entity::find()
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
             .filter(
                 Condition::any()
                     .add(entity::Column::NextAttemptAt.is_null())
                     .add(entity::Column::NextAttemptAt.lte(now)),
             )
-            .filter(entity::Column::ClaimedAt.is_null())
+            .filter(
+                Condition::any()
+                    .add(entity::Column::ClaimedAt.is_null())
+                    .add(entity::Column::ClaimedAt.lte(stale_before)),
+            )
             .order_by_asc(entity::Column::CreatedAt)
-            .limit(self.config.batch_size)
-            .all(&txn)
-            .await?;
+            .limit(self.config.batch_size);
+        let candidates = if self.db.get_database_backend() == DatabaseBackend::Postgres {
+            candidates_query
+                .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+                .all(&txn)
+                .await?
+        } else {
+            candidates_query.all(&txn).await?
+        };
 
         let candidate_ids: Vec<Uuid> = candidates.iter().map(|m| m.id).collect();
         if candidate_ids.is_empty() {
@@ -158,7 +195,11 @@ impl OutboxRelay {
 
         entity::Entity::update_many()
             .filter(entity::Column::Id.is_in(candidate_ids.clone()))
-            .filter(entity::Column::ClaimedAt.is_null())
+            .filter(
+                Condition::any()
+                    .add(entity::Column::ClaimedAt.is_null())
+                    .add(entity::Column::ClaimedAt.lte(stale_before)),
+            )
             .set(entity::ActiveModel {
                 claimed_by: Set(Some(worker_id.clone())),
                 claimed_at: Set(Some(now)),
@@ -176,6 +217,28 @@ impl OutboxRelay {
 
         txn.commit().await?;
         Ok(claimed)
+    }
+
+    async fn collect_dispatch_result(
+        tasks: &mut tokio::task::JoinSet<Result<()>>,
+        first_error: &mut Option<Error>,
+    ) {
+        match tasks.join_next().await {
+            Some(Ok(Ok(()))) | None => {}
+            Some(Ok(Err(error))) => {
+                if first_error.is_none() {
+                    *first_error = Some(error);
+                }
+            }
+            Some(Err(error)) => {
+                tracing::error!(error = ?error, "Outbox relay dispatch task failed");
+                if first_error.is_none() {
+                    *first_error = Some(Error::External(format!(
+                        "outbox relay dispatch task failed: {error}"
+                    )));
+                }
+            }
+        }
     }
 
     async fn process_claimed_event(&self, model: &entity::Model) -> Result<()> {

@@ -5,14 +5,12 @@ use leptos_hook_form::FormState;
 use leptos_ui::{Select, SelectOption};
 use rustok_api::UiRouteContext;
 
-use crate::ui::components::{Button, Input, PageHeader};
 use crate::i18n::t;
-use crate::transport::{update_profile, ApiError};
+use crate::transport::update_profile;
+use crate::ui::components::{Button, Input, PageHeader};
 
 #[component]
-pub fn Profile<F, IV>(
-    language_toggle: F,
-) -> impl IntoView
+pub fn Profile<F, IV>(language_toggle: F) -> impl IntoView
 where
     F: Fn() -> IV + 'static,
     IV: IntoView + 'static,
@@ -48,9 +46,10 @@ where
         let token_value = token.get();
         let tenant_value = tenant.get();
         if token_value.is_none() {
-            set_form_state.set(FormState::with_form_error(
-                t_local("errors.auth.unauthorized", "You are not authorized to perform this action."),
-            ));
+            set_form_state.set(FormState::with_form_error(t_local(
+                "errors.auth.unauthorized",
+                "You are not authorized to perform this action.",
+            )));
             return;
         }
 
@@ -81,7 +80,10 @@ where
                 }
                 Err(err_str) => {
                     let message = if err_str.contains("Unauthorized") {
-                        t_local("errors.auth.unauthorized", "You are not authorized to perform this action.")
+                        t_local(
+                            "errors.auth.unauthorized",
+                            "You are not authorized to perform this action.",
+                        )
                     } else if err_str.contains("HTTP") {
                         t_local("errors.http", "Server error. Please try again.")
                     } else if err_str.contains("Network") {
