@@ -42,9 +42,9 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_applicable`
+- FBA status: `not_started`
 - Structural shape: `core_transport_ui`
-- Evidence: auth admin UI pages (Login, Register, ResetPassword, Profile, Security, Users, UserDetails, and OAuthAppsPage) are fully relocated to `crates/rustok-auth/admin`. The package implements its own client-side and server-side request/response models and translation lookup catalog matching `UiRouteContext.locale`. Host application `apps/admin` integrates the module pages dynamically via routing.
+- Evidence: auth admin UI pages (Login, Register, ResetPassword, Profile, Security, Users, UserDetails, and OAuthAppsPage) are fully relocated to `crates/rustok-auth/admin`. `admin/src/ui/leptos.rs` is the explicit Leptos aggregation adapter, while password-reset dispatch goes through the module-owned `admin/src/transport/mod.rs` facade instead of a raw UI API call. The package implements its own client-side and server-side request/response models and translation lookup catalog matching `UiRouteContext.locale`. Host application `apps/admin` integrates the module pages dynamically via routing.
 
 ## Проверка
 
@@ -68,4 +68,3 @@
 - [x] Проверить полноту и актуальность `README.md` и локальных docs для permission surface sync.
 - [x] Зафиксировать/обновить verification gates для текущего состояния модуля.
 - [x] Полностью разбить и вынести UI-слой авторизации в `rustok-auth-admin`.
-

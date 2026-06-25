@@ -1,20 +1,15 @@
+mod auth_admin;
 pub mod components;
-pub mod login;
-pub mod register;
-pub mod reset;
-pub mod profile;
-pub mod security;
-pub mod users;
-pub mod user_details;
-pub mod oauth_apps;
-pub mod auth_admin;
+pub mod leptos;
+mod login;
+mod oauth_apps;
+mod profile;
+mod register;
+mod reset;
+mod security;
+mod user_details;
+mod users;
 
-pub use login::Login;
-pub use register::Register;
-pub use reset::ResetPassword;
-pub use profile::Profile;
-pub use security::Security;
-pub use users::Users;
-pub use user_details::UserDetails;
-pub use oauth_apps::OAuthAppsPage;
-pub use auth_admin::AuthAdmin;
+pub use leptos::{
+    AuthAdmin, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails, Users,
+};

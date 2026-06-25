@@ -7,6 +7,12 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub async fn request_password_reset(email: String, tenant: String) -> Result<String, String> {
+    leptos_auth::api::forgot_password(email, tenant)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ApiRequestContext {
     pub token: Option<String>,

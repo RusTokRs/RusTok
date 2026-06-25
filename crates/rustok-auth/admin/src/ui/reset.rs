@@ -4,8 +4,9 @@ use leptos_auth::hooks::use_tenant;
 use leptos_hook_form::FormState;
 use rustok_api::UiRouteContext;
 
-use crate::ui::components::{Button, Input};
 use crate::i18n::t;
+use crate::transport;
+use crate::ui::components::{Button, Input};
 
 #[component]
 pub fn ResetPassword<F, IV>(
@@ -44,7 +45,7 @@ where
         set_success_message.set(None);
 
         spawn_local(async move {
-            match leptos_auth::api::forgot_password(email_value, tenant_value).await {
+            match transport::request_password_reset(email_value, tenant_value).await {
                 Ok(message) => {
                     set_form_state.set(FormState::idle());
                     set_success_message.set(Some(message));

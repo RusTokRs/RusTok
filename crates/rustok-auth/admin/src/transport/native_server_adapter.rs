@@ -1,16 +1,18 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
+use crate::model::{GraphqlUserResponse, GraphqlUsersResponse, OAuthApp};
+
+#[cfg(feature = "ssr")]
 use crate::model::{
-    AppType, GraphqlPageInfo, GraphqlUser, GraphqlUserEdge, GraphqlUserResponse,
-    GraphqlUsersConnection, GraphqlUsersResponse, OAuthApp,
+    AppType, GraphqlPageInfo, GraphqlUser, GraphqlUserEdge, GraphqlUsersConnection,
 };
-
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 #[cfg(feature = "ssr")]
 use serde_json::Value;
+#[cfg(feature = "ssr")]
+use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ApiError {
