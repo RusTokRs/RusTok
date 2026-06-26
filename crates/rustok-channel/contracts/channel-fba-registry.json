@@ -29,6 +29,11 @@
     }
   ],
   "fallback_profiles": ["embedded_native", "rest_compatibility", "unresolved_context"],
+  "evidence": {
+    "local_plan": "crates/rustok-channel/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-channel-fba.mjs"
+  },
   "contract_tests": {
     "status": "planned_cases_locked",
     "profiles": ["in_process", "remote_adapter_placeholder"],

@@ -99,5 +99,10 @@
     "publish_off",
     "preview_off",
     "builder_off"
-  ]
+  ],
+  "evidence": {
+    "local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-page-builder-fba-baseline.mjs"
+  }
 }

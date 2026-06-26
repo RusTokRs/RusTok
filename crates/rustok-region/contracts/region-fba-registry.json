@@ -36,6 +36,11 @@
     "graphql_compatibility",
     "cached_snapshot"
   ],
+  "evidence": {
+    "local_plan": "crates/rustok-region/docs/implementation-plan.md",
+    "central_board": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-region-fba.mjs"
+  },
   "contract_tests": {
     "status": "planned_cases_locked",
     "profiles": ["in_process", "remote_adapter_placeholder"],

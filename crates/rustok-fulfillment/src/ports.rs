@@ -99,7 +99,7 @@ impl ShippingSelectionPort for crate::FulfillmentService {
         context: PortContext,
         request: SelectShippingOptionPortRequest,
     ) -> Result<SelectedShippingOptionSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let option = self
             .get_shipping_option(
