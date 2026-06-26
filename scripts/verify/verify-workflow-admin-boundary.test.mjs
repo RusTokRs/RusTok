@@ -104,7 +104,7 @@ function withFixture(options = {}) {
   }
   writeFixtureFile(root, "crates/rustok-workflow/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/mod.rs", transportModSource(options));
-  writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs", nativeAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/native_server_adapter.rs", nativeAdapterSource());
   writeFixtureFile(root, "crates/rustok-workflow/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/rustok-workflow/admin/src/api.rs", "pub async fn fetch_workflows() {}");
