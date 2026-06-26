@@ -1,21 +1,43 @@
 {
   "schema_version": 1,
   "module": "email",
-  "status": "static_matrix_locked",
+  "status": "targeted_contract_tests_added_uncompiled",
   "generated_from": "crates/rustok-email/contracts/email-fba-registry.json",
   "runner": "scripts/verify/verify-email-fba.mjs",
   "contract_version": "email.delivery.v1",
-  "profiles": ["in_process", "remote_adapter_placeholder"],
+  "profiles": [
+    "in_process",
+    "remote_adapter_placeholder"
+  ],
   "cases": [
     {
       "operation": "send_transactional_email",
-      "execution_status": "runtime_cases_planned_uncompiled",
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_preserved", "disabled_provider_noop_preserved", "template_error_not_retryable"]
+      "execution_status": "targeted_rust_tests_added_uncompiled",
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_preserved",
+        "disabled_provider_noop_preserved",
+        "template_error_not_retryable"
+      ],
+      "test_source": "crates/rustok-email/src/ports.rs",
+      "test_names": [
+        "delivery_policy_maps_missing_deadline_to_email_specific_timeout",
+        "delivery_policy_accepts_shared_write_context",
+        "disabled_provider_preserves_noop_receipt_after_policy_and_validation",
+        "delivery_request_validation_uses_typed_port_errors"
+      ]
     }
   ],
   "fallback_smoke": {
-    "status": "planned_uncompiled",
-    "profiles": ["embedded_disabled_noop", "embedded_smtp"],
-    "degraded_modes": ["skip_disabled_provider", "surface_delivery_retry_needed"]
+    "status": "disabled_noop_runtime_test_added_uncompiled",
+    "profiles": [
+      "embedded_disabled_noop",
+      "embedded_smtp"
+    ],
+    "degraded_modes": [
+      "skip_disabled_provider",
+      "surface_delivery_retry_needed"
+    ]
   }
 }

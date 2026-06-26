@@ -122,6 +122,7 @@ pub fn BlogAdmin() -> impl IntoView {
         Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
     let form_copy_view = blog_form_copy_view_model(ui_locale.as_deref());
     let form_field_classes = core::blog_post_admin_editor_field_classes_view();
+    let shell_classes = core::blog_post_admin_shell_classes_view();
 
     let form_view_locale = ui_locale.clone();
     let form_view_model = Memo::new(move |_| {
@@ -539,16 +540,16 @@ pub fn BlogAdmin() -> impl IntoView {
     });
 
     view! {
-            <div class="space-y-6">
-                <header class="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between">
-                    <div class="space-y-2">
-                        <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+            <div class=shell_classes.page>
+                <header class=shell_classes.header>
+                    <div class=shell_classes.header_content>
+                        <span class=shell_classes.badge>
                             {t(ui_locale.as_deref(), "blog.badge", "blog")}
                         </span>
-                        <h1 class="text-2xl font-semibold text-card-foreground">
+                        <h1 class=shell_classes.title>
                             {t(ui_locale.as_deref(), "blog.title", "Blog Publishing")}
                         </h1>
-                        <p class="max-w-2xl text-sm text-muted-foreground">
+                        <p class=shell_classes.subtitle>
                             {t(
                                 ui_locale.as_deref(),
                                 "blog.subtitle",
@@ -558,14 +559,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     </div>
                 </header>
 
-                <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
-                    <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                        <div class="mb-4 flex items-end justify-between gap-4">
+                <section class=shell_classes.layout>
+                    <div class=shell_classes.list_card>
+                        <div class=shell_classes.list_header>
                             <div>
-                                <h2 class="text-lg font-semibold text-card-foreground">
+                                <h2 class=shell_classes.list_title>
                                     {t(ui_locale.as_deref(), "blog.posts.title", "Posts")}
                                 </h2>
-                                <p class="text-sm text-muted-foreground">
+                                <p class=shell_classes.list_subtitle>
                                     {t(
                                         ui_locale.as_deref(),
                                         "blog.posts.subtitle",
@@ -573,13 +574,13 @@ pub fn BlogAdmin() -> impl IntoView {
                                     )}
                                 </p>
                             </div>
-                            <label class="block space-y-2">
-                                <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            <label class=shell_classes.locale_filter_label>
+                                <span class=shell_classes.locale_filter_text>
                                     {form_copy_view.locale_label.clone()}
                                 </span>
                                 <input
                                     type="text"
-                                    class="rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                    class=shell_classes.locale_filter_input
                                     prop:value=locale
                                     on:input=move |ev| set_locale.set(event_target_value(&ev))
                                 />
@@ -588,9 +589,9 @@ pub fn BlogAdmin() -> impl IntoView {
 
                         <Suspense
                             fallback=move || view! {
-                                <div class="space-y-2">
+                                <div class=shell_classes.skeleton_stack>
                                     {(0..4).map(|_| view! {
-                                        <div class="h-14 animate-pulse rounded-xl bg-muted"></div>
+                                        <div class=shell_classes.skeleton_row></div>
                                     }).collect_view()}
                                 </div>
                             }
@@ -634,7 +635,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                             />
                                         }.into_any(),
                                         core::BlogPostAdminPostsLoadViewModel::Error { message } => view! {
-                                            <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                                            <div class=shell_classes.load_error>
                                                 {message}
                                             </div>
                                         }.into_any(),
@@ -644,13 +645,13 @@ pub fn BlogAdmin() -> impl IntoView {
                         </Suspense>
                     </div>
 
-                    <div class="space-y-6">
-                    <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                        <div class="space-y-1">
-                            <h2 class="text-lg font-semibold text-card-foreground">
+                    <div class=shell_classes.sidebar>
+                    <section class=shell_classes.form_card>
+                        <div class=shell_classes.form_header>
+                            <h2 class=shell_classes.form_title>
     {move || form_view_model.get().title}
                             </h2>
-                            <p class="text-sm text-muted-foreground">{form_copy_view.subtitle.clone()}</p>
+                            <p class=shell_classes.form_subtitle>{form_copy_view.subtitle.clone()}</p>
                         </div>
 
                         <Show when=move || editing_banner_view.get().visible>
@@ -664,7 +665,7 @@ pub fn BlogAdmin() -> impl IntoView {
                         </Show>
 
                         <form class="mt-5 space-y-4" on:submit=submit_post>
-                            <label class="block space-y-2">
+                            <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
                                     {form_copy_view.title_label.clone()}
                                 </span>
@@ -685,7 +686,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
-                            <label class="block space-y-2">
+                            <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
                                     {form_copy_view.slug_label.clone()}
                                 </span>
@@ -698,7 +699,7 @@ pub fn BlogAdmin() -> impl IntoView {
                             </label>
 
                             <div class="grid gap-4 md:grid-cols-2">
-                                <label class="block space-y-2">
+                                <label class=shell_classes.locale_filter_label>
                                     <span class=form_field_classes.label_text>
                                         {form_copy_view.locale_label.clone()}
                                     </span>
@@ -710,7 +711,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                     />
                                 </label>
 
-                                <label class="block space-y-2">
+                                <label class=shell_classes.locale_filter_label>
                                     <span class=form_field_classes.label_text>
                                         {form_copy_view.body_format_label.clone()}
                                     </span>
@@ -741,7 +742,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 </label>
                             </div>
 
-                            <label class="block space-y-2">
+                            <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
                                     {form_copy_view.excerpt_label.clone()}
                                 </span>
@@ -752,7 +753,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
-                            <label class="block space-y-2">
+                            <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
                                     {form_copy_view.body_label.clone()}
                                 </span>
@@ -769,7 +770,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 </div>
                             </Show>
 
-                            <label class="block space-y-2">
+                            <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
                                     {form_copy_view.tags_label.clone()}
                                 </span>

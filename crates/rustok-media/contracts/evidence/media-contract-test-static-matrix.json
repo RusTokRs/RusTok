@@ -66,7 +66,8 @@
       "omit_image_metadata",
       "keep_existing_seo_image",
       "skip_asset_enrichment",
-      "proxy_storage_relative_url"
+      "proxy_storage_relative_url",
+      "summarize_internal_binary"
     ],
     "source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
   }

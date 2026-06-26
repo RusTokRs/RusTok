@@ -19,7 +19,43 @@ pub struct RouterProviderProfile {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouterCandidateStatus {
+    Selected,
+    Eligible,
+    Inactive,
+    MissingCapability,
+    NotInTaskAllowList,
+    TaskDeniedByProviderPolicy,
+    NotInProviderAllowList,
+    MissingRequiredActorRole,
+}
+
+impl RouterCandidateStatus {
+    pub const fn slug(&self) -> &'static str {
+        match self {
+            Self::Selected => "selected",
+            Self::Eligible => "eligible",
+            Self::Inactive => "inactive",
+            Self::MissingCapability => "missing_capability",
+            Self::NotInTaskAllowList => "not_in_task_allow_list",
+            Self::TaskDeniedByProviderPolicy => "task_denied_by_provider_policy",
+            Self::NotInProviderAllowList => "not_in_provider_allow_list",
+            Self::MissingRequiredActorRole => "missing_required_actor_role",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouterCandidateDecision {
+    pub provider_profile_id: Uuid,
+    pub provider_slug: String,
+    pub provider_kind: ProviderKind,
+    pub status: RouterCandidateStatus,
+    pub preferred_by_task: bool,
+    pub reason: String,
+}
+
 pub struct ResolvedExecutionPlan {
     pub provider_profile_id: Uuid,
     pub task_profile_id: Option<Uuid>,
@@ -117,6 +153,21 @@ impl AiRouter {
                     provider.slug, profile.slug
                 )));
             }
+
+            let candidate_decisions = explain_provider_candidates(
+                profile,
+                providers,
+                actor_role_slugs,
+                Some(provider.id),
+            );
+            for decision in candidate_decisions {
+                reasons.push(format!(
+                    "Provider candidate `{}` status `{}`: {}",
+                    decision.provider_slug,
+                    decision.status.slug(),
+                    decision.reason
+                ));
+            }
         }
 
         let model = override_config
@@ -156,26 +207,93 @@ impl AiRouter {
     }
 }
 
+pub fn explain_provider_candidates(
+    task_profile: &TaskProfile,
+    providers: &[RouterProviderProfile],
+    actor_role_slugs: &[String],
+    selected_provider_profile_id: Option<Uuid>,
+) -> Vec<RouterCandidateDecision> {
+    providers
+        .iter()
+        .map(|provider| {
+            let preferred_by_task = task_profile
+                .preferred_provider_profile_ids
+                .contains(&provider.id);
+            let (status, reason) =
+                provider_candidate_status(provider, task_profile, actor_role_slugs);
+            let status = if selected_provider_profile_id == Some(provider.id)
+                && matches!(status, RouterCandidateStatus::Eligible)
+            {
+                RouterCandidateStatus::Selected
+            } else {
+                status
+            };
+            RouterCandidateDecision {
+                provider_profile_id: provider.id,
+                provider_slug: provider.slug.clone(),
+                provider_kind: provider.provider_kind,
+                status,
+                preferred_by_task,
+                reason,
+            }
+        })
+        .collect()
+}
+
 fn provider_allowed(
     provider: &RouterProviderProfile,
     task_profile: &TaskProfile,
     actor_role_slugs: &[String],
 ) -> bool {
+    matches!(
+        provider_candidate_status(provider, task_profile, actor_role_slugs).0,
+        RouterCandidateStatus::Eligible
+    )
+}
+
+fn provider_candidate_status(
+    provider: &RouterProviderProfile,
+    task_profile: &TaskProfile,
+    actor_role_slugs: &[String],
+) -> (RouterCandidateStatus, String) {
     if !provider.is_active {
-        return false;
+        return (
+            RouterCandidateStatus::Inactive,
+            "provider profile is inactive".to_string(),
+        );
     }
     if !provider
         .capabilities
         .contains(&task_profile.target_capability)
     {
-        return false;
+        return (
+            RouterCandidateStatus::MissingCapability,
+            format!(
+                "provider lacks required `{}` capability",
+                task_profile.target_capability.slug()
+            ),
+        );
     }
     if !task_profile.allowed_provider_profile_ids.is_empty()
         && !task_profile
             .allowed_provider_profile_ids
             .contains(&provider.id)
     {
-        return false;
+        return (
+            RouterCandidateStatus::NotInTaskAllowList,
+            "provider is not listed in the task profile allow-list".to_string(),
+        );
+    }
+    if provider
+        .usage_policy
+        .denied_task_profiles
+        .iter()
+        .any(|slug| slug == &task_profile.slug)
+    {
+        return (
+            RouterCandidateStatus::TaskDeniedByProviderPolicy,
+            "task profile is denied by provider usage policy".to_string(),
+        );
     }
     if !provider.usage_policy.allowed_task_profiles.is_empty()
         && !provider
@@ -184,15 +302,10 @@ fn provider_allowed(
             .iter()
             .any(|slug| slug == &task_profile.slug)
     {
-        return false;
-    }
-    if provider
-        .usage_policy
-        .denied_task_profiles
-        .iter()
-        .any(|slug| slug == &task_profile.slug)
-    {
-        return false;
+        return (
+            RouterCandidateStatus::NotInProviderAllowList,
+            "task profile is not listed in provider usage policy allow-list".to_string(),
+        );
     }
     if !provider.usage_policy.restricted_role_slugs.is_empty()
         && !actor_role_slugs.iter().any(|role| {
@@ -203,9 +316,15 @@ fn provider_allowed(
                 .any(|allowed| allowed == role)
         })
     {
-        return false;
+        return (
+            RouterCandidateStatus::MissingRequiredActorRole,
+            "actor does not have a role permitted by provider usage policy".to_string(),
+        );
     }
-    true
+    (
+        RouterCandidateStatus::Eligible,
+        "provider satisfies task routing policy".to_string(),
+    )
 }
 
 #[cfg(test)]
@@ -377,6 +496,119 @@ mod tests {
         assert!(error
             .to_string()
             .contains("provider `gemini-image` is not allowed for task profile `image_asset`"));
+    }
+
+    #[test]
+    fn explain_provider_candidates_records_all_policy_reasons() {
+        let inactive = RouterProviderProfile {
+            is_active: false,
+            ..provider(
+                1,
+                "inactive",
+                ProviderKind::OpenAiCompatible,
+                vec![ProviderCapability::TextGeneration],
+                ProviderUsagePolicy::default(),
+            )
+        };
+        let missing_capability = provider(
+            2,
+            "vision-only",
+            ProviderKind::Gemini,
+            vec![ProviderCapability::MultimodalUnderstanding],
+            ProviderUsagePolicy::default(),
+        );
+        let restricted = provider(
+            3,
+            "restricted",
+            ProviderKind::Anthropic,
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy {
+                allowed_task_profiles: vec![],
+                denied_task_profiles: vec![],
+                restricted_role_slugs: vec!["ai-admin".to_string()],
+            },
+        );
+        let selected = provider(
+            4,
+            "selected",
+            ProviderKind::OpenAiCompatible,
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy::default(),
+        );
+        let task = task_profile(
+            13,
+            "operator_chat",
+            ProviderCapability::TextGeneration,
+            vec![restricted.id, selected.id],
+            vec![],
+        );
+
+        let decisions = explain_provider_candidates(
+            &task,
+            &[inactive, missing_capability, restricted, selected.clone()],
+            &["support-agent".to_string()],
+            Some(selected.id),
+        );
+
+        assert_eq!(decisions[0].status, RouterCandidateStatus::Inactive);
+        assert_eq!(
+            decisions[1].status,
+            RouterCandidateStatus::MissingCapability
+        );
+        assert_eq!(
+            decisions[2].status,
+            RouterCandidateStatus::MissingRequiredActorRole
+        );
+        assert_eq!(decisions[3].status, RouterCandidateStatus::Selected);
+        assert!(decisions[2].preferred_by_task);
+    }
+
+    #[test]
+    fn resolve_decision_trace_includes_candidate_statuses() {
+        let restricted = provider(
+            1,
+            "restricted",
+            ProviderKind::Anthropic,
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy {
+                allowed_task_profiles: vec![],
+                denied_task_profiles: vec![],
+                restricted_role_slugs: vec!["ai-admin".to_string()],
+            },
+        );
+        let fallback = provider(
+            2,
+            "fallback",
+            ProviderKind::OpenAiCompatible,
+            vec![ProviderCapability::TextGeneration],
+            ProviderUsagePolicy::default(),
+        );
+        let task = task_profile(
+            14,
+            "operator_chat",
+            ProviderCapability::TextGeneration,
+            vec![restricted.id],
+            vec![],
+        );
+
+        let resolved = AiRouter::resolve(
+            Some(&task),
+            &[restricted, fallback],
+            None,
+            None,
+            &ExecutionOverride::default(),
+            &["support-agent".to_string()],
+        )
+        .expect("router should resolve to fallback");
+
+        assert!(resolved.decision_trace.reasons.iter().any(|reason| {
+            reason.contains("Provider candidate `restricted` status `missing_required_actor_role`")
+        }));
+        assert!(resolved
+            .decision_trace
+            .reasons
+            .iter()
+            .any(|reason| { reason.contains("Provider candidate `fallback` status `selected`") }));
     }
 
     #[test]
