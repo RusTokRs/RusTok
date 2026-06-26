@@ -1,0 +1,23 @@
+{
+  "captured_at": "<iso-8601>",
+  "environment": "<ci-or-runtime-env>",
+  "command_or_ci_job": "<command-or-ci-job-url>",
+  "redactions_applied": [
+    "<redaction-rule>"
+  ],
+  "result": "pending_capture",
+  "surface": "backend_graphql_rest_parity",
+  "before": {
+    "graphql": {},
+    "rest": {}
+  },
+  "after": {
+    "graphql": {},
+    "rest": {}
+  },
+  "samples": {
+    "graphql_operation": "seoPageContext",
+    "rest_endpoint": "/api/seo/page-context",
+    "semantic_error_codes": []
+  }
+}
