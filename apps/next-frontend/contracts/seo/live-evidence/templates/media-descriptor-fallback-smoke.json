@@ -1,0 +1,24 @@
+{
+  "captured_at": "<iso-8601>",
+  "environment": "<ci-or-runtime-env>",
+  "command_or_ci_job": "<command-or-ci-job-url>",
+  "redactions_applied": [
+    "<redaction-rule>"
+  ],
+  "result": "pending_capture",
+  "surface": "media_descriptor_fallback_smoke",
+  "before": {
+    "diagnostics_image_quality": {}
+  },
+  "after": {
+    "diagnostics_image_quality": {}
+  },
+  "samples": {
+    "descriptor_cases": [
+      "image_descriptor_in_process",
+      "provider_unavailable_omit_image_metadata",
+      "asset_unavailable_keep_existing_seo_image",
+      "relative_url_proxy_fallback"
+    ]
+  }
+}

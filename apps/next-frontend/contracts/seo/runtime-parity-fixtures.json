@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-24T00:00:00Z",
+  "updatedAt": "2026-06-26T00:00:00Z",
   "fallbackBehavior": [
     {
       "case": "module_disabled",
@@ -896,7 +896,8 @@
       "hash customer/user identifiers",
       "preserve route/target_kind/status/error code fields"
     ],
-    "closeoutRule": "All requiredFiles must be attached, counters must include before/after snapshots, and ownerSignoffChecklist rows may move to signed only after artifacts are reviewed."
+    "closeoutRule": "All requiredFiles must be attached, counters must include before/after snapshots, and ownerSignoffChecklist rows may move to signed only after artifacts are reviewed.",
+    "templateDirectory": "apps/next-frontend/contracts/seo/live-evidence/templates"
   },
   "liveArtifactSchemaTemplate": {
     "status": "template_only_pending_d8_runtime",
@@ -1059,5 +1060,237 @@
         "high-severity defect lacks remediation owner"
       ]
     }
-  ]
+  ],
+  "liveEvidenceRunbookCrosswalk": [
+    {
+      "scenario": "seo_event_backlog_stuck",
+      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "artifact": "outbox-index-before-after-counters.json",
+      "mustCapture": [
+        "delivery status before repair",
+        "operator action and replay mode",
+        "delivery status after repair",
+        "stop/rollback decision"
+      ],
+      "blocksCloseoutIf": [
+        "dead_letter count grows after repair",
+        "no replay cursor transition is captured",
+        "operator permission is not recorded"
+      ]
+    },
+    {
+      "scenario": "partial_indexing_failures",
+      "runbook": "crates/rustok-seo/docs/operations-runbook.md",
+      "artifact": "backend-graphql-rest-parity.json",
+      "mustCapture": [
+        "failed target kind/id sample",
+        "GraphQL and REST status parity",
+        "bounded retry/dead-letter state",
+        "index trigger idempotency key"
+      ],
+      "blocksCloseoutIf": [
+        "GraphQL and REST disagree on failure classification",
+        "duplicate index events are emitted",
+        "tenant/module gate is bypassed"
+      ]
+    },
+    {
+      "scenario": "replay_reindex_drill",
+      "runbook": "crates/rustok-seo/docs/replay-repair-runbook.md",
+      "artifact": "owner-signoff.md",
+      "mustCapture": [
+        "repair_only dry-run decision",
+        "repair+historical_replay approval",
+        "forward-only cursor timeline",
+        "owner acceptance note"
+      ],
+      "blocksCloseoutIf": [
+        "cursor moves backward",
+        "approval owner is missing",
+        "replay repeats already-sent deliveries without idempotency evidence"
+      ]
+    }
+  ],
+  "ciAttachmentManifestChecklist": [
+    {
+      "file": "backend-graphql-rest-parity.json",
+      "attachTo": "D8 backend integration job",
+      "requiredMetadata": [
+        "commit_sha",
+        "tenant_id_redacted",
+        "graphql_operation",
+        "rest_endpoint",
+        "result"
+      ],
+      "redaction": [
+        "authorization headers",
+        "cookies",
+        "tenant secrets"
+      ]
+    },
+    {
+      "file": "outbox-index-before-after-counters.json",
+      "attachTo": "D8 index pipeline job",
+      "requiredMetadata": [
+        "commit_sha",
+        "before",
+        "after",
+        "idempotency_keys_sample",
+        "result"
+      ],
+      "redaction": [
+        "outbox payload PII",
+        "operator token"
+      ]
+    },
+    {
+      "file": "next-runtime-robots-sitemap-metadata.json",
+      "attachTo": "D8 next-frontend host smoke",
+      "requiredMetadata": [
+        "commit_sha",
+        "base_url",
+        "robots_source",
+        "sitemap_source",
+        "metadata_routes",
+        "result"
+      ],
+      "redaction": [
+        "preview auth token",
+        "cookies"
+      ]
+    },
+    {
+      "file": "leptos-storefront-page-context-smoke.json",
+      "attachTo": "D8 storefront host smoke",
+      "requiredMetadata": [
+        "commit_sha",
+        "route",
+        "locale",
+        "channel",
+        "seo_page_context",
+        "result"
+      ],
+      "redaction": [
+        "session cookies",
+        "user identifiers"
+      ]
+    },
+    {
+      "file": "media-descriptor-fallback-smoke.json",
+      "attachTo": "D8 media consumer smoke",
+      "requiredMetadata": [
+        "commit_sha",
+        "descriptor_cases",
+        "diagnostics_before",
+        "diagnostics_after",
+        "result"
+      ],
+      "redaction": [
+        "storage credentials",
+        "raw asset URLs when private"
+      ]
+    },
+    {
+      "file": "owner-signoff.md",
+      "attachTo": "D9 closeout packet",
+      "requiredMetadata": [
+        "commit_sha",
+        "owner",
+        "scope",
+        "evidence_links",
+        "signed_state"
+      ],
+      "redaction": [
+        "personal access tokens"
+      ]
+    }
+  ],
+  "defectTriageMatrix": [
+    {
+      "severity": "blocker",
+      "appliesTo": [
+        "D8",
+        "D9"
+      ],
+      "examples": [
+        "public route returns missing canonical",
+        "robots/sitemap runtime throws without static fallback",
+        "index replay duplicates delivered events"
+      ],
+      "requiredAction": "stop closeout and fix before sign-off"
+    },
+    {
+      "severity": "high",
+      "appliesTo": [
+        "D8"
+      ],
+      "examples": [
+        "GraphQL/REST error codes diverge",
+        "media descriptor fallback mutates explicit SEO image",
+        "tenant/module gating parity fails"
+      ],
+      "requiredAction": "fix or attach owner-approved mitigation with repeat evidence"
+    },
+    {
+      "severity": "medium",
+      "appliesTo": [
+        "D8",
+        "D9"
+      ],
+      "examples": [
+        "non-semantic metadata whitespace diff outside allowlist",
+        "runbook sample misses before counter",
+        "owner note links fixture but not CI artifact"
+      ],
+      "requiredAction": "document and close before boundary_ready promotion"
+    },
+    {
+      "severity": "low",
+      "appliesTo": [
+        "D9"
+      ],
+      "examples": [
+        "artifact label typo",
+        "non-blocking docs wording drift"
+      ],
+      "requiredAction": "may defer only with owner note and tracked follow-up"
+    }
+  ],
+  "ownerSignoffStateMachine": {
+    "initialState": "pending_static_seed",
+    "allowedTransitions": [
+      {
+        "from": "pending_static_seed",
+        "to": "runtime_evidence_attached",
+        "requires": [
+          "all requiredFiles linked",
+          "redactions confirmed",
+          "no blocker/high defect open"
+        ]
+      },
+      {
+        "from": "runtime_evidence_attached",
+        "to": "owner_review",
+        "requires": [
+          "owner scope mapped",
+          "runbook crosswalk complete",
+          "artifact checklist complete"
+        ]
+      },
+      {
+        "from": "owner_review",
+        "to": "signed",
+        "requires": [
+          "owner acceptance recorded",
+          "defect disposition accepted",
+          "D8/D9 closeout blockers clear"
+        ]
+      }
+    ],
+    "forbiddenTransitions": [
+      "pending_static_seed->signed",
+      "runtime_evidence_attached->signed_without_owner_review",
+      "signed->pending_static_seed"
+    ]
+  }
 }
