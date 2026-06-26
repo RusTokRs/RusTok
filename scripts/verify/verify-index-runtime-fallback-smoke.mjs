@@ -44,6 +44,9 @@ requireSource(ports, 'index.read_selector_slug_empty', 'ports');
 requireSource(ports, 'index.read_selector_locale_empty', 'ports');
 requireSource(ports, 'index.read_selector_doc_type_empty', 'ports');
 requireSource(ports, 'ensure_index_document_tenant_scope', 'ports');
+requireSource(ports, 'pub struct InMemoryIndexReadModelAdapter', 'ports');
+requireSource(ports, 'impl IndexReadModelPort for InMemoryIndexReadModelAdapter', 'ports');
+requireSource(ports, 'validate_index_read_smoke(&context, &request)?;', 'ports');
 
 const listCase = requireCase('embedded_native', 'list_index_documents');
 for (const assertion of ['read_policy_required_before_list', 'bounded_limit_preserved', 'locale_filter_optional', 'tenant_scope_preserved', 'index_search_boundary_preserved']) requireAssertion(listCase, assertion);
@@ -51,6 +54,8 @@ requireSource(ports, 'validate_index_list_request(request)?;', 'ports');
 requireSource(ports, 'const MAX_INDEX_LIST_LIMIT: u32 = 100;', 'ports');
 requireSource(ports, 'index.list_limit_invalid', 'ports');
 requireSource(ports, 'index.list_limit_too_large', 'ports');
+requireSource(ports, 'documents.len() >= request.limit as usize', 'ports');
+requireSource(ports, 'request.locale', 'ports');
 
 const adminCase = requireCase('admin_read_only', 'request_rebuild');
 for (const assertion of ['write_policy_required_before_rebuild', 'dry_run_preserved', 'owner_module_validation', 'entity_type_validation', 'typed_disabled_error_available']) requireAssertion(adminCase, assertion);
@@ -60,6 +65,8 @@ requireSource(ports, 'request.dry_run', 'ports');
 requireSource(ports, 'index.rebuild_owner_module_empty', 'ports');
 requireSource(ports, 'index.rebuild_entity_type_empty', 'ports');
 requireSource(ports, 'index.rebuild_disabled', 'ports');
+requireSource(ports, 'pub struct DisabledIndexRebuildAdapter', 'ports');
+requireSource(ports, 'impl IndexRebuildPort for DisabledIndexRebuildAdapter', 'ports');
 
 const disabledCase = requireCase('rebuild_disabled', 'request_rebuild');
 for (const assertion of ['rebuild_disabled_maps_to_unavailable', 'idempotency_required_by_write_policy', 'deadline_required_by_write_policy', 'tenant_scope_preserved']) requireAssertion(disabledCase, assertion);
