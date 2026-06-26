@@ -31,6 +31,7 @@ const checks = [
   "verify-page-builder-control-plane-dry-run.mjs",
   "verify-page-builder-transport-bridge.mjs",
   "verify-page-builder-endpoint-adapters.mjs",
+  "verify-page-builder-adapter-seams.mjs",
   "verify-page-builder-terminology.mjs",
 ];
 

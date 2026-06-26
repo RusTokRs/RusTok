@@ -101,6 +101,7 @@
     "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke && npm run test:verify:search:fba:runtime-contract && npm run test:verify:search:fba:runtime-invocation",
     "verify:ai:domain-verticals": "node scripts/verify/verify-ai-domain-verticals.mjs",
     "verify:index:runtime-fallback-smoke": "node scripts/verify/verify-index-runtime-fallback-smoke.mjs",
+    "verify:page-builder:adapter-seams": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs"
     "verify:search:fba:runtime-invocation": "node scripts/verify/verify-search-fba-runtime-invocation.mjs",
     "test:verify:search:fba:runtime-contract": "node scripts/verify/verify-search-fba-runtime-contract.test.mjs",
     "test:verify:search:fba:runtime-invocation": "node scripts/verify/verify-search-fba-runtime-invocation.test.mjs",
