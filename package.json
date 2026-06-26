@@ -72,7 +72,7 @@
     "test:verify:forum:storefront-boundary": "node scripts/verify/verify-forum-storefront-boundary.test.mjs",
     "verify:tax:fba": "node scripts/verify/verify-tax-fba.mjs",
     "verify:comments:fba": "node scripts/verify/verify-comments-fba.mjs",
-    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs && npm run verify:search:fba:runtime-smoke && npm run verify:search:fba:runtime-contract",
+    "verify:search:fba": "node scripts/verify/verify-search-fba.mjs && npm run verify:search:fba:runtime-smoke && npm run verify:search:fba:runtime-contract && npm run verify:search:fba:runtime-invocation",
     "test:verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.test.mjs",
     "test:verify:search:ui-boundary": "node scripts/verify/verify-search-ui-boundary.test.mjs",
     "test:verify:comments:admin-boundary": "node scripts/verify/verify-comments-admin-boundary.test.mjs",
@@ -98,10 +98,13 @@
     "verify:channel:proof-points": "node scripts/verify/verify-channel-proof-points.mjs",
     "verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.mjs",
     "test:verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.test.mjs",
-    "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke",
+    "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke && npm run test:verify:search:fba:runtime-contract && npm run test:verify:search:fba:runtime-invocation",
     "verify:ai:domain-verticals": "node scripts/verify/verify-ai-domain-verticals.mjs",
     "verify:index:runtime-fallback-smoke": "node scripts/verify/verify-index-runtime-fallback-smoke.mjs",
-    "verify:ai:router-policy": "node scripts/verify/verify-ai-router-policy.mjs"
+    "verify:search:fba:runtime-invocation": "node scripts/verify/verify-search-fba-runtime-invocation.mjs",
+    "test:verify:search:fba:runtime-contract": "node scripts/verify/verify-search-fba-runtime-contract.test.mjs",
+    "test:verify:search:fba:runtime-invocation": "node scripts/verify/verify-search-fba-runtime-invocation.test.mjs",
+    "verify:search:fba:runtime-contract": "node scripts/verify/verify-search-fba-runtime-contract.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"
