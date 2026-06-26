@@ -12,10 +12,10 @@ use uuid::Uuid;
 
 use crate::SeaOrmExecutionLog;
 use crate::error::ScriptError;
-use crate::model::EntityProxy;
+use crate::model::{EntityProxy, ScriptTrigger};
 use crate::runner::ScriptOrchestrator;
 use crate::storage::{ScriptQuery, ScriptRegistry};
-use crate::utils::{dynamic_to_json, json_to_dynamic};
+use crate::utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression};
 
 use super::dto::*;
 
@@ -123,6 +123,10 @@ pub async fn create_script<S: ScriptRegistry>(
         });
     }
 
+    validate_trigger(&req.trigger)?;
+    let mut scope = rhai::Scope::new();
+    state.engine.compile(&req.name, &req.code, &mut scope)?;
+
     let mut script = crate::model::Script::new(req.name, req.code, req.trigger);
     if let Some(tenant_id) = req.tenant_id {
         script.tenant_id = tenant_id;
@@ -147,16 +151,20 @@ pub async fn update_script<S: ScriptRegistry>(
     let mut script = state.registry.get(id).await.map_err(ApiError::from)?;
 
     if let Some(name) = req.name {
+        state.engine.invalidate(&script.name);
         script.name = name;
     }
     if let Some(desc) = req.description {
         script.description = Some(desc);
     }
     if let Some(code) = req.code {
-        script.code = code;
         state.engine.invalidate(&script.name);
+        let mut scope = rhai::Scope::new();
+        state.engine.compile(&script.name, &code, &mut scope)?;
+        script.code = code;
     }
     if let Some(trigger) = req.trigger {
+        validate_trigger(&trigger)?;
         script.trigger = trigger;
     }
     if let Some(status) = req.status {
@@ -417,6 +425,17 @@ pub async fn validate_script<S: ScriptRegistry>(
 }
 
 // ============ Helpers ============
+
+fn validate_trigger(trigger: &ScriptTrigger) -> ApiResult<()> {
+    if let ScriptTrigger::Cron { expression } = trigger {
+        validate_cron_expression(expression).map_err(|error| ApiError {
+            error: format!("Invalid cron expression: {error}"),
+            code: "validation".to_string(),
+        })?;
+    }
+
+    Ok(())
+}
 
 fn convert_map(map: HashMap<String, rhai::Dynamic>) -> HashMap<String, serde_json::Value> {
     map.into_iter()
