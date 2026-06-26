@@ -338,6 +338,109 @@ pub trait IndexRebuildPort: Send + Sync {
     ) -> Result<IndexRebuildOutcome, PortError>;
 }
 
+
+/// Parse the shared string tenant id from `PortContext` into the UUID shape used by persisted index rows.
+pub fn parse_index_context_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        PortError::validation(
+            "index.tenant_id_invalid",
+            "index port context tenant_id must be a UUID",
+        )
+    })
+}
+
+/// Minimal in-process adapter for runtime contract smoke and embedded-native hosts.
+#[derive(Debug, Clone, Default)]
+pub struct InProcessIndexReadModelAdapter {
+    documents: Vec<IndexDocument>,
+}
+
+impl InProcessIndexReadModelAdapter {
+    pub fn new(documents: Vec<IndexDocument>) -> Self {
+        Self { documents }
+    }
+
+    fn matches_selector(document: &IndexDocument, selector: &IndexReadSelector) -> bool {
+        match selector {
+            IndexReadSelector::DocumentId(id) => document.id == *id,
+            IndexReadSelector::Slug {
+                doc_type,
+                locale,
+                slug,
+            } => {
+                document.doc_type.to_string() == *doc_type
+                    && document.locale == *locale
+                    && document.slug == *slug
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl IndexReadModelPort for InProcessIndexReadModelAdapter {
+    async fn read_index_document(
+        &self,
+        context: PortContext,
+        request: IndexReadRequest,
+    ) -> Result<Option<IndexDocument>, PortError> {
+        validate_index_read_smoke(&context, &request)?;
+        let tenant_id = parse_index_context_tenant_id(&context)?;
+
+        let document = self
+            .documents
+            .iter()
+            .find(|document| Self::matches_selector(document, &request.selector))
+            .cloned();
+
+        if let Some(document) = document.as_ref() {
+            ensure_index_document_tenant_scope(tenant_id, document)?;
+        }
+
+        Ok(document)
+    }
+
+    async fn list_index_documents(
+        &self,
+        context: PortContext,
+        request: IndexListRequest,
+    ) -> Result<Vec<IndexDocument>, PortError> {
+        validate_index_list_smoke(&context, &request)?;
+        let tenant_id = parse_index_context_tenant_id(&context)?;
+        let limit = request.limit as usize;
+
+        Ok(self
+            .documents
+            .iter()
+            .filter(|document| document.tenant_id == tenant_id)
+            .filter(|document| document.doc_type.to_string() == request.doc_type)
+            .filter(|document| {
+                request
+                    .locale
+                    .as_deref()
+                    .map_or(true, |locale| document.locale == locale)
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+}
+
+/// Read-only runtime adapter that keeps rebuild endpoints typed but explicitly disabled.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RebuildDisabledIndexAdapter;
+
+#[async_trait]
+impl IndexRebuildPort for RebuildDisabledIndexAdapter {
+    async fn request_rebuild(
+        &self,
+        context: PortContext,
+        request: IndexRebuildRequest,
+    ) -> Result<IndexRebuildOutcome, PortError> {
+        validate_index_rebuild_smoke(&context, &request)?;
+        Err(index_rebuild_disabled_error())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

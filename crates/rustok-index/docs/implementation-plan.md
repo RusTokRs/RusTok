@@ -5,9 +5,9 @@
 
 ## Execution checkpoint
 
-- Current phase: phase_b_in_progress + fba_in_process_adapter_smoke
-- Last checkpoint: добавлен реальный in-process read adapter slice для `IndexReadModelPort` и read-only `DisabledIndexRebuildAdapter`: no-compile verifier теперь source-locks adapter implementations, bounded list/locale filtering, tenant-scope guard и typed degraded-mode rebuild path без запуска Rust-компиляции.
-- Next step: Подключить persistence-backed adapter к read/list/rebuild smoke и собрать Rust runtime contract evidence; до этого статус остаётся `in_progress`.
+- Current phase: phase_b_in_progress + fba_provider_in_process_adapter_source_lock
+- Last checkpoint: no-compile инкремент добавил source-locked in-process adapter seams: `InProcessIndexReadModelAdapter` реализует `IndexReadModelPort` для read/list smoke с selector/tenant/type/locale/limit фильтрами, `RebuildDisabledIndexAdapter` реализует typed disabled `IndexRebuildPort`, а `verify:index:fba` закрепляет adapter metadata без запуска Rust-компиляции.
+- Next step: Подключить persistence-backed adapter поверх текущих in-process seams и собрать Rust runtime contract evidence; до этого статус остаётся `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
 - Last updated at (UTC): 2026-06-26T00:00:00Z
@@ -21,7 +21,7 @@
   - admin package split introduced `admin/src/core.rs` for Leptos-free view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-index` had no legacy GraphQL/REST operator contract for this overview;
   - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
-  - FBA provider slice: `crates/rustok-index/src/ports.rs` declares `IndexReadModelPort` / `index.read_model.v1` for indexed document reads and `IndexRebuildPort` / `index.rebuild.v1` for operator rebuild orchestration with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, `PortCallPolicy::read()` deadline semantics and `PortCallPolicy::write()` idempotency/deadline semantics for rebuilds; `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` lock planned contract cases, fallback profiles and no-compile source markers under `npm run verify:index:fba`; `InMemoryIndexReadModelAdapter` and `DisabledIndexRebuildAdapter` now provide a real in-process adapter slice for no-compile runtime smoke evidence; persistence-backed Rust runtime contract execution remains pending before `boundary_ready`.
+  - FBA provider slice: `crates/rustok-index/src/ports.rs` declares `IndexReadModelPort` / `index.read_model.v1` for indexed document reads and `IndexRebuildPort` / `index.rebuild.v1` for operator rebuild orchestration with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, `PortCallPolicy::read()` deadline semantics and `PortCallPolicy::write()` idempotency/deadline semantics for rebuilds; `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` lock planned contract cases, fallback profiles, no-compile source markers and source-locked in-process adapter seams (`InProcessIndexReadModelAdapter`, `RebuildDisabledIndexAdapter`) under `npm run verify:index:fba`; persistence-backed Rust runtime contract execution remains pending before `boundary_ready`.
 
 ## Область работ
 
@@ -57,9 +57,11 @@
 ### 3. Operability
 
 - [ ] покрыть consistency drift, rebuild duration и sync lag наблюдаемыми метриками;
-- [x] добавить no-compile runtime fallback smoke для read/list/rebuild provider ports, in-process read adapter и degraded rebuild-disabled profile;
+- [x] добавить no-compile runtime fallback smoke для read/list/rebuild provider ports и degraded rebuild-disabled profile;
+- [x] закрепить source-locked in-process adapter seams для read/list и rebuild-disabled runtime profiles без компиляции;
 - [~] добавить operator flows для health verification и rebuild control; текущий admin overview уже показывает tenant/module/counter bootstrap через FFA native-only transport;
 - [ ] документировать новые query/ingestion guarantees одновременно с изменением runtime surface.
+- [ ] заменить in-memory smoke adapter persistence-backed runtime adapter evidence при разрешённых компиляциях.
 
 ## Проверка
 
