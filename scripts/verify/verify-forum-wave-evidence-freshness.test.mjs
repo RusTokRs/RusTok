@@ -21,12 +21,34 @@ function evidence(overrides = {}) {
     rollback: { decision: "keep" },
     approvals: { platform_on_call: "approved" },
     waivers: [],
+    refresh_history: {
+      latest_refresh: {
+        refreshed_at: "2026-06-01T00:00:00Z",
+        verified_by: "rustok-forum module team",
+        no_compile_gates: [
+          "npm run verify:page-builder:consumer:forum",
+          "npm run verify:forum:wave-evidence-freshness",
+          "npm run test:verify:forum:wave-evidence-freshness",
+        ],
+        sections_refreshed: [
+          "control_plane.audit_trail",
+          "fallback.profiles",
+          "observability.metrics",
+          "observability.traces",
+          "rollback.decision",
+          "approvals",
+          "waivers",
+          "refresh_history.latest_refresh",
+        ],
+      },
+    },
     refresh_policy: {
       cadence: "monthly",
       max_age_days: 45,
       next_due_at: "2026-07-01T00:00:00Z",
       required_gate: "npm run verify:page-builder:consumer:forum",
       stale_evidence_action: "block_builder_consumer_rollout_until_refreshed",
+      owner: "rustok-forum module team",
       required_sections: [
         "control_plane.audit_trail",
         "fallback.profiles",
@@ -35,6 +57,7 @@ function evidence(overrides = {}) {
         "rollback.decision",
         "approvals",
         "waivers",
+        "refresh_history.latest_refresh",
       ],
     },
   };
@@ -113,5 +136,31 @@ test("forum wave evidence freshness verifier rejects empty materialized refresh 
   withEvidence(packet, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /observability\.metrics must be a non-empty object/);
+  });
+});
+
+test("forum wave evidence freshness verifier rejects refresh history gate drift", () => {
+  const packet = evidence({
+    refresh_history: {
+      latest_refresh: {
+        refreshed_at: "2026-06-01T00:00:00Z",
+        verified_by: "rustok-forum module team",
+        no_compile_gates: ["npm run verify:page-builder:consumer:forum"],
+        sections_refreshed: [
+          "control_plane.audit_trail",
+          "fallback.profiles",
+          "observability.metrics",
+          "observability.traces",
+          "rollback.decision",
+          "approvals",
+          "waivers",
+          "refresh_history.latest_refresh",
+        ],
+      },
+    },
+  });
+  withEvidence(packet, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /no_compile_gates missing npm run verify:forum:wave-evidence-freshness/);
   });
 });
