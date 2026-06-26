@@ -8,11 +8,11 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_no_compile_verification_handoff
-- Last checkpoint: No-compile handoff hardening for standalone Flex: schema create/update validation now rejects empty or untrimmed schema descriptions before adapter writes, the latest schema-definition guardrails remain documented, and the verification handoff keeps pending compile/test evidence explicit.
+- Last checkpoint: No-compile hardening for standalone Flex schema ordering: schema create/update validation now rejects duplicate field positions before adapter writes, the source-level standalone verifier locks the guardrail, and pending compile/test evidence remains explicit.
 - Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared standalone UUID and schema-definition guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name normalization, schema-definition shape validation including regex/options/error-message/position/min-max/locale-map checks, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. Schema description normalization was tightened in `crates/flex/src/standalone.rs`; rerun `rustfmt --edition 2021 crates/flex/src/standalone.rs apps/server/src/services/flex_standalone_service.rs` and then the targeted Flex test commands as soon as compilation/checks are allowed.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name/description normalization, schema-definition shape validation including regex/options/error-message/unique-position/min-max/locale-map checks, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. This iteration ran formatting and the source-level standalone contract verifier only; rerun targeted Flex test commands as soon as compilation/checks are allowed.
+- Last updated at (UTC): 2026-06-26T00:00:00Z
 
 ## Область работ
 
@@ -310,6 +310,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - 2026-06-20 no-compile schema-definition locale/rule follow-up: standalone schema validators now require normalized locale keys for localized labels/descriptions/error messages/select labels, reject empty optional localized maps, enforce select option values as normalized machine identifiers, and reject unsupported/negative min-max rules before adapter writes; targeted contract tests were added without execution by request.
   - 2026-06-21 no-compile handoff cleanup: standalone schema create/update validation now rejects empty or untrimmed schema descriptions before adapter writes, with targeted contract tests added without execution by request; the execution checkpoint also makes the deferred formatting/compile/test gates explicit for the next allowed verification pass.
   - 2026-06-24 no-compile iteration: standalone orchestration duplicate `update_schema` delegation was removed, and a source-level no-compile verifier `scripts/verify/verify-flex-standalone-contract.mjs` now locks the Phase 5 guardrails for nil UUIDs, schema-definition shape, localized-map normalization, tenant-scoped localized entry lookup and PATCH-style entry merge.
+  - 2026-06-26 no-compile iteration: standalone schema-definition validation now rejects duplicate `position` values so schema field ordering is deterministic before adapter writes; the source-level verifier was extended to lock the unique-position guardrail.
   - Полное закрытие пункта всё ещё требует стабильный `rustok-server` test run; текущий инкремент подготовил standalone PATCH/guardrail/schema-definition fixes и тесты, но compile/test evidence отложен, потому что эта итерация выполнялась без компиляций.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
