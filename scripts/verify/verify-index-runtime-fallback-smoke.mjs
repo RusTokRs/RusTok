@@ -27,7 +27,7 @@ const requireSource = (source, marker, label) => {
 };
 
 if (smoke.schema_version !== 1 || smoke.module !== 'index') fail('runtime smoke identity drift');
-if (smoke.status !== 'no_compile_executable_runtime_fallback_smoke') fail('runtime smoke status drift');
+if (!['no_compile_executable_runtime_fallback_smoke', 'no_compile_source_locked_runtime_adapter_smoke'].includes(smoke.status)) fail('runtime smoke status drift');
 if (smoke.generated_from !== registryPath || smoke.contract_version !== registry.contract_version) fail('runtime smoke registry/version drift');
 if (smoke.runner !== 'scripts/verify/verify-index-runtime-fallback-smoke.mjs') fail('runtime smoke runner drift');
 for (const profile of registry.contract_tests.fallback_smoke.profiles) {
@@ -35,7 +35,7 @@ for (const profile of registry.contract_tests.fallback_smoke.profiles) {
 }
 
 const readCase = requireCase('embedded_native', 'read_index_document');
-for (const assertion of ['read_policy_required_before_lookup', 'document_id_selector_supported', 'slug_selector_validates_doc_type_locale_slug', 'tenant_scope_preserved', 'index_search_boundary_preserved']) requireAssertion(readCase, assertion);
+for (const assertion of ['read_policy_required_before_lookup', 'document_id_selector_supported', 'slug_selector_validates_doc_type_locale_slug', 'tenant_scope_preserved', 'index_search_boundary_preserved', 'in_process_read_adapter_filters_selector']) requireAssertion(readCase, assertion);
 requireSource(ports, 'validate_index_read_request(request)?;', 'ports');
 requireSource(ports, 'require_index_read_policy(context)?;', 'ports');
 requireSource(ports, 'IndexReadSelector::DocumentId', 'ports');
@@ -44,9 +44,12 @@ requireSource(ports, 'index.read_selector_slug_empty', 'ports');
 requireSource(ports, 'index.read_selector_locale_empty', 'ports');
 requireSource(ports, 'index.read_selector_doc_type_empty', 'ports');
 requireSource(ports, 'ensure_index_document_tenant_scope', 'ports');
+requireSource(ports, 'impl IndexReadModelPort for InProcessIndexReadModelAdapter', 'ports');
+requireSource(ports, 'Self::matches_selector(document, &request.selector)', 'ports');
+requireSource(ports, 'parse_index_context_tenant_id(&context)?', 'ports');
 
 const listCase = requireCase('embedded_native', 'list_index_documents');
-for (const assertion of ['read_policy_required_before_list', 'bounded_limit_preserved', 'locale_filter_optional', 'tenant_scope_preserved', 'index_search_boundary_preserved']) requireAssertion(listCase, assertion);
+for (const assertion of ['read_policy_required_before_list', 'bounded_limit_preserved', 'locale_filter_optional', 'tenant_scope_preserved', 'index_search_boundary_preserved', 'in_process_list_adapter_filters_tenant_type_locale_limit']) requireAssertion(listCase, assertion);
 requireSource(ports, 'validate_index_list_request(request)?;', 'ports');
 requireSource(ports, 'const MAX_INDEX_LIST_LIMIT: u32 = 100;', 'ports');
 requireSource(ports, 'index.list_limit_invalid', 'ports');
@@ -66,6 +69,8 @@ for (const assertion of ['rebuild_disabled_maps_to_unavailable', 'idempotency_re
 requireSource(ports, 'PortErrorKind::Unavailable', 'ports');
 requireSource(ports, 'PortCallPolicy::write()', 'ports');
 requireSource(ports, 'PortCallPolicy::read()', 'ports');
+requireSource(ports, 'impl IndexRebuildPort for RebuildDisabledIndexAdapter', 'ports');
+requireSource(ports, 'Err(index_rebuild_disabled_error())', 'ports');
 requireSource(adminTransport, 'fetch_bootstrap', 'admin transport facade');
 requireSource(nativeAdapter, '#[server', 'native adapter');
 

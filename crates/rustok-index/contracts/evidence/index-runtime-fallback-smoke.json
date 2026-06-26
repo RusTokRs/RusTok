@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "module": "index",
-  "status": "no_compile_executable_runtime_fallback_smoke",
+  "status": "no_compile_source_locked_runtime_adapter_smoke",
   "generated_from": "crates/rustok-index/contracts/index-fba-registry.json",
   "runner": "scripts/verify/verify-index-runtime-fallback-smoke.mjs",
   "contract_version": "index.read_model.v1",
@@ -10,7 +10,7 @@
     "admin_read_only",
     "rebuild_disabled"
   ],
-  "execution_note": "No Rust compilation is required for this packet; the dedicated Node verifier locks fallback-smoke behavior against source markers, shared port policy usage and typed evidence while full Rust runtime evidence remains pending before boundary_ready.",
+  "execution_note": "No Rust compilation is required for this packet; the dedicated Node verifier locks fallback-smoke behavior against source markers, shared port policy usage, typed evidence, and in-process adapter seams while full persistence-backed Rust runtime evidence remains pending before boundary_ready.",
   "smoke_cases": [
     {
       "profile": "embedded_native",
@@ -21,7 +21,8 @@
         "document_id_selector_supported",
         "slug_selector_validates_doc_type_locale_slug",
         "tenant_scope_preserved",
-        "index_search_boundary_preserved"
+        "index_search_boundary_preserved",
+        "in_process_read_adapter_filters_selector"
       ]
     },
     {
@@ -33,7 +34,8 @@
         "bounded_limit_preserved",
         "locale_filter_optional",
         "tenant_scope_preserved",
-        "index_search_boundary_preserved"
+        "index_search_boundary_preserved",
+        "in_process_list_adapter_filters_tenant_type_locale_limit"
       ]
     },
     {
@@ -56,7 +58,8 @@
         "rebuild_disabled_maps_to_unavailable",
         "idempotency_required_by_write_policy",
         "deadline_required_by_write_policy",
-        "tenant_scope_preserved"
+        "tenant_scope_preserved",
+        "rebuild_disabled_adapter_returns_typed_error"
       ]
     }
   ]

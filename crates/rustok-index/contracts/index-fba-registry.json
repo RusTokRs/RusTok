@@ -114,5 +114,12 @@
       ],
       "status": "planned_runtime_pending"
     }
+  },
+  "in_process_provider_impl": {
+    "status": "source_locked_no_compile",
+    "read_adapter": "InProcessIndexReadModelAdapter",
+    "rebuild_adapter": "RebuildDisabledIndexAdapter",
+    "source": "crates/rustok-index/src/ports.rs",
+    "runtime_evidence_status": "rust_runtime_pending"
   }
 }

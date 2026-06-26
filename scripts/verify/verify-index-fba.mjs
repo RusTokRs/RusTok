@@ -48,13 +48,14 @@ for (const registryCase of registry.contract_tests.cases) {
   if (!evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail(`${registryCase.operation} evidence case drift`);
 }
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'index' || runtimeSmoke.status !== 'no_compile_executable_runtime_fallback_smoke') fail('runtime smoke identity drift');
+if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'index' || !['no_compile_executable_runtime_fallback_smoke', 'no_compile_source_locked_runtime_adapter_smoke'].includes(runtimeSmoke.status)) fail('runtime smoke identity drift');
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-index-runtime-fallback-smoke.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
 if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile drift');
 for (const profile of registry.contract_tests.fallback_smoke.profiles) {
   if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'no_compile_executable_locked')) fail(`runtime smoke missing executable no-compile profile ${profile}`);
 }
-for (const marker of ['validate_index_read_request', 'validate_index_list_request', 'validate_index_rebuild_request', 'ensure_index_document_tenant_scope', 'index.rebuild_disabled']) {
+if (registry.in_process_provider_impl?.read_adapter !== 'InProcessIndexReadModelAdapter' || registry.in_process_provider_impl?.rebuild_adapter !== 'RebuildDisabledIndexAdapter') fail('in-process provider impl metadata drift');
+for (const marker of ['validate_index_read_request', 'validate_index_list_request', 'validate_index_rebuild_request', 'ensure_index_document_tenant_scope', 'index.rebuild_disabled', 'impl IndexReadModelPort for InProcessIndexReadModelAdapter', 'impl IndexRebuildPort for RebuildDisabledIndexAdapter', 'parse_index_context_tenant_id']) {
   if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
 }
 console.log('[verify-index-fba] Index FBA provider metadata, port semantics and static evidence and source-locked runtime fallback smoke are consistent');
