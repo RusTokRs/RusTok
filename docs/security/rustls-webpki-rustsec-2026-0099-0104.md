@@ -1,3 +1,11 @@
+---
+id: doc://docs/security/rustls-webpki-rustsec-2026-0099-0104.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104: устранение
 
 ## Статус

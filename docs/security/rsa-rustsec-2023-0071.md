@@ -1,3 +1,11 @@
+---
+id: doc://docs/security/rsa-rustsec-2023-0071.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # RUSTSEC-2023-0071 remediation note
 
 ## Статус

@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/flutter-ffa-architecture-article.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # FFA для Flutter: зачем платформенному продукту не «обычная» мобильная архитектура
 
 > Статья-заметка для внешней публикации в стиле Medium. Материал объясняет,

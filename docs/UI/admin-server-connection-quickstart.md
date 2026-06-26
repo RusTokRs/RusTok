@@ -1,3 +1,11 @@
+---
+id: doc://docs/UI/admin-server-connection-quickstart.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Admin ↔ Server: quickstart
 
 Этот документ фиксирует минимальный runtime contract между UI host-приложениями и `apps/server`. Он не заменяет полноценные deployment runbook и не дублирует инструкции по конкретным окружениям.

@@ -1,3 +1,11 @@
+---
+id: doc://docs/index.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # RusTok: карта документации
 
 Этот файл является канонической точкой входа в документацию репозитория.
@@ -97,6 +105,7 @@
 ## Проверка платформы
 
 - [Инструмент workspace CLI `xtask`](../xtask/README.md)
+- [Операционная документация Athanor](./operations/README.md)
 - [Главный README по верификации](./verification/README.md)
 - [Проверка Flex multilingual contract](../scripts/verify/verify-flex-multilingual-contract.mjs)
 - [Проверка Flex standalone contract guardrails](../scripts/verify/verify-flex-standalone-contract.mjs)

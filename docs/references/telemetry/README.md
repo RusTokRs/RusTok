@@ -1,3 +1,11 @@
+---
+id: doc://docs/references/telemetry/README.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Telemetry Reference-пакет (RusToK)
 
 Дата последней актуализации: **2026-02-19**.

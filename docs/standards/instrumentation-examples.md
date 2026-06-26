@@ -1,3 +1,11 @@
+---
+id: doc://docs/standards/instrumentation-examples.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # 🔍 OpenTelemetry Instrumentation Examples
 
 > **Date:** 2026-02-13  

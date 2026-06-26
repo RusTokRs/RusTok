@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/UI_PACKAGES_QUICKSTART.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Быстрый старт по UI-пакетам модулей
 
 Этот быстрый старт нужен для создания или дооформления module-owned UI-поверхности без

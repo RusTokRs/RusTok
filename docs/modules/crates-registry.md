@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/crates-registry.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Реестр crate-модулей `crates/rustok-*`
 
 Документ фиксирует:

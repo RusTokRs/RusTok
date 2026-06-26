@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/matryoshka.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Matryoshka / модель композиции
 
 Этот документ сохраняет Matryoshka как концептуальную модель слоёв RusToK, но

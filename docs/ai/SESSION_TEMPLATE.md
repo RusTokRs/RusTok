@@ -1,3 +1,11 @@
+---
+id: doc://docs/ai/SESSION_TEMPLATE.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Шаблон AI-сессии (RusToK)
 
 Используйте этот шаблон перед генерацией кода в любом модуле.

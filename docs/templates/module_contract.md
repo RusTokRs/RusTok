@@ -1,3 +1,11 @@
+---
+id: doc://docs/templates/module_contract.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Шаблон документации модуля
 
 Этот шаблон нужен для новых platform modules, а также для support/capability crates, которые хотят соответствовать текущему documentation contract RusToK.

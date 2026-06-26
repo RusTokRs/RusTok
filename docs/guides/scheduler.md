@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/scheduler.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Планировщик задач (Loco Scheduler)
 
 Руководство по работе с планировщиком задач в RusToK.

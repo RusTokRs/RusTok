@@ -1,3 +1,11 @@
+---
+id: doc://docs/verification/platform-domain-events-integrations-verification-plan.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # План верификации платформы: события, домены и интеграции
 
 - **Статус:** актуальный детальный чеклист

@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/event-flow-contract.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Контракт потока доменных событий
 
 Этот документ фиксирует канонический путь `DomainEvent` в RusToK: от доменной

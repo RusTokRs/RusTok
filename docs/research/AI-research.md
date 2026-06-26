@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/AI-research.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Интеграция и вывод в продакшн AI-модуля для экосистемы RusTok
 
 ## Executive summary

@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/testing-oauth2-rfc.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # OAuth2 RFC Compliance Tests
 
 Набор unit-тестов, проверяющих соответствие нашей OAuth2 реализации стандартам RFC.

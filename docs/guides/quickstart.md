@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/quickstart.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # RusToK Quickstart Guide
 
 Быстрый старт для локальной разработки с двумя админками (Next.js + Leptos) и двумя витринами.

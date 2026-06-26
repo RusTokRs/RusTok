@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/metrics.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # 📊 Metrics Dashboard Guide
 
 > **Complete guide to RusToK custom metrics, Grafana dashboards, and alerting**

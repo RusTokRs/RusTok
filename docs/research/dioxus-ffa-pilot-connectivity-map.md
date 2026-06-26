@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/dioxus-ffa-pilot-connectivity-map.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # FFA/Dioxus Pilot Connectivity Map (Phase A baseline)
 
 Документ фиксирует исполнение шагов **A1 (выбор пилотов)** и **A2 (карта связности)**

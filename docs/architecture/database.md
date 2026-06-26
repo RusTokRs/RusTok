@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/database.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Схема данных платформы
 
 Этот документ даёт верхнеуровневую карту write-side и read-side схем RusToK.

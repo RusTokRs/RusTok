@@ -1,3 +1,13 @@
+---
+id: doc://docs/concepts/social-modules.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
+# Social Modules Concept
+
 Ниже — единый, вычищенный “Master Concept” модульной архитектуры соцсети (Gemini + Opus), без внутренних противоречий и с чётким ответом на главный вопрос: сколько crate’ов, какие слои, какие границы, как общаются, кто чем владеет.
 
 Цель платформы: гибрид ВКонтакте-социальности + phpFox-модульных групп + Discourse-форумного ядра.

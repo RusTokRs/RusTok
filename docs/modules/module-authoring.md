@@ -1,4 +1,12 @@
-﻿# Как писать модуль в RusToK
+---
+id: doc://docs/modules/module-authoring.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
+# Как писать модуль в RusToK
 
 Этот документ — каноническая входная точка для разработчика и AI-агента, который пишет новый модуль или делает крупный module refactor. Он не дублирует архитектурные документы построчно, а фиксирует практический contract: как собирать backend и UI модуля так, чтобы не ломать platform boundaries.
 

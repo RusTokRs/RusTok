@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/observability-quickstart.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # 🔍 Observability Quick Start
 
 > **Status:** Sprint 3 Task 3.1 Complete ✅  

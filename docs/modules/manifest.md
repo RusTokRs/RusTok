@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/manifest.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Контракт `modules.toml` и `rustok-module.toml`
 
 Этот документ описывает два связанных слоя модульного контракта RusToK:

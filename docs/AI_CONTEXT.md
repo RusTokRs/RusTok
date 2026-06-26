@@ -1,3 +1,11 @@
+---
+id: doc://docs/AI_CONTEXT.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # AI Context для RusToK
 
 Обязательный стартовый контекст для AI-сессий.

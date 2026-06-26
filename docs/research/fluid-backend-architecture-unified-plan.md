@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/fluid-backend-architecture-unified-plan.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Единый план реализации Fluid Backend Architecture (FBA) для RusTok
 
 Этот документ — **единственный актуальный план внедрения FBA** в RusTok.

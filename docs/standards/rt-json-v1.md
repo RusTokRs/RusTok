@@ -1,3 +1,11 @@
+---
+id: doc://docs/standards/rt-json-v1.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Спецификация `rt_json_v1`
 
 `rt_json_v1` — канонический JSON-формат rich-text для RusToK (blog/forum).

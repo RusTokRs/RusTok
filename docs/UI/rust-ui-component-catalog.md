@@ -1,3 +1,11 @@
+---
+id: doc://docs/UI/rust-ui-component-catalog.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Каталог Rust UI-компонентов
 
 Этот документ фиксирует текущий shared UI surface в RusToK и разделение ответственности между `UI/*`, `crates/leptos-ui` и app-local компонентами.

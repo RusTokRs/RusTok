@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/diagram.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Диаграммы платформы
 
 Этот документ содержит только актуальные верхнеуровневые диаграммы RusToK.

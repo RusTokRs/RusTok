@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/fluid-backend-architecture.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Fluid Backend Architecture для RusTok
 
 Fluid Backend Architecture (FBA) — это предлагаемая RusTok архитектурная модель для

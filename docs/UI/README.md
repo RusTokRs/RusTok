@@ -1,3 +1,11 @@
+---
+id: doc://docs/UI/README.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Документация UI
 
 Этот раздел описывает frontend-приложения RusToK и общие правила интеграции UI-поверхностей.

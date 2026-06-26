@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/tiptap-page-builder-implementation-plan.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # План внедрения rich-text (Tiptap) и GrapesJS Page Builder
 
 Этот документ фиксирует **отдельный план реализации** для двух связанных, но разных контуров:

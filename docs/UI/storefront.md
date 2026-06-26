@@ -1,3 +1,11 @@
+---
+id: doc://docs/UI/storefront.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Витрина: host и contract
 
 RusToK поддерживает два web storefront host-приложения и отдельный mobile storefront host:

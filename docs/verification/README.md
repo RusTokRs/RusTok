@@ -1,3 +1,11 @@
+---
+id: doc://docs/verification/README.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Планы верификации
 
 Этот раздел собирает планы верификации по основным контурам платформы и фиксирует минимальный локальный путь проверки для модульной системы.

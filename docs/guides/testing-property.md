@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/testing-property.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Property-Based Tests Guide
 
 > **Sprint 4, Task 4.2:** Property-Based Tests for State Machines  

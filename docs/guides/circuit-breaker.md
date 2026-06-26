@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/circuit-breaker.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Circuit Breaker Pattern Guide
 
 ## Overview

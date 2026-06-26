@@ -1,3 +1,11 @@
+---
+id: doc://docs/grafana-setup.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Grafana Setup Guide for RusToK
 
 This guide explains how to set up Grafana to monitor your RusToK platform using Prometheus metrics.

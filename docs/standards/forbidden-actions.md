@@ -1,3 +1,11 @@
+---
+id: doc://docs/standards/forbidden-actions.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # RusToK — Запрещённые действия (NEVER DO)
 
 Этот документ содержит **жёсткие запреты** — вещи, которые нельзя делать ни при каких обстоятельствах при работе с платформой RusToK. Нарушение любого из этих пунктов приводит к критическим последствиям: утечкам данных, потере консистентности, краху сервера или уязвимостям безопасности.

@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/dioxus-ffa-ui-migration-plan.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # План: FFA-рефактор UI пакетов и подготовка к Dioxus
 
 ## Контекст

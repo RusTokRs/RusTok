@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/_index.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Индекс документации по модулям
 
 Локальная документация модулей живёт внутри самих crate-ов в

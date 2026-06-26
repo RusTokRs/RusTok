@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/module-metrics.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Метрики модулей
 
 Этот документ фиксирует актуальный базовый набор Prometheus-метрик для модулей

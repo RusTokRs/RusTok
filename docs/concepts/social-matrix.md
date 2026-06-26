@@ -1,3 +1,13 @@
+---
+id: doc://docs/concepts/social-matrix.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
+# Social Matrix Concept
+
 0) Доктрина системы
 0.1. Главный принцип
 

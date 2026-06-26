@@ -1,3 +1,11 @@
+---
+id: doc://docs/verification/platform-core-integrity-verification-plan.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # План верификации платформы: целостность ядра
 
 - **Статус:** актуальный детальный чеклист

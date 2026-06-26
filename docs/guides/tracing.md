@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/tracing.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Distributed Tracing Guide
 
 Полное руководство по распределённой трассировке находится в [`docs/standards/distributed-tracing.md`](../standards/distributed-tracing.md).

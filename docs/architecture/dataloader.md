@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/dataloader.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # DataLoader и пакетные read-paths
 
 Этот документ фиксирует роль DataLoader в RusToK как request-scoped механизма

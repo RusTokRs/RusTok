@@ -1,4 +1,12 @@
-## Type-Safe State Machine Guide
+---
+id: doc://docs/guides/state-machine.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
+# Type-Safe State Machine Guide
 
 ## Overview
 

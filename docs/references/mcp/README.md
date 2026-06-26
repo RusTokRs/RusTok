@@ -1,3 +1,11 @@
+---
+id: doc://docs/references/mcp/README.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Справочный пакет MCP
 
 Дата последней актуализации: **2026-03-20**.

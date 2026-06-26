@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/flutter.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Архитектура Flutter-приложения для RusTok
 
 ## Executive summary

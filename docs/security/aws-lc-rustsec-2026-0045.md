@@ -1,3 +1,11 @@
+---
+id: doc://docs/security/aws-lc-rustsec-2026-0045.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # RUSTSEC-2026-0045 remediation note
 
 ## Summary

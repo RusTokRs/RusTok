@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/testing.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Testing guidelines
 
 These guidelines capture what we should take from the shared rules to keep tests reliable and fast.

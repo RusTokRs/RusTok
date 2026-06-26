@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/UI_PACKAGES_INDEX.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Документация по UI-пакетам модулей
 
 Этот документ даёт навигацию по module-owned UI-поверхностям и фиксирует только

@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/overview.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Обзор архитектуры платформы
 
 RusToK развивается как modular monolith с явным composition root в

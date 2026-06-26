@@ -1,3 +1,11 @@
+---
+id: doc://docs/research/SEO suite.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # SEO Suite для RusToK: анализ текущей архитектуры и детальный план реализации
 
 ## Executive summary

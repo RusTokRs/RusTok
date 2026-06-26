@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/security-audit.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Security Audit Guide
 
 Полное руководство по безопасности находится в [`docs/standards/security.md`](../standards/security.md).

@@ -1,3 +1,11 @@
+---
+id: doc://docs/modules/implementation-plans-registry.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Реестр implementation plans (crate-level)
 
 Этот реестр — единая операционная точка для сопровождения implementation plans по crate-ам.

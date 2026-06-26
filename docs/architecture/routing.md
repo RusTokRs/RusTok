@@ -1,3 +1,11 @@
+---
+id: doc://docs/architecture/routing.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Маршрутизация и границы transport-слоя
 
 Этот документ фиксирует границы между GraphQL, REST, module-owned HTTP surfaces

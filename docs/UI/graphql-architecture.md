@@ -1,3 +1,11 @@
+---
+id: doc://docs/UI/graphql-architecture.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # GraphQL и Leptos server functions
 
 Этот документ фиксирует текущий transport contract для UI-контуров RusToK.

@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/connect-external-apps.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # How to Connect External Apps (OAuth2)
 
 RusTok supports two OAuth app groups:

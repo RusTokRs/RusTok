@@ -1,4 +1,12 @@
-﻿# RusToK — Главный план верификации платформы
+---
+id: doc://docs/verification/PLATFORM_VERIFICATION_PLAN.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
+# RusToK — Главный план верификации платформы
 
 - **Дата актуализации структуры:** 2026-04-08
 - **Статус:** Готов к новому периодическому прогону

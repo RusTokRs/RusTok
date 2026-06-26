@@ -1,3 +1,11 @@
+---
+id: doc://docs/examples/README.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Каталог исполняемых примеров
 
 Этот раздел — единая точка discoverability для примеров, smoke-сценариев и

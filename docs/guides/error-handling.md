@@ -1,3 +1,11 @@
+---
+id: doc://docs/guides/error-handling.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # Error Handling Guide
 
 Полное руководство по обработке ошибок в RusToK находится в [`docs/standards/errors.md`](../standards/errors.md).

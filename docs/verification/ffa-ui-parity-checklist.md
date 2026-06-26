@@ -1,3 +1,11 @@
+---
+id: doc://docs/verification/ffa-ui-parity-checklist.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # FFA UI Migration: parity checklist (Phase A baseline)
 
 Этот документ фиксирует обязательный baseline checklist для задач миграции по

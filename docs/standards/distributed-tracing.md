@@ -1,3 +1,11 @@
+---
+id: doc://docs/standards/distributed-tracing.md
+kind: project_overview
+language: markdown
+last_verified_snapshot: snap_jsonl_00000021
+source_language: markdown
+status: verified
+---
 # 🔍 Distributed Tracing Guide
 
 > **Sprint 3 Task 3.2**  
