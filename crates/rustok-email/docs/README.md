@@ -14,6 +14,7 @@ typed email rendering и delivery helpers для auth и operational notificatio
 - SMTP configuration и sender wiring на уровне модуля;
 - typed rendering contract для password reset и соседних email flows;
 - delivery abstractions и email-related error model на shared `rustok_api::PortContext`/`PortError` + `PortCallPolicy::write()` baseline;
+- targeted contract tests для policy mapping, typed validation и disabled-provider noop fallback находятся в `src/ports.rs`.
 - отсутствие собственной RBAC vocabulary и UI surface.
 
 ## Интеграция
@@ -27,6 +28,7 @@ typed email rendering и delivery helpers для auth и operational notificatio
 
 - `cargo xtask module validate email`
 - `cargo xtask module test email`
+- `cargo test -p rustok-email ports::tests` для targeted delivery-port contract tests;
 - targeted host tests для auth/email delivery flows при изменении runtime wiring
 
 ## Связанные документы
