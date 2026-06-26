@@ -326,7 +326,7 @@ function hasMarkdownLink(content, target) {
   }
 
   const referenceUsePattern = /\[[^\]]+\]\[([^\]]+)\]/g;
-  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+[""][^"]+[""])?$/gm;
+  const referenceDefPattern = /^\[([^\]]+)\]:\s*(<[^>]+>|\S+)(?:\s+"[^"]+")?$/gm;
 
   const usedRefs = new Set();
   let useMatch;
