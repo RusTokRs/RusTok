@@ -123,11 +123,34 @@ for (const requiredSection of [
   "rollback.decision",
   "approvals",
   "waivers",
+  "refresh_history.latest_refresh",
 ]) {
   if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
     fail(`refresh_policy.required_sections missing ${requiredSection}`);
   }
   assertMaterializedSection(requiredSection);
+}
+
+const latestRefresh = evidence.refresh_history?.latest_refresh ?? {};
+if (parseTimestamp(latestRefresh.refreshed_at, "refresh_history.latest_refresh.refreshed_at") !== createdAt) {
+  fail("refresh_history.latest_refresh.refreshed_at must match evidence created_at");
+}
+if (latestRefresh.verified_by !== refreshPolicy.owner) {
+  fail("refresh_history.latest_refresh.verified_by must match refresh_policy.owner");
+}
+for (const gate of [
+  "npm run verify:page-builder:consumer:forum",
+  "npm run verify:forum:wave-evidence-freshness",
+  "npm run test:verify:forum:wave-evidence-freshness",
+]) {
+  if (!(latestRefresh.no_compile_gates ?? []).includes(gate)) {
+    fail(`refresh_history.latest_refresh.no_compile_gates missing ${gate}`);
+  }
+}
+for (const section of refreshPolicy.required_sections ?? []) {
+  if (!(latestRefresh.sections_refreshed ?? []).includes(section)) {
+    fail(`refresh_history.latest_refresh.sections_refreshed missing ${section}`);
+  }
 }
 
 console.log("[verify-forum-wave-evidence-freshness] PASS");

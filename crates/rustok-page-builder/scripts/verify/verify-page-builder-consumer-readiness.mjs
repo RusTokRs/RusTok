@@ -429,6 +429,7 @@ if (arg === "forum") {
     "rollback.decision",
     "approvals",
     "waivers",
+    "refresh_history.latest_refresh",
   ]) {
     if (!(refreshPolicy.required_sections ?? []).includes(requiredSection)) {
       fail(`${arg}: Wave 1 refresh policy missing required section '${requiredSection}'`);
@@ -450,6 +451,27 @@ if (arg === "forum") {
     }
     if (typeof sectionValue === "string" && sectionValue.trim().length === 0) {
       fail(`${arg}: Wave 1 evidence refresh section '${requiredSection}' must be a non-empty string`);
+    }
+  }
+  const latestRefresh = forumWave1Evidence.refresh_history?.latest_refresh ?? {};
+  if (parseWaveTimestamp(latestRefresh.refreshed_at, "refresh_history.latest_refresh.refreshed_at") !== waveCreatedAt) {
+    fail(`${arg}: Wave 1 refresh_history.latest_refresh.refreshed_at must match created_at`);
+  }
+  if (latestRefresh.verified_by !== refreshPolicy.owner) {
+    fail(`${arg}: Wave 1 refresh history verifier must match refresh policy owner`);
+  }
+  for (const gate of [
+    "npm run verify:page-builder:consumer:forum",
+    "npm run verify:forum:wave-evidence-freshness",
+    "npm run test:verify:forum:wave-evidence-freshness",
+  ]) {
+    if (!(latestRefresh.no_compile_gates ?? []).includes(gate)) {
+      fail(`${arg}: Wave 1 refresh history missing no-compile gate '${gate}'`);
+    }
+  }
+  for (const section of refreshPolicy.required_sections ?? []) {
+    if (!(latestRefresh.sections_refreshed ?? []).includes(section)) {
+      fail(`${arg}: Wave 1 refresh history missing refreshed section '${section}'`);
     }
   }
 
