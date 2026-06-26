@@ -21,6 +21,8 @@ API-слой RusToK должен оставаться согласованным
 
 ### 1.1 Schema composition
 
+**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` проверяет generated composition для optional GraphQL-модулей по `modules.toml` и package-local декларациям `rustok-module.toml`.
+
 **Файлы:**
 - `apps/server/src/graphql/schema.rs`
 - `apps/server/src/graphql/mod.rs`
@@ -29,7 +31,7 @@ API-слой RusToK должен оставаться согласованным
 
 - [ ] `Query`, `Mutation` и `Subscription` собираются через актуальный composition root.
 - [ ] Core surfaces отражают current-state contract хоста и модулей.
-- [ ] Optional modules подключаются через актуальный generated/manifest-driven path, без старого ручного drift.
+- [x] Optional modules подключаются через актуальный generated/manifest-driven path, без старого ручного drift (`apps/server/build.rs` → `graphql_schema_codegen.rs`, `app_routes_codegen.rs`).
 - [ ] GraphQL routing согласован с `apps/server` и `docs/architecture/api.md`.
 
 ### 1.2 Module ownership
@@ -58,8 +60,10 @@ API-слой RusToK должен оставаться согласованным
 
 ### 2.2 Module-owned routing
 
+**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` проверяет, что модули с `[provides.http]` читаются из package manifests и отражены в центральном реестре.
+
 - [ ] HTTP routes модуля согласованы с `rustok-module.toml`, если модуль публикует transport surface.
-- [ ] Host application только монтирует routing, а не становится owner transport-логики модуля.
+- [x] Host application только монтирует routing, а не становится owner transport-логики модуля через generated `append_optional_module_routes` path.
 - [ ] Наличие controller-path без manifest/doc contract не считается завершённым wiring.
 
 ## Фаза 3. `#[server]` contract
@@ -73,6 +77,8 @@ API-слой RusToK должен оставаться согласованным
 ## Фаза 4. OpenAPI и operational endpoints
 
 ### 4.1 Discovery и ops
+
+**No-compile evidence:** `node scripts/verify/verify-api-surface-contract.mjs` — быстрый source guardrail; runtime/export evidence остаётся в 4.2.
 
 - [ ] OpenAPI endpoints публикуют актуальный REST contract.
 - [ ] health/metrics/ops endpoints соответствуют текущему server/runtime contract.
