@@ -55,7 +55,7 @@ for (const mode of fallbackSmoke.degraded_modes) {
   if (!mode.source_marker || !mode.consumer_contract) fail(`fallback mode ${mode.name} is missing source marker/consumer contract`);
   if (!ports.includes(mode.source_marker) && !dto.includes(mode.source_marker)) fail(`fallback source marker not found for ${mode.name}`);
 }
-hasAll(dto, ['pub enum MediaImageDeliveryProfile', 'pub enum MediaImagePublicUrlPolicy', 'pub struct MediaImageDescriptor', 'pub fn from_parts', 'pub fn from_media_item', 'pub fn delivery_profile', 'pub fn is_publicly_addressable', 'pub fn public_url_policy', 'pub fn requires_public_proxy', 'pub fn should_emit_to_public_metadata', 'pub fn normalized_public_url', 'fn infer_mime_type', 'fn normalize_dimension'], 'dto.rs');
+hasAll(dto, ['pub enum MediaAssetKind', 'pub enum MediaAssetUsageProfile', 'pub struct MediaAssetSummary', 'pub enum MediaImageDeliveryProfile', 'pub enum MediaImagePublicUrlPolicy', 'pub struct MediaImageDescriptor', 'pub fn from_parts', 'pub fn from_media_item', 'pub fn delivery_profile', 'pub fn is_publicly_addressable', 'pub fn public_url_policy', 'pub fn requires_public_proxy', 'pub fn should_emit_to_public_metadata', 'pub fn normalized_public_url', 'pub fn proxy_path', 'pub fn from_mime_type', 'pub fn is_streamable', 'pub fn is_public_metadata_ready', 'fn infer_mime_type', 'fn normalize_dimension'], 'dto.rs');
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
@@ -85,7 +85,7 @@ if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid t
 if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_policy(PortCallPolicy::read())')) fail('ports.rs missing explicit media read policy guard helper');
 
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');

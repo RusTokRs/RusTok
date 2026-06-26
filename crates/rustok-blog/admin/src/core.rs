@@ -695,6 +695,61 @@ pub fn blog_post_admin_table_classes_view() -> BlogPostAdminTableClassesViewMode
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlogPostAdminShellClassesViewModel {
+    pub page: &'static str,
+    pub header: &'static str,
+    pub header_content: &'static str,
+    pub badge: &'static str,
+    pub title: &'static str,
+    pub subtitle: &'static str,
+    pub layout: &'static str,
+    pub list_card: &'static str,
+    pub list_header: &'static str,
+    pub list_header_copy: &'static str,
+    pub list_title: &'static str,
+    pub list_subtitle: &'static str,
+    pub locale_filter_label: &'static str,
+    pub locale_filter_text: &'static str,
+    pub locale_filter_input: &'static str,
+    pub sidebar: &'static str,
+    pub form_card: &'static str,
+    pub form_header: &'static str,
+    pub form_title: &'static str,
+    pub form_subtitle: &'static str,
+    pub load_error: &'static str,
+    pub skeleton_stack: &'static str,
+    pub skeleton_row: &'static str,
+}
+
+pub fn blog_post_admin_shell_classes_view() -> BlogPostAdminShellClassesViewModel {
+    BlogPostAdminShellClassesViewModel {
+        page: "space-y-6",
+        header: "flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm lg:flex-row lg:items-start lg:justify-between",
+        header_content: "space-y-2",
+        badge: "inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground",
+        title: "text-2xl font-semibold text-card-foreground",
+        subtitle: "max-w-2xl text-sm text-muted-foreground",
+        layout: "grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]",
+        list_card: "rounded-2xl border border-border bg-card p-6 shadow-sm",
+        list_header: "mb-4 flex items-end justify-between gap-4",
+        list_header_copy: "",
+        list_title: "text-lg font-semibold text-card-foreground",
+        list_subtitle: "text-sm text-muted-foreground",
+        locale_filter_label: "block space-y-2",
+        locale_filter_text: "text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+        locale_filter_input: "rounded-lg border border-input bg-background px-3 py-2 text-sm",
+        sidebar: "space-y-6",
+        form_card: "rounded-2xl border border-border bg-card p-6 shadow-sm",
+        form_header: "space-y-1",
+        form_title: "text-lg font-semibold text-card-foreground",
+        form_subtitle: "text-sm text-muted-foreground",
+        load_error: "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive",
+        skeleton_stack: "space-y-2",
+        skeleton_row: "h-14 animate-pulse rounded-xl bg-muted",
+    }
+}
+
 pub fn blog_post_admin_form_view(
     editing_post_id: Option<&str>,
     busy_key: Option<&str>,

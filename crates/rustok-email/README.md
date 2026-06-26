@@ -8,6 +8,7 @@
 
 - Provide `EmailModule` metadata for the runtime registry.
 - Expose SMTP configuration and delivery abstractions.
+- Keep targeted delivery-port contract tests for shared write-policy mapping, validation errors, and disabled-provider noop fallback.
 - Render typed email payloads used by auth and notification flows.
 
 ## Interactions
@@ -25,6 +26,7 @@
 - `EmailConfig`
 - `PasswordResetEmail`
 - `PasswordResetEmailSender`
+- `EmailDeliveryPort`
 
 ## Docs
 

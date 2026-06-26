@@ -5,11 +5,16 @@ use rustok_installer::{
     InstallEnvironment, InstallPlan, InstallProfile, InstallReceipt, InstallState, InstallStep,
     ModuleSelection, SecretMode, SecretRef, SecretValue, SeedProfile, TenantBootstrap,
 };
+use rustok_tenant::{
+    PortActor, PortContext, PortErrorKind, TenantReadPort, TenantReadProjection, TenantReadRequest,
+    TenantReadSelector, TenantService,
+};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend,
     Statement,
 };
 use sea_orm_migration::MigratorTrait;
+use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
 
@@ -69,6 +74,7 @@ const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/
 const DEFAULT_ADMIN_EMAIL: &str = "admin@local";
 const DEFAULT_TENANT_SLUG: &str = "demo";
 const DEFAULT_TENANT_NAME: &str = "Demo Workspace";
+const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
 
 pub async fn try_handle(args: &[String]) -> Result<bool> {
     if args.get(1).map(String::as_str) != Some("install") {
@@ -596,7 +602,7 @@ struct SeedOutcome {
 }
 
 async fn apply_seed_profile(db: &DatabaseConnection, plan: &InstallPlan) -> Result<SeedOutcome> {
-    let existing_tenant = tenants::Entity::find_by_slug(db, &plan.tenant.slug)
+    let existing_tenant = read_installer_tenant_by_slug(db, &plan.tenant.slug)
         .await
         .map_err(|error| eyre!("failed to inspect installer tenant: {error}"))?;
     let tenant = tenants::Entity::find_or_create(db, &plan.tenant.name, &plan.tenant.slug, None)
@@ -752,7 +758,7 @@ async fn verify_installation(
     plan: &InstallPlan,
     tenant_id: Uuid,
 ) -> Result<VerifyOutcome> {
-    let tenant = tenants::Entity::find_by_slug(db, &plan.tenant.slug)
+    let tenant = read_installer_tenant_by_slug(db, &plan.tenant.slug)
         .await
         .map_err(|error| eyre!("failed to verify installer tenant: {error}"))?
         .ok_or_else(|| eyre!("installer tenant `{}` was not created", plan.tenant.slug))?;
@@ -779,6 +785,35 @@ async fn verify_installation(
         admin_user_id: admin.id,
         enabled_modules,
     })
+}
+
+async fn read_installer_tenant_by_slug(
+    db: &DatabaseConnection,
+    slug: &str,
+) -> Result<Option<TenantReadProjection>> {
+    let tenant_service = TenantService::new(db.clone());
+    let context = PortContext::new(
+        slug.to_string(),
+        PortActor::service("rustok-server.installer"),
+        "und",
+        format!("installer:tenant-read:{slug}"),
+    )
+    .with_deadline(INSTALLER_TENANT_READ_DEADLINE);
+    let request = TenantReadRequest {
+        selector: TenantReadSelector::Slug(slug.to_string()),
+        include_inactive: true,
+    };
+
+    match tenant_service.read_tenant(context, request).await {
+        // treat missing tenant as create candidate; all other port errors must surface.
+        Ok(tenant) => Ok(Some(tenant)),
+        Err(error) if error.kind == PortErrorKind::NotFound => Ok(None),
+        Err(error) => Err(eyre!(
+            "tenant read projection `{slug}` failed through TenantReadPort ({}): {}",
+            error.code,
+            error.message
+        )),
+    }
 }
 
 #[derive(Debug)]

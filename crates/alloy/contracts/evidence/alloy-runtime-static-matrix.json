@@ -50,6 +50,15 @@
         "before_hook_outcomes_are_typed",
         "on_commit_returns_execution_results"
       ]
+    },
+    {
+      "name": "script_crud_validation_contract",
+      "assertions": [
+        "rest_create_validates_cron_and_compiles_before_save",
+        "rest_update_invalidates_cache_and_compiles_new_code",
+        "graphql_create_update_validate_cron_and_compile",
+        "transport_errors_map_to_validation_or_conflict_codes"
+      ]
     }
   ]
 }

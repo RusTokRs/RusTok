@@ -221,7 +221,6 @@
       "overall": "pass"
     }
   },
-
   "refresh_policy": {
     "cadence": "monthly",
     "next_due_at": "2026-07-15T18:00:00Z",
@@ -237,7 +236,8 @@
       "observability.traces",
       "rollback.decision",
       "approvals",
-      "waivers"
+      "waivers",
+      "refresh_history.latest_refresh"
     ]
   },
   "rollback": {
@@ -252,5 +252,27 @@
     "builder_owner": "approved",
     "runtime_owner": "approved"
   },
-  "waivers": []
+  "waivers": [],
+  "refresh_history": {
+    "latest_refresh": {
+      "refreshed_at": "2026-06-15T18:00:00Z",
+      "evidence_source": "live_wave1_control_plane_snapshot",
+      "verified_by": "rustok-forum module team",
+      "no_compile_gates": [
+        "npm run verify:page-builder:consumer:forum",
+        "npm run verify:forum:wave-evidence-freshness",
+        "npm run test:verify:forum:wave-evidence-freshness"
+      ],
+      "sections_refreshed": [
+        "control_plane.audit_trail",
+        "fallback.profiles",
+        "observability.metrics",
+        "observability.traces",
+        "rollback.decision",
+        "approvals",
+        "waivers",
+        "refresh_history.latest_refresh"
+      ]
+    }
+  }
 }

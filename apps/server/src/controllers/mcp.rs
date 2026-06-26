@@ -1,9 +1,9 @@
 use axum::{
-    Extension, Json,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::sse::{Event, KeepAlive, Sse},
     routing::{get, post, put},
+    Extension, Json,
 };
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
@@ -23,11 +23,13 @@ use crate::services::mcp_management::{
 use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapResponse};
 use rustok_core::ModuleRegistry;
 use rustok_mcp::{
-    McpActorType, McpAuditSink, McpSessionContext, McpToolCallAuditEvent, McpToolCallOutcome,
-    McpToolResponse, ModuleDetailsResponse, ModuleInfo, ModuleListResponse, ModuleLookupRequest,
-    ModuleLookupResponse, ScaffoldModuleRequest, TOOL_LIST_MODULES, TOOL_MCP_HEALTH,
-    TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_QUERY_MODULES,
-    default_tool_requirement,
+    default_tool_requirement, ApplyModuleScaffoldRequest, McpActorType, McpAuditSink,
+    McpRuntimeBinding, McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext,
+    McpToolCallAuditEvent, McpToolCallOutcome, McpToolResponse, ModuleDetailsResponse, ModuleInfo,
+    ModuleListResponse, ModuleLookupRequest, ModuleLookupResponse, ReviewModuleScaffoldRequest,
+    ScaffoldModuleRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
+    TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI,
+    TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_QUERY_MODULES,
 };
 use tokio_stream::once;
 
@@ -368,12 +370,25 @@ async fn execute_remote_tool_call(
         .await
         .map_err(|error| crate::error::Error::Message(error.to_string()))?;
 
-    let result = execute_registry_tool(
-        &registry,
-        &binding.access_context,
-        &input.tool_name,
-        input.arguments,
-    )?;
+    let result = if is_remote_scaffold_tool(&input.tool_name) {
+        execute_remote_scaffold_tool(
+            bridge.as_ref(),
+            &binding,
+            transport,
+            &correlation_id,
+            &input.tool_name,
+            input.arguments,
+            input.metadata.clone(),
+        )
+        .await?
+    } else {
+        execute_registry_tool(
+            &registry,
+            &binding.access_context,
+            &input.tool_name,
+            input.arguments,
+        )?
+    };
 
     Ok(McpRemoteToolCallResponse {
         transport: transport.to_string(),
@@ -384,6 +399,71 @@ async fn execute_remote_tool_call(
         tool_name: input.tool_name,
         result,
     })
+}
+
+fn is_remote_scaffold_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        TOOL_ALLOY_SCAFFOLD_MODULE
+            | TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
+            | TOOL_ALLOY_APPLY_MODULE_SCAFFOLD
+    )
+}
+
+async fn execute_remote_scaffold_tool(
+    draft_store: &dyn McpScaffoldDraftStore,
+    binding: &McpRuntimeBinding,
+    transport: &str,
+    correlation_id: &str,
+    tool_name: &str,
+    arguments: Option<serde_json::Value>,
+    metadata: serde_json::Value,
+) -> Result<serde_json::Value> {
+    let context = McpScaffoldDraftRuntimeContext {
+        session: McpSessionContext::default()
+            .with_transport(transport.to_string())
+            .with_correlation_id(correlation_id.to_string())
+            .with_metadata(metadata),
+        runtime_binding: Some(binding.clone()),
+        access_context: Some(binding.access_context.clone()),
+    };
+
+    match tool_name {
+        TOOL_ALLOY_SCAFFOLD_MODULE => {
+            let request: ScaffoldModuleRequest = parse_tool_args(arguments)?;
+            match draft_store.stage_scaffold_draft(&context, request).await {
+                Ok(response) => envelope_value(McpToolResponse::success(response)),
+                Err(error) => envelope_value(McpToolResponse::<()>::error(
+                    "scaffold_stage_failed",
+                    error.to_string(),
+                )),
+            }
+        }
+        TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD => {
+            let request: ReviewModuleScaffoldRequest = parse_tool_args(arguments)?;
+            match draft_store.review_scaffold_draft(&context, request).await {
+                Ok(response) => envelope_value(McpToolResponse::success(response)),
+                Err(error) => envelope_value(McpToolResponse::<()>::error(
+                    "scaffold_review_failed",
+                    error.to_string(),
+                )),
+            }
+        }
+        TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => {
+            let request: ApplyModuleScaffoldRequest = parse_tool_args(arguments)?;
+            match draft_store.apply_scaffold_draft(&context, request).await {
+                Ok(response) => envelope_value(McpToolResponse::success(response)),
+                Err(error) => envelope_value(McpToolResponse::<()>::error(
+                    "scaffold_apply_failed",
+                    error.to_string(),
+                )),
+            }
+        }
+        _ => envelope_value(McpToolResponse::<()>::error(
+            "tool_not_supported",
+            format!("Remote HTTP transport does not support scaffold tool: {tool_name}"),
+        )),
+    }
 }
 
 fn execute_registry_tool(
@@ -441,7 +521,7 @@ fn execute_registry_tool(
             envelope_value(McpToolResponse::success(rustok_mcp::McpHealthResponse {
                 status: "ready".to_string(),
                 protocol_version: "2024-11-05".to_string(),
-                tool_count: 6,
+                tool_count: 9,
                 enabled_tools: access_context.whoami().allowed_tools,
                 access_mode: "policy".to_string(),
                 identity: access_context.identity.clone(),

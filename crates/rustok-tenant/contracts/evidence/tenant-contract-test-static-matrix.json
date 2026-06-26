@@ -42,5 +42,16 @@
       "resolver_maps_not_found_to_negative_cache",
       "resolver_keeps_cache_coalescing_around_owner_port"
     ]
+  },
+  "installer_integration": {
+    "status": "source_locked_uncompiled",
+    "source": "apps/server/src/installer_cli.rs",
+    "assertions": [
+      "installer_seed_inspection_uses_tenant_read_port",
+      "installer_verify_uses_tenant_read_port",
+      "installer_read_context_uses_deadline_semantics",
+      "installer_missing_projection_maps_to_create_candidate",
+      "installer_non_not_found_port_errors_surface_with_code"
+    ]
   }
 }

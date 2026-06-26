@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-search/contracts/search-fba-registry.json",
+  "runner": "scripts/verify/verify-search-fba-runtime-invocation.mjs",
+  "status": "executable_no_compile_invocation_trace",
+  "contract_version": "search.query.v1",
+  "provider": "PgSearchEngine",
+  "cases": [
+    {
+      "operation": "execute_search",
+      "port": "SearchQueryPort",
+      "request_type": "SearchQuery",
+      "success_trace": [
+        "require_read_policy",
+        "apply_context_locale_fallback",
+        "invoke_embedded_postgres_provider",
+        "map_success"
+      ],
+      "policy_denied_trace": [
+        "require_read_policy",
+        "return_policy_error_without_provider_invocation"
+      ],
+      "error_trace": [
+        "require_read_policy",
+        "apply_context_locale_fallback",
+        "invoke_embedded_postgres_provider",
+        "map_typed_port_error"
+      ],
+      "typed_errors": [
+        "validation:search.validation:false",
+        "not_found:search.not_found:false",
+        "external:search.external:true",
+        "unknown:search.unavailable:true"
+      ]
+    },
+    {
+      "operation": "suggest",
+      "port": "SearchSuggestionPort",
+      "request_type": "SearchSuggestionQuery",
+      "success_trace": [
+        "require_read_policy",
+        "apply_context_locale_fallback",
+        "invoke_embedded_postgres_provider",
+        "map_success"
+      ],
+      "policy_denied_trace": [
+        "require_read_policy",
+        "return_policy_error_without_provider_invocation"
+      ],
+      "error_trace": [
+        "require_read_policy",
+        "apply_context_locale_fallback",
+        "invoke_embedded_postgres_provider",
+        "map_typed_port_error"
+      ],
+      "typed_errors": [
+        "validation:search.validation:false",
+        "not_found:search.not_found:false",
+        "external:search.external:true",
+        "unknown:search.unavailable:true"
+      ]
+    }
+  ],
+  "notes": "Compile-free executable invocation trace for SearchQueryPort/SearchSuggestionPort. It simulates the real boundary semantics from ports.rs: read-policy short-circuit before provider execution, context locale fallback, embedded PostgreSQL provider invocation and typed PortError mapping."
+}

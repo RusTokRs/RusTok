@@ -43,12 +43,16 @@ if (contract.sandbox_contract?.profiles?.relaxed?.max_operations !== 500000 || c
 if (contract.sandbox_contract?.operator_surface !== 'EngineConfig::limits') fail('sandbox operator surface drift');
 sameArray(contract.sandbox_contract?.rhai_native_limit_mapping, ['ErrorTooManyOperations_to_OperationLimit', 'ErrorDataTooLarge_to_ResourceLimit'], 'rhai native limit mapping');
 if (contract.scheduler_hook_contract?.scheduler_phase !== 'Scheduled' || contract.scheduler_hook_contract?.scheduler_tenant_context !== 'script_tenant_id') fail('scheduler context drift');
+sameArray(contract.script_crud_validation_contract?.rest_create, ['reject_duplicate_name', 'validate_cron_trigger', 'compile_before_save', 'persist_optional_tenant_id'], 'REST create validation');
+sameArray(contract.script_crud_validation_contract?.rest_update, ['invalidate_old_name_on_rename', 'compile_new_code_before_save', 'validate_cron_trigger_before_save', 'invalidate_cache_on_code_change'], 'REST update validation');
+sameArray(contract.script_crud_validation_contract?.graphql_create_update, ['require_admin', 'validate_cron_trigger', 'compile_before_save', 'tenant_from_context_on_create'], 'GraphQL create/update validation');
+if (contract.script_crud_validation_contract?.error_mapping?.compilation !== 'validation' || contract.script_crud_validation_contract?.error_mapping?.invalid_cron !== 'validation' || contract.script_crud_validation_contract?.error_mapping?.duplicate_name !== 'conflict') fail('CRUD validation error mapping drift');
 sameArray(contract.scheduler_hook_contract?.running_flag_reset, ['load_error', 'completed_success', 'completed_aborted', 'completed_failed'], 'scheduler running flag reset');
 sameArray(contract.scheduler_hook_contract?.hook_phases, ['Before', 'After', 'OnCommit'], 'hook phases');
 sameArray(contract.scheduler_hook_contract?.before_outcomes, ['Continue', 'Rejected', 'Error'], 'before hook outcomes');
 
 if (evidence.generated_from !== contractPath || evidence.status !== contract.status) fail('evidence header drift');
-sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract'], 'evidence cases');
+sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract'], 'evidence cases');
 
 const dto = read('crates/alloy/src/api/dto.rs');
 hasAll(dto, [
@@ -119,6 +123,30 @@ hasAll(engineRuntime, [
   'EvalAltResult::ErrorDataTooLarge',
   'ScriptError::ResourceLimit { resource: kind }'
 ], 'engine runtime timeout and native limit mapping');
+
+const handlers = read('crates/alloy/src/api/handlers.rs');
+hasAll(handlers, [
+  'Script with name',
+  'code: "conflict".to_string()',
+  'validate_trigger(&req.trigger)?',
+  'state.engine.compile(&req.name, &req.code, &mut scope)?',
+  'state.engine.invalidate(&script.name);',
+  'state.engine.compile(&script.name, &code, &mut scope)?',
+  'validate_trigger(&trigger)?',
+  'fn validate_trigger(trigger: &ScriptTrigger) -> ApiResult<()>',
+  'Invalid cron expression: {error}'
+], 'REST CRUD validation');
+
+const gqlMutation = read('crates/alloy/src/graphql/mutation.rs');
+hasAll(gqlMutation, [
+  'fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()>',
+  'require_admin(ctx).await?',
+  'validate_cron_trigger(&input.trigger)?',
+  '.compile(&input.name, &input.code, &mut scope)',
+  'validate_cron_trigger(trigger)?',
+  '.compile(&script.name, &code, &mut scope)',
+  'data::<rustok_api::TenantContext>()'
+], 'GraphQL CRUD validation');
 
 const executor = read('crates/alloy/src/runner/executor.rs');
 hasAll(executor, [

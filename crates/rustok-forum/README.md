@@ -18,12 +18,12 @@
 - Own forum topic donor payload in `forum_topics.metadata`, including the live attached-mode
   Flex integration for locale-aware custom fields through parallel localized records.
 - Apply module-owned reply lifecycle rules, including pending replies for moderated categories and approved-only public storefront reads.
-- Own forum storage tables for categories, topics, translations, replies, and channel access.
+- Own forum storage tables for categories, topics, translations, replies, and channel access through `forum_topic_channel_access`.
 - Expose shared multilingual contract fields on forum read surfaces:
   `requested_locale`, `effective_locale`, and `available_locales`.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
 - Publish the forum widget contract-freeze catalog/validation surfaces (`ForumWidgetContractService`, `/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`).
-- Maintain page-builder consumer evidence for FW-2 fallback hardening and the live Wave 1 rollout packet, including static no-compile verification of fallback profiles, smoke outcomes, read-path no-5xx guarantees, numeric SLO thresholds, forum-owned observability traces, rollback decision, owner approvals, waiver-free evidence, monthly refresh/stale-rollout-block policy, and non-empty required refresh sections.
+- Maintain page-builder consumer evidence for FW-2 fallback hardening and the live Wave 1 rollout packet, including static no-compile verification of fallback profiles, smoke outcomes, read-path no-5xx guarantees, numeric SLO thresholds, forum-owned observability traces, rollback decision, owner approvals, waiver-free evidence, monthly refresh/stale-rollout-block policy, non-empty required refresh sections, and machine-readable latest-refresh provenance.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
 - Publish the typed RBAC surface for `forum_categories:*`, `forum_topics:*`,
@@ -40,6 +40,7 @@
   `forum_category` and `forum_topic`, while owner-side SEO authoring stays embedded
   in `rustok-forum-admin`; public SEO for channel-restricted topics is resolved only
   when the host passes the matching request channel slug into the shared SEO contract.
+- Depends on `rustok-channel` for public channel module gating and topic/reply/SEO visibility filtering with host-provided request channel slugs.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.

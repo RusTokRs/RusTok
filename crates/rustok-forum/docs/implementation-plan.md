@@ -6,17 +6,17 @@
 ## Execution checkpoint
 
 - Current phase: phase_d_rollout_hardened
-- Last checkpoint: FW-11 (refresh section shape hardening) усилил focused freshness и aggregate consumer readiness gates: обязательные refresh sections теперь должны быть не только объявлены и материализованы, но и иметь непустую форму (`object`/`array`/`string`, кроме допустимого пустого `waivers`), fixture suite закрепляет negative case для пустых metrics, а root `package.json` снова валиден для npm no-compile запусков.
+- Last checkpoint: FW-12 (refresh history provenance hardening) добавил machine-readable `refresh_history.latest_refresh` в live Wave 1 evidence, включил его в обязательные refresh sections и усилил focused/aggregate no-compile gates проверкой owner-aligned provenance, списка no-compile gates и перечня фактически обновлённых sections.
 - Next step: Steady-state maintenance: refresh Wave evidence before `refresh_policy.next_due_at`, keep no-compile gates and fixture tests green, and integrate only compatible platform features
 - Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
-- Last updated at (UTC): 2026-06-22T00:00:00Z
+- Last updated at (UTC): 2026-06-26T00:00:00Z
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, `next_due_at` after `created_at`, stale evidence blocks rollout until refreshed); `npm run verify:forum:wave-evidence-freshness` выделяет проверку актуальности по срокам в отдельный быстрый gate и валидирует фактическую материализацию и непустую форму обязательных refresh sections, а `npm run test:verify:forum:wave-evidence-freshness` закрепляет fresh/stale/overwide-window/missing-policy-section/missing-actual-section/empty-section fixtures без компиляции.
+- Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, `next_due_at` after `created_at`, stale evidence blocks rollout until refreshed); `npm run verify:forum:wave-evidence-freshness` выделяет проверку актуальности по срокам в отдельный быстрый gate и валидирует фактическую материализацию и непустую форму обязательных refresh sections плюс provenance последнего refresh (`refresh_history.latest_refresh`), а `npm run test:verify:forum:wave-evidence-freshness` закрепляет fresh/stale/overwide-window/missing-policy-section/missing-actual-section/empty-section/refresh-history-drift fixtures без компиляции.
 - Structural shape: `core_transport_ui`
 - Evidence:
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
@@ -171,3 +171,9 @@
 - [x] Усилить focused freshness gate: обязательные refresh sections должны иметь непустую форму (`object`/`array`/`string`), чтобы policy не проходил с пустыми `observability.metrics`, `fallback.profiles`, `approvals` или пустыми строковыми audit/decision markers; `waivers` остаётся единственным допустимым пустым массивом.
 - [x] Расширить fixture suite negative case для пустой materialized section (`observability.metrics = {}`) без мутации live Wave 1 evidence packet.
 - [x] Синхронизировать aggregate `npm run verify:page-builder:consumer:forum` с тем же shape guardrail и восстановить валидность root `package.json` для npm-based no-compile gates.
+
+### FW-12 — Refresh history provenance hardening
+
+- [x] Добавить `refresh_history.latest_refresh` в live Wave 1 evidence packet и включить его в `refresh_policy.required_sections`, чтобы monthly refresh был машинно отслеживаемым, а не только выводился из `created_at`/`next_due_at`.
+- [x] Усилить focused freshness gate проверкой `refreshed_at == created_at`, совпадения `verified_by` с `refresh_policy.owner`, полного списка no-compile gates и перечня фактически обновлённых sections.
+- [x] Синхронизировать aggregate `npm run verify:page-builder:consumer:forum` с тем же provenance guardrail и добавить fixture negative case для drift в refresh-history gate list без компиляции.

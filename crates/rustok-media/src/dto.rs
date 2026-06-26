@@ -85,6 +85,105 @@ pub struct MediaTranslationItem {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+pub enum MediaAssetKind {
+    Image,
+    Video,
+    Audio,
+    Document,
+    Binary,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+pub enum MediaAssetUsageProfile {
+    PublicImageMetadata,
+    PublicDownload,
+    EmbeddedPlayer,
+    InternalOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct MediaAssetSummary {
+    pub id: Uuid,
+    pub filename: String,
+    pub original_name: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub public_url: String,
+    pub kind: MediaAssetKind,
+    pub usage_profile: MediaAssetUsageProfile,
+    pub image: Option<MediaImageDescriptor>,
+}
+
+impl MediaAssetSummary {
+    pub fn from_media_item(item: &MediaItem, alt: Option<String>) -> Self {
+        let kind = MediaAssetKind::from_mime_type(item.mime_type.as_str());
+        let image = (kind == MediaAssetKind::Image)
+            .then(|| MediaImageDescriptor::from_media_item(item, alt))
+            .flatten();
+        let usage_profile = MediaAssetUsageProfile::for_asset(kind, image.as_ref());
+
+        Self {
+            id: item.id,
+            filename: item.filename.clone(),
+            original_name: item.original_name.clone(),
+            mime_type: item.mime_type.clone(),
+            size: item.size,
+            public_url: item.public_url.clone(),
+            kind,
+            usage_profile,
+            image,
+        }
+    }
+
+    pub fn is_public_metadata_ready(&self) -> bool {
+        self.usage_profile == MediaAssetUsageProfile::PublicImageMetadata
+    }
+
+    pub fn requires_public_proxy(&self) -> bool {
+        self.image
+            .as_ref()
+            .is_some_and(MediaImageDescriptor::requires_public_proxy)
+    }
+}
+
+impl MediaAssetKind {
+    pub fn from_mime_type(mime_type: &str) -> Self {
+        let normalized = mime_type.trim().to_ascii_lowercase();
+        if normalized.starts_with("image/") {
+            Self::Image
+        } else if normalized.starts_with("video/") {
+            Self::Video
+        } else if normalized.starts_with("audio/") {
+            Self::Audio
+        } else if normalized == "application/pdf" {
+            Self::Document
+        } else {
+            Self::Binary
+        }
+    }
+
+    pub fn is_streamable(self) -> bool {
+        matches!(self, Self::Video | Self::Audio)
+    }
+}
+
+impl MediaAssetUsageProfile {
+    pub fn for_asset(kind: MediaAssetKind, image: Option<&MediaImageDescriptor>) -> Self {
+        match kind {
+            MediaAssetKind::Image
+                if image.is_some_and(MediaImageDescriptor::should_emit_to_public_metadata) =>
+            {
+                Self::PublicImageMetadata
+            }
+            MediaAssetKind::Image => Self::PublicDownload,
+            MediaAssetKind::Video | MediaAssetKind::Audio => Self::EmbeddedPlayer,
+            MediaAssetKind::Document => Self::PublicDownload,
+            MediaAssetKind::Binary => Self::InternalOnly,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub enum MediaImageDeliveryProfile {
     AbsolutePublicUrl,
     RootRelativePublicUrl,
@@ -198,6 +297,18 @@ impl MediaImageDescriptor {
         self.should_emit_to_public_metadata()
             .then_some(self.url.as_str())
     }
+
+    pub fn proxy_path(&self, prefix: &str) -> Option<String> {
+        if !self.requires_public_proxy() {
+            return None;
+        }
+
+        Some(format!(
+            "{}/{}",
+            prefix.trim_end_matches('/'),
+            self.url.trim_start_matches('/')
+        ))
+    }
 }
 
 fn delivery_profile(url: &str) -> MediaImageDeliveryProfile {
@@ -258,8 +369,8 @@ pub const DEFAULT_MAX_SIZE: u64 = 50 * 1024 * 1024;
 #[cfg(test)]
 mod tests {
     use super::{
-        MediaImageDeliveryProfile, MediaImageDescriptor, MediaImagePublicUrlPolicy,
-        UpsertTranslationInput,
+        MediaAssetKind, MediaAssetSummary, MediaAssetUsageProfile, MediaImageDeliveryProfile,
+        MediaImageDescriptor, MediaImagePublicUrlPolicy, MediaItem, UpsertTranslationInput,
     };
 
     #[test]
@@ -417,6 +528,60 @@ mod tests {
         assert!(!opaque.is_publicly_addressable());
         assert!(!opaque.requires_public_proxy());
         assert!(!opaque.should_emit_to_public_metadata());
+    }
+
+    #[test]
+    fn media_image_descriptor_builds_proxy_path_only_for_storage_relative_urls() {
+        let storage_relative =
+            MediaImageDescriptor::from_parts("tenant/object.webp", None, None, None, None)
+                .expect("storage-relative descriptor should be created");
+        let direct = MediaImageDescriptor::from_parts("/media/object.webp", None, None, None, None)
+            .expect("root-relative descriptor should be created");
+
+        assert_eq!(
+            storage_relative.proxy_path("/api/media/proxy/"),
+            Some("/api/media/proxy/tenant/object.webp".to_string())
+        );
+        assert_eq!(direct.proxy_path("/api/media/proxy"), None);
+    }
+
+    #[test]
+    fn media_asset_summary_classifies_kind_and_usage_profile() {
+        let item = MediaItem {
+            id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            uploaded_by: None,
+            filename: "hero.webp".to_string(),
+            original_name: "hero.webp".to_string(),
+            mime_type: " image/webp ".to_string(),
+            size: 1024,
+            storage_path: "tenant/hero.webp".to_string(),
+            storage_driver: "memory".to_string(),
+            public_url: "/media/hero.webp".to_string(),
+            width: Some(1200),
+            height: Some(630),
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+        };
+
+        let summary = MediaAssetSummary::from_media_item(&item, Some("Hero".to_string()));
+
+        assert_eq!(summary.kind, MediaAssetKind::Image);
+        assert_eq!(
+            summary.usage_profile,
+            MediaAssetUsageProfile::PublicImageMetadata
+        );
+        assert!(summary.is_public_metadata_ready());
+        assert!(!summary.requires_public_proxy());
+        assert_eq!(
+            summary.image.and_then(|image| image.pixel_count()),
+            Some(756000)
+        );
+        assert!(MediaAssetKind::from_mime_type("video/mp4").is_streamable());
+        assert_eq!(
+            MediaAssetUsageProfile::for_asset(MediaAssetKind::Binary, None),
+            MediaAssetUsageProfile::InternalOnly
+        );
     }
 
     #[test]
