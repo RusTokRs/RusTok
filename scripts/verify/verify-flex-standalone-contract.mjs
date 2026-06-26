@@ -76,6 +76,11 @@ expectContains(
 );
 expectContains(
   "crates/flex/src/standalone.rs",
+  "position must be unique within standalone schema fields_config",
+  "unique field position validation for deterministic standalone schema ordering",
+);
+expectContains(
+  "crates/flex/src/standalone.rs",
   "status must already be normalized without surrounding whitespace",
   "status normalization guardrail",
 );
