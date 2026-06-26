@@ -26,7 +26,8 @@
 - transport bridge slice добавил `src/transport.rs` с `dispatch_graphql_envelope` / `dispatch_leptos_server_function_envelope` и canonical success/error envelope поверх `AuthorizedPageBuilderHandlers::handle`;
 - endpoint adapter seam добавил `src/adapters.rs` с GraphQL/Leptos payload wrappers и host-facing handler-функциями поверх canonical dispatch helpers;
 - machine-readable correlation contract `contracts/page-builder-correlation-contract.json` фиксирует evidence chain `builder write -> pages publish -> storefront read` и source markers для no-compile gate;
-- capability handlers имеют reference-provider baseline (`ReferencePageBuilderService`) для `preview/tree/properties/publish` с contract validation, sanitize guard и deterministic typed responses; real persistence/rendering adapters остаются отдельным extension slice;
+- capability handlers имеют reference-provider baseline (`ReferencePageBuilderService`) для `preview/tree/properties/publish` с contract validation, sanitize guard и deterministic typed responses;
+- persistence/rendering extension slice заведён через `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter` и `AdapterBackedPageBuilderService`, поэтому host adapters могут подключать storage/rendering без изменения DTO, `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle` или GraphQL/Leptos endpoint wrappers;
 - Control-plane dry run evidence закреплён в `contracts/page-builder-control-plane-dry-run.json`: атомарный change-set для `builder.enabled` и дочерних flags, обязательные профили `all_on/publish_off/preview_off/builder_off`, before/after snapshots, waiver policy и read-surface guarantees.
 
 
@@ -47,6 +48,7 @@
   - endpoint adapter seam фиксирует framework-neutral GraphQL/Leptos endpoint payloads и `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`; no-compile guardrail `verify-page-builder-endpoint-adapters.mjs` удерживает endpoint wrappers на canonical request/response envelopes.
   - capability API baseline закрыт reference provider-ом без persistence side effects: `preview` рендерит deterministic wrapper, `properties` возвращает canonical node properties, `publish` возвращает typed publish result после `grapesjs_v1` validation, а forbidden preview HTML маппится в typed `sanitize` error.
   - Control-plane dry run evidence contract и runtime `BuilderControlPlaneChangeSet::dry_run` фиксируют атомарный toggle change-set, обязательные profile snapshots, rollback decision marker и waiver policy; aggregate no-compile baseline включает `verify-page-builder-control-plane-dry-run.mjs`.
+  - adapter seam contract `contracts/page-builder-adapter-seams.json` и runtime traits `PageBuilderProjectStore` / `PageBuilderRenderingAdapter` фиксируют extension-point для persistence/rendering без transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership или vendor-specific required project payloads.
 - Last verified at (UTC): 2026-06-21T00:00:00Z
 - Owner: `rustok-page-builder` module team
 
@@ -54,8 +56,8 @@
 
 1. Подключить host GraphQL resolver-ы и Leptos `#[server]` wrappers к `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, сохраняя `PageBuilderCapabilityRequest/Response`, `PageBuilderServiceError::kind()` и `stable_code()` как canonical transport bridge без transport-local capability/error aliases.
 2. Заменить draft dry-run snapshots фактическим tenant evidence packet без waivers перед Wave 1 promotion.
-3. Удерживать `verify-page-builder-transport-bridge.mjs`, `verify-page-builder-endpoint-adapters.mjs`, `verify-page-builder-control-plane-dry-run.mjs`, `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs`, `verify-page-builder-correlation-evidence.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync, Wave evidence формы и correlation chain `builder write -> pages publish -> storefront read`.
-4. Подключить persistence/rendering adapter поверх `ReferencePageBuilderService` contract seam без изменения DTO/transport envelopes.
+3. Удерживать `verify-page-builder-transport-bridge.mjs`, `verify-page-builder-endpoint-adapters.mjs`, `verify-page-builder-control-plane-dry-run.mjs`, `verify-page-builder-contract-registry.mjs`, `verify-page-builder-wave-evidence-packet.mjs`, `verify-page-builder-wave1-readiness-draft.mjs`, `verify-page-builder-correlation-evidence.mjs`, `verify-page-builder-adapter-seams.mjs` и aggregate `verify-page-builder-fba-baseline.mjs` в baseline gate для provider/consumer anti-drift, health/SLO threshold sync, permission-map sync, Wave evidence формы и correlation chain `builder write -> pages publish -> storefront read`.
+4. Подключить конкретный host persistence/rendering adapter к `AdapterBackedPageBuilderService` в server/consumer wiring, сохраняя `CapabilityGuardedService` для rollout flags и `PortCallPolicy::write()` enforcement.
 5. Описать sunset path для legacy block-driven compatibility.
 
 ## Область работ

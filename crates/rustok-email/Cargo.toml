@@ -18,3 +18,6 @@ serde_json.workspace = true
 url = "2.5"
 
 sea-orm-migration = { workspace = true }
+
+[dev-dependencies]
+tokio.workspace = true

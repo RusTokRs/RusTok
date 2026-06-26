@@ -68,7 +68,9 @@
     "runtime_fallback_smoke": "crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json",
     "runtime_fallback_smoke_runner": "scripts/verify/verify-search-fba-runtime-smoke.mjs",
     "runtime_contract_smoke": "crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json",
-    "runtime_contract_smoke_runner": "scripts/verify/verify-search-fba-runtime-contract.mjs"
+    "runtime_contract_smoke_runner": "scripts/verify/verify-search-fba-runtime-contract.mjs",
+    "runtime_invocation_trace": "crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json",
+    "runtime_invocation_trace_runner": "scripts/verify/verify-search-fba-runtime-invocation.mjs"
   },
   "in_process_provider_impl": {
     "service": "PgSearchEngine",
@@ -131,6 +133,18 @@
         "consumer_profile_parity",
         "typed_port_error_mapping",
         "embedded_postgres_execution_path"
+      ]
+    },
+    "runtime_invocation_trace": {
+      "status": "executable_no_compile_invocation_trace",
+      "evidence": "crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json",
+      "runner": "scripts/verify/verify-search-fba-runtime-invocation.mjs",
+      "assertions": [
+        "read_policy_short_circuit",
+        "context_locale_fallback",
+        "explicit_locale_preservation",
+        "single_provider_invocation",
+        "typed_port_error_mapping"
       ]
     }
   }

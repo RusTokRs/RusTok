@@ -196,6 +196,122 @@ pub fn validate_index_rebuild_smoke(
     Ok(())
 }
 
+/// In-process adapter that serves indexed read-model documents from a seeded snapshot.
+///
+/// This adapter is intentionally persistence-agnostic: hosts can use it for embedded native
+/// runtime smoke tests, fixtures, and short-lived read-only profiles while keeping the public
+/// `IndexReadModelPort` contract identical to persistence-backed adapters.
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryIndexReadModelAdapter {
+    documents: Vec<IndexDocument>,
+}
+
+impl InMemoryIndexReadModelAdapter {
+    /// Build an empty adapter.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Build an adapter from a preloaded document snapshot.
+    pub fn from_documents(documents: impl IntoIterator<Item = IndexDocument>) -> Self {
+        Self {
+            documents: documents.into_iter().collect(),
+        }
+    }
+
+    fn expected_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+        Uuid::parse_str(&context.tenant_id).map_err(|_| {
+            PortError::validation(
+                "index.context_tenant_id_invalid",
+                "index port context tenant_id must be a UUID for in-process reads",
+            )
+        })
+    }
+
+    fn document_matches_selector(document: &IndexDocument, selector: &IndexReadSelector) -> bool {
+        match selector {
+            IndexReadSelector::DocumentId(id) => document.id == *id,
+            IndexReadSelector::Slug {
+                doc_type,
+                locale,
+                slug,
+            } => {
+                document.doc_type.to_string() == *doc_type
+                    && document.locale == *locale
+                    && document.slug == *slug
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl IndexReadModelPort for InMemoryIndexReadModelAdapter {
+    async fn read_index_document(
+        &self,
+        context: PortContext,
+        request: IndexReadRequest,
+    ) -> Result<Option<IndexDocument>, PortError> {
+        validate_index_read_smoke(&context, &request)?;
+        let expected_tenant_id = Self::expected_tenant_id(&context)?;
+
+        let document = self
+            .documents
+            .iter()
+            .find(|document| Self::document_matches_selector(document, &request.selector))
+            .cloned();
+
+        if let Some(document) = &document {
+            ensure_index_document_tenant_scope(expected_tenant_id, document)?;
+        }
+
+        Ok(document)
+    }
+
+    async fn list_index_documents(
+        &self,
+        context: PortContext,
+        request: IndexListRequest,
+    ) -> Result<Vec<IndexDocument>, PortError> {
+        validate_index_list_smoke(&context, &request)?;
+        let expected_tenant_id = Self::expected_tenant_id(&context)?;
+
+        let mut documents = Vec::new();
+        for document in &self.documents {
+            if document.doc_type.to_string() != request.doc_type {
+                continue;
+            }
+            if let Some(locale) = &request.locale {
+                if document.locale != *locale {
+                    continue;
+                }
+            }
+            ensure_index_document_tenant_scope(expected_tenant_id, document)?;
+            documents.push(document.clone());
+            if documents.len() >= request.limit as usize {
+                break;
+            }
+        }
+
+        Ok(documents)
+    }
+}
+
+/// Rebuild adapter for runtime profiles that intentionally expose index reads only.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DisabledIndexRebuildAdapter;
+
+#[async_trait]
+impl IndexRebuildPort for DisabledIndexRebuildAdapter {
+    async fn request_rebuild(
+        &self,
+        context: PortContext,
+        request: IndexRebuildRequest,
+    ) -> Result<IndexRebuildOutcome, PortError> {
+        validate_index_rebuild_smoke(&context, &request)?;
+        Err(index_rebuild_disabled_error())
+    }
+}
+
 /// Transport-neutral owner boundary for indexed read projections.
 #[async_trait]
 pub trait IndexReadModelPort: Send + Sync {
@@ -333,8 +449,36 @@ mod tests {
 
     use super::*;
 
+    fn tenant_id() -> Uuid {
+        Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()
+    }
+
     fn context() -> PortContext {
-        PortContext::new("tenant-a", PortActor::service("index"), "ru", "corr-a")
+        PortContext::new(
+            tenant_id().to_string(),
+            PortActor::service("index"),
+            "ru",
+            "corr-a",
+        )
+    }
+
+    fn document(id: Uuid, tenant_id: Uuid, slug: &str, locale: &str) -> IndexDocument {
+        IndexDocument {
+            id,
+            tenant_id,
+            doc_type: crate::models::DocumentType::Product,
+            locale: locale.to_string(),
+            title: slug.to_string(),
+            slug: slug.to_string(),
+            content: None,
+            keywords: Vec::new(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            published_at: None,
+            status: "published".to_string(),
+            price: None,
+            payload: serde_json::json!({}),
+        }
     }
 
     #[test]
@@ -347,6 +491,100 @@ mod tests {
 
         let with_deadline = context().with_deadline(Duration::from_secs(2));
         assert!(require_index_read_policy(&with_deadline).is_ok());
+    }
+
+    #[tokio::test]
+    async fn in_memory_adapter_reads_lists_and_preserves_tenant_scope() {
+        let owned_id = Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap();
+        let adapter = InMemoryIndexReadModelAdapter::from_documents([
+            document(owned_id, tenant_id(), "owned", "ru"),
+            document(
+                Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap(),
+                Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap(),
+                "foreign",
+                "ru",
+            ),
+        ]);
+        let context = context().with_deadline(Duration::from_secs(2));
+
+        let read = adapter
+            .read_index_document(
+                context.clone(),
+                IndexReadRequest {
+                    selector: IndexReadSelector::DocumentId(owned_id),
+                },
+            )
+            .await
+            .expect("owned document should be readable")
+            .expect("owned document should exist");
+        assert_eq!(read.slug, "owned");
+
+        let listed = adapter
+            .list_index_documents(
+                context.clone(),
+                IndexListRequest {
+                    doc_type: "product".to_string(),
+                    locale: Some("ru".to_string()),
+                    limit: 1,
+                },
+            )
+            .await
+            .expect("list should return tenant-scoped documents");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, owned_id);
+
+        let error = adapter
+            .read_index_document(
+                context,
+                IndexReadRequest {
+                    selector: IndexReadSelector::Slug {
+                        doc_type: "product".to_string(),
+                        locale: "ru".to_string(),
+                        slug: "foreign".to_string(),
+                    },
+                },
+            )
+            .await
+            .expect_err("cross-tenant document must not leak");
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+        assert_eq!(error.code, "index.tenant_scope_mismatch");
+    }
+
+    #[tokio::test]
+    async fn disabled_rebuild_adapter_validates_policy_before_degraded_error() {
+        let adapter = DisabledIndexRebuildAdapter;
+
+        let missing_idempotency = adapter
+            .request_rebuild(
+                context().with_deadline(Duration::from_secs(2)),
+                IndexRebuildRequest {
+                    owner_module: "product".to_string(),
+                    entity_type: "product".to_string(),
+                    entity_ids: Vec::new(),
+                    dry_run: true,
+                },
+            )
+            .await
+            .expect_err("write policy must be enforced before degraded fallback");
+        assert_eq!(missing_idempotency.code, "port.idempotency_key_required");
+
+        let disabled = adapter
+            .request_rebuild(
+                context()
+                    .with_deadline(Duration::from_secs(2))
+                    .with_idempotency_key("rebuild-index-corr-a"),
+                IndexRebuildRequest {
+                    owner_module: "product".to_string(),
+                    entity_type: "product".to_string(),
+                    entity_ids: Vec::new(),
+                    dry_run: true,
+                },
+            )
+            .await
+            .expect_err("read-only runtime profile must return typed degraded error");
+        assert_eq!(disabled.kind, PortErrorKind::Unavailable);
+        assert_eq!(disabled.code, "index.rebuild_disabled");
+        assert!(disabled.retryable);
     }
 
     #[test]

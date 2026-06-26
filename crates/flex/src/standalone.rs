@@ -384,6 +384,7 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
     }
 
     let mut unique = std::collections::HashSet::new();
+    let mut positions = std::collections::HashSet::new();
     for def in definitions {
         validate_identifier(&def.field_key, "field key in fields_config", 128)?;
         validate_definition_shape(def)?;
@@ -395,6 +396,13 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
         if def.position < 0 {
             return Err(FlexError::InvalidFieldKey(format!(
                 "field '{}' position must not be negative",
+                def.field_key
+            )));
+        }
+
+        if !positions.insert(def.position) {
+            return Err(FlexError::InvalidFieldKey(format!(
+                "field '{}' position must be unique within standalone schema fields_config",
                 def.field_key
             )));
         }
@@ -1049,6 +1057,25 @@ mod tests {
             is_active: None,
         };
         assert!(validate_create_schema_command(&empty_error_message).is_err());
+
+        let duplicate_positions = CreateFlexSchemaCommand {
+            slug: "landing_page".to_string(),
+            name: "Landing".to_string(),
+            description: None,
+            fields_config: vec![
+                FieldDefinition {
+                    position: 1,
+                    ..sample_definition("title")
+                },
+                FieldDefinition {
+                    position: 1,
+                    ..sample_definition("subtitle")
+                },
+            ],
+            settings: None,
+            is_active: None,
+        };
+        assert!(validate_create_schema_command(&duplicate_positions).is_err());
     }
 
     #[test]

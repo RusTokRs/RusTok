@@ -18,14 +18,14 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 - canonical resolution order `explicit selectors -> built-in host slice -> typed policies -> explicit default -> unresolved`, где built-in host fast-path остаётся отдельным совместимым слоем перед policy-only evaluation;
 - module-owned Leptos admin UI package `rustok-channel-admin` с operator flow для policy authoring/edit/reorder/enable-disable и native-first `#[server]` + REST fallback transport parity;
 - FBA provider boundary `ChannelReadPort` / `channel.read_projection.v1` для channel/default/host-target read projections, где `npm run verify:channel:fba` без компиляции фиксирует registry, static matrix и no-compile executable runtime fallback smoke (`embedded_native`, `rest_compatibility`, `unresolved_context`);
-- source-locked proof points для `rustok-pages`, `rustok-blog` и `rustok-commerce`, где `npm run verify:channel:proof-points` удерживает использование resolved host `ChannelContext`, `channel_module_bindings`, metadata `channelSlugs` visibility и commerce channel snapshot без второго sales-channel домена.
+- source-locked proof points для `rustok-pages`, `rustok-blog`, `rustok-commerce` и `rustok-forum`, где `npm run verify:channel:proof-points` удерживает использование resolved host `ChannelContext`, `channel_module_bindings`, metadata `channelSlugs`/`forum_topic_channel_access` visibility, commerce channel snapshot без второго sales-channel домена и forum SEO/read-path channel filtering.
 
 ## Интеграция
 
 - используется `apps/server` как обязательный `Core` module и как runtime composition root;
 - публикует shared host contract через `rustok-api` (`ChannelContext`, request-level metadata, `resolution_trace`);
 - использует `rustok-auth` как источник истины для OAuth applications и access tokens;
-- уже служит runtime proof point для `rustok-pages`, `rustok-blog` и `rustok-commerce`, а их source/docs синхронизация закреплена `npm run verify:channel:proof-points`.
+- уже служит runtime proof point для `rustok-pages`, `rustok-blog`, `rustok-commerce` и `rustok-forum`, а их source/docs синхронизация закреплена `npm run verify:channel:proof-points`.
 
 ## Проверка
 
@@ -34,7 +34,7 @@ channel context для delivery surfaces и channel-aware runtime resolution.
 - targeted server middleware tests для resolution order и explicit default semantics
 - `npm run verify:channel:fba` для no-compile FBA registry/static-matrix/runtime-fallback-smoke guardrail
 - `npm run verify:channel:resolution-contract` для no-compile guardrail порядка resolution и решения по built-in host fast-path
-- `npm run verify:channel:proof-points` для no-compile guardrail текущих channel-aware proof points в `rustok-pages`, `rustok-blog` и `rustok-commerce`
+- `npm run verify:channel:proof-points` для no-compile guardrail текущих channel-aware proof points в `rustok-pages`, `rustok-blog`, `rustok-commerce` и `rustok-forum`
 
 ## Связанные документы
 

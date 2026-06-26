@@ -110,5 +110,30 @@
       "Error"
     ],
     "on_commit_returns": "Vec<ExecutionResult>"
+  },
+  "script_crud_validation_contract": {
+    "rest_create": [
+      "reject_duplicate_name",
+      "validate_cron_trigger",
+      "compile_before_save",
+      "persist_optional_tenant_id"
+    ],
+    "rest_update": [
+      "invalidate_old_name_on_rename",
+      "compile_new_code_before_save",
+      "validate_cron_trigger_before_save",
+      "invalidate_cache_on_code_change"
+    ],
+    "graphql_create_update": [
+      "require_admin",
+      "validate_cron_trigger",
+      "compile_before_save",
+      "tenant_from_context_on_create"
+    ],
+    "error_mapping": {
+      "compilation": "validation",
+      "invalid_cron": "validation",
+      "duplicate_name": "conflict"
+    }
   }
 }

@@ -1,11 +1,11 @@
 use crate::dto::{
     BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
-    BuilderTreeInput, BuilderTreeResult, PageBuilderCapabilityRequest,
-    PageBuilderCapabilityResponse, PageBuilderContractMetadata, PageBuilderErrorKind,
-    PreviewPageBuilderInput, PreviewPageBuilderResult, PublishPageBuilderInput,
-    PublishPageBuilderResult, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+    BuilderTreeInput, BuilderTreeNode, BuilderTreeResult, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PageBuilderContractMetadata,
+    PageBuilderErrorKind, PreviewPageBuilderInput, PreviewPageBuilderResult,
+    PublishPageBuilderInput, PublishPageBuilderResult,
 };
-use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
+use crate::rollout::{BuilderCapabilityFlags, BuilderRolloutError, ensure_capability};
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
 use rustok_core::{Action, Permission, Resource};
@@ -175,6 +175,167 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
             BuilderRolloutError::InvalidFlagCombination(message) => Self::Validation(message),
         }
     }
+}
+
+/// Minimal persistence seam for hosts that store `grapesjs_v1` project snapshots outside
+/// the reference provider. Implementations must keep tenant isolation in the supplied
+/// [`PortContext`] and must not change the canonical DTO/envelope contract.
+#[async_trait]
+pub trait PageBuilderProjectStore: Send + Sync {
+    async fn load_project(
+        &self,
+        context: &PortContext,
+        page_id: &str,
+    ) -> PageBuilderServiceResult<Option<serde_json::Value>>;
+
+    async fn save_project(
+        &self,
+        context: &PortContext,
+        page_id: &str,
+        revision_id: &str,
+        project_data: serde_json::Value,
+    ) -> PageBuilderServiceResult<()>;
+}
+
+/// Rendering adapter seam for hosts that need production HTML/CSS rendering while keeping
+/// the baseline `grapesjs_v1` validation and sanitize behaviour in this crate.
+#[async_trait]
+pub trait PageBuilderRenderingAdapter: Send + Sync {
+    async fn render_preview(
+        &self,
+        context: &PortContext,
+        project_data: &serde_json::Value,
+    ) -> PageBuilderServiceResult<String>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ReferencePageBuilderRenderingAdapter;
+
+#[async_trait]
+impl PageBuilderRenderingAdapter for ReferencePageBuilderRenderingAdapter {
+    async fn render_preview(
+        &self,
+        _context: &PortContext,
+        project_data: &serde_json::Value,
+    ) -> PageBuilderServiceResult<String> {
+        render_preview_html(project_data)
+    }
+}
+
+pub struct AdapterBackedPageBuilderService<S, R> {
+    store: S,
+    renderer: R,
+}
+
+impl<S, R> AdapterBackedPageBuilderService<S, R> {
+    pub fn new(store: S, renderer: R) -> Self {
+        Self { store, renderer }
+    }
+}
+
+#[async_trait]
+impl<S, R> PageBuilderCapabilityService for AdapterBackedPageBuilderService<S, R>
+where
+    S: PageBuilderProjectStore,
+    R: PageBuilderRenderingAdapter,
+{
+    async fn preview(
+        &self,
+        context: &PortContext,
+        input: PreviewPageBuilderInput,
+    ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
+        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+        let html = self
+            .renderer
+            .render_preview(context, &input.project_data)
+            .await?;
+
+        Ok(PreviewPageBuilderResult {
+            page_id: input.page_id,
+            html,
+        })
+    }
+
+    async fn tree(
+        &self,
+        context: &PortContext,
+        input: BuilderTreeInput,
+    ) -> PageBuilderServiceResult<BuilderTreeResult> {
+        validate_non_empty("page_id", &input.page_id)?;
+        let nodes = match self.store.load_project(context, &input.page_id).await? {
+            Some(project_data) => extract_tree_nodes(&project_data),
+            None => Vec::new(),
+        };
+
+        Ok(BuilderTreeResult {
+            page_id: input.page_id,
+            nodes,
+        })
+    }
+
+    async fn properties(
+        &self,
+        _context: &PortContext,
+        input: BuilderNodePropertiesInput,
+    ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
+        validate_non_empty("page_id", &input.page_id)?;
+        validate_non_empty("node_id", &input.node_id)?;
+        ensure_object_payload("properties", &input.properties)?;
+
+        Ok(BuilderNodePropertiesResult {
+            page_id: input.page_id,
+            node_id: input.node_id,
+            properties: input.properties,
+        })
+    }
+
+    async fn publish(
+        &self,
+        context: &PortContext,
+        input: PublishPageBuilderInput,
+    ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
+        validate_non_empty("revision_id", &input.revision_id)?;
+        validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+        self.store
+            .save_project(
+                context,
+                &input.page_id,
+                &input.revision_id,
+                input.project_data,
+            )
+            .await?;
+
+        Ok(PublishPageBuilderResult {
+            page_id: input.page_id,
+            revision_id: input.revision_id,
+            published: true,
+        })
+    }
+}
+
+fn extract_tree_nodes(project_data: &serde_json::Value) -> Vec<BuilderTreeNode> {
+    project_data
+        .get("nodes")
+        .and_then(serde_json::Value::as_array)
+        .map(|nodes| {
+            nodes
+                .iter()
+                .filter_map(|node| {
+                    let id = node.get("id")?.as_str()?.to_string();
+                    let label = node
+                        .get("label")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(&id)
+                        .to_string();
+                    Some(BuilderTreeNode {
+                        id,
+                        label,
+                        children: Vec::new(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Default)]

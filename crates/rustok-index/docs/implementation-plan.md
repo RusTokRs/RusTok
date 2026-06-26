@@ -50,7 +50,7 @@
 
 ### 2. Working index module
 
-- [ ] довести ingestion lifecycle: bootstrap, incremental sync, rebuild, retry;
+- [~] довести ingestion lifecycle: bootstrap, incremental sync, rebuild, retry; текущий in-process/read-only adapter slice фиксирует shared rebuild policy and degraded-mode fallback, но persistence-backed scheduling/retry ещё pending;
 - [ ] зафиксировать canonical query surface для cross-module filtering и counts;
 - [~] довести tenant/locale scoping indexed records до production-ready contract; текущий FBA smoke фиксирует tenant-scope guard и locale selector validation, но persistence-backed evidence ещё pending.
 

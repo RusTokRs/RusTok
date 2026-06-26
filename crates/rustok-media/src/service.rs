@@ -10,7 +10,7 @@ use rustok_storage::{StorageError, StorageService};
 
 use crate::{
     dto::{
-        MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
+        MediaAssetSummary, MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
         ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
     },
     entities::{
@@ -279,6 +279,32 @@ impl MediaService {
         let items: Vec<crate::entities::media::Model> =
             query.limit(limit).offset(offset).all(&self.db).await?;
         Ok((items.into_iter().map(|m| self.to_item(m)).collect(), total))
+    }
+
+    pub async fn get_asset_summary(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        alt: Option<String>,
+    ) -> Result<MediaAssetSummary> {
+        let item = self.get(tenant_id, id).await?;
+        Ok(MediaAssetSummary::from_media_item(&item, alt))
+    }
+
+    pub async fn list_asset_summaries(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+        offset: u64,
+    ) -> Result<(Vec<MediaAssetSummary>, u64)> {
+        let (items, total) = self.list(tenant_id, limit, offset).await?;
+        Ok((
+            items
+                .iter()
+                .map(|item| MediaAssetSummary::from_media_item(item, None))
+                .collect(),
+            total,
+        ))
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────

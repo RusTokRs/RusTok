@@ -13,8 +13,8 @@
 ## Зона ответственности
 
 - `MediaService`, media entities/DTOs и контракт обновления переводов с нормализацией locale/text на runtime boundary;
-- типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile` и `MediaImagePublicUrlPolicy` для явной политики direct-public/proxy-required/not-addressable URL;
-- FBA provider-контракт `MediaAssetReadPort` / `media.asset_read.v1` с source-locked evidence для deadline/context guards и typed `PortError` retryability;
+- типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile`, `MediaImagePublicUrlPolicy` и `proxy_path` helper для явной политики direct-public/proxy-required/not-addressable URL;
+- FBA provider-контракт `MediaAssetReadPort` / `media.asset_read.v1` с source-locked evidence для deadline/context guards, typed `PortError` retryability и `MediaAssetSummary` kind/usage metadata;
 - GraphQL- и REST-адаптеры модуля;
 - валидацию загрузок по size/MIME policy и tenant isolation до обращения к storage;
 - модульный admin UI package `rustok-media-admin` с FFA-разделением `core`/`transport`/`ui/leptos`;

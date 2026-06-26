@@ -5,8 +5,8 @@
 
 ## Execution checkpoint
 
-- Current phase: FBA media asset read provider metadata + public URL policy helpers
-- Last checkpoint: no-compile media slice collapsed the explicit read deadline helper into shared `PortCallPolicy::read()` enforcement for `MediaAssetReadPort`, kept delivery/public URL policy helpers intact, and updated static `npm run verify:media:fba` coverage without compilation. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
+- Current phase: FBA media asset read provider metadata + asset summary/use-case helpers
+- Last checkpoint: no-compile media slice added `MediaAssetSummary`/kind/usage helpers, storage-relative `proxy_path` derivation, extended source-locked FBA fallback evidence with internal-binary summary degradation, and kept static `npm run verify:media:fba` coverage without compilation. Admin FFA boundary remains pinned by `scripts/verify/verify-media-admin-boundary.mjs` and `npm run verify:media:admin-boundary`.
 - Next step: когда компиляции снова разрешены, запустить executable runtime contract/fallback smoke для `MediaAssetReadPort` с проверкой shared read-policy deadline semantics, затем добрать DB-backed integration tests для `cleanup_storage_orphans` и подтвердить новые delivery profile/report helpers компиляцией.
 - Open blockers: нет.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.
@@ -37,7 +37,7 @@
 - media metadata хранится в module-owned tables, а бинарные файлы остаются в `rustok-storage`;
 - upload остаётся REST-first path, GraphQL покрывает read/write flows без multipart semantics;
 - module-owned admin UI и observability surface уже входят в модульный contract;
-- typed `MediaImageDescriptor` введён как cross-module boundary для SEO image payload (`url/alt/size/mime` + derived helpers), дополнен delivery profile policy (`absolute/root-relative public URL`, `storage-relative path`, `opaque reference`) и public URL policy (`direct public`, `proxy required`, `not addressable`), покрыт edge-case normalization tests для explicit MIME, invalid dimensions, query/fragment cleanup и proxy-required storage paths.
+- `MediaAssetSummary` введён для kind/usage классификации без raw blob coupling; typed `MediaImageDescriptor` введён как cross-module boundary для SEO image payload (`url/alt/size/mime` + derived helpers), дополнен delivery profile policy (`absolute/root-relative public URL`, `storage-relative path`, `opaque reference`) и public URL policy (`direct public`, `proxy required`, `not addressable`), покрыт edge-case normalization tests для explicit MIME, invalid dimensions, query/fragment cleanup и proxy-required storage paths.
 
 ## Этапы
 
@@ -51,7 +51,7 @@
 ### 2. Runtime hardening
 
 - [~] покрыть cleanup task, storage failures и translation edge-cases targeted integration tests; translation boundary имеет unit coverage для locale/text normalization, upload policy и cleanup probe classification покрыты service-level unit tests, DB-backed cleanup integration остаётся открытым;
-- [ ] развивать richer metadata/use-case surfaces только через module-owned service layer;
+- [ ] развивать richer metadata/use-case surfaces только через module-owned service layer; текущий no-compile slice добавил `get_asset_summary`/`list_asset_summaries` и DTO-level `MediaAssetSummary`;
 - [ ] уточнить long-term policy для public URLs и storage-driver-specific guarantees.
 
 ### 3. Operability
@@ -76,6 +76,6 @@
 
 ## Quality backlog
 
-- [~] Актуализировать покрытие тестами по ключевым сценариям модуля: FBA static matrix, source-locked fallback smoke, public URL policy static evidence и source-locked port error matrix закрыты; executable runtime smoke и DB-backed cleanup integration остаются открытыми.
+- [~] Актуализировать покрытие тестами по ключевым сценариям модуля: FBA static matrix, source-locked fallback smoke, public URL policy / asset summary static evidence и source-locked port error matrix закрыты; executable runtime smoke и DB-backed cleanup integration остаются открытыми.
 - [ ] Проверить полноту и актуальность `README.md` и локальных docs.
 - [ ] Зафиксировать/обновить verification gates для текущего состояния модуля.

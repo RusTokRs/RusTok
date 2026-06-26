@@ -313,6 +313,40 @@ for (const requiredFile of [
     `Live artifact manifest template misses ${requiredFile}`,
   );
 }
+const liveArtifactTemplateDirectory = liveArtifactManifestTemplate.templateDirectory;
+assert(
+  liveArtifactTemplateDirectory,
+  "Live artifact manifest template misses templateDirectory",
+);
+for (const requiredFile of liveArtifactManifestTemplate.requiredFiles ?? []) {
+  const templatePath = join(repoRoot, liveArtifactTemplateDirectory, requiredFile);
+  assert(existsSync(templatePath), `Live artifact template file does not exist: ${requiredFile}`);
+  const templateSource = readFileSync(templatePath, "utf8");
+  if (requiredFile.endsWith(".json")) {
+    const template = JSON.parse(templateSource);
+    for (const field of [
+      "captured_at",
+      "environment",
+      "surface",
+      "command_or_ci_job",
+      "before",
+      "after",
+      "samples",
+      "redactions_applied",
+      "result",
+    ]) {
+      assert(
+        Object.prototype.hasOwnProperty.call(template, field),
+        `Live artifact template ${requiredFile} misses schema field ${field}`,
+      );
+    }
+  } else {
+    assert(
+      templateSource.includes("Signed state"),
+      `Live artifact template ${requiredFile} misses sign-off state marker`,
+    );
+  }
+}
 for (const counterField of ["pending", "sent", "retry", "failed", "dead_letter", "replay_mode"]) {
   assert(
     liveArtifactManifestTemplate.counterFields?.includes(counterField),
@@ -385,6 +419,77 @@ assert(
   "Live artifact schema template must include cookie redaction",
 );
 
+const runbookCrosswalk = fixtures.liveEvidenceRunbookCrosswalk ?? [];
+assert(
+  runbookCrosswalk.length >= 3,
+  "Expected live evidence runbook crosswalk rows for backlog, indexing and replay drills",
+);
+for (const row of runbookCrosswalk) {
+  assert(row.scenario, "Runbook crosswalk row misses scenario");
+  assert(row.runbook, `Runbook crosswalk row misses runbook: ${row.scenario}`);
+  assert(existsSync(join(repoRoot, row.runbook)), `Runbook crosswalk path does not exist: ${row.runbook}`);
+  assert(
+    liveTemplateFiles.has(row.artifact),
+    `Runbook crosswalk artifact is not a required live template: ${row.artifact}`,
+  );
+  assert(
+    Array.isArray(row.mustCapture) && row.mustCapture.length >= 3,
+    `Runbook crosswalk row misses capture checklist: ${row.scenario}`,
+  );
+  assert(
+    Array.isArray(row.blocksCloseoutIf) && row.blocksCloseoutIf.length >= 3,
+    `Runbook crosswalk row misses closeout blockers: ${row.scenario}`,
+  );
+}
+
+const attachmentChecklist = fixtures.ciAttachmentManifestChecklist ?? [];
+assert(
+  attachmentChecklist.length >= (liveArtifactManifestTemplate.requiredFiles ?? []).length,
+  "Expected CI attachment checklist rows for every required live artifact",
+);
+for (const requiredFile of liveArtifactManifestTemplate.requiredFiles ?? []) {
+  const row = attachmentChecklist.find((item) => item.file === requiredFile);
+  assert(row, `Missing CI attachment checklist row: ${requiredFile}`);
+  assert(row.attachTo, `CI attachment checklist row misses destination: ${requiredFile}`);
+  assert(
+    Array.isArray(row.requiredMetadata) && row.requiredMetadata.includes("commit_sha"),
+    `CI attachment checklist row must require commit_sha: ${requiredFile}`,
+  );
+  assert(
+    Array.isArray(row.redaction) && row.redaction.length >= 1,
+    `CI attachment checklist row misses redaction rules: ${requiredFile}`,
+  );
+}
+
+const defectTriageMatrix = fixtures.defectTriageMatrix ?? [];
+for (const severity of ["blocker", "high", "medium", "low"]) {
+  const row = defectTriageMatrix.find((item) => item.severity === severity);
+  assert(row, `Missing D8/D9 defect triage severity: ${severity}`);
+  assert(
+    Array.isArray(row.examples) && row.examples.length >= 2,
+    `Defect triage row misses examples: ${severity}`,
+  );
+  assert(row.requiredAction, `Defect triage row misses required action: ${severity}`);
+}
+
+const signoffStateMachine = fixtures.ownerSignoffStateMachine ?? {};
+assert(
+  signoffStateMachine.initialState === "pending_static_seed",
+  "Owner sign-off state machine must start at pending_static_seed",
+);
+for (const transition of signoffStateMachine.allowedTransitions ?? []) {
+  assert(transition.from, "Owner sign-off transition misses from state");
+  assert(transition.to, `Owner sign-off transition misses to state: ${transition.from}`);
+  assert(
+    Array.isArray(transition.requires) && transition.requires.length >= 3,
+    `Owner sign-off transition misses requirements: ${transition.from}->${transition.to}`,
+  );
+}
+assert(
+  (signoffStateMachine.forbiddenTransitions ?? []).includes("pending_static_seed->signed"),
+  "Owner sign-off state machine must forbid direct pending->signed promotion",
+);
+
 console.log(
   `SEO runtime fixture evidence OK: ${fallbackRows.length} fallback cases, `
     + `${routeRows.length} route rows, ${smokeRows.length} smoke routes, `
@@ -400,5 +505,7 @@ console.log(
     + `${fixtures.ownerCloseoutCriteria.length} owner closeout rows, `
     + `${unitCoverageInventory.length} unit inventory rows, `
     + `${integrationMatrixPlan.length} integration plan rows, `
-    + `${liveEvidenceArtifactTemplates.length} live artifact templates`,
+    + `${liveEvidenceArtifactTemplates.length} live artifact templates, `
+    + `${runbookCrosswalk.length} runbook crosswalk rows, `
+    + `${attachmentChecklist.length} CI attachment rows`,
 );

@@ -48,6 +48,8 @@ pub struct BlogPostAdminFormViewModel;
 pub fn blog_post_admin_form_view() {}
 pub struct BlogPostAdminTableClassesViewModel;
 pub fn blog_post_admin_table_classes_view() {}
+pub struct BlogPostAdminShellClassesViewModel;
+pub fn blog_post_admin_shell_classes_view() {}
 pub struct BlogPostAdminEditorFormCopyViewModel;
 pub struct BlogPostAdminEditorFormCopyLabels;
 pub fn blog_post_admin_editor_form_copy_view() {}
@@ -118,6 +120,7 @@ pub fn BlogAdmin() {
     let _body_format_change = core::blog_post_admin_body_format_change_view;
     let _posts_table = core::blog_post_admin_posts_table_view_from_items;
     let _table_classes = core::blog_post_admin_table_classes_view;
+    let _shell_classes = core::blog_post_admin_shell_classes_view;
     let _apply = apply_blog_post_admin_route_query_intent;
     let _open = core::blog_post_admin_open_post_query_intent;
     let _clear = core::blog_post_admin_clear_post_query_intent;

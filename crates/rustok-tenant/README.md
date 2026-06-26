@@ -21,7 +21,7 @@
   semantics are covered in `apps/server/tests/tenant_resolver_invariants_test.rs`.
 - Exposes `TenantReadPort` (`tenant.read_projection.v1`) for transport-neutral read projections by tenant id, slug, or domain with shared `rustok_api::PortContext`/`PortError` deadline semantics.
 - `apps/server` tenant resolver now consumes that owner port for cache-miss loads while retaining host-owned cache/coalescing/invalidation concerns.
-- Tenant provisioning/deprovisioning flows in the host are expected to invalidate tenant cache keys
+- Tenant provisioning/deprovisioning flows in the host use `TenantReadPort` for read-fact inspection/verification and are expected to invalidate tenant cache keys
   (`uuid` / `slug` / `host`) to avoid stale resolver state beyond TTL windows.
 - Exposes a module-owned Leptos admin overview through `rustok-tenant-admin`.
 - Declares permissions via `rustok-core::Permission`.

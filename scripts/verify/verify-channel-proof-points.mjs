@@ -113,6 +113,34 @@ assertAll('crates/rustok-commerce/README.md', [
   'without introducing a second sales-channel domain',
 ]);
 
+assertAll('crates/rustok-forum/src/graphql/query.rs', [
+  'ChannelService::new',
+  '.is_module_enabled(channel_id, MODULE_SLUG)',
+  'public_channel_slug(ctx)',
+  'is_topic_visible_for_channel',
+  'storefront_replies_return_empty_for_channel_ineligible_topic',
+]);
+assertAll('crates/rustok-forum/src/services/topic.rs', [
+  'apply_public_topic_channel_filter',
+  'matching_topic_channel_access_subquery',
+  'normalize_public_channel_slug',
+  'forum_topic_channel_access::Entity',
+]);
+assertAll('crates/rustok-forum/src/seo_targets.rs', [
+  'channel_visible',
+  'normalize_channel_slug',
+  'request.channel_slug',
+]);
+assertAll('crates/rustok-forum/README.md', [
+  'rustok-channel',
+  'channel-restricted topics',
+  'channel access',
+]);
+assertAll('crates/rustok-forum/docs/README.md', [
+  'rustok-channel',
+  'visibility/pilot gating',
+]);
+
 for (const path of [
   'crates/rustok-channel/docs/implementation-plan.md',
   'crates/rustok-channel/docs/README.md',
@@ -123,8 +151,9 @@ for (const path of [
     'rustok-pages',
     'rustok-blog',
     'rustok-commerce',
+    'rustok-forum',
     'verify:channel:proof-points',
   ]);
 }
 
-console.log('[verify-channel-proof-points] Channel-aware pages/blog/commerce proof points and docs are source-locked');
+console.log('[verify-channel-proof-points] Channel-aware pages/blog/commerce/forum proof points and docs are source-locked');
