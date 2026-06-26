@@ -23,6 +23,7 @@
 node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
+node scripts/verify/verify-api-surface-contract.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
@@ -40,7 +41,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | Перед коммитом | `./scripts/verify/verify-all.sh` |
 | После рефакторинга модуля | `./scripts/verify/verify-all.sh -v` |
 | Ревью PR | `./scripts/verify/verify-all.sh -v` |
-| Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` |
+| Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` + `node scripts/verify/verify-api-surface-contract.mjs` |
 | Добавили новый event | `./scripts/verify/verify-all.sh events` |
 | Проверка anti-bypass drift | `./scripts/verify/verify-all.sh anti-bypass` |
 | Добавили миграцию | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh`; в CI тот же smoke закреплён отдельным job `migration-smoke` |
@@ -147,6 +148,25 @@ RUSTOK_MIGRATION_SMOKE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/pos
 RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 \
 RUSTOK_MIGRATION_SMOKE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres \
   ./scripts/verify/verify-migration-smoke.sh
+```
+
+---
+
+
+### `verify-api-surface-contract.mjs`
+**API surface contract guardrail** — быстрый no-compile gate для плана API-поверхностей.
+
+Что проверяет:
+- GraphQL schema composition использует build-time generated optional module root (`graphql_schema_codegen.rs`) вместо ручного списка optional modules;
+- `apps/server/build.rs` читает `modules.toml` и package-local `rustok-module.toml` declarations для `[provides.graphql]` / `[provides.http]`;
+- package-local manifests синхронизированы со slug-ами `modules.toml` и имеют `[crate].entry_type`;
+- модули, публикующие GraphQL/HTTP transport, представлены в центральном registry;
+- API verification plan и README ссылаются на этот no-compile evidence path.
+
+Пример:
+
+```bash
+node scripts/verify/verify-api-surface-contract.mjs
 ```
 
 ---
