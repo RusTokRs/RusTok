@@ -99,7 +99,8 @@
     "test:verify:search:fba:runtime-smoke": "node scripts/verify/verify-search-fba-runtime-smoke.test.mjs",
     "test:verify:search:fba": "npm run test:verify:search:fba:runtime-smoke",
     "verify:ai:domain-verticals": "node scripts/verify/verify-ai-domain-verticals.mjs",
-    "verify:index:runtime-fallback-smoke": "node scripts/verify/verify-index-runtime-fallback-smoke.mjs"
+    "verify:index:runtime-fallback-smoke": "node scripts/verify/verify-index-runtime-fallback-smoke.mjs",
+    "verify:page-builder:adapter-seams": "node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

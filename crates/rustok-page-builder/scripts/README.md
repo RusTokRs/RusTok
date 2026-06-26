@@ -23,3 +23,4 @@ Rules:
 - `verify/verify-page-builder-leptos-admin-parity.mjs` keeps the module-owned Leptos admin package aligned with the same typed error catalog and localized operator-guidance contract.
 - `verify/verify-page-builder-flutter-parity.mjs` keeps Flutter mobile shared app-core error mapping aligned with the same typed page-builder catalog and operator-guidance contract.
 - `verify/verify-page-builder-flutter-handoff.mjs` validates the Flutter Wave hand-off contract: mobile supplies device/runtime evidence for the shared typed catalog without duplicating FBA registry thresholds or control-plane toggle policy.
+- `verify/verify-page-builder-adapter-seams.mjs` validates `contracts/page-builder-adapter-seams.json` against runtime markers, local docs and central guardrails for persistence/rendering adapters.

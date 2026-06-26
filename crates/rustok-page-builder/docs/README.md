@@ -30,6 +30,7 @@
 - `rustok-module.toml` — декларация slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 - `contracts/page-builder-flutter-wave-handoff.json` — machine-readable Flutter Wave hand-off contract for device/runtime evidence without duplicating FBA registry thresholds or control-plane toggle semantics in mobile.
+- `contracts/page-builder-adapter-seams.json` — machine-readable persistence/rendering adapter-seam contract for `PageBuilderProjectStore`, `PageBuilderRenderingAdapter` and `AdapterBackedPageBuilderService`, preserving `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle`, GraphQL/Leptos endpoint wrappers and canonical DTO/envelope names.
 
 ## Интеграция
 
@@ -92,6 +93,7 @@ Runtime provider-а фиксирует baseline fallback-профили в `src/
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-wave-evidence-packet.mjs` — проверка Wave 0 evidence packet, включая SLO thresholds/evaluation и correlation trace samples.
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs` — no-compile guardrail для canonical GraphQL/server-function transport bridge markers.
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-flutter-handoff.mjs` — no-compile guardrail для Flutter Wave hand-off evidence contract и mobile app-core typed error parity markers.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs` — no-compile guardrail для persistence/rendering adapter seams; проверяет `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter`, `AdapterBackedPageBuilderService`, canonical entrypoints и запрет на transport-local aliases / pages-local visual builder ownership / vendor-specific payload requirements.
 
 ## Связанные документы
 
