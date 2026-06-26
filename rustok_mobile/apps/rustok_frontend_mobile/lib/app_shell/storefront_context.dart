@@ -228,3 +228,43 @@ class StorefrontRuntimeContext {
   final String? cartId;
   final String? cartIdFilePath;
 }
+
+class StorefrontCheckoutIntentViewModel {
+  const StorefrontCheckoutIntentViewModel({
+    required this.title,
+    required this.description,
+    required this.tenantLocaleLabel,
+    required this.cartLabel,
+    required this.canContinueCheckout,
+    required this.primaryActionLabel,
+    required this.secondaryActionLabel,
+  });
+
+  final String title;
+  final String description;
+  final String tenantLocaleLabel;
+  final String cartLabel;
+  final bool canContinueCheckout;
+  final String primaryActionLabel;
+  final String secondaryActionLabel;
+}
+
+StorefrontCheckoutIntentViewModel buildStorefrontCheckoutIntentViewModel({
+  required StorefrontRuntimeContext runtime,
+  required String? cartId,
+}) {
+  final normalizedCartId = _normalizeCartId(cartId);
+  return StorefrontCheckoutIntentViewModel(
+    title: 'Checkout',
+    description: 'Checkout remains host-owned: cart packages emit an intent, '
+        'while the storefront shell wires the canonical backend checkout contract.',
+    tenantLocaleLabel:
+        'tenant: ${runtime.tenantSlug} · locale: ${runtime.locale}',
+    cartLabel: normalizedCartId == null
+        ? 'cart: not started yet — return to cart before checkout.'
+        : 'cart: $normalizedCartId',
+    canContinueCheckout: normalizedCartId != null,
+    primaryActionLabel: 'Back to cart',
+    secondaryActionLabel: 'Open catalog',
+  );
+}

@@ -271,9 +271,10 @@ class StorefrontCheckoutIntentPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final runtime = ref.watch(storefrontRuntimeContextProvider);
-    final cartId = ref.watch(storefrontCartIdStoreProvider).read();
-    final hasCart = cartId != null && cartId.trim().isNotEmpty;
+    final checkout = buildStorefrontCheckoutIntentViewModel(
+      runtime: ref.watch(storefrontRuntimeContextProvider),
+      cartId: ref.watch(storefrontCartIdStoreProvider).read(),
+    );
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -289,24 +290,16 @@ class StorefrontCheckoutIntentPage extends ConsumerWidget {
                     const Icon(Icons.lock_outline),
                     const SizedBox(width: 12),
                     Text(
-                      'Checkout',
+                      checkout.title,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Checkout remains host-owned: cart packages emit an intent, while the storefront shell wires the canonical backend checkout contract.',
-                ),
+                Text(checkout.description),
                 const SizedBox(height: 16),
-                Text(
-                  'tenant: ${runtime.tenantSlug} · locale: ${runtime.locale}',
-                ),
-                Text(
-                  hasCart
-                      ? 'cart: $cartId'
-                      : 'cart: not started yet — return to cart before checkout.',
-                ),
+                Text(checkout.tenantLocaleLabel),
+                Text(checkout.cartLabel),
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
@@ -314,14 +307,14 @@ class StorefrontCheckoutIntentPage extends ConsumerWidget {
                     TextButton.icon(
                       onPressed: () => context.go(cartPath),
                       icon: const Icon(Icons.shopping_cart_outlined),
-                      label: const Text('Back to cart'),
+                      label: Text(checkout.primaryActionLabel),
                     ),
                     FilledButton.icon(
-                      onPressed: hasCart
+                      onPressed: checkout.canContinueCheckout
                           ? null
                           : () => context.go(catalogPath),
                       icon: const Icon(Icons.storefront_outlined),
-                      label: const Text('Open catalog'),
+                      label: Text(checkout.secondaryActionLabel),
                     ),
                   ],
                 ),

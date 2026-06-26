@@ -1382,6 +1382,18 @@ Storefront GraphQL verifier теперь поддерживает promotion-пу
 
 Оставшийся шаг PR-P — подключить реальный producer этого JSON из live schema/test-server job, когда в CI будет доступен соответствующий server harness.
 
+#### PR-R evidence pack (storefront checkout intent host view-model)
+
+**Checkout policy seam:** `rustok_mobile/apps/rustok_frontend_mobile/lib/app_shell/storefront_context.dart`.
+
+Следующий FFA-safe storefront slice углубил checkout handoff без компиляции и без расширения backend/mobile API:
+- host-owned view-model — `StorefrontCheckoutIntentViewModel` теперь владеет checkout title/description, tenant/locale label, cart label, action labels и `canContinueCheckout` policy;
+- router adapter — `StorefrontCheckoutIntentPage` только читает runtime/cart-id seam и рендерит подготовленную модель, не дублируя `cartId.trim().isNotEmpty` или cart-label formatting;
+- package boundary — `rustok_catalog_mobile` по-прежнему только вызывает `onStartCheckout`; checkout route, copy и fallback остаются в storefront host;
+- no-compile guardrail — `test_storefront_cart_contract.py` фиксирует host view-model seam и запрет widget-owned cart-id branching / Flutter-only endpoints.
+
+Следующий storefront шаг остаётся promotion-задачей: подключить реальный live schema/test-server producer для `--live-results`, когда в CI будет доступен соответствующий server harness.
+
 #### PR-A evidence pack (registry contract freeze)
 
 **Snapshot source (canonical):** `rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json`.

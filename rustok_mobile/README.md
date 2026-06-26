@@ -32,6 +32,7 @@ Flutter workspace scaffold based on `docs/research/flutter.md`.
 - Generated storefront mobile manifest from `provides.storefront_ui` with a dedicated snapshot and freshness checks.
 - Storefront registry adapter that maps generated `products` and `cart` routes to mounted module-owned package screens, with generic fallback for unmapped storefront modules and registry-driven home navigation for all generated storefront routes.
 - Storefront catalog/cart GraphQL verifier ties Flutter operation documents to existing server storefront/search APIs and the commerce runtime parity test flow, so catalog/cart drift is caught even when the Flutter SDK is unavailable in CI.
+- Storefront checkout intent policy now lives in the host-owned runtime context view-model; catalog/cart packages emit checkout intents without owning checkout copy, cart-id fallback policy, or backend endpoints.
 
 Host-level providers now resolve sessions via `AuthSessionManager` and `RefreshTokenService` before building the authenticated GraphQL client. The refresh flow uses an HTTP-only GraphQL client to avoid unnecessary WebSocket initialization during bootstrap. Provider wiring is isolated in `apps/rustok_admin_mobile/lib/app_shell/auth_bootstrap.dart`.
 
