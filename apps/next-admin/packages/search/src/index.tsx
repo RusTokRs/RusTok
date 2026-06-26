@@ -376,7 +376,6 @@ function extractRankingProfileValue(
   const rankingProfiles =
     config &&
     typeof config === 'object' &&
-    config !== null &&
     'ranking_profiles' in config
       ? (config as { ranking_profiles?: Record<string, unknown> })
           .ranking_profiles
