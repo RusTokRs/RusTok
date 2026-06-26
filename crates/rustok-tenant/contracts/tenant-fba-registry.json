@@ -21,8 +21,24 @@
     {
       "module": "server-hosts",
       "profile": "tenant_resolution_read_projection_by_id_slug_domain",
-      "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"],
-      "fallback_profiles": ["embedded_native"]
+      "degraded_modes": [
+        "hide_inactive_tenant",
+        "show_tenant_resolution_retry"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
+    },
+    {
+      "module": "server-installer",
+      "profile": "installer_provisioning_read_projection_by_slug",
+      "degraded_modes": [
+        "treat_missing_tenant_as_create_candidate",
+        "surface_retryable_projection_failure"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     }
   ],
   "evidence": {
@@ -39,18 +55,35 @@
     "status": "planned_cases_locked",
     "source": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
     "runner": "scripts/verify/verify-tenant-fba.mjs",
-    "profiles": ["in_process", "remote_adapter_placeholder"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
     "cases": [
       {
         "operation": "read_tenant",
-        "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "tenant_scope_preserved", "slug_and_domain_resolution_preserved", "inactive_tenant_degraded_mode_preserved"]
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "tenant_scope_preserved",
+          "slug_and_domain_resolution_preserved",
+          "inactive_tenant_degraded_mode_preserved"
+        ]
       }
     ],
     "fallback_smoke": {
       "status": "planned",
-      "profiles": ["embedded_native"],
-      "degraded_modes": ["hide_inactive_tenant", "show_tenant_resolution_retry"]
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "hide_inactive_tenant",
+        "show_tenant_resolution_retry"
+      ]
     }
   }
 }

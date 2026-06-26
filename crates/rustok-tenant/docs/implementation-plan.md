@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: iteration_2_fba_domain_resolution_hardening
-- Last checkpoint: host tenant resolver cache-miss path now consumes module-owned `TenantReadPort` for id/slug/domain read projections while retaining host-owned cache, negative-cache and coalescing concerns; static FBA evidence source-locks this handoff and no long compilation was run in this iteration.
-- Next step: Подключить provisioning orchestration to the same read-projection boundary where it needs tenant facts and execute authored runtime smoke when compilation is allowed; for FFA keep parity/evidence hardening for the native-only overview surface instead of mechanical UI expansion.
+- Current phase: iteration_2_fba_provisioning_handoff_hardening
+- Last checkpoint: installer provisioning/verification now consumes module-owned `TenantReadPort` for slug read projections before create-candidate decisions and final verification, while host-owned mutation/module lifecycle flows remain in `apps/server`; static FBA evidence source-locks resolver and installer handoffs and no long compilation was run in this iteration.
+- Next step: Execute authored runtime smoke when compilation is allowed and keep FFA parity/evidence hardening for the native-only overview surface instead of mechanical UI expansion.
 - Open blockers: None.
 - Hand-off notes for next agent: Не расширять scope на новый tenant feature set; в этой итерации держать фокус на lifecycle consistency и regression safety между модулем и host middleware/cache path.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-26T00:00:00Z
 
 ## Область работ
 
@@ -52,6 +52,7 @@
 - [x] расширить `TenantReadPort` selector surface для host/provisioning consumers: id, slug и domain lookup используют единый typed `PortContext`/`PortError` contract, blank slug/domain selectors возвращают validation errors, inactive tenants остаются hidden unless `include_inactive=true`;
 - [x] зафиксировать migration note по deprecated `TenantService::toggle_module`: runtime module enable/disable path должен идти через host `ModuleLifecycleService` (`README.md`, `docs/README.md` и этот план синхронизированы; legacy method оставлен только как low-level/backfill test helper).
 - [x] подключить host resolver cache-miss path к `TenantReadPort`: `apps/server` строит typed id/slug/domain requests, требует read deadline semantics через `PortContext`, мапит inactive projection в forbidden negative cache, not-found в not-found negative cache и сохраняет cache coalescing/invalidation в host layer.
+- [x] подключить installer provisioning/verification read-facts path к `TenantReadPort`: `apps/server/src/installer_cli.rs` теперь использует slug read projection с `PortContext` deadline semantics для seed inspection и verify step; `NotFound` трактуется только как create-candidate, остальные `PortError` всплывают с typed code/message, а mutation/module lifecycle orchestration остаётся host-owned.
 
 
 ## FFA/FBA status
@@ -59,7 +60,7 @@
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
-- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement. FBA provider metadata now exposes the tenant read-projection boundary through `TenantReadPort` / `tenant.read_projection.v1`: `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json` and `scripts/verify/verify-tenant-fba.mjs` lock shared `rustok_api::PortContext`/`PortError` usage, `PortCallPolicy::read()` deadline semantics, inactive-tenant degraded-mode semantics, server-host consumer metadata and the host resolver handoff in `apps/server/src/middleware/tenant.rs`. Runtime contract/fallback smoke cases are now authored in `crates/rustok-tenant/tests/integration.rs` for missing deadlines, blank slug/domain validation, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery; status stays `in_progress` because this iteration intentionally avoided long compilation.
+- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement. FBA provider metadata now exposes the tenant read-projection boundary through `TenantReadPort` / `tenant.read_projection.v1`: `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json` and `scripts/verify/verify-tenant-fba.mjs` lock shared `rustok_api::PortContext`/`PortError` usage, `PortCallPolicy::read()` deadline semantics, inactive-tenant degraded-mode semantics, server-host/server-installer consumer metadata, the host resolver handoff in `apps/server/src/middleware/tenant.rs` and installer provisioning handoff in `apps/server/src/installer_cli.rs`. Runtime contract/fallback smoke cases are now authored in `crates/rustok-tenant/tests/integration.rs` for missing deadlines, blank slug/domain validation, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery; status stays `in_progress` because this iteration intentionally avoided long compilation.
 - Temporary parity note: the current tenant admin overview remains a native-only single-adapter state because there is no legacy GraphQL/REST tenant bootstrap UI contract to preserve for this surface; the existing server GraphQL tenant/module read paths remain unchanged outside this UI package.
 
 ## Проверка
