@@ -120,3 +120,91 @@ fn map_email_error(error: EmailError) -> PortError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use rustok_api::{PortActor, PortContext, PortErrorKind};
+
+    use super::*;
+
+    fn base_context() -> PortContext {
+        PortContext::new(
+            "tenant-a",
+            PortActor::service("email-contract-test"),
+            "ru",
+            "corr-email-a",
+        )
+    }
+
+    fn write_context() -> PortContext {
+        base_context()
+            .with_idempotency_key("email-send-a")
+            .with_deadline(Duration::from_secs(3))
+    }
+
+    fn delivery_request() -> EmailDeliveryRequest {
+        EmailDeliveryRequest {
+            template_id: "auth/password_reset".to_string(),
+            locale: "ru".to_string(),
+            to: "user@example.test".to_string(),
+            vars: serde_json::json!({ "reset_url": "https://admin.example.test/reset?token=t" }),
+        }
+    }
+
+    #[test]
+    fn delivery_policy_maps_missing_deadline_to_email_specific_timeout() {
+        let error = require_email_delivery_policy(&base_context())
+            .expect_err("write policy without deadline/idempotency must fail");
+
+        assert_eq!(error.kind, PortErrorKind::Validation);
+        assert_eq!(error.code, "email.idempotency_required");
+        assert!(!error.retryable);
+
+        let error =
+            require_email_delivery_policy(&base_context().with_idempotency_key("email-send-a"))
+                .expect_err("write policy with idempotency but without deadline must fail");
+
+        assert_eq!(error.kind, PortErrorKind::Timeout);
+        assert_eq!(error.code, "email.deadline_required");
+        assert!(error.retryable);
+    }
+
+    #[test]
+    fn delivery_policy_accepts_shared_write_context() {
+        assert!(require_email_delivery_policy(&write_context()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn disabled_provider_preserves_noop_receipt_after_policy_and_validation() {
+        let receipt = EmailDeliveryPort::send_transactional_email(
+            &crate::EmailService::Disabled,
+            write_context(),
+            delivery_request(),
+        )
+        .await
+        .expect("disabled provider is an accepted noop fallback");
+
+        assert!(receipt.accepted);
+        assert_eq!(receipt.provider_mode, EmailProviderMode::DisabledNoop);
+    }
+
+    #[tokio::test]
+    async fn delivery_request_validation_uses_typed_port_errors() {
+        let mut request = delivery_request();
+        request.template_id = " ".to_string();
+
+        let error = EmailDeliveryPort::send_transactional_email(
+            &crate::EmailService::Disabled,
+            write_context(),
+            request,
+        )
+        .await
+        .expect_err("empty template id must be rejected before provider delivery");
+
+        assert_eq!(error.kind, PortErrorKind::Validation);
+        assert_eq!(error.code, "email.template_id_empty");
+        assert!(!error.retryable);
+    }
+}
