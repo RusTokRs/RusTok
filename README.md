@@ -403,13 +403,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for contributo
 
 RusTok is licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
 
-RusTok is source-available and free for community use, individual developers, open-source projects, and organizations with Total Finances not exceeding USD $3,000,000 during the most recent 12-month period.
+RusTok is source-available. Non-production use is permitted under BSL 1.1, and production use is permitted under the RusTok Additional Use Grant when Total Finances do not exceed USD $3,000,000 during the most recent 12-month period.
 
-Production, commercial, SaaS, hosted, managed service, cloud service, white-label, resale, or competing platform use by organizations above this threshold requires a separate RusTok Commercial License.
+The grant covers internal, commercial, SaaS, hosted, managed service, cloud service, white-label, resale, competing platform, customer project, module, and extension use, including use of extracted modules, packages, components, and substantial portions of RusTok.
 
-Normal SaaS products built on top of RusTok are permitted under the RusTok Additional Use Grant if the product is distinct from RusTok itself and the organization does not exceed the Total Finances threshold.
+Organizations above the threshold require a separate RusTok Commercial License for production use. Their non-production rights remain governed by BSL 1.1.
 
-Offering RusTok itself as SaaS, a hosted RusTok platform, managed RusTok service, white-label RusTok product, or substantially similar competing platform requires a separate RusTok Commercial License or prior written permission from RusTokRs.
+Applications, modules, plugins, themes, integrations, and services are not derivative works solely because they use RusTok public APIs without copying or embedding RusTok code.
 
 One-click installs, Docker images, Helm charts, VPS images, marketplace images, and similar deployment packages are permitted if the customer controls and administers their own RusTok instance and all LICENSE, NOTICE, copyright notices, and license headers are preserved.
 
