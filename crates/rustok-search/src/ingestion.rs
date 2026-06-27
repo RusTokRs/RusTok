@@ -8,6 +8,7 @@ use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_core::Error;
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_telemetry::metrics;
+use tracing::Instrument;
 
 use crate::projector::SearchProjector;
 
@@ -81,73 +82,94 @@ impl EventHandler for SearchIngestionHandler {
     }
 
     async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult {
-        match &envelope.event {
-            DomainEvent::NodeCreated { node_id, .. }
-            | DomainEvent::NodeUpdated { node_id, .. }
-            | DomainEvent::NodePublished { node_id, .. }
-            | DomainEvent::NodeUnpublished { node_id, .. } => {
-                self.projector
-                    .upsert_node(envelope.tenant_id, *node_id)
+        let operation = projector_operation_for_event(&envelope.event);
+        let span = tracing::info_span!(
+            "search.projector.dispatch",
+            handler = self.name(),
+            operation,
+            event_id = %envelope.id,
+            event_type = envelope.event.event_type(),
+            tenant_id = %envelope.tenant_id,
+            correlation_id = %envelope.correlation_id,
+            causation_id = ?envelope.causation_id,
+            trace_id = envelope.trace_id.as_deref().unwrap_or("")
+        );
+
+        async {
+            match &envelope.event {
+                DomainEvent::NodeCreated { node_id, .. }
+                | DomainEvent::NodeUpdated { node_id, .. }
+                | DomainEvent::NodePublished { node_id, .. }
+                | DomainEvent::NodeUnpublished { node_id, .. } => {
+                    self.projector
+                        .upsert_node(envelope.tenant_id, *node_id)
+                        .await
+                }
+                DomainEvent::NodeTranslationUpdated { node_id, locale }
+                | DomainEvent::BodyUpdated { node_id, locale } => {
+                    self.projector
+                        .upsert_node_locale(envelope.tenant_id, *node_id, locale)
+                        .await
+                }
+                DomainEvent::NodeDeleted { node_id, .. } => {
+                    self.projector
+                        .delete_node(envelope.tenant_id, *node_id)
+                        .await
+                }
+                DomainEvent::TagAttached { target_id, .. }
+                | DomainEvent::TagDetached { target_id, .. } => {
+                    self.projector
+                        .upsert_node(envelope.tenant_id, *target_id)
+                        .await
+                }
+                DomainEvent::CategoryUpdated { category_id } => {
+                    self.projector
+                        .reindex_category(envelope.tenant_id, *category_id)
+                        .await
+                }
+                DomainEvent::ProductCreated { product_id }
+                | DomainEvent::ProductUpdated { product_id }
+                | DomainEvent::ProductPublished { product_id } => {
+                    self.projector
+                        .upsert_product(envelope.tenant_id, *product_id)
+                        .await
+                }
+                DomainEvent::ProductDeleted { product_id } => {
+                    self.projector
+                        .delete_product(envelope.tenant_id, *product_id)
+                        .await
+                }
+                DomainEvent::VariantCreated { product_id, .. }
+                | DomainEvent::VariantUpdated { product_id, .. }
+                | DomainEvent::VariantDeleted { product_id, .. }
+                | DomainEvent::InventoryUpdated { product_id, .. }
+                | DomainEvent::PriceUpdated { product_id, .. } => {
+                    self.projector
+                        .upsert_product(envelope.tenant_id, *product_id)
+                        .await
+                }
+                DomainEvent::LocaleEnabled { .. }
+                | DomainEvent::LocaleDisabled { .. }
+                | DomainEvent::TenantCreated { .. }
+                | DomainEvent::TenantUpdated { .. } => {
+                    self.projector.rebuild_tenant(envelope.tenant_id).await
+                }
+                DomainEvent::ReindexRequested {
+                    target_type,
+                    target_id,
+                } => {
+                    self.handle_reindex_request(
+                        envelope.tenant_id,
+                        target_type.as_str(),
+                        *target_id,
+                    )
                     .await
+                }
+                _ => Ok(()),
             }
-            DomainEvent::NodeTranslationUpdated { node_id, locale }
-            | DomainEvent::BodyUpdated { node_id, locale } => {
-                self.projector
-                    .upsert_node_locale(envelope.tenant_id, *node_id, locale)
-                    .await
-            }
-            DomainEvent::NodeDeleted { node_id, .. } => {
-                self.projector
-                    .delete_node(envelope.tenant_id, *node_id)
-                    .await
-            }
-            DomainEvent::TagAttached { target_id, .. }
-            | DomainEvent::TagDetached { target_id, .. } => {
-                self.projector
-                    .upsert_node(envelope.tenant_id, *target_id)
-                    .await
-            }
-            DomainEvent::CategoryUpdated { category_id } => {
-                self.projector
-                    .reindex_category(envelope.tenant_id, *category_id)
-                    .await
-            }
-            DomainEvent::ProductCreated { product_id }
-            | DomainEvent::ProductUpdated { product_id }
-            | DomainEvent::ProductPublished { product_id } => {
-                self.projector
-                    .upsert_product(envelope.tenant_id, *product_id)
-                    .await
-            }
-            DomainEvent::ProductDeleted { product_id } => {
-                self.projector
-                    .delete_product(envelope.tenant_id, *product_id)
-                    .await
-            }
-            DomainEvent::VariantCreated { product_id, .. }
-            | DomainEvent::VariantUpdated { product_id, .. }
-            | DomainEvent::VariantDeleted { product_id, .. }
-            | DomainEvent::InventoryUpdated { product_id, .. }
-            | DomainEvent::PriceUpdated { product_id, .. } => {
-                self.projector
-                    .upsert_product(envelope.tenant_id, *product_id)
-                    .await
-            }
-            DomainEvent::LocaleEnabled { .. }
-            | DomainEvent::LocaleDisabled { .. }
-            | DomainEvent::TenantCreated { .. }
-            | DomainEvent::TenantUpdated { .. } => {
-                self.projector.rebuild_tenant(envelope.tenant_id).await
-            }
-            DomainEvent::ReindexRequested {
-                target_type,
-                target_id,
-            } => {
-                self.handle_reindex_request(envelope.tenant_id, target_type.as_str(), *target_id)
-                    .await
-            }
-            _ => Ok(()),
         }
+        .instrument(span)
+        .await
     }
 
     async fn on_error(&self, envelope: &EventEnvelope, error: &Error) {
@@ -176,6 +198,9 @@ impl EventHandler for SearchIngestionHandler {
             event_id = %envelope.id,
             event_type = envelope.event.event_type(),
             tenant_id = %envelope.tenant_id,
+            correlation_id = %envelope.correlation_id,
+            causation_id = ?envelope.causation_id,
+            trace_id = envelope.trace_id.as_deref().unwrap_or(""),
             error = %error,
             "Search ingestion handler error"
         );
@@ -238,5 +263,40 @@ fn classify_error(error: &Error) -> &'static str {
         Error::Serialization(_) => "serialization",
         Error::Scripting(_) => "scripting",
         Error::InvalidIdFormat(_) => "invalid_id",
+    }
+}
+
+fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
+    match event {
+        DomainEvent::ReindexRequested { target_type, .. } => match target_type.as_str() {
+            "content" => "rebuild_content_scope",
+            "product" => "rebuild_product_scope",
+            _ => "rebuild_tenant",
+        },
+        DomainEvent::NodeTranslationUpdated { .. } | DomainEvent::BodyUpdated { .. } => {
+            "upsert_node_locale"
+        }
+        DomainEvent::NodeDeleted { .. } => "delete_node",
+        DomainEvent::TagAttached { .. }
+        | DomainEvent::TagDetached { .. }
+        | DomainEvent::NodeCreated { .. }
+        | DomainEvent::NodeUpdated { .. }
+        | DomainEvent::NodePublished { .. }
+        | DomainEvent::NodeUnpublished { .. } => "upsert_node",
+        DomainEvent::CategoryUpdated { .. } => "reindex_category",
+        DomainEvent::ProductDeleted { .. } => "delete_product",
+        DomainEvent::ProductCreated { .. }
+        | DomainEvent::ProductUpdated { .. }
+        | DomainEvent::ProductPublished { .. }
+        | DomainEvent::VariantCreated { .. }
+        | DomainEvent::VariantUpdated { .. }
+        | DomainEvent::VariantDeleted { .. }
+        | DomainEvent::InventoryUpdated { .. }
+        | DomainEvent::PriceUpdated { .. } => "upsert_product",
+        DomainEvent::LocaleEnabled { .. }
+        | DomainEvent::LocaleDisabled { .. }
+        | DomainEvent::TenantCreated { .. }
+        | DomainEvent::TenantUpdated { .. } => "rebuild_tenant",
+        _ => "noop",
     }
 }

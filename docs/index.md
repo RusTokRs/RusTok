@@ -49,6 +49,7 @@ status: verified
 - [Synthetic pages Wave 0 dry-run evidence packet](../crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
 - [Индекс документации по модулям](./modules/_index.md)
 - [Реестр implementation plans](./modules/implementation-plans-registry.md)
+- [План консолидации управления модулями](./modules/module-control-plane-consolidation-plan.md)
 - [Шаблон документации модуля](./templates/module_contract.md)
 - [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
 - [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)

@@ -128,3 +128,108 @@ fn matches_event_trigger(trigger_config: &serde_json::Value, event_type: &str) -
         None => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use rustok_core::events::{DomainEvent, EventEnvelope, EventHandler};
+    use sea_orm::{ActiveModelTrait, ConnectOptions, Database, EntityTrait, Set};
+    use sea_orm_migration::SchemaManager;
+    use uuid::Uuid;
+
+    use crate::entities::{workflow, workflow_execution, WorkflowStatus};
+
+    use super::WorkflowTriggerHandler;
+
+    #[tokio::test]
+    async fn duplicate_event_after_handler_restart_creates_one_execution() {
+        let url = format!(
+            "sqlite:file:workflow_trigger_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let mut options = ConnectOptions::new(url);
+        options
+            .max_connections(5)
+            .min_connections(1)
+            .sqlx_logging(false);
+        let db = Database::connect(options)
+            .await
+            .expect("connect test database");
+        let manager = SchemaManager::new(&db);
+        for migration in crate::migrations::migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("apply workflow migration");
+        }
+
+        let tenant_id = Uuid::new_v4();
+        let workflow_id = Uuid::new_v4();
+        let now = Utc::now().fixed_offset();
+        workflow::ActiveModel {
+            id: Set(workflow_id),
+            tenant_id: Set(tenant_id),
+            name: Set("Idempotent event workflow".to_string()),
+            description: Set(None),
+            status: Set(WorkflowStatus::Active),
+            trigger_config: Set(serde_json::json!({
+                "type": "event",
+                "event_type": "product.created"
+            })),
+            created_by: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            failure_count: Set(0),
+            auto_disabled_at: Set(None),
+            webhook_slug: Set(None),
+            webhook_secret: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert workflow");
+
+        let envelope = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::ProductCreated {
+                product_id: Uuid::new_v4(),
+            },
+        );
+
+        WorkflowTriggerHandler::new(db.clone())
+            .handle(&envelope)
+            .await
+            .expect("first delivery");
+        wait_for_execution_count(&db, 1).await;
+
+        // A new handler models a consumer process restarted with the same durable database.
+        WorkflowTriggerHandler::new(db.clone())
+            .handle(&envelope)
+            .await
+            .expect("redelivery after restart");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let executions = workflow_execution::Entity::find()
+            .all(&db)
+            .await
+            .expect("load executions");
+        assert_eq!(executions.len(), 1);
+        assert_eq!(executions[0].workflow_id, workflow_id);
+        assert_eq!(executions[0].trigger_event_id, Some(envelope.id));
+    }
+
+    async fn wait_for_execution_count(db: &sea_orm::DatabaseConnection, expected: usize) {
+        for _ in 0..40 {
+            let count = workflow_execution::Entity::find()
+                .all(db)
+                .await
+                .expect("load executions")
+                .len();
+            if count == expected {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        panic!("workflow execution count did not reach {expected}");
+    }
+}

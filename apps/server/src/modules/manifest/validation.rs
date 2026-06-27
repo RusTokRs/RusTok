@@ -4,10 +4,6 @@ use semver::{Version, VersionReq};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-pub fn normalize_deps(deps: &[String]) -> HashSet<String> {
-    deps.iter().cloned().collect()
-}
-
 pub fn default_manifest_path() -> PathBuf {
     if let Ok(path) = std::env::var("RUSTOK_MODULES_MANIFEST") {
         return PathBuf::from(path);

@@ -306,7 +306,32 @@ fn build_fts_cte(profile: SearchRankingProfile) -> String {
 fn build_typo_cte(profile: SearchRankingProfile) -> String {
     let score_sql = profile.typo_score_sql();
     r#"
-        WITH ranked AS (
+        WITH candidate_keys AS (
+            SELECT document_key
+            FROM search_documents
+            WHERE tenant_id = $1
+              AND ($2 = '' OR locale = $2)
+              AND lower(title) % $3
+            UNION
+            SELECT document_key
+            FROM search_documents
+            WHERE tenant_id = $1
+              AND ($2 = '' OR locale = $2)
+              AND lower(COALESCE(slug, '')) % $3
+            UNION
+            SELECT document_key
+            FROM search_documents
+            WHERE tenant_id = $1
+              AND ($2 = '' OR locale = $2)
+              AND lower(COALESCE(handle, '')) % $3
+            UNION
+            SELECT document_key
+            FROM search_documents
+            WHERE tenant_id = $1
+              AND ($2 = '' OR locale = $2)
+              AND lower(COALESCE(keywords_text, '')) % $3
+        ),
+        ranked AS (
             SELECT
                 sd.document_id AS id,
                 sd.entity_type AS entity_type,
@@ -323,14 +348,10 @@ fn build_typo_cte(profile: SearchRankingProfile) -> String {
                 sd.is_public AS is_public,
                 sd.updated_at AS updated_at
             FROM search_documents sd
+            INNER JOIN candidate_keys candidates
+                ON candidates.document_key = sd.document_key
             WHERE sd.tenant_id = $1
               AND ($2 = '' OR sd.locale = $2)
-              AND (
-                  lower(sd.title) % $3
-                  OR lower(COALESCE(sd.slug, '')) % $3
-                  OR lower(COALESCE(sd.handle, '')) % $3
-                  OR lower(COALESCE(sd.keywords_text, '')) % $3
-              )
         )
     "#
     .replace("__SCORE_SQL__", score_sql)

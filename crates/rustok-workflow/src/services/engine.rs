@@ -62,6 +62,17 @@ impl WorkflowEngine {
         steps: Vec<crate::entities::WorkflowStep>,
         initial_context: Value,
     ) -> WorkflowResult<Uuid> {
+        if let Some(event_id) = trigger_event_id {
+            if let Some(existing_id) = self.event_execution_id(workflow_id, event_id).await? {
+                info!(
+                    execution_id = %existing_id,
+                    trigger_event_id = %event_id,
+                    "Skipping duplicate workflow event delivery"
+                );
+                return Ok(existing_id);
+            }
+        }
+
         let execution_id = Uuid::new_v4();
         let now = Utc::now().fixed_offset();
 
@@ -77,7 +88,19 @@ impl WorkflowEngine {
             started_at: Set(now),
             completed_at: Set(None),
         };
-        execution.insert(&self.db).await?;
+        if let Err(error) = execution.insert(&self.db).await {
+            if let Some(event_id) = trigger_event_id {
+                if let Some(existing_id) = self.event_execution_id(workflow_id, event_id).await? {
+                    info!(
+                        execution_id = %existing_id,
+                        trigger_event_id = %event_id,
+                        "Skipping concurrent duplicate workflow event delivery"
+                    );
+                    return Ok(existing_id);
+                }
+            }
+            return Err(error.into());
+        }
 
         info!(
             execution_id = %execution_id,
@@ -271,6 +294,19 @@ impl WorkflowEngine {
         info!(execution_id = %execution_id, success = !failed, "Workflow execution finished");
 
         Ok(execution_id)
+    }
+
+    async fn event_execution_id(
+        &self,
+        workflow_id: Uuid,
+        trigger_event_id: Uuid,
+    ) -> WorkflowResult<Option<Uuid>> {
+        Ok(workflow_execution::Entity::find()
+            .filter(workflow_execution::Column::WorkflowId.eq(workflow_id))
+            .filter(workflow_execution::Column::TriggerEventId.eq(trigger_event_id))
+            .one(&self.db)
+            .await?
+            .map(|execution| execution.id))
     }
 
     async fn finish_step_execution(

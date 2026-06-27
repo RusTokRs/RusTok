@@ -54,6 +54,38 @@ default: the PostgreSQL engine requires a tenant id, and API surfaces resolve
 tenant scope through explicit authorization policy before constructing a
 `SearchQuery`.
 
+## Projection and restart guarantees
+
+The search projector is designed for duplicate delivery and restart recovery:
+
+- event ingestion passes `EventEnvelope.tenant_id` into every projector call;
+- entity updates run scoped delete + upsert in a transaction;
+- materialized rows use stable `document_key` values and
+  `ON CONFLICT (document_key) DO UPDATE`;
+- tenant/content/product rebuilds delete only tenant-scoped rows before
+  rebuilding;
+- `ensure_bootstrap` triggers a tenant rebuild when no `search_documents` rows
+  exist after startup or module enablement;
+- projector dispatch spans preserve `event_id`, `event_type`, `tenant_id`,
+  `correlation_id`, optional `causation_id`, and optional `trace_id` from the
+  source `EventEnvelope`; search ingestion error logs carry the same fields.
+
+The baseline PostgreSQL schema provides:
+
+- `search_vector` with a trigger-maintained `tsvector`;
+- GIN FTS index `idx_search_documents_fts`;
+- tenant-aware btree lookup/entity indexes;
+- `pg_trgm` plus GIN trigram indexes for typo-tolerant fallback.
+
+The live query-plan gate is `tests/postgres_query_plan.rs`. It seeds 100,000
+temporary tenant-scoped documents and checks `EXPLAIN (ANALYZE, BUFFERS)` for
+the FTS and typo-fallback paths. The 2026-06-27 local PostgreSQL 16 baseline is
+`6.627 ms` for FTS and `327.516 ms` for typo fallback; both plans use the
+expected GIN indexes. Run it with
+`cargo test -p rustok-search -- --include-ignored --nocapture` and a live
+`DATABASE_URL`. Treat materially slower results or a sequential scan as a
+release blocker until the dataset and planner difference are explained.
+
 ## State model
 
 `searchDiagnostics.state` uses four operator-facing states:

@@ -56,7 +56,10 @@ capability integrations без дрейфа и битой документаци
 
 ### 2. Execution hardening
 
-- [ ] довести integration tests для реальной БД и execution history flows;
+- [~] довести integration tests для реальной БД и execution history flows; добавлен
+  SQLite integration-сценарий duplicate delivery после пересоздания event handler-а,
+  а `(workflow_id, trigger_event_id)` закреплён unique index; live PostgreSQL history
+  matrix остаётся отдельным verification gate;
 - [ ] завершить production-grade реализацию `alloy_script` и `notify` шагов;
 - [ ] оценить DAG/branching expansion только при реальном product pressure, не ломая текущий linear-step contract.
 

@@ -63,6 +63,9 @@
 
 - модуль уже владеет `search_documents`, analytics storage, словарями и query rules;
 - PostgreSQL FTS и `pg_trgm` служат baseline engine contract;
+- live PostgreSQL query-plan gate подтверждает GIN paths на 100 000 строках:
+  FTS `6.627 ms`, typo fallback `327.516 ms`; typo candidates собираются через
+  `UNION` индексируемых полей без parallel sequential scan;
 - Leptos и Next admin surfaces уже подключены, storefront path существует на том же backend contract;
 - rebuild, diagnostics, analytics и settings editor уже составляют рабочий операторский baseline.
 - operator-plane contract теперь дополнительно удерживается через `xtask`: public exports, README markers и `docs/observability-runbook.md` не должны деградировать при дальнейших рефакторингах.

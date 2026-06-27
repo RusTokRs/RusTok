@@ -9,6 +9,7 @@
 - Provide thin UI host route context types when module-owned frontend packages need generic host data such as route segment, nested subpath, locale, and query params.
 - Provide framework-agnostic UI input and route-query update helpers (`normalize_ui_text`, `parse_ui_csv`, `UiRouteQueryUpdate`) for FFA module UI cores.
 - Provide typed route-selection schemas and sanitization helpers for host-owned URL contracts.
+- Provide the framework-independent manifest-to-runtime registry comparison contract used by the server composition root.
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
 - Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports; `rustok-region` and migrated tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay, and page-builder publish paths use these shared primitives for FBA read/write boundaries.
@@ -34,6 +35,7 @@
 - `src/request.rs`
 - `src/ui.rs`
 - `src/route_selection.rs`
+- `src/module_registry_contract.rs`
 - `src/ports.rs`
 - `src/graphql/`
 

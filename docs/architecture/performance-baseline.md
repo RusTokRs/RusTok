@@ -33,6 +33,12 @@ RusToK.
 
 - [db_baseline.rs](/C:/проекты/RusTok/apps/server/src/tasks/db_baseline.rs)
 
+Для search hot path дополнительно используется live PostgreSQL gate
+`crates/rustok-search/tests/postgres_query_plan.rs`. Он создаёт 100 000
+временных tenant-scoped документов, снимает `EXPLAIN (ANALYZE, BUFFERS)` и
+проверяет GIN FTS/trigram indexes. Baseline от 2026-06-27: FTS `6.627 ms`,
+typo fallback `327.516 ms` на локальном PostgreSQL 16.
+
 ## Когда использовать
 
 Этот workflow нужен, если меняется:

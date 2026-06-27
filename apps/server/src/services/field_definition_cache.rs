@@ -202,41 +202,87 @@ mod tests {
         assert!(cache.get(tenant_id, entity_type).await.is_none());
     }
 
-    #[tokio::test]
-    async fn event_bus_invalidation_drops_cached_field_definitions() {
+    async fn assert_event_bus_invalidation_drops_cached_field_definitions(event: DomainEvent) {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite db should connect");
         let ctx = test_app_context(db);
         let bus = EventBus::default();
         let cache = field_definition_cache_from_context(&ctx, bus.clone());
-        let tenant_id = Uuid::new_v4();
-        let entity_type = "user";
-
-        cache
-            .set(tenant_id, entity_type, vec![mock_view("nickname")])
-            .await;
-        assert!(cache.get(tenant_id, entity_type).await.is_some());
-
-        bus.publish_envelope(EventEnvelope::new(
-            tenant_id,
-            None,
+        let (tenant_id, entity_type) = match &event {
             DomainEvent::FieldDefinitionCreated {
                 tenant_id,
-                entity_type: entity_type.to_string(),
-                field_key: "nickname".to_string(),
-                field_type: "text".to_string(),
-            },
-        ))
-        .expect("field definition event should publish");
+                entity_type,
+                ..
+            }
+            | DomainEvent::FieldDefinitionUpdated {
+                tenant_id,
+                entity_type,
+                ..
+            }
+            | DomainEvent::FieldDefinitionDeleted {
+                tenant_id,
+                entity_type,
+                ..
+            } => (*tenant_id, entity_type.clone()),
+            _ => panic!("test helper expects a FieldDefinition event"),
+        };
+
+        cache
+            .set(tenant_id, &entity_type, vec![mock_view("nickname")])
+            .await;
+        assert!(cache.get(tenant_id, &entity_type).await.is_some());
+
+        bus.publish_envelope(EventEnvelope::new(tenant_id, None, event))
+            .expect("field definition event should publish");
 
         for _ in 0..20 {
-            if cache.get(tenant_id, entity_type).await.is_none() {
+            if cache.get(tenant_id, &entity_type).await.is_none() {
                 return;
             }
             sleep(Duration::from_millis(10)).await;
         }
 
         panic!("cache entry should be invalidated after field definition event");
+    }
+
+    #[tokio::test]
+    async fn event_bus_invalidation_drops_cached_field_definitions_on_create() {
+        let tenant_id = Uuid::new_v4();
+        assert_event_bus_invalidation_drops_cached_field_definitions(
+            DomainEvent::FieldDefinitionCreated {
+                tenant_id,
+                entity_type: "user".to_string(),
+                field_key: "nickname".to_string(),
+                field_type: "text".to_string(),
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn event_bus_invalidation_drops_cached_field_definitions_on_update() {
+        let tenant_id = Uuid::new_v4();
+        assert_event_bus_invalidation_drops_cached_field_definitions(
+            DomainEvent::FieldDefinitionUpdated {
+                tenant_id,
+                entity_type: "user".to_string(),
+                field_key: "nickname".to_string(),
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn event_bus_invalidation_drops_cached_field_definitions_on_delete() {
+        let tenant_id = Uuid::new_v4();
+        assert_event_bus_invalidation_drops_cached_field_definitions(
+            DomainEvent::FieldDefinitionDeleted {
+                tenant_id,
+                entity_type: "user".to_string(),
+                field_key: "nickname".to_string(),
+            },
+        )
+        .await;
     }
 }

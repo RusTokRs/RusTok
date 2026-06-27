@@ -13,7 +13,7 @@ chrono.workspace = true
 cron = "0.17"
 loco-rs.workspace = true
 reqwest = { workspace = true }
-rustok-api.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true

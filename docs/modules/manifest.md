@@ -198,6 +198,37 @@ status: verified
 
 Описание самого workspace-инструмента, его зон ответственности и operator entrypoints живёт в [`xtask/README.md`](../../xtask/README.md).
 
+## Оценка build-time manifest compiler
+
+Текущий production baseline оставляет `modules.toml`, `rustok-module.toml`, `cargo xtask validate-manifest` и scoped
+`cargo xtask module validate <slug>` каноническим manifest validation path. Отдельный build-time manifest compiler пока
+не вводится как release blocker.
+
+Причины:
+
+- runtime composition уже имеет два уровня проверки: общий composition contract и scoped module contract;
+- production runtime хранит immutable manifest snapshot/hash в `platform_state`, поэтому активный состав модулей не зависит
+  от ad-hoc auto-discovery по workspace;
+- compiler до выделения shared foundation boundary усилит coupling между `apps/server`, `xtask` и registry/bootstrap
+  validation, потому что начнёт генерировать host wiring до стабилизации ownership boundary;
+- текущие guardrails требуют явного wiring optional-модулей через `mod-<slug>` features и registry entry, что лучше
+  соответствует контролируемому rollout-у.
+
+Рекомендуемый порядок, если coupling между `apps/server` и registry/bootstrap validation снова станет блокером:
+
+1. Сначала выделить shared foundation contract для чтения и нормализации `modules.toml`/`rustok-module.toml`.
+2. Перенести туда общие DTO, canonical hash и pure validation rules без зависимости от server runtime.
+3. Оставить `apps/server` владельцем runtime wiring, а `xtask` — владельцем preflight/CI validation.
+4. Только после этого рассматривать build-time compiler как thin generator поверх foundation package.
+
+Первый шаг выполнен частично: `rustok-api::module_registry_contract` теперь владеет framework-independent
+сравнением manifest snapshot и runtime registry snapshot. Проверки отсутствующего runtime entry,
+`required`/`core` mismatch и dependency mismatch больше не реализуются внутри `apps/server`;
+composition root только преобразует свои runtime DTO в shared contract. Загрузка файлов,
+package-manifest overlay и фактический `ModuleRegistry` wiring остаются в `apps/server`.
+
+До такого выделения build-time compiler считается отложенной оптимизацией, а не обязательным production gate.
+
 ## Минимальный пример `modules.toml`
 
 ```toml

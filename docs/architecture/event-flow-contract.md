@@ -114,6 +114,12 @@ Module-owned event listeners публикуются через runtime contract 
 
 Если consumer не идемпотентен, он не соответствует platform event contract.
 
+Идемпотентность должна переживать перезапуск процесса и поэтому не может
+основываться только на in-memory state. Для business-effect consumers нужен
+durable ключ обработки и DB constraint. Например, event-triggered workflow
+execution использует `(workflow_id, trigger_event_id)` и при redelivery
+возвращает уже существующий execution без повторного запуска шагов.
+
 ## Что не делать
 
 - не публиковать межмодульные события мимо outbox, если нужна транзакционная

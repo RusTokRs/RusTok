@@ -8,6 +8,9 @@ status: verified
 ---
 # Индекс документации по модулям
 
+Платформенный план консолидации runtime registry, composition, tenant lifecycle,
+governance и admin transport: [консолидация управления модулями](./module-control-plane-consolidation-plan.md).
+
 Локальная документация модулей живёт внутри самих crate-ов в
 `crates/<name>/docs/README.md`. Этот документ даёт только центральную навигацию по
 локальным docs модулей и support/capability crate-ов и не дублирует локальные контракты.

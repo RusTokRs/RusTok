@@ -1,20 +1,24 @@
-pub mod types;
 pub mod plans;
+pub mod types;
 pub mod validation;
 
 #[cfg(test)]
 pub mod tests;
 
-pub use types::*;
 pub use plans::*;
+pub use types::*;
 pub use validation::*;
 
 use crate::error::{Error as ServerError, Result as ServerResult};
-use crate::services::build_service::ModuleSpec as BuildModuleSpec;
 use crate::models::build::DeploymentProfile;
+use crate::services::build_service::ModuleSpec as BuildModuleSpec;
+use rustok_api::module_registry_contract::{
+    validate_module_registry_contract, ManifestModuleContract, ModuleRegistryContractError,
+    RegistryModuleContract,
+};
 use rustok_core::ModuleRegistry;
 use semver::{Version, VersionReq};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 pub struct ManifestManager;
@@ -530,86 +534,43 @@ impl ManifestManager {
         registry: &ModuleRegistry,
     ) -> Result<(), ManifestError> {
         let resolved_specs = resolve_module_specs(manifest)?;
-        let missing_in_registry: Vec<String> = manifest
-            .modules
-            .iter()
-            .filter(|(slug, _)| {
-                resolved_specs
-                    .get(*slug)
-                    .and_then(|spec| spec.entry_type.as_ref())
-                    .is_some()
-            })
-            .map(|(slug, _)| slug)
-            .filter(|slug| !registry.contains(slug))
-            .cloned()
-            .collect();
-
-        if !missing_in_registry.is_empty() {
-            return Err(ManifestError::MissingInRegistry(
-                missing_in_registry.join(", "),
-            ));
-        }
-
-        let required_mismatch: Vec<String> = registry
+        let manifest_contracts = manifest.modules.iter().map(|(slug, manifest_spec)| {
+            let resolved_spec = resolved_specs
+                .get(slug)
+                .expect("resolved manifest module must exist");
+            ManifestModuleContract {
+                slug: slug.clone(),
+                required: manifest_spec.required,
+                dependencies: resolved_spec.depends_on.iter().cloned().collect(),
+                has_runtime_entry: resolved_spec.entry_type.is_some(),
+            }
+        });
+        let registry_contracts = registry
             .list()
             .into_iter()
-            .filter_map(|module| {
-                manifest.modules.get(module.slug()).map(|spec| {
-                    (
-                        module.slug(),
-                        spec.required,
-                        registry.is_core(module.slug()),
-                    )
-                })
-            })
-            .filter_map(|(slug, required, is_core)| {
-                if required == is_core {
-                    None
-                } else {
-                    Some(format!("{slug} (required={required}, core={is_core})"))
+            .map(|module| RegistryModuleContract {
+                slug: module.slug().to_string(),
+                core: registry.is_core(module.slug()),
+                dependencies: module
+                    .dependencies()
+                    .iter()
+                    .map(|dependency| dependency.to_string())
+                    .collect::<BTreeSet<_>>(),
+            });
+
+        validate_module_registry_contract(manifest_contracts, registry_contracts).map_err(|error| {
+            match error {
+                ModuleRegistryContractError::MissingInRegistry(details) => {
+                    ManifestError::MissingInRegistry(details)
                 }
-            })
-            .collect();
-
-        if !required_mismatch.is_empty() {
-            return Err(ManifestError::RequiredMismatch(
-                required_mismatch.join(", "),
-            ));
-        }
-
-        let dependency_mismatch: Vec<String> = registry
-            .list()
-            .into_iter()
-            .filter_map(|module| {
-                resolved_specs.get(module.slug()).and_then(|spec| {
-                    let manifest_deps = normalize_deps(&spec.depends_on);
-                    let registry_deps: HashSet<String> = module
-                        .dependencies()
-                        .iter()
-                        .map(|dep| dep.to_string())
-                        .collect();
-
-                    if manifest_deps == registry_deps {
-                        None
-                    } else {
-                        Some(format!(
-                            "{} (manifest={:?}, registry={:?})",
-                            module.slug(),
-                            manifest_deps,
-                            registry_deps
-                        ))
-                    }
-                })
-            })
-            .collect();
-
-        if !dependency_mismatch.is_empty() {
-            return Err(ManifestError::DependencyMismatch(
-                dependency_mismatch.join(", "),
-            ));
-        }
-
-        Ok(())
+                ModuleRegistryContractError::RequiredMismatch(details) => {
+                    ManifestError::RequiredMismatch(details)
+                }
+                ModuleRegistryContractError::DependencyMismatch(details) => {
+                    ManifestError::DependencyMismatch(details)
+                }
+            }
+        })
     }
 }
 
@@ -624,5 +585,3 @@ pub fn validate_registry_vs_manifest(registry: &ModuleRegistry) -> ServerResult<
             ServerError::BadRequest(format!("modules.toml validation failed: {error}"))
         })
 }
-
-

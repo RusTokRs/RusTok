@@ -106,7 +106,7 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 - [x] Flex GraphQL CRUD: интеграционные сценарии list/find/create/update/delete/reorder
   - `apps/server` теперь держит `schema.execute(...)` roundtrip для `createFieldDefinition` / `fieldDefinitions` / `fieldDefinition` / `updateFieldDefinition` / `reorderFieldDefinitions` / `deleteFieldDefinition` через live `FieldDefRegistry` routing.
 - [x] Cache invalidation: integration/e2e сценарии на `FieldDefinition*` events
-  - `field_definition_cache_from_context()` теперь покрыт тестом, который прогоняет invalidation через live `EventBus` subscriber на `FieldDefinitionCreated`.
+  - `field_definition_cache_from_context()` покрыт тестами, которые прогоняют invalidation через live `EventBus` subscriber на `FieldDefinitionCreated`, `FieldDefinitionUpdated` и `FieldDefinitionDeleted`.
 - [x] RBAC integration: explicit typed permission gates для Flex surfaces
   - Standalone GraphQL/REST surfaces используют отдельные `flex_schemas:*` / `flex_entries:*` gates через `require_permission(...)` и `RequireFlex*` extractors.
   - Attached GraphQL read roots `fieldDefinitions` / `fieldDefinition` теперь тоже требуют явные `flex_schemas:list/read` права, а targeted tests фиксируют denial path.

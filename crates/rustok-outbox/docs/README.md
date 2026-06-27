@@ -56,6 +56,23 @@ Primary owner для outbox/event delivery — Platform foundation on-call. Esca
 - `npm run verify:outbox:fba`
 - targeted event-runtime tests для transactional publish, relay и backlog semantics
 
+### Reliability evidence
+
+Transactional publish и relay failure modes закреплены targeted regression tests:
+
+- `cargo test -p rustok-core --test transactional_events_integration_test`:
+  - `test_transactional_event_publishing_rollback` подтверждает, что rollback транзакции не оставляет `sys_events`;
+  - `test_transactional_event_publishing_commit` подтверждает, что commit создаёт один durable envelope в `Pending`;
+  - `test_transactional_publish_rejects_non_outbox_transport` подтверждает fail-fast при несовместимом transport.
+- `cargo test -p rustok-outbox --test integration`:
+  - `relay_retries_then_succeeds` покрывает временную ошибку и повторную доставку;
+  - `relay_moves_to_dlq_on_max_retry` покрывает terminal state/DLQ;
+  - `relay_reclaims_stale_claims` покрывает reclaim зависшего claim;
+  - `relay_bounds_parallel_dispatch` покрывает bounded concurrency;
+  - `relay_processes_baseline_batch_with_bounded_latency` фиксирует baseline для batch latency.
+
+Эти тесты закрывают transactional rollback/commit и relay retry/reclaim/DLQ semantics. Бизнес-идемпотентность downstream consumers и restart E2E matrix должны подтверждаться отдельными consumer-level сценариями, потому что outbox отвечает за durable delivery, а не за side effects конкретного получателя.
+
 ## Связанные документы
 
 - [README crate](../README.md)
