@@ -1,3 +1,9 @@
+---
+entities:
+  - config://apps/server/config/production.redis.example.yaml#settings.rustok.readiness.outbox_max_pending_lag_seconds
+  - config://apps/server/config/production.redis.example.yaml#settings.rustok.readiness.search_max_lag_seconds
+---
+
 # Health endpoints (`apps/server`)
 
 Документ описывает поведение health endpoints в `apps/server/src/controllers/health.rs`.
