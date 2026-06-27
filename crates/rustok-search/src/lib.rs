@@ -93,6 +93,20 @@ impl RusToKModule for SearchModule {
     }
 
     async fn health(&self) -> HealthStatus {
-        HealthStatus::Healthy
+        // Module-level health has no host AppContext, so it cannot validate
+        // search_documents, indexing lag, query plans or connector reachability.
+        // The server readiness layer owns the concrete search backend/lag checks.
+        HealthStatus::Degraded
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SearchModule;
+    use rustok_core::module::{HealthStatus, RusToKModule};
+
+    #[tokio::test]
+    async fn search_module_health_defers_to_host_readiness() {
+        assert_eq!(SearchModule.health().await, HealthStatus::Degraded);
     }
 }

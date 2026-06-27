@@ -26,6 +26,16 @@
 - Integrates with target transports such as `rustok-iggy` instead of owning transport-specific adapters inline.
 - The Leptos admin UI lives in `crates/rustok-outbox/admin`, keeps framework-agnostic DTO/view-model helpers in `admin/src/core.rs`, and is mounted through manifest-driven host wiring.
 
+## Relay policy
+
+- Claims are owned by a relay worker through `claimed_by` / `claimed_at`; PostgreSQL uses `FOR UPDATE SKIP LOCKED`, while SQLite/test runs use the guarded update fallback.
+- `claim_ttl` defines when a stuck claim can be reclaimed by a later iteration.
+- Dispatch concurrency is bounded by `RelayConfig.max_concurrency`.
+- Retry uses exponential backoff from `backoff_base` up to `backoff_max`.
+- `max_attempts` is resolved by the server runtime from `rustok.events.dlq.max_attempts` when DLQ is enabled, otherwise from `rustok.events.relay_retry_policy.max_attempts`.
+- A retryable failure keeps the event in `pending`, increments `retry_count`, stores `last_error`, clears the claim and sets `next_attempt_at`.
+- A terminal failure moves the event to `failed` (DLQ), preserves `last_error`, clears the claim and increments DLQ metrics.
+
 ## Docs
 
 - [Module docs](./docs/README.md)

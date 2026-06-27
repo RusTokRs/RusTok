@@ -71,6 +71,9 @@ settings:
           auth_critical_entries: 5000
           oauth_warning_entries: 1000
           oauth_critical_entries: 5000
+    readiness:
+      outbox_max_pending_lag_seconds: 300
+      search_max_lag_seconds: 300
     events:
       transport: outbox
       relay_target: iggy

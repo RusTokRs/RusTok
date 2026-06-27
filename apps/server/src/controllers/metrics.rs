@@ -10,6 +10,7 @@ use crate::common::settings::{EmailProvider, EventTransportKind, RustokSettings}
 use crate::error::Result;
 use crate::services::app_lifecycle::{
     BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
+    RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory::{
     outbox_relay_supervisor_metrics_snapshot, EventRuntime, OutboxRelaySupervisorMetricsSnapshot,
@@ -393,6 +394,10 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
             .get::<Arc<EventRuntime>>()
             .and_then(|runtime| runtime.relay_config.clone())
             .is_some();
+    let stop_requested = ctx
+        .shared_store
+        .get_ref::<StopHandle>()
+        .is_some_and(|handle| handle.is_stopping());
 
     let mut payload = String::new();
     payload.push_str(&format_runtime_worker_state(
@@ -401,6 +406,7 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
         ctx.shared_store
             .get_ref::<OutboxRelayWorkerHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
         "build_executor",
@@ -408,6 +414,7 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
         ctx.shared_store
             .get_ref::<BuildWorkerHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
         "remote_executor_reaper",
@@ -415,6 +422,7 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
         ctx.shared_store
             .get_ref::<RemoteExecutorReaperHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
     payload.push_str(&format_runtime_worker_restart_metrics(
         outbox_relay_supervisor_metrics_snapshot(),
@@ -427,6 +435,7 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
         ctx.shared_store
             .get_ref::<crate::services::app_lifecycle::SeoBulkWorkerHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
 
     payload
@@ -436,6 +445,7 @@ fn format_runtime_worker_state(
     worker: &str,
     required: bool,
     handle_finished: Option<bool>,
+    stop_requested: bool,
 ) -> String {
     let state = match (required, handle_finished) {
         (false, _) => 0,
@@ -443,8 +453,18 @@ fn format_runtime_worker_state(
         (true, Some(true)) => 2,
         (true, None) => -1,
     };
+    let lifecycle_state = RuntimeWorkerLifecycleState::from_worker_snapshot(
+        required,
+        handle_finished,
+        stop_requested,
+    );
 
-    format!("rustok_runtime_worker_state{{worker=\"{worker}\"}} {state}\n")
+    format!(
+        "rustok_runtime_worker_state{{worker=\"{worker}\"}} {state}\n\
+rustok_runtime_worker_lifecycle_state{{worker=\"{worker}\",state=\"{lifecycle_state}\"}} {lifecycle_state_value}\n",
+        lifecycle_state = lifecycle_state.as_str(),
+        lifecycle_state_value = lifecycle_state.metric_value(),
+    )
 }
 
 fn format_runtime_worker_restart_metrics(snapshot: OutboxRelaySupervisorMetricsSnapshot) -> String {
@@ -877,22 +897,34 @@ mod tests {
 
     #[test]
     fn runtime_worker_metrics_encode_disabled_running_stopped_and_missing_states() {
-        assert_eq!(
-            format_runtime_worker_state("build_executor", false, None),
-            "rustok_runtime_worker_state{worker=\"build_executor\"} 0\n"
-        );
-        assert_eq!(
-            format_runtime_worker_state("outbox_relay", true, Some(false)),
-            "rustok_runtime_worker_state{worker=\"outbox_relay\"} 1\n"
-        );
-        assert_eq!(
-            format_runtime_worker_state("outbox_relay", true, Some(true)),
-            "rustok_runtime_worker_state{worker=\"outbox_relay\"} 2\n"
-        );
-        assert_eq!(
-            format_runtime_worker_state("outbox_relay", true, None),
-            "rustok_runtime_worker_state{worker=\"outbox_relay\"} -1\n"
-        );
+        let disabled = format_runtime_worker_state("build_executor", false, None, false);
+        assert!(disabled.contains("rustok_runtime_worker_state{worker=\"build_executor\"} 0\n"));
+        assert!(disabled.contains(
+            "rustok_runtime_worker_lifecycle_state{worker=\"build_executor\",state=\"ready\"} 2\n"
+        ));
+
+        let running = format_runtime_worker_state("outbox_relay", true, Some(false), false);
+        assert!(running.contains("rustok_runtime_worker_state{worker=\"outbox_relay\"} 1\n"));
+        assert!(running.contains(
+            "rustok_runtime_worker_lifecycle_state{worker=\"outbox_relay\",state=\"ready\"} 2\n"
+        ));
+
+        let stopped = format_runtime_worker_state("outbox_relay", true, Some(true), false);
+        assert!(stopped.contains("rustok_runtime_worker_state{worker=\"outbox_relay\"} 2\n"));
+        assert!(stopped.contains(
+            "rustok_runtime_worker_lifecycle_state{worker=\"outbox_relay\",state=\"failed\"} 5\n"
+        ));
+
+        let missing = format_runtime_worker_state("outbox_relay", true, None, false);
+        assert!(missing.contains("rustok_runtime_worker_state{worker=\"outbox_relay\"} -1\n"));
+        assert!(missing.contains(
+            "rustok_runtime_worker_lifecycle_state{worker=\"outbox_relay\",state=\"starting\"} 1\n"
+        ));
+
+        let stopping = format_runtime_worker_state("outbox_relay", true, Some(false), true);
+        assert!(stopping.contains(
+            "rustok_runtime_worker_lifecycle_state{worker=\"outbox_relay\",state=\"stopping\"} 4\n"
+        ));
     }
 
     #[test]

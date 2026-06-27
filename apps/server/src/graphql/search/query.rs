@@ -37,6 +37,65 @@ const DEFAULT_ANALYTICS_WINDOW_DAYS: u32 = 7;
 const DEFAULT_ANALYTICS_LIMIT: usize = 10;
 const DEFAULT_SUGGESTIONS_LIMIT: usize = 6;
 const MAX_SUGGESTIONS_LIMIT: usize = 10;
+const SEARCH_PREVIEW_SURFACE: &str = "search_preview";
+const ADMIN_GLOBAL_SEARCH_SURFACE: &str = "admin_global_search";
+const STOREFRONT_SEARCH_SURFACE: &str = "storefront_search";
+const STOREFRONT_SUGGESTIONS_SURFACE: &str = "storefront_search_suggestions";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SearchSurfacePolicy {
+    surface: &'static str,
+    default_limit: usize,
+    max_limit: usize,
+    published_only: bool,
+    requires_settings_read: bool,
+    allows_tenant_override: bool,
+}
+
+impl SearchSurfacePolicy {
+    const fn search_preview() -> Self {
+        Self {
+            surface: SEARCH_PREVIEW_SURFACE,
+            default_limit: 10,
+            max_limit: 50,
+            published_only: false,
+            requires_settings_read: true,
+            allows_tenant_override: true,
+        }
+    }
+
+    const fn admin_global_search() -> Self {
+        Self {
+            surface: ADMIN_GLOBAL_SEARCH_SURFACE,
+            default_limit: 8,
+            max_limit: 20,
+            published_only: false,
+            requires_settings_read: true,
+            allows_tenant_override: true,
+        }
+    }
+
+    const fn storefront_search() -> Self {
+        Self {
+            surface: STOREFRONT_SEARCH_SURFACE,
+            default_limit: 12,
+            max_limit: 50,
+            published_only: true,
+            requires_settings_read: false,
+            allows_tenant_override: false,
+        }
+    }
+
+    fn effective_limit(self, requested_limit: Option<i32>) -> usize {
+        requested_limit
+            .unwrap_or(self.default_limit as i32)
+            .clamp(1, self.max_limit as i32) as usize
+    }
+
+    fn offset(self, requested_offset: Option<i32>) -> usize {
+        requested_offset.unwrap_or(0).max(0) as usize
+    }
+}
 
 #[Object]
 impl SearchQueryRoot {
@@ -214,13 +273,14 @@ impl SearchQueryRoot {
         ctx: &Context<'_>,
         input: SearchPreviewInput,
     ) -> Result<SearchPreviewPayload> {
+        let policy = SearchSurfacePolicy::search_preview();
         ensure_settings_read_permission(ctx).await?;
 
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
         let requested_limit = input.limit;
-        let effective_limit = requested_limit.unwrap_or(10).clamp(1, 50) as usize;
+        let effective_limit = policy.effective_limit(requested_limit);
         let tenant_id =
             resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
         let transform =
@@ -232,7 +292,7 @@ impl SearchQueryRoot {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let resolved = resolve_preset_and_ranking(
             &settings.config,
-            "search_preview",
+            policy.surface,
             input.preset_key.as_deref(),
             input.ranking_profile.as_deref(),
             input.entity_types.unwrap_or_default(),
@@ -249,8 +309,8 @@ impl SearchQueryRoot {
             ranking_profile: resolved.ranking_profile,
             preset_key: resolved.preset_key,
             limit: effective_limit,
-            offset: input.offset.unwrap_or(0).max(0) as usize,
-            published_only: false,
+            offset: policy.offset(input.offset),
+            published_only: policy.published_only,
             entity_types: resolved.entity_types,
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
@@ -258,7 +318,7 @@ impl SearchQueryRoot {
         let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
         finalize_search_result(
             &app_ctx.db,
-            "search_preview",
+            policy.surface,
             &search_query,
             requested_limit,
             effective_limit,
@@ -274,13 +334,14 @@ impl SearchQueryRoot {
         ctx: &Context<'_>,
         input: SearchPreviewInput,
     ) -> Result<SearchPreviewPayload> {
+        let policy = SearchSurfacePolicy::admin_global_search();
         ensure_settings_read_permission(ctx).await?;
 
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
         let requested_limit = input.limit;
-        let effective_limit = requested_limit.unwrap_or(8).clamp(1, 20) as usize;
+        let effective_limit = policy.effective_limit(requested_limit);
         let tenant_id =
             resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
         let transform =
@@ -292,7 +353,7 @@ impl SearchQueryRoot {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let resolved = resolve_preset_and_ranking(
             &settings.config,
-            "admin_global_search",
+            policy.surface,
             input.preset_key.as_deref(),
             input.ranking_profile.as_deref(),
             input.entity_types.unwrap_or_default(),
@@ -309,8 +370,8 @@ impl SearchQueryRoot {
             ranking_profile: resolved.ranking_profile,
             preset_key: resolved.preset_key,
             limit: effective_limit,
-            offset: input.offset.unwrap_or(0).max(0) as usize,
-            published_only: false,
+            offset: policy.offset(input.offset),
+            published_only: policy.published_only,
             entity_types: resolved.entity_types,
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
@@ -318,7 +379,7 @@ impl SearchQueryRoot {
         let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
         finalize_search_result(
             &app_ctx.db,
-            "admin_global_search",
+            policy.surface,
             &search_query,
             requested_limit,
             effective_limit,
@@ -334,13 +395,14 @@ impl SearchQueryRoot {
         ctx: &Context<'_>,
         input: SearchPreviewInput,
     ) -> Result<SearchPreviewPayload> {
+        let policy = SearchSurfacePolicy::storefront_search();
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
-        enforce_storefront_rate_limit(ctx, "storefront_search").await?;
+        enforce_storefront_rate_limit(ctx, policy.surface).await?;
         let engine = PgSearchEngine::new(app_ctx.db.clone());
         let requested_limit = input.limit;
-        let effective_limit = requested_limit.unwrap_or(12).clamp(1, 50) as usize;
+        let effective_limit = policy.effective_limit(requested_limit);
         let started_at = Instant::now();
         let transform =
             SearchDictionaryService::transform_query(&app_ctx.db, tenant.id, &input.query)
@@ -351,7 +413,7 @@ impl SearchQueryRoot {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let resolved = resolve_preset_and_ranking(
             &settings.config,
-            "storefront_search",
+            policy.surface,
             input.preset_key.as_deref(),
             input.ranking_profile.as_deref(),
             input.entity_types.unwrap_or_default(),
@@ -367,8 +429,8 @@ impl SearchQueryRoot {
             ranking_profile: resolved.ranking_profile,
             preset_key: resolved.preset_key,
             limit: effective_limit,
-            offset: input.offset.unwrap_or(0).max(0) as usize,
-            published_only: true,
+            offset: policy.offset(input.offset),
+            published_only: policy.published_only,
             entity_types: resolved.entity_types,
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
@@ -377,7 +439,7 @@ impl SearchQueryRoot {
         let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
         finalize_search_result(
             &app_ctx.db,
-            "storefront_search",
+            policy.surface,
             &search_query,
             requested_limit,
             effective_limit,
@@ -396,9 +458,12 @@ impl SearchQueryRoot {
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_suggestions_input(input)?;
-        enforce_storefront_rate_limit(ctx, "storefront_search_suggestions").await?;
-        let tenant_id =
-            resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
+        enforce_storefront_rate_limit(ctx, STOREFRONT_SUGGESTIONS_SURFACE).await?;
+        let tenant_id = resolve_surface_tenant_scope(
+            tenant,
+            parse_optional_uuid(input.tenant_id.as_deref())?,
+            SearchSurfacePolicy::storefront_search(),
+        )?;
 
         if input.query.is_empty() {
             return Ok(Vec::new());
@@ -432,7 +497,7 @@ impl SearchQueryRoot {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
         Ok(
-            SearchFilterPresetService::list(&settings.config, "storefront_search")
+            SearchFilterPresetService::list(&settings.config, STOREFRONT_SEARCH_SURFACE)
                 .into_iter()
                 .map(Into::into)
                 .collect(),
@@ -473,8 +538,22 @@ fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
 }
 
 fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
+    resolve_surface_tenant_scope(
+        tenant,
+        requested_tenant_id,
+        SearchSurfacePolicy::search_preview(),
+    )
+}
+
+fn resolve_surface_tenant_scope(
+    tenant: &TenantContext,
+    requested_tenant_id: Option<Uuid>,
+    policy: SearchSurfacePolicy,
+) -> Result<Uuid> {
     match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
+        Some(requested_tenant_id)
+            if !policy.allows_tenant_override || requested_tenant_id != tenant.id =>
+        {
             Err(<FieldError as GraphQLError>::permission_denied(
                 "cross-tenant search access is not allowed",
             ))
@@ -904,5 +983,95 @@ fn map_search_module_error(error: rustok_core::Error) -> FieldError {
         | rustok_core::Error::NotFound(message)
         | rustok_core::Error::InvalidIdFormat(message) => FieldError::new(message),
         other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        resolve_surface_tenant_scope, SearchSurfacePolicy, ADMIN_GLOBAL_SEARCH_SURFACE,
+        SEARCH_PREVIEW_SURFACE, STOREFRONT_SEARCH_SURFACE,
+    };
+    use crate::context::TenantContext;
+    use uuid::Uuid;
+
+    fn tenant_context(id: Uuid) -> TenantContext {
+        TenantContext {
+            id,
+            slug: "tenant-a".to_string(),
+            name: "Tenant A".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    #[test]
+    fn search_surface_policy_keeps_preview_admin_and_storefront_limits_separate() {
+        let preview = SearchSurfacePolicy::search_preview();
+        let admin = SearchSurfacePolicy::admin_global_search();
+        let storefront = SearchSurfacePolicy::storefront_search();
+
+        assert_eq!(preview.surface, SEARCH_PREVIEW_SURFACE);
+        assert_eq!(preview.effective_limit(None), 10);
+        assert_eq!(preview.effective_limit(Some(500)), 50);
+        assert!(!preview.published_only);
+        assert!(preview.requires_settings_read);
+
+        assert_eq!(admin.surface, ADMIN_GLOBAL_SEARCH_SURFACE);
+        assert_eq!(admin.effective_limit(None), 8);
+        assert_eq!(admin.effective_limit(Some(500)), 20);
+        assert!(!admin.published_only);
+        assert!(admin.requires_settings_read);
+
+        assert_eq!(storefront.surface, STOREFRONT_SEARCH_SURFACE);
+        assert_eq!(storefront.effective_limit(None), 12);
+        assert_eq!(storefront.effective_limit(Some(500)), 50);
+        assert_eq!(storefront.offset(Some(-10)), 0);
+        assert!(storefront.published_only);
+        assert!(!storefront.requires_settings_read);
+    }
+
+    #[test]
+    fn admin_surface_allows_only_current_tenant_scope() {
+        let current_tenant_id = Uuid::new_v4();
+        let tenant = tenant_context(current_tenant_id);
+
+        assert_eq!(
+            resolve_surface_tenant_scope(
+                &tenant,
+                Some(current_tenant_id),
+                SearchSurfacePolicy::search_preview()
+            )
+            .expect("current tenant scope should be accepted"),
+            current_tenant_id
+        );
+
+        assert!(resolve_surface_tenant_scope(
+            &tenant,
+            Some(Uuid::new_v4()),
+            SearchSurfacePolicy::search_preview()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn storefront_surface_rejects_explicit_tenant_override() {
+        let current_tenant_id = Uuid::new_v4();
+        let tenant = tenant_context(current_tenant_id);
+
+        assert_eq!(
+            resolve_surface_tenant_scope(&tenant, None, SearchSurfacePolicy::storefront_search())
+                .expect("implicit storefront tenant should use host context"),
+            current_tenant_id
+        );
+
+        assert!(resolve_surface_tenant_scope(
+            &tenant,
+            Some(current_tenant_id),
+            SearchSurfacePolicy::storefront_search()
+        )
+        .is_err());
     }
 }

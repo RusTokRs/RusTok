@@ -48,9 +48,23 @@ impl RusToKModule for OutboxModule {
     }
 
     async fn health(&self) -> HealthStatus {
-        HealthStatus::Healthy
+        // Module-level health has no host AppContext, so it cannot inspect
+        // sys_events, relay worker state, backlog, lag or DLQ. The server
+        // readiness layer owns those concrete checks.
+        HealthStatus::Degraded
     }
 }
 
 #[cfg(test)]
 mod contract_tests;
+
+#[cfg(test)]
+mod health_tests {
+    use super::OutboxModule;
+    use rustok_core::module::{HealthStatus, RusToKModule};
+
+    #[tokio::test]
+    async fn outbox_module_health_defers_to_host_readiness() {
+        assert_eq!(OutboxModule.health().await, HealthStatus::Degraded);
+    }
+}

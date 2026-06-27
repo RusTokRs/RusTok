@@ -62,6 +62,18 @@ helpers, чтобы invite/reset/verification flows оставались auth-ow
 
 При добавлении, удалении или переименовании permissions нужно менять `AUTH_USER_PERMISSIONS`, `AuthModule::permissions()`, server registry/security-тесты и этот документ в одном инкременте.
 
+## Incident response
+
+Primary owner для auth/JWT/RBAC инцидентов — Platform security/auth on-call. Escalation path: владелец `crates/rustok-auth`, затем владелец server API surface.
+
+При деградации auth:
+
+1. Проверить `/health/ready`, `email_backend` и последние auth/API ошибки без логирования секретов, reset/invite tokens или refresh tokens.
+2. Сверить effective `AuthConfig`: algorithm/key pairing, issuer, audience, TTL bounds и production policy.
+3. Если проблема связана с email reset/verification delivery, эскалировать также владельцу host email transport.
+4. Если проблема связана с RBAC, сверить `AUTH_USER_PERMISSIONS`, server registry/security hints и фактические transport guards.
+5. После rollback сохранить evidence: artifact id, config snapshot без секретов, affected flows, health snapshot и список revoked/rotated credentials, если rotation выполнялась.
+
 ## Проверка
 
 - `cargo xtask module validate auth`

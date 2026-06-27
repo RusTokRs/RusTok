@@ -5,12 +5,17 @@ use axum::extract::State;
 use axum::response::Response;
 use axum::routing::get;
 use axum::Extension;
+use chrono::Utc;
 use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
-use sea_orm::DatabaseConnection;
+use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, Statement,
+};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -27,6 +32,7 @@ use crate::middleware::tenant::{
 };
 use crate::services::app_lifecycle::{
     BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
+    RuntimeWorkerLifecycleState, StopHandle,
 };
 use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
@@ -178,6 +184,13 @@ pub async fn ready(
         )
         .await,
         run_guarded_check(
+            "database_schema",
+            DependencyCriticality::Critical,
+            "dependency",
+            || check_required_database_schema(&ctx, &settings),
+        )
+        .await,
+        run_guarded_check(
             "cache_backend",
             DependencyCriticality::NonCritical,
             "dependency",
@@ -252,6 +265,10 @@ pub async fn ready(
             .await,
         );
         checks.push(check_runtime_guardrails(&ctx).await);
+        if settings.events.transport == EventTransportKind::Outbox {
+            checks.push(check_outbox_pending_lag(&ctx, &settings).await);
+        }
+        checks.push(check_search_index_lag(&ctx, &settings).await);
         checks.push(email_backend_check(&settings, ctx.mailer.is_some()));
         checks.extend(check_runtime_workers(&ctx, &settings));
 
@@ -399,12 +416,38 @@ async fn check_storage_backend(ctx: &AppContext) -> std::result::Result<(), Stri
 }
 
 async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), String> {
-    use sea_orm::ConnectionTrait;
-
     db.execute_unprepared("SELECT 1")
         .await
         .map(|_| ())
         .map_err(|error| format!("database check failed: {error}"))
+}
+
+async fn check_required_database_schema(
+    ctx: &AppContext,
+    settings: &RustokSettings,
+) -> std::result::Result<(), String> {
+    for table in required_database_schema_tables(settings) {
+        let query = format!("SELECT 1 FROM {table} LIMIT 1");
+        if let Err(error) = ctx.db.execute_unprepared(&query).await {
+            return Err(format!("required table `{table}` is unavailable: {error}"));
+        }
+    }
+
+    Ok(())
+}
+
+fn required_database_schema_tables(settings: &RustokSettings) -> Vec<&'static str> {
+    let mut required_tables = vec!["tenants", "users"];
+
+    if settings.events.transport == EventTransportKind::Outbox {
+        required_tables.push("sys_events");
+    }
+
+    if settings.features.search_indexing {
+        required_tables.push("search_documents");
+    }
+
+    required_tables
 }
 
 async fn check_cache_backend(ctx: &AppContext) -> std::result::Result<(), String> {
@@ -460,6 +503,125 @@ async fn check_event_transport(ctx: &AppContext) -> std::result::Result<(), Stri
         .ok_or_else(|| "event transport not initialized in shared_store".to_string())
 }
 
+async fn check_outbox_pending_lag(ctx: &AppContext, settings: &RustokSettings) -> ReadinessCheck {
+    let started_at = Instant::now();
+    let threshold = settings.readiness.outbox_max_pending_lag_seconds as i64;
+    let result = SysEventsEntity::find()
+        .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
+        .order_by_asc(SysEventsColumn::CreatedAt)
+        .one(&ctx.db)
+        .await;
+
+    let (status, reason) = match result {
+        Ok(Some(event)) => {
+            let lag_seconds = (Utc::now() - event.created_at).num_seconds().max(0);
+            if lag_seconds > threshold {
+                (
+                    ReadinessStatus::Degraded,
+                    Some(format!(
+                        "oldest pending outbox event lag {lag_seconds}s exceeds threshold {threshold}s"
+                    )),
+                )
+            } else {
+                (ReadinessStatus::Ok, None)
+            }
+        }
+        Ok(None) => (ReadinessStatus::Ok, None),
+        Err(error) => (
+            ReadinessStatus::Degraded,
+            Some(format!("outbox lag check failed: {error}")),
+        ),
+    };
+
+    ReadinessCheck {
+        name: "outbox_pending_lag".to_string(),
+        kind: "lag",
+        criticality: DependencyCriticality::NonCritical,
+        status,
+        latency_ms: started_at.elapsed().as_millis(),
+        reason,
+    }
+}
+
+async fn check_search_index_lag(ctx: &AppContext, settings: &RustokSettings) -> ReadinessCheck {
+    let started_at = Instant::now();
+    let threshold = settings.readiness.search_max_lag_seconds as i64;
+    let backend = ctx.db.get_database_backend();
+    let stmt = Statement::from_string(backend, search_index_lag_query(backend).to_string());
+
+    let (status, reason) = match ctx.db.query_one(stmt).await {
+        Ok(Some(row)) => {
+            let lag_seconds = row
+                .try_get::<i64>("", "max_lag_seconds")
+                .unwrap_or(0)
+                .max(0);
+            if lag_seconds > threshold {
+                (
+                    ReadinessStatus::Degraded,
+                    Some(format!(
+                        "search indexing lag {lag_seconds}s exceeds threshold {threshold}s"
+                    )),
+                )
+            } else {
+                (ReadinessStatus::Ok, None)
+            }
+        }
+        Ok(None) => (ReadinessStatus::Ok, None),
+        Err(error) if is_missing_search_relation_error(&error) => (
+            ReadinessStatus::Degraded,
+            Some("search_documents relation is not available for lag check".to_string()),
+        ),
+        Err(error) => (
+            ReadinessStatus::Degraded,
+            Some(format!("search lag check failed: {error}")),
+        ),
+    };
+
+    ReadinessCheck {
+        name: "search_index_lag".to_string(),
+        kind: "lag",
+        criticality: DependencyCriticality::NonCritical,
+        status,
+        latency_ms: started_at.elapsed().as_millis(),
+        reason,
+    }
+}
+
+fn search_index_lag_query(backend: DbBackend) -> &'static str {
+    match backend {
+        DbBackend::Sqlite => {
+            r#"
+            SELECT
+                CAST(
+                    COALESCE(
+                        MAX(
+                            CASE
+                                WHEN updated_at > indexed_at THEN CAST((julianday(updated_at) - julianday(indexed_at)) * 86400 AS INTEGER)
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS INTEGER
+                ) AS max_lag_seconds
+            FROM search_documents
+            "#
+        }
+        _ => {
+            r#"
+            SELECT COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM (updated_at - indexed_at)), 0)), 0)::bigint AS max_lag_seconds
+            FROM search_documents
+            "#
+        }
+    }
+}
+
+fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("no such table")
+        || message.contains("undefinedtable")
+        || message.contains("relation") && message.contains("does not exist")
+}
+
 fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<ReadinessCheck> {
     let relay_required = settings.events.transport == EventTransportKind::Outbox
         && ctx
@@ -467,6 +629,10 @@ fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<Rea
             .get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
             .and_then(|runtime| runtime.relay_config.clone())
             .is_some();
+    let stop_requested = ctx
+        .shared_store
+        .get_ref::<StopHandle>()
+        .is_some_and(|handle| handle.is_stopping());
 
     let mut checks = vec![runtime_worker_check(
         "worker:outbox_relay",
@@ -474,6 +640,7 @@ fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<Rea
         ctx.shared_store
             .get_ref::<OutboxRelayWorkerHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     )];
 
     checks.push(runtime_worker_check(
@@ -482,6 +649,7 @@ fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<Rea
         ctx.shared_store
             .get_ref::<BuildWorkerHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
 
     checks.push(runtime_worker_check(
@@ -490,6 +658,7 @@ fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<Rea
         ctx.shared_store
             .get_ref::<RemoteExecutorReaperHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
 
     #[cfg(feature = "mod-seo")]
@@ -499,6 +668,7 @@ fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<Rea
         ctx.shared_store
             .get_ref::<crate::services::app_lifecycle::SeoBulkWorkerHandle>()
             .map(|handle| handle.is_finished()),
+        stop_requested,
     ));
 
     checks
@@ -508,27 +678,44 @@ fn runtime_worker_check(
     name: &str,
     required: bool,
     handle_finished: Option<bool>,
+    stop_requested: bool,
 ) -> ReadinessCheck {
-    let (criticality, status, reason) = if !required {
-        (
-            DependencyCriticality::NonCritical,
-            ReadinessStatus::Ok,
-            Some("worker disabled by runtime settings".to_string()),
-        )
+    let lifecycle_state = RuntimeWorkerLifecycleState::from_worker_snapshot(
+        required,
+        handle_finished,
+        stop_requested,
+    );
+    let criticality = if required {
+        DependencyCriticality::Critical
     } else {
-        match handle_finished {
-            Some(false) => (DependencyCriticality::Critical, ReadinessStatus::Ok, None),
-            Some(true) => (
-                DependencyCriticality::Critical,
-                ReadinessStatus::Unhealthy,
-                Some("required worker task has stopped".to_string()),
-            ),
-            None => (
-                DependencyCriticality::Critical,
-                ReadinessStatus::Unhealthy,
-                Some("required worker handle is missing".to_string()),
-            ),
+        DependencyCriticality::NonCritical
+    };
+    let status = match (criticality, lifecycle_state) {
+        (_, RuntimeWorkerLifecycleState::Ready) => ReadinessStatus::Ok,
+        (DependencyCriticality::Critical, RuntimeWorkerLifecycleState::Starting)
+        | (DependencyCriticality::Critical, RuntimeWorkerLifecycleState::Stopping)
+        | (DependencyCriticality::Critical, RuntimeWorkerLifecycleState::Failed) => {
+            ReadinessStatus::Unhealthy
         }
+        _ => ReadinessStatus::Degraded,
+    };
+    let reason = match (required, lifecycle_state) {
+        (false, RuntimeWorkerLifecycleState::Ready) => {
+            Some("worker disabled by runtime settings".to_string())
+        }
+        (_, RuntimeWorkerLifecycleState::Starting) => {
+            Some("required worker lifecycle state is starting; handle is missing".to_string())
+        }
+        (_, RuntimeWorkerLifecycleState::Stopping) => {
+            Some("worker lifecycle state is stopping".to_string())
+        }
+        (_, RuntimeWorkerLifecycleState::Failed) => {
+            Some("required worker lifecycle state is failed; task has stopped".to_string())
+        }
+        (_, RuntimeWorkerLifecycleState::Degraded) => {
+            Some("worker lifecycle state is degraded".to_string())
+        }
+        (_, RuntimeWorkerLifecycleState::Ready) => None,
     };
 
     ReadinessCheck {
@@ -928,8 +1115,31 @@ mod tests {
     }
 
     #[test]
+    fn required_database_schema_tables_follow_runtime_features() {
+        let mut settings = RustokSettings::default();
+        settings.features.search_indexing = false;
+
+        assert_eq!(
+            required_database_schema_tables(&settings),
+            vec!["tenants", "users"]
+        );
+
+        settings.events.transport = EventTransportKind::Outbox;
+        assert_eq!(
+            required_database_schema_tables(&settings),
+            vec!["tenants", "users", "sys_events"]
+        );
+
+        settings.features.search_indexing = true;
+        assert_eq!(
+            required_database_schema_tables(&settings),
+            vec!["tenants", "users", "sys_events", "search_documents"]
+        );
+    }
+
+    #[test]
     fn required_runtime_worker_missing_is_unhealthy() {
-        let check = runtime_worker_check("worker:outbox_relay", true, None);
+        let check = runtime_worker_check("worker:outbox_relay", true, None, false);
 
         assert_eq!(check.kind, "worker");
         assert_eq!(check.criticality, DependencyCriticality::Critical);
@@ -942,19 +1152,19 @@ mod tests {
 
     #[test]
     fn required_runtime_worker_finished_is_unhealthy() {
-        let check = runtime_worker_check("worker:outbox_relay", true, Some(true));
+        let check = runtime_worker_check("worker:outbox_relay", true, Some(true), false);
 
         assert_eq!(check.criticality, DependencyCriticality::Critical);
         assert_eq!(check.status, ReadinessStatus::Unhealthy);
         assert!(check
             .reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("stopped")));
+            .is_some_and(|reason| reason.contains("failed")));
     }
 
     #[test]
     fn required_runtime_worker_running_is_ready() {
-        let check = runtime_worker_check("worker:outbox_relay", true, Some(false));
+        let check = runtime_worker_check("worker:outbox_relay", true, Some(false), false);
 
         assert_eq!(check.criticality, DependencyCriticality::Critical);
         assert_eq!(check.status, ReadinessStatus::Ok);
@@ -963,7 +1173,7 @@ mod tests {
 
     #[test]
     fn disabled_runtime_worker_is_non_critical_ready() {
-        let check = runtime_worker_check("worker:build_executor", false, None);
+        let check = runtime_worker_check("worker:build_executor", false, None, false);
 
         assert_eq!(check.criticality, DependencyCriticality::NonCritical);
         assert_eq!(check.status, ReadinessStatus::Ok);
@@ -971,6 +1181,18 @@ mod tests {
             .reason
             .as_deref()
             .is_some_and(|reason| reason.contains("disabled")));
+    }
+
+    #[test]
+    fn required_runtime_worker_stopping_is_unhealthy() {
+        let check = runtime_worker_check("worker:outbox_relay", true, Some(false), true);
+
+        assert_eq!(check.criticality, DependencyCriticality::Critical);
+        assert_eq!(check.status, ReadinessStatus::Unhealthy);
+        assert!(check
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("stopping")));
     }
 
     #[test]

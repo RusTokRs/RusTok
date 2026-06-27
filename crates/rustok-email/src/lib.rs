@@ -49,6 +49,20 @@ impl RusToKModule for EmailModule {
     }
 
     async fn health(&self) -> HealthStatus {
-        HealthStatus::Healthy
+        // Module-level health has no host AppContext, so it cannot validate
+        // the effective SMTP/Loco transport. The server readiness layer owns
+        // the concrete `email_backend` check and metrics.
+        HealthStatus::Degraded
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EmailModule;
+    use rustok_core::module::{HealthStatus, RusToKModule};
+
+    #[tokio::test]
+    async fn email_module_health_defers_to_host_readiness() {
+        assert_eq!(EmailModule.health().await, HealthStatus::Degraded);
     }
 }

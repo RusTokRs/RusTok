@@ -47,6 +47,10 @@ impl StopHandle {
         // Yield so spawned tasks have a chance to notice the signal.
         tokio::task::yield_now().await;
     }
+
+    pub fn is_stopping(&self) -> bool {
+        *self.stop_tx.borrow()
+    }
 }
 
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
@@ -58,6 +62,55 @@ static SEO_BULK_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
 #[cfg(feature = "mod-seo")]
 const SEO_BULK_WORKER_POLL_INTERVAL_MS: u64 = 2_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeWorkerLifecycleState {
+    Starting,
+    Ready,
+    Degraded,
+    Stopping,
+    Failed,
+}
+
+impl RuntimeWorkerLifecycleState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Starting => "starting",
+            Self::Ready => "ready",
+            Self::Degraded => "degraded",
+            Self::Stopping => "stopping",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn metric_value(self) -> i8 {
+        match self {
+            Self::Starting => 1,
+            Self::Ready => 2,
+            Self::Degraded => 3,
+            Self::Stopping => 4,
+            Self::Failed => 5,
+        }
+    }
+
+    pub fn from_worker_snapshot(
+        required: bool,
+        handle_finished: Option<bool>,
+        stop_requested: bool,
+    ) -> Self {
+        if stop_requested {
+            return Self::Stopping;
+        }
+
+        match (required, handle_finished) {
+            (true, None) => Self::Starting,
+            (true, Some(false)) => Self::Ready,
+            (true, Some(true)) => Self::Failed,
+            (false, Some(true)) => Self::Degraded,
+            (false, _) => Self::Ready,
+        }
+    }
+}
 
 pub struct OutboxRelayWorkerHandle {
     instance_id: u64,
@@ -206,8 +259,14 @@ fn spawn_relay_worker_handle(
     relay_config: RelayRuntimeConfig,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> OutboxRelayWorkerHandle {
+    let instance_id = OUTBOX_RELAY_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(
+        worker = "outbox_relay",
+        instance_id,
+        "Starting runtime worker"
+    );
     OutboxRelayWorkerHandle {
-        instance_id: OUTBOX_RELAY_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        instance_id,
         _handle: spawn_outbox_relay_worker(relay_config, stop_rx),
     }
 }
@@ -217,8 +276,14 @@ fn spawn_build_worker_handle(
     config: crate::common::settings::BuildRuntimeSettings,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> BuildWorkerHandle {
+    let instance_id = BUILD_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(
+        worker = "build_executor",
+        instance_id,
+        "Starting runtime worker"
+    );
     BuildWorkerHandle {
-        instance_id: BUILD_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        instance_id,
         _handle: tokio::spawn(build_worker_loop(ctx, config, stop_rx)),
     }
 }
@@ -228,8 +293,14 @@ fn spawn_remote_executor_reaper_handle(
     scan_interval_ms: u64,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> RemoteExecutorReaperHandle {
+    let instance_id = REMOTE_EXECUTOR_REAPER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(
+        worker = "remote_executor_reaper",
+        instance_id,
+        "Starting runtime worker"
+    );
     RemoteExecutorReaperHandle {
-        instance_id: REMOTE_EXECUTOR_REAPER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        instance_id,
         _handle: tokio::spawn(remote_executor_reaper_loop(ctx, scan_interval_ms, stop_rx)),
     }
 }
@@ -239,8 +310,10 @@ fn spawn_seo_bulk_worker_handle(
     ctx: AppContext,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 ) -> SeoBulkWorkerHandle {
+    let instance_id = SEO_BULK_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(worker = "seo_bulk", instance_id, "Starting runtime worker");
     SeoBulkWorkerHandle {
-        instance_id: SEO_BULK_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed),
+        instance_id,
         _handle: tokio::spawn(seo_bulk_worker_loop(ctx, stop_rx)),
     }
 }
@@ -448,6 +521,28 @@ mod tests {
             false,
             "postgres://postgres:postgres@prod-db.internal:5432/rustok"
         ));
+    }
+
+    #[tokio::test]
+    async fn stop_handle_broadcasts_graceful_shutdown_signal() {
+        let (stop_handle, mut initial_rx) = super::StopHandle::new();
+        let mut subscribed_rx = stop_handle.subscribe();
+
+        assert!(!*initial_rx.borrow());
+        assert!(!*subscribed_rx.borrow());
+
+        stop_handle.stop().await;
+
+        initial_rx
+            .changed()
+            .await
+            .expect("initial receiver should observe stop signal");
+        subscribed_rx
+            .changed()
+            .await
+            .expect("subscribed receiver should observe stop signal");
+        assert!(*initial_rx.borrow());
+        assert!(*subscribed_rx.borrow());
     }
 
     #[tokio::test]

@@ -34,6 +34,8 @@ pub struct RustokSettings {
     #[serde(default)]
     pub runtime: RuntimeSettings,
     #[serde(default)]
+    pub readiness: ReadinessSettings,
+    #[serde(default)]
     pub storage: StorageConfig,
 }
 
@@ -49,6 +51,14 @@ pub struct RegistrySettings {
 pub struct RegistryValidationRunnerSettings {
     #[serde(default)]
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReadinessSettings {
+    #[serde(default = "default_readiness_outbox_max_pending_lag_seconds")]
+    pub outbox_max_pending_lag_seconds: u64,
+    #[serde(default = "default_readiness_search_max_lag_seconds")]
+    pub search_max_lag_seconds: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -147,6 +157,15 @@ impl Default for RegistryRemoteExecutorSettings {
             shared_token: None,
             lease_ttl_ms: default_registry_remote_executor_lease_ttl_ms(),
             requeue_scan_interval_ms: default_registry_remote_executor_requeue_scan_interval_ms(),
+        }
+    }
+}
+
+impl Default for ReadinessSettings {
+    fn default() -> Self {
+        Self {
+            outbox_max_pending_lag_seconds: default_readiness_outbox_max_pending_lag_seconds(),
+            search_max_lag_seconds: default_readiness_search_max_lag_seconds(),
         }
     }
 }
@@ -726,6 +745,20 @@ impl RustokSettings {
             )));
         }
 
+        if parsed.readiness.outbox_max_pending_lag_seconds == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.readiness.outbox_max_pending_lag_seconds must be > 0",
+            )));
+        }
+
+        if parsed.readiness.search_max_lag_seconds == 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.readiness.search_max_lag_seconds must be > 0",
+            )));
+        }
+
         if is_production_environment()
             && email_delivery_is_disabled(&parsed.email)
             && !parsed.email.allow_disabled_in_production
@@ -1116,6 +1149,14 @@ fn default_relay_max_concurrency() -> usize {
 
 fn default_relay_claim_ttl_ms() -> u64 {
     60_000
+}
+
+fn default_readiness_outbox_max_pending_lag_seconds() -> u64 {
+    300
+}
+
+fn default_readiness_search_max_lag_seconds() -> u64 {
+    300
 }
 
 fn default_event_channel_capacity() -> usize {
@@ -1620,6 +1661,44 @@ mod tests {
         assert_eq!(settings.search.reindex.parallelism, 4);
         assert_eq!(settings.search.reindex.entity_budget, 500);
         assert_eq!(settings.search.reindex.yield_every, 50);
+        assert_eq!(settings.readiness.outbox_max_pending_lag_seconds, 300);
+        assert_eq!(settings.readiness.search_max_lag_seconds, 300);
+    }
+
+    #[test]
+    fn rejects_zero_readiness_lag_thresholds() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "readiness": {
+                    "outbox_max_pending_lag_seconds": 0
+                }
+            }
+        });
+
+        let err =
+            RustokSettings::from_settings(&Some(raw)).expect_err("readiness validation expected");
+        assert!(err
+            .to_string()
+            .contains("rustok.readiness.outbox_max_pending_lag_seconds must be > 0"));
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "readiness": {
+                    "search_max_lag_seconds": 0
+                }
+            }
+        });
+
+        let err =
+            RustokSettings::from_settings(&Some(raw)).expect_err("readiness validation expected");
+        assert!(err
+            .to_string()
+            .contains("rustok.readiness.search_max_lag_seconds must be > 0"));
     }
 
     #[test]

@@ -15,6 +15,7 @@
 
 - Depends on `rustok-core` for module contracts and `rustok-api` for shared port context/error/write-policy primitives.
 - Used by `apps/server` auth lifecycle and operational notification paths.
+- Module-level health intentionally reports `Degraded` because effective SMTP/Loco transport validation requires host runtime context; `apps/server` owns the concrete `email_backend` readiness check.
 - Does not publish a dedicated RBAC surface.
 - Any admin-facing actions that trigger email delivery are authorized in `apps/server`
   through permissions owned by the calling module, not by `rustok-email`.

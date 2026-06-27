@@ -108,6 +108,11 @@ pub fn spawn_outbox_relay_worker(
 
             let relay = config.relay.clone();
             let interval = config.interval;
+            tracing::info!(
+                worker = "outbox_relay",
+                interval_ms = interval.as_millis() as u64,
+                "Outbox relay worker loop starting"
+            );
 
             // The inner worker is aborted explicitly when the supervisor receives
             // the stop signal, so it does not need its own stop_rx.

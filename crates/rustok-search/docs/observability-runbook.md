@@ -30,6 +30,30 @@ Use these entry points first:
 
 Persistent analytics are stored in `search_query_logs` and `search_query_clicks`.
 
+## Surface and policy boundaries
+
+The backend keeps endpoint intent separate from the shared PostgreSQL search
+engine:
+
+- `searchPreview` is the admin preview surface. It requires
+  `settings:read`, allows only the current tenant scope, and defaults to a
+  smaller admin preview page size.
+- `adminGlobalSearch` is the admin quick-open/global navigation surface. It
+  requires `settings:read`, allows only the current tenant scope, and has its
+  own smaller page-size cap.
+- `storefrontSearch` is the public storefront surface. It does not accept a
+  tenant override from the input; tenant scope comes from host tenant
+  resolution, and results are restricted to published documents.
+- `storefrontSearchSuggestions` follows the storefront tenant policy and uses
+  the storefront rate-limit namespace.
+
+Limit and offset policy is owned by the GraphQL API surface policy. The shared
+search engine still keeps defensive clamps, but endpoint-specific defaults and
+caps are not engine semantics. Tenant-less internal search is not allowed by
+default: the PostgreSQL engine requires a tenant id, and API surfaces resolve
+tenant scope through explicit authorization policy before constructing a
+`SearchQuery`.
+
 ## State model
 
 `searchDiagnostics.state` uses four operator-facing states:
@@ -250,6 +274,30 @@ Recommended first dashboard:
 - Rebuilds are transactional inside `rustok-search`.
 - Search ingestion runs with dispatcher retries, but repeated failures still
   require operator review.
+- Module-level `health()` intentionally reports `degraded` for `rustok-search`
+  because connector reachability, `search_documents`, query-plan evidence and
+  indexing lag require host runtime context; use `/health/ready` and the search
+  metrics above for the concrete readiness decision.
+
+## Incident ownership
+
+Primary owner for search/index projection incidents is the search module on-call.
+Escalation path: `crates/rustok-search` owner, then platform database/runtime
+owner when lag, query plans, or event delivery affect multiple tenants.
+
+During an incident:
+
+1. Capture `/health/ready`, `/metrics`, `searchDiagnostics`, and the affected
+   tenant ids before running rebuilds.
+2. Check `rustok_search_lagging_tenants_total`, `rustok_search_max_lag_seconds`,
+   `rustok_search_indexing_operations_total`, and slow-query metrics.
+3. If audit publication failures rise, inspect the outbox/event transport path
+   before treating the issue as a search-only failure.
+4. For rollback, switch to the previous deployment artifact first; do not hide a
+   projection or query-plan regression by disabling tenant isolation or routing
+   tenant-less internal search without an explicit authorization policy.
+5. After recovery, save the rebuild or rollback evidence, query-plan notes, max
+   lag before/after, and any tenant-specific follow-up actions.
 
 ## When to escalate
 

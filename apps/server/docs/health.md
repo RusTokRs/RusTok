@@ -36,12 +36,30 @@ binary `migrate_legacy_richtext` требует `mod-content`. Reduced/headless 
 ### Dependency checks
 
 - `database` — критичная проверка доступности БД;
+- `database_schema` — критичная проверка обязательных таблиц runtime schema:
+  `tenants`, `users`, `sys_events` при `rustok.events.transport = "outbox"` и
+  `search_documents` при `rustok.features.search_indexing = true`;
 - `cache_backend` — базовая проверка tenant cache path;
 - `tenant_cache_invalidation` — не-критичная проверка Redis pubsub listener для cross-instance invalidation;
 - `event_transport` — критичная проверка инициализации event transport;
 - `search_backend` — не-критичная проверка search connectivity;
 - `email_backend` — не-критичная конфигурационная проверка email transport: `smtp` должен быть включён,
   `loco` должен иметь инициализированный `ctx.mailer`, `none` явно отражается как degraded.
+- `outbox_pending_lag` — не-критичная проверка возраста самого старого pending event, включается для
+  `rustok.events.transport = "outbox"`;
+- `search_index_lag` — не-критичная проверка максимального lag между `search_documents.updated_at`
+  и `search_documents.indexed_at`.
+
+Пороги lag задаются в `settings.rustok.readiness`:
+
+```yaml
+readiness:
+  outbox_max_pending_lag_seconds: 300
+  search_max_lag_seconds: 300
+```
+
+Превышение порога переводит `/health/ready` в `degraded`, но не в `unhealthy`: lag требует operator action,
+но сам по себе не означает, что процесс должен быть снят из service discovery как hard failure.
 
 ### Runtime worker checks
 
@@ -68,6 +86,18 @@ runtime ready до запуска обязательного relay/worker lifecy
 - остаются только `database`, `cache_backend` и marker-check `host_mode`;
 - не проверяются `tenant_cache_invalidation`, `event_transport`, `search_backend`, rate-limit runtime и module runtime;
 - `modules` в readiness не используются как hard gate и возвращают operator marker вместо попытки валидировать полный module runtime.
+
+### Module health и context-bound зависимости
+
+`RusToKModule::health()` не получает `AppContext`, поэтому модуль не может сам проверить host-owned runtime зависимости: БД-схему, SMTP/Loco mailer, outbox relay worker, backlog/DLQ, search connector или indexing lag. Для таких модулей module-level health не должен возвращать безусловный `Healthy`.
+
+Конкретные проверки выполняются в `/health/ready`:
+
+- `email_backend` проверяет effective email transport;
+- `event_transport`, `worker:outbox_relay` и `outbox_pending_lag` проверяют outbox runtime;
+- `search_backend` и `search_index_lag` проверяют search runtime.
+
+Поэтому context-bound модули вроде `rustok-email`, `rustok-outbox` и `rustok-search` возвращают `Degraded` на уровне module health как operator marker, а итоговое решение о готовности принимает readiness aggregation по runtime checks.
 
 ## Aggregation
 
@@ -100,8 +130,14 @@ Worker/readiness metrics:
 
 - `rustok_runtime_worker_state{worker="outbox_relay|build_executor|remote_executor_reaper|seo_bulk"}`:
   `-1 = missing`, `0 = disabled`, `1 = running`, `2 = stopped`.
+- `rustok_runtime_worker_lifecycle_state{worker,state}`:
+  `starting = 1`, `ready = 2`, `degraded = 3`, `stopping = 4`, `failed = 5`.
 - `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — количество restart-циклов relay supervisor
   после неожиданного завершения внутреннего worker task.
+
+Worker lifecycle transitions логируются структурированно через `worker` и `instance_id`: старт handle,
+старт relay loop, shutdown signal, panic/restart и unexpected exit. Auth/email paths логируют только статус
+доставки и recipient/error; reset, verification, invite и refresh token values не включаются в logs/metrics.
 
 Email backend metrics:
 
@@ -269,6 +305,27 @@ $env:RUSTOK_REGISTRY_EVIDENCE_DIR="C:\tmp\modules-rustok-dev-smoke"
 
 Rollback для этого host остаётся обычным rollback deployment-артефакта или переключением трафика на предыдущий release. Важный инвариант: не переводить `modules.rustok.dev` в `full` runtime как временную меру, потому что это ломает контракт dedicated read-only catalog host.
 Отдельно для rollback/incident path: если smoke падает именно на reduced surface, сначала откатить deployment или traffic switch, а не чинить проблему временным включением full-host routes.
+
+## Production rollback и incident ownership
+
+Для full runtime rollback не должен менять семантику event delivery, auth или search/index path. Базовый порядок:
+
+1. Зафиксировать failing artifact identifier, image tag/build SHA, конфигурационный snapshot и причину rollback.
+2. Переключить трафик на предыдущий проверенный release или откатить deployment-артефакт без изменения runtime contracts.
+3. Не включать `registry_only` или `full` runtime как скрытый workaround, если это меняет публичный surface текущего host.
+4. Проверить `/health/ready`, `/health/runtime` и `/metrics` после переключения.
+5. Проверить outbox backlog/DLQ, auth login/token flows и search lag перед повторным включением трафика.
+6. Зафиксировать post-rollback evidence: timestamp, artifact id, health snapshot, ключевые метрики backlog/lag/error-rate и список follow-up задач.
+
+Incident response ownership фиксируется на уровне командной ответственности, без привязки к конкретным людям:
+
+| Область | Primary owner | Обязательный escalation path |
+|---|---|---|
+| Outbox/event delivery | Platform foundation on-call | `crates/rustok-outbox` owner + server runtime owner |
+| Auth/JWT/RBAC | Platform security/auth on-call | `crates/rustok-auth` owner + server API owner |
+| Search/index projection | Search module on-call | `crates/rustok-search` owner + platform database/runtime owner |
+
+Если инцидент затрагивает несколько областей, координатором становится Platform foundation on-call, потому что он владеет composition root и runtime readiness gates.
 
 ## Надёжность проверок
 
