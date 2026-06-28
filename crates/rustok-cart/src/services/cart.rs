@@ -1,11 +1,11 @@
-pub mod types;
+mod checkout;
 pub mod helpers;
 mod promotions;
-mod checkout;
+pub mod types;
 
 pub use types::{
-    CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionKind, CartPromotionPreview,
-    DeliveryGroupKey, DeliveryGroupSnapshot,
+    CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionKind,
+    CartPromotionPreview, DeliveryGroupKey, DeliveryGroupSnapshot,
 };
 
 use chrono::Utc;
@@ -23,8 +23,8 @@ use rustok_core::generate_id;
 use rustok_tax::TaxService;
 
 use crate::dto::{
-    AddCartLineItemInput, CreateCartInput, SetCartAdjustmentInput, UpdateCartContextInput,
-    CartResponse,
+    AddCartLineItemInput, CartResponse, CreateCartInput, SetCartAdjustmentInput,
+    UpdateCartContextInput,
 };
 use crate::entities;
 use crate::error::{CartError, CartResult};
@@ -153,7 +153,11 @@ impl CartService {
         ensure_active(&cart.status, "add_line_item")?;
         let now = Utc::now();
         let metadata = sanitize_line_item_metadata(input.metadata);
-        let locale = match cart.locale_code.as_deref().and_then(rustok_core::normalize_locale_tag) {
+        let locale = match cart
+            .locale_code
+            .as_deref()
+            .and_then(rustok_core::normalize_locale_tag)
+        {
             Some(locale) => locale,
             None => load_tenant_default_locale(&txn, tenant_id).await?,
         };
@@ -237,8 +241,7 @@ impl CartService {
         active.selected_shipping_option_id = Set(input.selected_shipping_option_id);
         active.updated_at = Set(Utc::now().into());
         active.update(&txn).await?;
-        apply_shipping_selection_patch(&txn, &cart, &shipping_patch_input)
-            .await?;
+        apply_shipping_selection_patch(&txn, &cart, &shipping_patch_input).await?;
 
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await

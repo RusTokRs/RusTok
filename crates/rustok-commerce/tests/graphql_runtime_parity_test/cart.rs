@@ -85,8 +85,6 @@ async fn storefront_graphql_read_path_is_stable_after_cart_snapshot_creation() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_catalog_query_is_stable_after_cart_snapshot_creation() {
     let (db, catalog, cart_service) = setup().await;
@@ -153,8 +151,6 @@ async fn admin_graphql_catalog_query_is_stable_after_cart_snapshot_creation() {
         Value::from("Parity Product")
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_cart_flow_creates_reads_updates_and_removes_line_items() {
@@ -301,8 +297,6 @@ async fn storefront_graphql_cart_flow_creates_reads_updates_and_removes_line_ite
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_cart_query_rejects_foreign_customer_access() {
     let db = setup_test_db().await;
@@ -375,8 +369,6 @@ async fn storefront_graphql_cart_query_rejects_foreign_customer_access() {
         "Cart belongs to another customer"
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
@@ -487,4 +479,3 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         Value::from("EUR")
     );
 }
-

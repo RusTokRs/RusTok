@@ -9,14 +9,11 @@ use rustok_api::{
 };
 use uuid::Uuid;
 
-use crate::{
-    dto::CartResponse,
-    CartService, PricingService,
-};
 use super::{
-    StoreCartResponse, StoreCreateCartInput, StoreUpdateCartInput,
-    StoreAddCartLineItemInput, StoreUpdateCartLineItemInput, StoreCartContextPatch,
+    StoreAddCartLineItemInput, StoreCartContextPatch, StoreCartResponse, StoreCreateCartInput,
+    StoreUpdateCartInput, StoreUpdateCartLineItemInput,
 };
+use crate::{dto::CartResponse, CartService, PricingService};
 
 /// Create a storefront cart
 #[utoipa::path(
@@ -222,7 +219,8 @@ pub async fn add_cart_line_item(
     super::ensure_store_cart_access(&existing, customer_id)?;
     let pricing_service =
         PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
-    let pricing_context = super::build_store_pricing_context(&existing, &request_context, input.quantity);
+    let pricing_context =
+        super::build_store_pricing_context(&existing, &request_context, input.quantity);
     let resolved_input = super::resolve_store_line_item_input(
         &ctx.db,
         tenant.id,
@@ -299,7 +297,8 @@ pub async fn update_cart_line_item(
                 tenant.id,
                 variant_id,
                 input.quantity,
-                super::storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
+                super::storefront_public_channel_slug_for_cart(&existing, &request_context)
+                    .as_deref(),
             )
             .await?;
         }

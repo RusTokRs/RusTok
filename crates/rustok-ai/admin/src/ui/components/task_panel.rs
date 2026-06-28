@@ -1,8 +1,8 @@
-use leptos::prelude::*;
-use leptos::ev::{SubmitEvent, MouseEvent};
-use crate::model::AiTaskProfilePayload;
-use crate::ui::leptos::{Card, TextField, task_profile_summary};
 use crate::i18n::t;
+use crate::model::AiTaskProfilePayload;
+use crate::ui::leptos::{task_profile_summary, Card, TextField};
+use leptos::ev::{MouseEvent, SubmitEvent};
+use leptos::prelude::*;
 use rustok_api::AdminQueryKey;
 
 #[component]

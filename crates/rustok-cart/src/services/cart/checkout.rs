@@ -6,10 +6,10 @@ use crate::dto::CartResponse;
 use crate::entities;
 use crate::error::{CartError, CartResult};
 
-use super::CartService;
 use super::helpers::{
     load_cart_in_tx, STATUS_ABANDONED, STATUS_ACTIVE, STATUS_CHECKING_OUT, STATUS_COMPLETED,
 };
+use super::CartService;
 
 impl CartService {
     pub async fn complete_cart(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<CartResponse> {

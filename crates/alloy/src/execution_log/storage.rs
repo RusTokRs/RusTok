@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Select, entity::prelude::*,
+    entity::prelude::*, ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select,
 };
 use uuid::Uuid;
 
@@ -520,12 +520,10 @@ mod tests {
         assert_eq!(entries[0].id, newer.execution_id);
         assert_eq!(entries[0].phase, ExecutionPhase::OnCommit);
         assert_eq!(entries[0].outcome, "failed");
-        assert!(
-            entries[0]
-                .error
-                .as_deref()
-                .is_some_and(|error| error.contains("Runtime error: boom"))
-        );
+        assert!(entries[0]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("Runtime error: boom")));
         assert_eq!(entries[1].id, older.execution_id);
         assert_eq!(entries[1].phase, ExecutionPhase::Scheduled);
         assert_eq!(entries[1].outcome, "aborted");

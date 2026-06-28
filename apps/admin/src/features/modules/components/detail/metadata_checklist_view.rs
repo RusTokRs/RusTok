@@ -1,7 +1,9 @@
-use leptos::prelude::*;
-use crate::Locale;
+use super::metadata::{
+    metadata_status_badge_classes, metadata_status_panel_classes, MetadataChecklistItem,
+};
 use super::tr;
-use super::metadata::{MetadataChecklistItem, metadata_status_badge_classes, metadata_status_panel_classes};
+use crate::Locale;
+use leptos::prelude::*;
 
 #[component]
 pub fn MetadataChecklistView(

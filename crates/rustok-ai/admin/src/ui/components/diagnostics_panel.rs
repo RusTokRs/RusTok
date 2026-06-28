@@ -1,17 +1,14 @@
 use crate::core::average_latency_ms;
-use leptos::prelude::*;
+use crate::i18n::t;
 use crate::model::AiAdminBootstrap;
 use crate::ui::leptos::{
-    Card, InfoItem, bucket_summary, recent_run_summary, stream_event_kind_label,
-    average_run_latency_summary
+    average_run_latency_summary, bucket_summary, recent_run_summary, stream_event_kind_label, Card,
+    InfoItem,
 };
-use crate::i18n::t;
+use leptos::prelude::*;
 
 #[component]
-pub fn AiDiagnosticsPanel(
-    ui_locale: Option<String>,
-    bootstrap: AiAdminBootstrap,
-) -> impl IntoView {
+pub fn AiDiagnosticsPanel(ui_locale: Option<String>, bootstrap: AiAdminBootstrap) -> impl IntoView {
     let ui_locale_diagnostics = ui_locale.clone();
 
     view! {

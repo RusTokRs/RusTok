@@ -1,6 +1,6 @@
+use rustok_commerce_foundation::entities;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use rustok_commerce_foundation::entities;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorefrontProductList {

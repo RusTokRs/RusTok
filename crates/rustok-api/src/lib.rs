@@ -24,10 +24,10 @@ pub mod write_path_feedback;
 
 #[cfg(feature = "server")]
 pub use context::{
-    AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
+    has_any_effective_permission, has_effective_permission, infer_user_role_from_permissions,
+    scope_matches, AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
     OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
-    TenantContextExtension, TenantError, has_any_effective_permission, has_effective_permission,
-    infer_user_role_from_permissions, scope_matches,
+    TenantContextExtension, TenantError,
 };
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
@@ -40,12 +40,12 @@ pub use ports::{
 #[cfg(feature = "server")]
 pub use request::RequestContext;
 pub use route_selection::{
-    AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema, admin_route_query_schema,
-    is_legacy_admin_query_key, sanitize_admin_route_query,
+    admin_route_query_schema, is_legacy_admin_query_key, sanitize_admin_route_query,
+    AdminQueryDependency, AdminQueryKey, AdminRouteQuerySchema,
 };
 pub use ui::{
-    UiMessageCatalog, UiRouteContext, UiRouteQueryUpdate, build_ui_message_catalog,
-    normalize_ui_text, parse_ui_csv, resolve_ui_message, resolve_ui_message_or_fallback,
-    route_query_update_for_text,
+    build_ui_message_catalog, normalize_ui_text, parse_ui_csv, resolve_ui_message,
+    resolve_ui_message_or_fallback, route_query_update_for_text, UiMessageCatalog, UiRouteContext,
+    UiRouteQueryUpdate,
 };
-pub use write_path_feedback::{WritePathIssue, WritePathIssueKind, classify_write_path_issue};
+pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};

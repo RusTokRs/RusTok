@@ -6,7 +6,8 @@ use crate::entities::{
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
 use crate::model::{
-    AiRunDecisionTrace, ChatMessage, ChatMessageRole, ProviderKind, ProviderUsagePolicy, TaskProfile, ToolTrace,
+    AiRunDecisionTrace, ChatMessage, ChatMessageRole, ProviderKind, ProviderUsagePolicy,
+    TaskProfile, ToolTrace,
 };
 use crate::{AiError, AiResult};
 
@@ -19,7 +20,9 @@ use super::types::{
     AiRecentRunRecord, AiTaskProfileRecord, AiToolProfileRecord,
 };
 
-pub fn map_provider_profile(model: ai_provider_profiles::Model) -> AiResult<AiProviderProfileRecord> {
+pub fn map_provider_profile(
+    model: ai_provider_profiles::Model,
+) -> AiResult<AiProviderProfileRecord> {
     Ok(AiProviderProfileRecord {
         id: model.id,
         slug: model.slug,

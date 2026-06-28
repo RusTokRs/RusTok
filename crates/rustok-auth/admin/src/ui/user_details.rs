@@ -1,16 +1,16 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_router::hooks::{use_navigate, use_params};
-use leptos_router::params::Params;
-use rustok_api::UiRouteContext;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_hook_form::FormState;
+use leptos_router::hooks::{use_navigate, use_params};
+use leptos_router::params::Params;
 use leptos_ui::{Select, SelectOption};
+use rustok_api::UiRouteContext;
 
-use crate::ui::components::{Button, Input, PageHeader};
 use crate::i18n::t;
 use crate::model::UpdateUserInput;
-use crate::transport::{fetch_user, update_user_details, delete_user_details};
+use crate::transport::{delete_user_details, fetch_user, update_user_details};
+use crate::ui::components::{Button, Input, PageHeader};
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -33,9 +33,8 @@ struct UserParams {
 pub fn UserDetails() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = StoredValue::new(route_context.locale);
-    let t_local = move |key: &str, fallback: &str| {
-        locale.with_value(|l| t(l.as_deref(), key, fallback))
-    };
+    let t_local =
+        move |key: &str, fallback: &str| locale.with_value(|l| t(l.as_deref(), key, fallback));
 
     let token = use_token();
     let tenant = use_tenant();

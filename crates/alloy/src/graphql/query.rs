@@ -3,11 +3,11 @@ use rustok_api::graphql::{PageInfo, PaginationInput};
 use rustok_telemetry::metrics;
 use uuid::Uuid;
 
-use crate::{ScriptRegistry, storage::ScriptQuery};
+use crate::{storage::ScriptQuery, ScriptRegistry};
 
 use super::{
-    GqlEventType, GqlExecutionLogConnection, GqlExecutionLogEntry, GqlScript, GqlScriptConnection,
-    GqlScriptStatus, require_admin, runtime_from_graphql_ctx,
+    require_admin, runtime_from_graphql_ctx, GqlEventType, GqlExecutionLogConnection,
+    GqlExecutionLogEntry, GqlScript, GqlScriptConnection, GqlScriptStatus,
 };
 
 pub const EXECUTION_HISTORY_GRAPHQL_FIELDS: &[&str] = &[

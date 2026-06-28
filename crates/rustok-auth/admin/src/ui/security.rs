@@ -4,9 +4,9 @@ use leptos_auth::hooks::{use_auth, use_tenant, use_token};
 use leptos_hook_form::FormState;
 use rustok_api::UiRouteContext;
 
-use crate::ui::components::{Button, Input, PageHeader};
 use crate::i18n::t;
 use crate::transport::change_password;
+use crate::ui::components::{Button, Input, PageHeader};
 
 #[component]
 pub fn Security() -> impl IntoView {
@@ -27,18 +27,20 @@ pub fn Security() -> impl IntoView {
 
     let on_change_password = Callback::new(move |_| {
         if current_password.get().is_empty() || new_password.get().is_empty() {
-            set_form_state.set(FormState::with_form_error(
-                t_local("security.passwordRequired", "Enter current and new passwords."),
-            ));
+            set_form_state.set(FormState::with_form_error(t_local(
+                "security.passwordRequired",
+                "Enter current and new passwords.",
+            )));
             return;
         }
 
         let token_value = token.get();
         let tenant_value = tenant.get();
         if token_value.is_none() {
-            set_form_state.set(FormState::with_form_error(
-                t_local("errors.auth.unauthorized", "You are not authorized to perform this action."),
-            ));
+            set_form_state.set(FormState::with_form_error(t_local(
+                "errors.auth.unauthorized",
+                "You are not authorized to perform this action.",
+            )));
             return;
         }
 
@@ -60,14 +62,19 @@ pub fn Security() -> impl IntoView {
             match result {
                 Ok(_) => {
                     set_form_state.set(FormState::idle());
-                    set_success_message
-                        .set(Some(t_local("security.passwordUpdated", "Password updated successfully.")));
+                    set_success_message.set(Some(t_local(
+                        "security.passwordUpdated",
+                        "Password updated successfully.",
+                    )));
                     set_current_password.set(String::new());
                     set_new_password.set(String::new());
                 }
                 Err(err_str) => {
                     let message = if err_str.contains("Unauthorized") {
-                        t_local("errors.auth.unauthorized", "You are not authorized to perform this action.")
+                        t_local(
+                            "errors.auth.unauthorized",
+                            "You are not authorized to perform this action.",
+                        )
                     } else if err_str.contains("HTTP") {
                         t_local("errors.http", "Server error. Please try again.")
                     } else if err_str.contains("Network") {

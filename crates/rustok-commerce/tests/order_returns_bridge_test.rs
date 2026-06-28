@@ -475,8 +475,8 @@ async fn commerce_post_order_decision_creates_return_bound_claim_change() {
 #[tokio::test]
 async fn commerce_apply_exchange_order_change_with_explicit_refund() {
     use rustok_commerce::{
-        CreateReturnDecisionInput, PostOrderOrchestrationService, ReturnDecisionInput,
-        ReturnExchangeDecisionInput, ExchangeDifferenceRefundInput,
+        CreateReturnDecisionInput, ExchangeDifferenceRefundInput, PostOrderOrchestrationService,
+        ReturnDecisionInput, ReturnExchangeDecisionInput,
     };
     use rustok_payment::dto::{
         AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
@@ -559,7 +559,8 @@ async fn commerce_apply_exchange_order_change_with_explicit_refund() {
         .await
         .unwrap();
 
-    let orchestration = PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus());
+    let orchestration =
+        PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus());
     let decision = orchestration
         .create_return_decision(
             tenant_id,
@@ -698,7 +699,8 @@ async fn commerce_apply_exchange_order_change_with_automated_refund() {
         .await
         .unwrap();
 
-    let orchestration = PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus());
+    let orchestration =
+        PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus());
     let decision = orchestration
         .create_return_decision(
             tenant_id,
@@ -748,14 +750,17 @@ async fn commerce_apply_exchange_order_change_with_automated_refund() {
     assert_eq!(result.order_change.status, "applied");
     let refund = result.refund.expect("automated refund created");
     assert_eq!(refund.amount, Decimal::new(1550, 2));
-    assert_eq!(refund.reason.as_deref(), Some("Exchange automated size price diff"));
+    assert_eq!(
+        refund.reason.as_deref(),
+        Some("Exchange automated size price diff")
+    );
 }
 
 #[tokio::test]
 async fn commerce_apply_claim_order_change() {
     use rustok_commerce::{
-        CreateReturnDecisionInput, PostOrderOrchestrationService, ReturnDecisionInput,
-        ReturnClaimDecisionInput,
+        CreateReturnDecisionInput, PostOrderOrchestrationService, ReturnClaimDecisionInput,
+        ReturnDecisionInput,
     };
 
     let db = Database::connect("sqlite::memory:").await.unwrap();
@@ -792,7 +797,8 @@ async fn commerce_apply_claim_order_change() {
         .await
         .unwrap();
 
-    let orchestration = PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus());
+    let orchestration =
+        PostOrderOrchestrationService::new(db.clone(), mock_transactional_event_bus());
     let decision = orchestration
         .create_return_decision(
             tenant_id,

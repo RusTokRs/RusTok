@@ -19,8 +19,8 @@ pub use dto::{
 };
 pub use error::{ChannelError, ChannelResult};
 pub use policy::{
-    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition, ResolutionAction,
-    ResolutionPredicate, StoredChannelResolutionRule,
+    ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate,
+    StoredChannelResolutionRule, CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
 };
 pub use ports::*;
 pub use resolution::{

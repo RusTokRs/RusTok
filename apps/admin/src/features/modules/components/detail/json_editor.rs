@@ -1,7 +1,7 @@
-use leptos::prelude::*;
+use super::{humanize_setting_key, humanize_token, tr};
 use crate::use_i18n;
 use crate::Locale;
-use super::{tr, humanize_token, humanize_setting_key};
+use leptos::prelude::*;
 
 #[derive(Clone, Debug)]
 pub enum JsonPathSegment {
@@ -93,7 +93,11 @@ pub fn object_without_property(raw: &str, key: &str) -> Result<String, String> {
     Ok(pretty_json_value(&serde_json::Value::Object(object)))
 }
 
-pub fn object_with_renamed_property(raw: &str, old_key: &str, new_key: &str) -> Result<String, String> {
+pub fn object_with_renamed_property(
+    raw: &str,
+    old_key: &str,
+    new_key: &str,
+) -> Result<String, String> {
     let mut object = parse_object_root(raw)?;
     let new_key = new_key.trim();
     if new_key.is_empty() {
@@ -388,7 +392,9 @@ pub fn nested_object_contains_key(
         .unwrap_or(false)
 }
 
-pub fn setting_shape_properties(shape: Option<&serde_json::Value>) -> Vec<(String, serde_json::Value)> {
+pub fn setting_shape_properties(
+    shape: Option<&serde_json::Value>,
+) -> Vec<(String, serde_json::Value)> {
     let Some(shape) = shape else {
         return Vec::new();
     };
@@ -611,7 +617,11 @@ pub fn append_array_item(raw: &str) -> Result<String, String> {
     Ok(pretty_json_value(&serde_json::Value::Array(array)))
 }
 
-pub fn json_editor_summary(field_type: &str, raw: &str, locale: Locale) -> (bool, String, Vec<String>) {
+pub fn json_editor_summary(
+    field_type: &str,
+    raw: &str,
+    locale: Locale,
+) -> (bool, String, Vec<String>) {
     match parse_json_editor_value(raw, field_type, locale) {
         Ok(Some(serde_json::Value::Object(object))) => {
             let preview = object.keys().take(4).cloned().collect::<Vec<_>>();

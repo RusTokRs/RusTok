@@ -1,20 +1,22 @@
-use leptos::prelude::*;
-use leptos::ev::SubmitEvent;
-use leptos::task::spawn_local;
-use crate::model::{AiAdminBootstrap, AiChatSessionDetailPayload, AiLiveStreamStatePayload};
-use crate::ui::leptos::{
-    Card, session_list_summary, session_profile_summary, locale_flow_summary,
-    run_path_summary, tool_trace_summary, stream_status_summary, stream_event_kind_label
-};
 use crate::i18n::t;
+use crate::model::{AiAdminBootstrap, AiChatSessionDetailPayload, AiLiveStreamStatePayload};
 use crate::transport;
+use crate::ui::leptos::{
+    locale_flow_summary, run_path_summary, session_list_summary, session_profile_summary,
+    stream_event_kind_label, stream_status_summary, tool_trace_summary, Card,
+};
+use leptos::ev::SubmitEvent;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
 use rustok_api::AdminQueryKey;
 
 #[component]
 pub fn AiChatSessionPanel(
     ui_locale: Option<String>,
     bootstrap: AiAdminBootstrap,
-    session_detail: LocalResource<Result<Option<AiChatSessionDetailPayload>, crate::transport::ApiError>>,
+    session_detail: LocalResource<
+        Result<Option<AiChatSessionDetailPayload>, crate::transport::ApiError>,
+    >,
     live_stream: Signal<Option<AiLiveStreamStatePayload>>,
     reply_message: RwSignal<String>,
     on_send_message: Callback<SubmitEvent>,

@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -15,50 +15,6 @@ function writeFixtureFile(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function withFixture(options = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), "rustok-outbox-boundary-"));
-  writeFixtureFile(root, "crates/rustok-outbox/admin/src/lib.rs", `
-mod core;
-${options.includeApiModule ? "mod api;" : "mod transport;"}
-mod ui;
-pub use ui::leptos::OutboxAdmin;
-`);
-  writeFixtureFile(root, "crates/rustok-outbox/admin/src/core.rs", `
-${options.includeLeptos ? "use leptos::prelude::*;" : ""}
-pub struct OutboxAdminBootstrap;
-pub struct OutboxAdminShellText;
-pub struct OutboxInfoCardViewModel;
-pub fn outbox_info_cards(_: &OutboxAdminBootstrap, _: &OutboxAdminShellText) -> Vec<OutboxInfoCardViewModel> { vec![] }
-`);
-  writeFixtureFile(root, "crates/rustok-outbox/admin/src/ui/leptos.rs", `
-use crate::core::{outbox_info_cards, OutboxAdminShellText};
-use crate::transport;
-pub fn OutboxAdmin() {
-  let _ = transport::fetch_bootstrap;
-  let _ = outbox_info_cards;
-  ${options.rawNative ? "let _ = native_server_adapter::fetch_bootstrap_native;" : ""}
-  ${options.rawApi ? "api::fetch_bootstrap().await;" : ""}
-  ${options.serverInUi ? "#[server] async fn bad() {}" : ""}
-}
-`);
-  writeFixtureFile(root, "crates/rustok-outbox/admin/src/transport/mod.rs", `
-mod native_server_adapter;
-pub enum OutboxTransportError { ServerFn(String) }
-pub async fn fetch_bootstrap() { native_server_adapter::fetch_bootstrap_native().await; }
-${options.graphqlInTransport ? "fn graphql_fallback() {}" : ""}
-${options.serverInFacade ? "#[server] async fn bad() {}" : ""}
-`);
-  writeFixtureFile(root, "crates/rustok-outbox/admin/src/transport/native_server_adapter.rs", `
-use leptos::prelude::*;
-#[server]
-pub async fn outbox_bootstrap_native() {}
-pub async fn fetch_bootstrap_native() { outbox_bootstrap_native().await; }
-fn module() { let _ = OutboxModule; let _ = relay_notes; }
-`);
-  writeFixtureFile(root, "crates/rustok-outbox/docs/implementation-plan.md", "verify-outbox-admin-boundary.mjs\n");
-  writeFixtureFile(root, "crates/rustok-outbox/docs/README.md", "verify-outbox-admin-boundary.mjs\n");
-  writeFixtureFile(root, "docs/modules/registry.md", "verify-outbox-admin-boundary.mjs\n");
-  if (options.legacyApiFile) writeFixtureFile(root, "crates/rustok-outbox/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
 function createFixture(overrides = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "outbox-admin-boundary-"));
   const files = {
@@ -105,6 +61,7 @@ use crate::transport;
 pub fn OutboxAdmin() -> impl IntoView {
   let _token = use_token();
   let _tenant = use_tenant();
+  let text = OutboxAdminShellText { health_label: String::new(), tenant_context_label: String::new(), global_tenant_label: String::new() };
   let _locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
   view! { <div>{move || async move { let bootstrap = transport::fetch_bootstrap().await.unwrap(); outbox_info_cards(&bootstrap, &text); }}</div> }
 }
@@ -120,7 +77,6 @@ pub fn OutboxAdmin() -> impl IntoView {
 }
 
 function runVerifier(root) {
-  return spawnSync("node", [scriptPath], {
   return spawnSync(process.execPath, [scriptPath], {
     cwd: path.resolve("."),
     env: { ...process.env, RUSTOK_VERIFY_REPO_ROOT: root },
@@ -128,23 +84,6 @@ function runVerifier(root) {
   });
 }
 
-function expectFailure(options, pattern) {
-  const root = withFixture(options);
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected outbox boundary fixture to fail");
-    assert.match(result.stderr, pattern);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-}
-
-test("outbox admin boundary verifier passes canonical fixture", () => {
-  const root = withFixture();
-  try {
-    const result = runVerifier(root);
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /outbox admin boundary verification passed/);
 test("accepts the module-owned outbox admin core/transport/ui boundary", () => {
   const root = createFixture();
   try {
@@ -176,24 +115,6 @@ pub fn OutboxAdmin() -> impl IntoView {
   }
 });
 
-test("outbox admin boundary verifier rejects legacy api facade", () => {
-  expectFailure({ legacyApiFile: true, includeApiModule: true }, /pre-FFA api facade must stay removed|must not wire the pre-FFA api facade/);
-});
-
-test("outbox admin boundary verifier rejects Leptos-specific core", () => {
-  expectFailure({ includeLeptos: true }, /core must stay Leptos\/server-function free/);
-});
-
-test("outbox admin boundary verifier rejects raw transport calls from UI", () => {
-  expectFailure({ rawNative: true }, /UI adapter must not call raw\/pre-FFA transport/);
-});
-
-test("outbox admin boundary verifier rejects package-local GraphQL fallback", () => {
-  expectFailure({ graphqlInTransport: true }, /must not invent a package-local GraphQL fallback/);
-});
-
-test("outbox admin boundary verifier rejects server functions outside native adapter", () => {
-  expectFailure({ serverInFacade: true }, /server-function endpoint belongs in native_server_adapter.rs/);
 test("rejects Leptos/server-function leakage into the core layer", () => {
   const root = createFixture({
     "crates/rustok-outbox/admin/src/core.rs": `
@@ -206,6 +127,24 @@ pub fn outbox_info_cards() { let _ = use_context::<String>(); }
     const result = runVerifier(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /core DTO\/view-model layer must remain Leptos\/server-function free/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects server functions outside the native adapter", () => {
+  const root = createFixture({
+    "crates/rustok-outbox/admin/src/transport/mod.rs": `
+mod native_server_adapter;
+pub enum OutboxTransportError { ServerFn(String) }
+#[server] async fn bad() {}
+pub async fn fetch_bootstrap() { native_server_adapter::fetch_bootstrap_native().await; }
+`,
+  });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /server functions belong in native_server_adapter.rs/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

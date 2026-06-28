@@ -40,27 +40,27 @@ use crate::{AiError, AiResult};
 use rustok_core::{SecurityContext, CONTENT_FORMAT_MARKDOWN};
 #[path = "direct_content_moderation.rs"]
 mod direct_content_moderation;
+#[path = "direct_domain_alloy.rs"]
+mod direct_domain_alloy;
 #[path = "direct_domain_commerce.rs"]
 mod direct_domain_commerce;
 #[path = "direct_domain_content.rs"]
 mod direct_domain_content;
-#[path = "direct_domain_orders.rs"]
-mod direct_domain_orders;
 #[path = "direct_domain_media.rs"]
 mod direct_domain_media;
-#[path = "direct_domain_alloy.rs"]
-mod direct_domain_alloy;
+#[path = "direct_domain_orders.rs"]
+mod direct_domain_orders;
 #[path = "direct_order_generation.rs"]
 mod direct_order_generation;
 #[path = "direct_order_tasks.rs"]
 mod direct_order_tasks;
 #[path = "direct_product_attributes.rs"]
 mod direct_product_attributes;
+use direct_domain_alloy::register_alloy_direct_handlers;
 use direct_domain_commerce::register_commerce_direct_handlers;
 use direct_domain_content::register_content_direct_handlers;
-use direct_domain_orders::register_order_direct_handlers;
 use direct_domain_media::register_media_direct_handlers;
-use direct_domain_alloy::register_alloy_direct_handlers;
+use direct_domain_orders::register_order_direct_handlers;
 pub(crate) use direct_order_generation::{generate_order_analytics, generate_order_ops_assistant};
 
 pub struct DirectExecutionRequest {
@@ -388,7 +388,8 @@ impl DirectTaskHandler for MediaImageAssetHandler {
                     model: request.provider_config.model.clone(),
                     prompt: prompt.clone(),
                     negative_prompt: input.negative_prompt.clone(),
-                    size: rustok_ai_media::normalize_image_size(input.size.clone()).map_err(AiError::Validation)?,
+                    size: rustok_ai_media::normalize_image_size(input.size.clone())
+                        .map_err(AiError::Validation)?,
                     locale: Some(request.resolved_locale.clone()),
                 },
             )
@@ -1610,8 +1611,8 @@ mod tests {
         build_generated_file_name, locale_matches, normalize_tag_list,
         parse_generated_product_copy, parse_json_object_from_text,
     };
-    use rustok_ai_media::normalize_image_size;
     use rustok_ai_content::BLOG_DRAFT_TASK_SLUG;
+    use rustok_ai_media::normalize_image_size;
 
     #[test]
     fn normalize_image_size_accepts_valid_dimensions() {

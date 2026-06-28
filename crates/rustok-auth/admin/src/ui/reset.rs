@@ -9,9 +9,7 @@ use crate::transport;
 use crate::ui::components::{Button, Input};
 
 #[component]
-pub fn ResetPassword<F, IV>(
-    language_toggle: F,
-) -> impl IntoView
+pub fn ResetPassword<F, IV>(language_toggle: F) -> impl IntoView
 where
     F: Fn() -> IV + 'static,
     IV: IntoView + 'static,
@@ -30,7 +28,10 @@ where
     let (form_state, set_form_state) = signal(FormState::idle());
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
-    let error_required_msg = StoredValue::new(t_local("reset.errorRequired", "Tenant and email are required."));
+    let error_required_msg = StoredValue::new(t_local(
+        "reset.errorRequired",
+        "Tenant and email are required.",
+    ));
 
     let on_request = Callback::new(move |_| {
         if tenant.get().is_empty() || email.get().is_empty() {

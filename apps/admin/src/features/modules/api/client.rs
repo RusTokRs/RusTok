@@ -13,9 +13,8 @@ use crate::entities::module::{
 };
 use crate::shared::api::{combine_native_and_graphql_error, request, ApiError};
 
-use super::types::*;
 use super::server::*;
-
+use super::types::*;
 
 pub async fn fetch_enabled_modules(
     token: Option<String>,
@@ -27,11 +26,9 @@ pub async fn fetch_enabled_modules(
     }
 }
 
-
 pub async fn fetch_enabled_modules_server() -> Result<Vec<String>, ServerFnError> {
     list_enabled_modules_native().await
 }
-
 
 pub async fn fetch_enabled_modules_graphql(
     token: Option<String>,
@@ -47,7 +44,6 @@ pub async fn fetch_enabled_modules_graphql(
     Ok(response.enabled_modules)
 }
 
-
 pub fn bundled_humanize_module_slug(slug: &str) -> String {
     slug.split(['-', '_'])
         .filter(|part| !part.is_empty())
@@ -62,7 +58,6 @@ pub fn bundled_humanize_module_slug(slug: &str) -> String {
         .join(" ")
 }
 
-
 pub fn bundled_module_category(nav_group: &str) -> String {
     match nav_group {
         "Content" => "content",
@@ -74,7 +69,6 @@ pub fn bundled_module_category(nav_group: &str) -> String {
     }
     .to_string()
 }
-
 
 pub fn fallback_module_registry() -> Vec<ModuleInfo> {
     let core_slugs = crate::app::modules::core_module_slugs();
@@ -126,7 +120,6 @@ pub fn fallback_module_registry() -> Vec<ModuleInfo> {
     modules
 }
 
-
 pub fn fallback_installed_modules() -> Vec<InstalledModule> {
     let core_slugs = crate::app::modules::core_module_slugs();
     let mut modules = crate::app::modules::module_navigation_entries()
@@ -145,7 +138,6 @@ pub fn fallback_installed_modules() -> Vec<InstalledModule> {
     modules
 }
 
-
 pub fn fallback_tenant_modules() -> Vec<TenantModule> {
     let mut modules = crate::app::modules::module_navigation_entries()
         .iter()
@@ -159,7 +151,6 @@ pub fn fallback_tenant_modules() -> Vec<TenantModule> {
     modules.dedup_by(|left, right| left.module_slug == right.module_slug);
     modules
 }
-
 
 pub fn fallback_marketplace_module_from_entry(
     entry: &crate::app::modules::GeneratedModuleNavigationEntry,
@@ -228,7 +219,6 @@ pub fn fallback_marketplace_module_from_entry(
     }
 }
 
-
 pub fn fallback_marketplace_modules(variables: &MarketplaceVariables) -> Vec<MarketplaceModule> {
     let search = variables.search.as_ref().map(|value| value.to_lowercase());
     let category = variables
@@ -286,7 +276,6 @@ pub fn fallback_marketplace_modules(variables: &MarketplaceVariables) -> Vec<Mar
     modules
 }
 
-
 pub fn fallback_marketplace_module(slug: &str) -> Option<MarketplaceModule> {
     let slug = slug.trim();
     crate::app::modules::module_navigation_entries()
@@ -341,7 +330,6 @@ pub fn fallback_marketplace_module(slug: &str) -> Option<MarketplaceModule> {
         })
 }
 
-
 pub async fn fetch_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -364,7 +352,6 @@ pub async fn fetch_modules(
         }
     }
 }
-
 
 pub async fn fetch_installed_modules(
     token: Option<String>,
@@ -389,7 +376,6 @@ pub async fn fetch_installed_modules(
     }
 }
 
-
 pub async fn fetch_tenant_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -412,7 +398,6 @@ pub async fn fetch_tenant_modules(
         }
     }
 }
-
 
 pub async fn fetch_marketplace_modules(
     token: Option<String>,
@@ -461,7 +446,6 @@ pub async fn fetch_marketplace_modules(
     }
 }
 
-
 pub async fn fetch_marketplace_module(
     slug: String,
     token: Option<String>,
@@ -501,7 +485,6 @@ pub async fn fetch_marketplace_module(
     }
 }
 
-
 pub async fn fetch_active_build(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -522,7 +505,6 @@ pub async fn fetch_active_build(
     }
 }
 
-
 pub async fn fetch_active_release(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -542,7 +524,6 @@ pub async fn fetch_active_release(
         }
     }
 }
-
 
 pub async fn fetch_build_history(
     token: Option<String>,
@@ -566,7 +547,6 @@ pub async fn fetch_build_history(
     }
 }
 
-
 pub async fn toggle_module(
     module_slug: String,
     enabled: bool,
@@ -586,7 +566,6 @@ pub async fn toggle_module(
     Ok(response.toggle_module)
 }
 
-
 pub async fn module_operation_recovery_plan(
     operation_id: String,
     token: Option<String>,
@@ -601,7 +580,6 @@ pub async fn module_operation_recovery_plan(
     .await?;
     Ok(response.module_operation_recovery_plan)
 }
-
 
 pub async fn failed_module_operation_recovery_plans(
     module_slug: Option<String>,
@@ -619,7 +597,6 @@ pub async fn failed_module_operation_recovery_plans(
     Ok(response.failed_module_operation_recovery_plans)
 }
 
-
 pub async fn retry_failed_module_operation_post_hook(
     operation_id: String,
     token: Option<String>,
@@ -635,7 +612,6 @@ pub async fn retry_failed_module_operation_post_hook(
     Ok(response.retry_failed_module_operation_post_hook)
 }
 
-
 pub async fn compensate_failed_module_operation(
     operation_id: String,
     token: Option<String>,
@@ -650,7 +626,6 @@ pub async fn compensate_failed_module_operation(
     .await?;
     Ok(response.compensate_failed_module_operation)
 }
-
 
 pub async fn update_module_settings(
     module_slug: String,
@@ -677,7 +652,6 @@ pub async fn update_module_settings(
     }
 }
 
-
 pub async fn install_module(
     slug: String,
     version: String,
@@ -686,14 +660,13 @@ pub async fn install_module(
 ) -> Result<BuildJob, ApiError> {
     let response: InstallModuleResponse = request(
         INSTALL_MODULE_MUTATION,
-        InstallModuleVariables { slug, version, },
+        InstallModuleVariables { slug, version },
         token,
         tenant_slug,
     )
     .await?;
     Ok(response.install_module)
 }
-
 
 pub async fn uninstall_module(
     slug: String,
@@ -702,14 +675,13 @@ pub async fn uninstall_module(
 ) -> Result<BuildJob, ApiError> {
     let response: UninstallModuleResponse = request(
         UNINSTALL_MODULE_MUTATION,
-        UninstallModuleVariables { slug, },
+        UninstallModuleVariables { slug },
         token,
         tenant_slug,
     )
     .await?;
     Ok(response.uninstall_module)
 }
-
 
 pub async fn upgrade_module(
     slug: String,
@@ -719,14 +691,13 @@ pub async fn upgrade_module(
 ) -> Result<BuildJob, ApiError> {
     let response: UpgradeModuleResponse = request(
         UPGRADE_MODULE_MUTATION,
-        UpgradeModuleVariables { slug, version, },
+        UpgradeModuleVariables { slug, version },
         token,
         tenant_slug,
     )
     .await?;
     Ok(response.upgrade_module)
 }
-
 
 pub async fn rollback_build(
     build_id: String,
@@ -749,7 +720,6 @@ pub async fn rollback_build(
     }
 }
 
-
 pub async fn validate_registry_publish_request(
     request_id: String,
     dry_run: bool,
@@ -767,7 +737,6 @@ pub async fn validate_registry_publish_request(
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
-
 pub async fn fetch_registry_publish_request_status(
     request_id: String,
     token: Option<String>,
@@ -778,7 +747,6 @@ pub async fn fetch_registry_publish_request_status(
         .await
         .map_err(|error| ApiError::Graphql(error.to_string()))
 }
-
 
 pub async fn approve_registry_publish_request(
     request_id: String,
@@ -801,7 +769,6 @@ pub async fn approve_registry_publish_request(
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
-
 pub async fn reject_registry_publish_request(
     request_id: String,
     reason: String,
@@ -822,7 +789,6 @@ pub async fn reject_registry_publish_request(
     .await
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
-
 
 pub async fn request_changes_registry_publish_request(
     request_id: String,
@@ -845,7 +811,6 @@ pub async fn request_changes_registry_publish_request(
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
-
 pub async fn hold_registry_publish_request(
     request_id: String,
     reason: String,
@@ -867,7 +832,6 @@ pub async fn hold_registry_publish_request(
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
-
 pub async fn resume_registry_publish_request(
     request_id: String,
     reason: String,
@@ -888,7 +852,6 @@ pub async fn resume_registry_publish_request(
     .await
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
-
 
 pub async fn transfer_registry_owner(
     slug: String,
@@ -912,7 +875,6 @@ pub async fn transfer_registry_owner(
     .await
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
-
 
 pub async fn yank_registry_release(
     slug: String,

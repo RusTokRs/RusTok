@@ -26,8 +26,8 @@ use uuid::Uuid;
 use crate::{
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
     storefront_shipping::normalize_shipping_profile_slug,
-    FulfillmentOrchestrationError, PaymentService,
-    PostOrderOrchestrationError, ShippingProfileService,
+    FulfillmentOrchestrationError, PaymentService, PostOrderOrchestrationError,
+    ShippingProfileService,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -174,8 +174,14 @@ pub fn routes() -> Routes {
             axum::routing::post(orders::mark_order_paid),
         )
         .add("/orders/{id}/ship", axum::routing::post(orders::ship_order))
-        .add("/orders/{id}/deliver", axum::routing::post(orders::deliver_order))
-        .add("/orders/{id}/cancel", axum::routing::post(orders::cancel_order))
+        .add(
+            "/orders/{id}/deliver",
+            axum::routing::post(orders::deliver_order),
+        )
+        .add(
+            "/orders/{id}/cancel",
+            axum::routing::post(orders::cancel_order),
+        )
         .add(
             "/orders/{id}/returns",
             axum::routing::post(returns::create_order_return),
@@ -188,8 +194,14 @@ pub fn routes() -> Routes {
             "/orders/{id}/changes",
             axum::routing::post(changes::create_order_change),
         )
-        .add("/order-changes", axum::routing::get(changes::list_order_changes))
-        .add("/order-changes/{id}", axum::routing::get(changes::show_order_change))
+        .add(
+            "/order-changes",
+            axum::routing::get(changes::list_order_changes),
+        )
+        .add(
+            "/order-changes/{id}",
+            axum::routing::get(changes::show_order_change),
+        )
         .add(
             "/order-changes/{id}/apply",
             axum::routing::post(changes::apply_order_change),
@@ -199,7 +211,10 @@ pub fn routes() -> Routes {
             axum::routing::post(changes::cancel_order_change),
         )
         .add("/returns", axum::routing::get(returns::list_order_returns))
-        .add("/returns/{id}", axum::routing::get(returns::show_order_return))
+        .add(
+            "/returns/{id}",
+            axum::routing::get(returns::show_order_return),
+        )
         .add(
             "/returns/{id}/complete",
             axum::routing::post(returns::complete_order_return),
@@ -238,14 +253,19 @@ pub fn routes() -> Routes {
             "/refunds/{id}/complete",
             axum::routing::post(payments::complete_refund),
         )
-        .add("/refunds/{id}/cancel", axum::routing::post(payments::cancel_refund))
+        .add(
+            "/refunds/{id}/cancel",
+            axum::routing::post(payments::cancel_refund),
+        )
         .add(
             "/shipping-profiles",
-            axum::routing::get(shipping::list_shipping_profiles).post(shipping::create_shipping_profile),
+            axum::routing::get(shipping::list_shipping_profiles)
+                .post(shipping::create_shipping_profile),
         )
         .add(
             "/shipping-profiles/{id}",
-            axum::routing::get(shipping::show_shipping_profile).post(shipping::update_shipping_profile),
+            axum::routing::get(shipping::show_shipping_profile)
+                .post(shipping::update_shipping_profile),
         )
         .add(
             "/shipping-profiles/{id}/deactivate",
@@ -257,11 +277,13 @@ pub fn routes() -> Routes {
         )
         .add(
             "/shipping-options",
-            axum::routing::get(shipping::list_shipping_options).post(shipping::create_shipping_option),
+            axum::routing::get(shipping::list_shipping_options)
+                .post(shipping::create_shipping_option),
         )
         .add(
             "/shipping-options/{id}",
-            axum::routing::get(shipping::show_shipping_option).post(shipping::update_shipping_option),
+            axum::routing::get(shipping::show_shipping_option)
+                .post(shipping::update_shipping_option),
         )
         .add(
             "/shipping-options/{id}/deactivate",
@@ -273,9 +295,13 @@ pub fn routes() -> Routes {
         )
         .add(
             "/fulfillments",
-            axum::routing::get(fulfillments::list_fulfillments).post(fulfillments::create_fulfillment),
+            axum::routing::get(fulfillments::list_fulfillments)
+                .post(fulfillments::create_fulfillment),
         )
-        .add("/fulfillments/{id}", axum::routing::get(fulfillments::show_fulfillment))
+        .add(
+            "/fulfillments/{id}",
+            axum::routing::get(fulfillments::show_fulfillment),
+        )
         .add(
             "/fulfillments/{id}/ship",
             axum::routing::post(fulfillments::ship_fulfillment),

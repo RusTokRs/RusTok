@@ -1,7 +1,7 @@
-pub mod types;
 pub mod helpers;
+pub mod types;
 
-pub use types::{StorefrontProductList, StorefrontProductListItem, ProductTagState};
+pub use types::{ProductTagState, StorefrontProductList, StorefrontProductListItem};
 
 use chrono::Utc;
 use sea_orm::{
@@ -73,8 +73,7 @@ impl CatalogService {
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
-        let preferred_locale =
-            preferred_product_locale_from_translations(&input.translations);
+        let preferred_locale = preferred_product_locale_from_translations(&input.translations);
         let prepared_custom_fields = prepare_product_custom_fields_for_create(
             &self.db,
             tenant_id,
@@ -893,9 +892,7 @@ impl CatalogService {
             .translations
             .as_deref()
             .map(preferred_product_locale_from_translations)
-            .unwrap_or_else(|| {
-                preferred_product_locale_from_metadata(&existing_product.metadata)
-            });
+            .unwrap_or_else(|| preferred_product_locale_from_metadata(&existing_product.metadata));
         let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
             Some(
                 prepare_product_custom_fields_for_update(
@@ -949,9 +946,11 @@ impl CatalogService {
                 prepared_custom_fields.locale.as_deref(),
                 prepared_custom_fields.localized_values.as_ref(),
             ) {
-                flex::persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
-                    .await
-                    .map_err(|error| CommerceError::Validation(error.to_string()))?;
+                flex::persist_localized_values(
+                    &txn, tenant_id, "product", product_id, locale, values,
+                )
+                .await
+                .map_err(|error| CommerceError::Validation(error.to_string()))?;
             }
         }
 
@@ -1006,8 +1005,9 @@ impl CatalogService {
         }
 
         if let Some((_, Some(tags))) = metadata_update.as_ref() {
-            let locale = resolve_tag_locale_for_update(&txn, product_id, input.translations.as_deref())
-                .await?;
+            let locale =
+                resolve_tag_locale_for_update(&txn, product_id, input.translations.as_deref())
+                    .await?;
             self.sync_product_tags_in_tx(&txn, tenant_id, product_id, &locale, tags)
                 .await?;
         }

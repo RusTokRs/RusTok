@@ -8,17 +8,17 @@ use rustok_api::{AuthContext, TenantContext};
 use rustok_core::Permission;
 use uuid::Uuid;
 
-use crate::{
-    dto::{
-        CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput,
-        FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput,
-        ReshipFulfillmentInput, ShipFulfillmentInput,
-    },
-    FulfillmentOrchestrationService, FulfillmentService,
-};
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
     ListFulfillmentsParams,
+};
+use crate::{
+    dto::{
+        CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput,
+        FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput, ReshipFulfillmentInput,
+        ShipFulfillmentInput,
+    },
+    FulfillmentOrchestrationService, FulfillmentService,
 };
 
 /// List admin fulfillments

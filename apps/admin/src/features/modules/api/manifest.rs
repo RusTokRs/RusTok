@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use leptos::prelude::ServerFnError;
+use serde::{Deserialize, Serialize};
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
@@ -12,7 +12,6 @@ use crate::entities::module::MarketplaceModule;
 
 #[cfg(feature = "ssr")]
 use super::server::*;
-
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -29,7 +28,6 @@ pub struct RuntimeModulesManifest {
     pub settings: RuntimeSettingsManifest,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RuntimeBuildConfig {
@@ -45,7 +43,6 @@ pub struct RuntimeBuildConfig {
     pub storefront: Vec<RuntimeStorefrontBuildConfig>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RuntimeServerBuildConfig {
@@ -54,7 +51,6 @@ pub struct RuntimeServerBuildConfig {
     #[serde(default)]
     pub embed_storefront: bool,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -66,7 +62,6 @@ pub struct RuntimeAdminBuildConfig {
     #[serde(default)]
     pub redirect_uris: Vec<String>,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -81,14 +76,12 @@ pub struct RuntimeStorefrontBuildConfig {
     pub redirect_uris: Vec<String>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct RuntimeSettingsManifest {
     #[serde(default)]
     pub default_enabled: Vec<String>,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -110,7 +103,6 @@ pub struct RuntimeManifestModuleSpec {
     pub depends_on: Vec<String>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
 pub struct RuntimeModulePackageManifest {
@@ -122,7 +114,6 @@ pub struct RuntimeModulePackageManifest {
     #[serde(default)]
     pub settings: std::collections::BTreeMap<String, RuntimeModuleSettingSpec>,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
@@ -146,7 +137,6 @@ pub struct RuntimeModuleMetadata {
     pub rustok_max_version: Option<String>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
 pub struct RuntimeModuleMarketplaceMetadata {
@@ -168,7 +158,6 @@ pub struct RuntimeModuleMarketplaceMetadata {
     pub signature: Option<String>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
 pub struct RuntimeModuleDependencySpec {
@@ -176,7 +165,6 @@ pub struct RuntimeModuleDependencySpec {
     #[serde(default)]
     pub version_req: Option<String>,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -204,7 +192,6 @@ pub struct RuntimeModuleSettingSpec {
     #[serde(default)]
     pub items: Option<Box<RuntimeModuleSettingSpec>>,
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn runtime_setting_shape(spec: &RuntimeModuleSettingSpec) -> Option<serde_json::Value> {
@@ -239,7 +226,6 @@ pub fn runtime_setting_shape(spec: &RuntimeModuleSettingSpec) -> Option<serde_js
     (!shape.is_empty()).then_some(serde_json::Value::Object(shape))
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn runtime_setting_object_keys(spec: &RuntimeModuleSettingSpec) -> Vec<String> {
     if spec.properties.is_empty() {
@@ -248,7 +234,6 @@ pub fn runtime_setting_object_keys(spec: &RuntimeModuleSettingSpec) -> Vec<Strin
         spec.properties.keys().cloned().collect()
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn runtime_setting_item_type(spec: &RuntimeModuleSettingSpec) -> Option<String> {
@@ -259,20 +244,17 @@ pub fn runtime_setting_item_type(spec: &RuntimeModuleSettingSpec) -> Option<Stri
         .or_else(|| spec.item_type.clone())
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
 pub struct RuntimeCargoManifest {
     pub package: RuntimeCargoPackage,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Deserialize, Default)]
 pub struct RuntimeCargoPackage {
     pub name: String,
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -283,7 +265,6 @@ pub enum RuntimeFrontendBuildTool {
     Trunk,
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
@@ -292,7 +273,6 @@ pub enum RuntimeFrontendArtifactKind {
     File,
     Directory,
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -309,7 +289,6 @@ pub struct RuntimeFrontendBuildPlan {
     pub command: String,
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
@@ -323,7 +302,6 @@ pub struct RuntimeBuildExecutionPlan {
     pub storefront_build: Option<RuntimeFrontendBuildPlan>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone)]
 pub struct RuntimePlatformSnapshot {
@@ -332,7 +310,6 @@ pub struct RuntimePlatformSnapshot {
     pub manifest: RuntimeModulesManifest,
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn bootstrap_runtime_modules_manifest() -> Result<RuntimeModulesManifest, ServerFnError> {
     let raw = include_str!("../../../../../../modules.toml");
@@ -340,12 +317,10 @@ pub fn bootstrap_runtime_modules_manifest() -> Result<RuntimeModulesManifest, Se
         .map_err(|err| server_error(format!("failed to parse embedded modules.toml: {err}")))
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn runtime_workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../")
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn load_toml_file<T: serde::de::DeserializeOwned>(
@@ -357,7 +332,6 @@ pub fn load_toml_file<T: serde::de::DeserializeOwned>(
         .map_err(|err| server_error(format!("failed to parse {}: {err}", path.display())))
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
 pub fn runtime_binary_output_dir_name(profile: &str) -> &str {
@@ -367,7 +341,6 @@ pub fn runtime_binary_output_dir_name(profile: &str) -> &str {
         profile
     }
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -379,7 +352,6 @@ pub fn runtime_executable_suffix(target: Option<&str>) -> &'static str {
     }
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
 pub fn runtime_binary_file_name(package: &str, target: Option<&str>) -> String {
@@ -390,7 +362,6 @@ pub fn runtime_binary_file_name(package: &str, target: Option<&str>) -> String {
         format!("{package}.{suffix}")
     }
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -420,7 +391,6 @@ pub fn runtime_admin_frontend_build_plan(
         }
     })
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -477,10 +447,11 @@ pub fn runtime_storefront_frontend_build_plan(
     })
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
-pub fn runtime_build_execution_plan(manifest: &RuntimeModulesManifest) -> RuntimeBuildExecutionPlan {
+pub fn runtime_build_execution_plan(
+    manifest: &RuntimeModulesManifest,
+) -> RuntimeBuildExecutionPlan {
     let cargo_package = if manifest.app.trim().is_empty() {
         "rustok-server".to_string()
     } else {
@@ -540,7 +511,6 @@ pub fn runtime_build_execution_plan(manifest: &RuntimeModulesManifest) -> Runtim
     }
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
 pub fn runtime_deployment_profile(manifest: &RuntimeModulesManifest) -> String {
@@ -555,19 +525,16 @@ pub fn runtime_deployment_profile(manifest: &RuntimeModulesManifest) -> String {
     }
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn runtime_manifest_hash(manifest: &RuntimeModulesManifest) -> String {
     rustok_api::manifest_hash::hash_manifest(manifest)
         .unwrap_or_else(|_| runtime_manifest_snapshot_hash(&serde_json::Value::Null))
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn runtime_manifest_snapshot_hash(snapshot: &serde_json::Value) -> String {
     rustok_api::manifest_hash::hash_manifest_snapshot(snapshot)
 }
-
 
 #[cfg(all(test, feature = "ssr"))]
 pub mod runtime_manifest_hash_tests {
@@ -746,7 +713,6 @@ pub mod runtime_manifest_hash_tests {
     }
 }
 
-
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
 pub fn runtime_modules_delta_json(
@@ -777,7 +743,6 @@ pub fn runtime_modules_delta_json(
         "execution_plan": runtime_build_execution_plan(manifest),
     })
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn runtime_module_roots(
@@ -810,7 +775,6 @@ pub fn runtime_module_roots(
 
     Ok(roots.into_iter().collect())
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn load_runtime_marketplace_modules(
@@ -1002,7 +966,6 @@ pub fn load_runtime_marketplace_modules(
     modules.sort_by(|left, right| left.slug.cmp(&right.slug));
     Ok(modules)
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn load_runtime_module_package_manifest_by_slug(

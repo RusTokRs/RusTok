@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
 use crate::entities::module::model::{
     registry_principal_label_from_value, MarketplaceModuleVersion, RegistryFollowUpGateLifecycle,
@@ -10,7 +9,7 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
     ReleaseInfo, TenantModule, ToggleModuleResult,
 };
-
+use serde::{Deserialize, Serialize};
 
 pub const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
 
@@ -47,7 +46,6 @@ pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = "mutation UpdateModuleSettings
 
 pub const INSTALL_MODULE_MUTATION: &str = "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
-
 #[cfg(feature = "ssr")]
 pub const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
     "maintenance_handoff",
@@ -77,13 +75,11 @@ pub const ROLLBACK_BUILD_MUTATION: &str = "mutation RollbackBuild($buildId: Stri
 #[cfg(feature = "ssr")]
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EnabledModulesResponse {
     #[serde(rename = "enabledModules")]
     pub enabled_modules: Vec<String>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ModuleRegistryResponse {
@@ -91,13 +87,11 @@ pub struct ModuleRegistryResponse {
     pub module_registry: Vec<ModuleInfo>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InstalledModulesResponse {
     #[serde(rename = "installedModules")]
     pub installed_modules: Vec<InstalledModule>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TenantModulesResponse {
@@ -105,12 +99,10 @@ pub struct TenantModulesResponse {
     pub tenant_modules: Vec<TenantModule>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MarketplaceResponse {
     pub marketplace: Vec<MarketplaceModule>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MarketplaceModuleResponse {
@@ -118,13 +110,11 @@ pub struct MarketplaceModuleResponse {
     pub marketplace_module: Option<MarketplaceModule>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ActiveBuildResponse {
     #[serde(rename = "activeBuild")]
     pub active_build: Option<BuildJob>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ActiveReleaseResponse {
@@ -132,13 +122,11 @@ pub struct ActiveReleaseResponse {
     pub active_release: Option<ReleaseInfo>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BuildHistoryResponse {
     #[serde(rename = "buildHistory")]
     pub build_history: Vec<BuildJob>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct BuildProgressEvent {
@@ -153,13 +141,11 @@ pub struct BuildProgressEvent {
     pub error_message: Option<String>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToggleModuleResponse {
     #[serde(rename = "toggleModule")]
     pub toggle_module: ToggleModuleResult,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ModuleOperationRecoveryPlanResponse {
@@ -167,13 +153,11 @@ pub struct ModuleOperationRecoveryPlanResponse {
     pub module_operation_recovery_plan: Option<ModuleOperationRecoveryPlan>,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FailedModuleOperationRecoveryPlansResponse {
     #[serde(rename = "failedModuleOperationRecoveryPlans")]
     pub failed_module_operation_recovery_plans: Vec<ModuleOperationRecoveryPlan>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RetryFailedModuleOperationPostHookResponse {
@@ -181,13 +165,11 @@ pub struct RetryFailedModuleOperationPostHookResponse {
     pub retry_failed_module_operation_post_hook: ModuleOperationRecoveryPlan,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CompensateFailedModuleOperationResponse {
     #[serde(rename = "compensateFailedModuleOperation")]
     pub compensate_failed_module_operation: TenantModule,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UpdateModuleSettingsResponse {
@@ -195,13 +177,11 @@ pub struct UpdateModuleSettingsResponse {
     pub update_module_settings: TenantModule,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InstallModuleResponse {
     #[serde(rename = "installModule")]
     pub install_module: BuildJob,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UninstallModuleResponse {
@@ -209,20 +189,17 @@ pub struct UninstallModuleResponse {
     pub uninstall_module: BuildJob,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UpgradeModuleResponse {
     #[serde(rename = "upgradeModule")]
     pub upgrade_module: BuildJob,
 }
 
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RollbackBuildResponse {
     #[serde(rename = "rollbackBuild")]
     pub rollback_build: BuildJob,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryMutationResult {
@@ -240,7 +217,6 @@ pub struct RegistryMutationResult {
     pub errors: Vec<String>,
     pub next_step: Option<String>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryPublishStatusContract {
@@ -267,7 +243,6 @@ pub struct RegistryPublishStatusContract {
     pub next_step: Option<String>,
 }
 
-
 #[derive(Clone, Debug, Serialize)]
 pub struct ToggleModuleVariables {
     #[serde(rename = "moduleSlug")]
@@ -275,13 +250,11 @@ pub struct ToggleModuleVariables {
     pub enabled: bool,
 }
 
-
 #[derive(Clone, Debug, Serialize)]
 pub struct ModuleOperationRecoveryPlanVariables {
     #[serde(rename = "operationId")]
     pub operation_id: String,
 }
-
 
 #[derive(Clone, Debug, Serialize)]
 pub struct FailedModuleOperationRecoveryPlansVariables {
@@ -290,7 +263,6 @@ pub struct FailedModuleOperationRecoveryPlansVariables {
     pub limit: Option<i32>,
 }
 
-
 #[derive(Clone, Debug, Serialize)]
 pub struct UpdateModuleSettingsVariables {
     #[serde(rename = "moduleSlug")]
@@ -298,13 +270,11 @@ pub struct UpdateModuleSettingsVariables {
     pub settings: String,
 }
 
-
 #[derive(Clone, Debug, Serialize)]
 pub struct BuildHistoryVariables {
     pub limit: i32,
     pub offset: i32,
 }
-
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MarketplaceVariables {
@@ -320,12 +290,10 @@ pub struct MarketplaceVariables {
     pub installed_only: Option<bool>,
 }
 
-
 #[derive(Clone, Debug, Serialize)]
 pub struct MarketplaceModuleVariables {
     pub slug: String,
 }
-
 
 #[derive(Clone, Debug, Serialize)]
 pub struct InstallModuleVariables {
@@ -333,19 +301,16 @@ pub struct InstallModuleVariables {
     pub version: String,
 }
 
-
 #[derive(Clone, Debug, Serialize)]
 pub struct UninstallModuleVariables {
     pub slug: String,
 }
-
 
 #[derive(Clone, Debug, Serialize)]
 pub struct UpgradeModuleVariables {
     pub slug: String,
     pub version: String,
 }
-
 
 #[derive(Clone, Debug, Serialize)]
 pub struct RollbackBuildVariables {

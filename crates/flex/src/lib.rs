@@ -38,10 +38,8 @@ pub use standalone::{
     list_entries, list_schemas, update_entry, update_entry_with_event, update_schema,
     update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
     validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
-    validate_update_schema_command,
-    CreateFlexEntryCommand,
-    CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView, FlexStandaloneService,
-    UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
+    validate_update_schema_command, CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView,
+    FlexSchemaView, FlexStandaloneService, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
 };
 
 pub use events::{

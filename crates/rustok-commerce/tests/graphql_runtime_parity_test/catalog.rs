@@ -118,8 +118,6 @@ async fn storefront_graphql_filters_channel_hidden_products() {
     assert!(hidden_json["storefrontProduct"].is_null());
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_product_uses_channel_visible_inventory() {
     let (db, catalog, _) = setup().await;
@@ -196,8 +194,6 @@ async fn storefront_graphql_product_uses_channel_visible_inventory() {
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_rejects_disabled_channel_module() {
     let (db, _, _) = setup().await;
@@ -269,8 +265,6 @@ async fn storefront_graphql_rejects_disabled_channel_module() {
         Some(async_graphql::Value::String(code)) if code == "MODULE_NOT_ENABLED"
     ));
 }
-
-
 
 #[tokio::test]
 async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
@@ -404,4 +398,3 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
         Value::from("Parity Product")
     );
 }
-

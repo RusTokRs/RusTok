@@ -338,7 +338,6 @@ pub trait IndexRebuildPort: Send + Sync {
     ) -> Result<IndexRebuildOutcome, PortError>;
 }
 
-
 /// Parse the shared string tenant id from `PortContext` into the UUID shape used by persisted index rows.
 pub fn parse_index_context_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {

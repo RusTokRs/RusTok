@@ -170,10 +170,10 @@ pub fn validate_moderation_decision(
 #[cfg(test)]
 mod tests {
     use super::{
-        BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
-        ContentAiApprovalMode, GeneratedBlogDraft, GeneratedModerationDecision,
         content_ai_policy_matrix, content_ai_sensitive_tools, content_ai_verticals,
-        normalize_moderation_decision, validate_moderation_decision,
+        normalize_moderation_decision, validate_moderation_decision, ContentAiApprovalMode,
+        GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG,
+        CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
     };
 
     #[test]

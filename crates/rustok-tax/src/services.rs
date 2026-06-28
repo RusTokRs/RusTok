@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
@@ -314,8 +314,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        REGION_DEFAULT_TAX_PROVIDER_ID, RegionTaxProvider, TaxCalculationInput,
-        TaxPolicyCountryRule, TaxPolicySnapshot, TaxProvider, TaxableAmount,
+        RegionTaxProvider, TaxCalculationInput, TaxPolicyCountryRule, TaxPolicySnapshot,
+        TaxProvider, TaxableAmount, REGION_DEFAULT_TAX_PROVIDER_ID,
     };
 
     #[tokio::test]
@@ -360,24 +360,18 @@ mod tests {
 
         assert_eq!(result.tax_total, Decimal::from(22));
         assert_eq!(result.lines.len(), 2);
-        assert!(
-            result
-                .lines
-                .iter()
-                .all(|line| line.provider_id == REGION_DEFAULT_TAX_PROVIDER_ID)
-        );
-        assert!(
-            result
-                .lines
-                .iter()
-                .any(|line| line.line_item_id == Some(line_item_id))
-        );
-        assert!(
-            result
-                .lines
-                .iter()
-                .any(|line| line.shipping_option_id == Some(shipping_option_id))
-        );
+        assert!(result
+            .lines
+            .iter()
+            .all(|line| line.provider_id == REGION_DEFAULT_TAX_PROVIDER_ID));
+        assert!(result
+            .lines
+            .iter()
+            .any(|line| line.line_item_id == Some(line_item_id)));
+        assert!(result
+            .lines
+            .iter()
+            .any(|line| line.shipping_option_id == Some(shipping_option_id)));
     }
 
     #[tokio::test]
@@ -408,11 +402,9 @@ mod tests {
             .await
             .expect_err("unknown provider should be rejected");
 
-        assert!(
-            error
-                .to_string()
-                .contains("unknown tax provider_id: external_tax")
-        );
+        assert!(error
+            .to_string()
+            .contains("unknown tax provider_id: external_tax"));
     }
 
     #[tokio::test]
@@ -475,11 +467,9 @@ mod tests {
             .await
             .expect_err("unknown channel provider should be rejected");
 
-        assert!(
-            error
-                .to_string()
-                .contains("unknown tax provider_id: external_tax")
-        );
+        assert!(error
+            .to_string()
+            .contains("unknown tax provider_id: external_tax"));
     }
 
     #[tokio::test]

@@ -9,6 +9,11 @@ use rustok_api::{
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
+use super::{
+    super::common::{PaginatedResponse, PaginationMeta},
+    StoreContextQuery, StoreListProductsParams,
+};
+use crate::controllers::products::ProductListItem;
 use crate::{
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
     entities::{product, product_translation},
@@ -20,12 +25,7 @@ use crate::{
         is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
         shipping_profile_slug_from_product_metadata,
     },
-    CatalogService, RegionService, FulfillmentService, CartService,
-};
-use crate::controllers::products::ProductListItem;
-use super::{
-    super::common::{PaginatedResponse, PaginationMeta},
-    StoreContextQuery, StoreListProductsParams,
+    CartService, CatalogService, FulfillmentService, RegionService,
 };
 
 /// List published storefront products

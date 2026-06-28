@@ -62,8 +62,12 @@ pub async fn ensure_order_schema(db: &DatabaseConnection) {
         .expect("tenants table should be created for locale resolution");
 
     create_entity_table(db, &builder, schema.create_table_from_entity(order::Entity)).await;
-    create_entity_table(db, &builder, schema.create_table_from_entity(order_line_item::Entity))
-        .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_line_item::Entity),
+    )
+    .await;
     create_entity_table(
         db,
         &builder,
@@ -82,10 +86,18 @@ pub async fn ensure_order_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(order_tax_line::Entity),
     )
     .await;
-    create_entity_table(db, &builder, schema.create_table_from_entity(order_change::Entity))
-        .await;
-    create_entity_table(db, &builder, schema.create_table_from_entity(order_return::Entity))
-        .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_change::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_return::Entity),
+    )
+    .await;
     create_entity_table(
         db,
         &builder,

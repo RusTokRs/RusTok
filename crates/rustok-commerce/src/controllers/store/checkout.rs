@@ -9,12 +9,10 @@ use rustok_api::{
 };
 use uuid::Uuid;
 
+use super::{StoreCartContextPatch, StoreCompleteCartInput, StoreCreatePaymentCollectionInput};
 use crate::{
     dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollectionResponse},
     CartService, PaymentService,
-};
-use super::{
-    StoreCartContextPatch, StoreCompleteCartInput, StoreCreatePaymentCollectionInput,
 };
 
 /// Create payment collection from storefront cart
@@ -47,10 +45,16 @@ pub async fn create_payment_collection(
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     super::ensure_cart_allows_payment_collection(&cart)?;
-    let cart =
-        super::reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &cart_service, cart)
-            .await?;
-    let context = super::resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?;
+    let cart = super::reprice_storefront_cart_line_items(
+        &ctx,
+        tenant.id,
+        &request_context,
+        &cart_service,
+        cart,
+    )
+    .await?;
+    let context =
+        super::resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?;
 
     let service = PaymentService::new(ctx.db.clone());
     if let Some(existing) = service
@@ -69,7 +73,10 @@ pub async fn create_payment_collection(
                 customer_id: cart.customer_id,
                 currency_code: cart.currency_code.clone(),
                 amount: cart.total_amount,
-                metadata: super::merge_metadata(input.metadata, super::cart_context_metadata(&cart, &context)),
+                metadata: super::merge_metadata(
+                    input.metadata,
+                    super::cart_context_metadata(&cart, &context),
+                ),
             },
         )
         .await
@@ -139,9 +146,14 @@ pub async fn complete_cart_checkout(
         .await?
         .cart;
     }
-    let _ =
-        super::reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &cart_service, cart)
-            .await?;
+    let _ = super::reprice_storefront_cart_line_items(
+        &ctx,
+        tenant.id,
+        &request_context,
+        &cart_service,
+        cart,
+    )
+    .await?;
 
     let service =
         crate::CheckoutService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));

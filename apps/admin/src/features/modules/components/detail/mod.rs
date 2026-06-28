@@ -1,13 +1,13 @@
 pub mod governance;
+pub mod governance_form;
 pub mod json_editor;
 pub mod metadata;
-pub mod governance_form;
 pub mod metadata_checklist_view;
 pub mod version_trail;
 
-use crate::Locale;
 use crate::entities::module::model::MarketplaceModuleVersion;
 use crate::entities::module::MarketplaceModule;
+use crate::Locale;
 
 pub fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
@@ -61,7 +61,9 @@ pub fn short_checksum(value: Option<&str>) -> Option<String> {
     }
 }
 
-pub fn latest_active_registry_version(module: &MarketplaceModule) -> Option<&MarketplaceModuleVersion> {
+pub fn latest_active_registry_version(
+    module: &MarketplaceModule,
+) -> Option<&MarketplaceModuleVersion> {
     module.versions.iter().find(|version| !version.yanked)
 }
 

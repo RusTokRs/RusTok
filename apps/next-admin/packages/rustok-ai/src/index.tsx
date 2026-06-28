@@ -2456,8 +2456,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                       await loadBootstrap();
                       await loadSession(id);
                     } finally {
-                      setIsSubmittingProductAttributes(false);
-                    }
+                        setIsSubmittingProductAttributes(false);
+                      }
+                    });
                   }}
                 >
                   <Input

@@ -110,8 +110,6 @@ async fn storefront_graphql_pricing_helpers_respect_explicit_channel_override() 
     assert_eq!(global_rule["adjustmentPercent"], Value::from("12.5"));
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_active_price_lists_clear_rule_metadata_without_stale_state() {
     let (db, _catalog, _cart_service) = setup().await;
@@ -164,8 +162,6 @@ async fn storefront_graphql_active_price_lists_clear_rule_metadata_without_stale
     assert_eq!(option["ruleKind"], Value::Null);
     assert_eq!(option["adjustmentPercent"], Value::Null);
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_active_price_lists_respect_scope_update_boundary() {
@@ -243,8 +239,6 @@ async fn storefront_graphql_active_price_lists_respect_scope_update_boundary() {
         "updated list should not leak into a different channel scope"
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_pricing_product_applies_price_list_rule_without_override() {
@@ -349,8 +343,6 @@ async fn admin_graphql_pricing_product_applies_price_list_rule_without_override(
         Value::from(true)
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_pricing_product_prefers_explicit_override_over_price_list_rule() {
@@ -464,8 +456,6 @@ async fn admin_graphql_pricing_product_prefers_explicit_override_over_price_list
         Value::from(price_list_id.to_string())
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_channel() {
@@ -583,8 +573,6 @@ async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_cha
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_pricing_product_keeps_compare_at_without_sale_semantics_when_amount_matches()
 {
@@ -671,8 +659,6 @@ async fn admin_graphql_pricing_product_keeps_compare_at_without_sale_semantics_w
         Value::from(false)
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_pricing_product_applies_channel_scoped_rule_only_for_matching_context()
@@ -840,8 +826,6 @@ async fn storefront_graphql_pricing_product_applies_channel_scoped_rule_only_for
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_update_pricing_variant_price_returns_written_row() {
     let (db, catalog, _cart_service) = setup().await;
@@ -925,8 +909,6 @@ async fn admin_graphql_update_pricing_variant_price_returns_written_row() {
         Value::from("web-store")
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_scope() {
@@ -1065,8 +1047,6 @@ async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_sco
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_update_pricing_variant_price_rejects_price_list_scope_mismatch() {
     let (db, catalog, _cart_service) = setup().await;
@@ -1139,8 +1119,6 @@ async fn admin_graphql_update_pricing_variant_price_rejects_price_list_scope_mis
         .find(|price| price.price_list_id == Some(price_list_id));
     assert!(scoped_override.is_none());
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_preview_pricing_variant_discount_returns_typed_preview() {
@@ -1229,8 +1207,6 @@ async fn admin_graphql_preview_pricing_variant_discount_returns_typed_preview() 
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_apply_pricing_variant_discount_updates_base_row() {
     let (db, catalog, _cart_service) = setup().await;
@@ -1303,8 +1279,6 @@ async fn admin_graphql_apply_pricing_variant_discount_updates_base_row() {
         .expect("updated price should load");
     assert_eq!(updated, Some(Decimal::from_str("17.99").unwrap()));
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_preview_and_apply_cart_shipping_promotion() {
@@ -1512,8 +1486,6 @@ async fn admin_graphql_preview_and_apply_cart_shipping_promotion() {
     assert!(metadata.get("display_label").is_none());
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_preview_cart_promotion_rejects_missing_line_item_target() {
     let (db, _catalog, cart_service) = setup().await;
@@ -1569,8 +1541,6 @@ async fn admin_graphql_preview_cart_promotion_rejects_missing_line_item_target()
         .message
         .contains("line_item_id is required for line_item scope"));
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_update_price_list_rule_updates_active_option() {
@@ -1628,8 +1598,6 @@ async fn admin_graphql_update_price_list_rule_updates_active_option() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_update_price_list_rule_rejects_future_price_list() {
     let (db, _catalog, _cart_service) = setup().await;
@@ -1676,8 +1644,6 @@ async fn admin_graphql_update_price_list_rule_rejects_future_price_list() {
         .message
         .contains("price_list_id is not active yet"));
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_update_price_list_rule_clears_metadata() {
@@ -1735,8 +1701,6 @@ async fn admin_graphql_update_price_list_rule_clears_metadata() {
         Value::Null
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_update_price_list_scope_updates_active_option_and_rows() {
@@ -1830,8 +1794,6 @@ async fn admin_graphql_update_price_list_scope_updates_active_option_and_rows() 
     assert_eq!(scoped_row.channel_id, Some(channel_id));
     assert_eq!(scoped_row.channel_slug.as_deref(), Some("web-store"));
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_update_price_list_scope_clears_boundary_and_rows() {
@@ -1934,8 +1896,6 @@ async fn admin_graphql_update_price_list_scope_clears_boundary_and_rows() {
     assert_eq!(global_row.channel_id, None);
     assert_eq!(global_row.channel_slug, None);
 }
-
-
 
 #[tokio::test]
 async fn pricing_graphql_facades_reject_price_list_channel_mismatch() {
@@ -2042,8 +2002,6 @@ async fn pricing_graphql_facades_reject_price_list_channel_mismatch() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_pricing_product_rejects_non_letter_currency_code() {
     let (db, _catalog, _cart_service) = setup().await;
@@ -2083,8 +2041,6 @@ async fn admin_graphql_pricing_product_rejects_non_letter_currency_code() {
         response.errors
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_pricing_product_rejects_non_positive_quantity() {
@@ -2127,8 +2083,6 @@ async fn admin_graphql_pricing_product_rejects_non_positive_quantity() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_pricing_product_rejects_resolution_context_without_currency_code() {
     let (db, _catalog, _cart_service) = setup().await;
@@ -2170,8 +2124,6 @@ async fn admin_graphql_pricing_product_rejects_resolution_context_without_curren
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_pricing_product_rejects_invalid_resolution_context() {
     let (db, _catalog, _cart_service) = setup().await;
@@ -2210,8 +2162,6 @@ async fn storefront_graphql_pricing_product_rejects_invalid_resolution_context()
         response.errors
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_pricing_product_rejects_resolution_context_without_currency_code() {
@@ -2252,8 +2202,6 @@ async fn storefront_graphql_pricing_product_rejects_resolution_context_without_c
         response.errors
     );
 }
-
-
 
 #[tokio::test]
 async fn pricing_graphql_facades_preserve_seller_id_as_identity_boundary() {
@@ -2338,4 +2286,3 @@ async fn pricing_graphql_facades_preserve_seller_id_as_identity_boundary() {
         Value::from("Localized Vendor Display")
     );
 }
-

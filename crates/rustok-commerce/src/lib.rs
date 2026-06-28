@@ -36,14 +36,14 @@ pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
-    CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService,
-    CreateReturnDecisionInput, CustomerService, FulfillmentService, InventoryService, OrderService,
-    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
-    PaymentService, PostOrderOrchestrationError, PostOrderOrchestrationService, PricingService,
-    RegionService, ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
+    ApplyOrderChangeResult, CartService, CatalogService, CheckoutError, CheckoutResult,
+    CheckoutService, CreateReturnDecisionInput, CustomerService, ExchangeDifferenceRefundInput,
+    FulfillmentService, InventoryService, OrderService, PaymentOrchestrationError,
+    PaymentOrchestrationResult, PaymentOrchestrationService, PaymentService,
+    PostOrderOrchestrationError, PostOrderOrchestrationService, PricingService, RegionService,
+    ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
     ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
     StoreContextError, StoreContextResult, StoreContextService,
-    ApplyOrderChangeResult, ExchangeDifferenceRefundInput,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 pub use state_machine::{

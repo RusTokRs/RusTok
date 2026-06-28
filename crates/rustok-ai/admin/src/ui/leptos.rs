@@ -3,20 +3,22 @@
 #![allow(clippy::manual_checked_ops)]
 #![allow(clippy::redundant_iter_cloned)]
 
+use crate::model;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::model::AiLiveStreamStatePayload;
+#[cfg(target_arch = "wasm32")]
+use crate::model::{
+    AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope,
+};
+use crate::model::{
+    AiMetricBucketPayload, AiProviderProfilePayload, AiTaskProfilePayload, AiToolProfilePayload,
+};
+use crate::transport;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::model::AiLiveStreamStatePayload;
-#[cfg(target_arch = "wasm32")]
-use crate::model::{AiLiveStreamStatePayload, AiRunStreamEventKindPayload, AiSessionSubscriptionEnvelope};
-use crate::model::{
-    AiMetricBucketPayload, AiProviderProfilePayload, AiTaskProfilePayload, AiToolProfilePayload,
-};
-use crate::model;
-use crate::transport;
 use rustok_api::{AdminQueryKey, UiRouteContext};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -27,17 +29,17 @@ use wasm_bindgen::{closure::Closure, JsCast};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{CloseEvent, ErrorEvent, Event, MessageEvent, WebSocket};
 
-use crate::core::{
-    alloy_task_payload, blog_task_payload, image_task_payload, optional_text,
-    parse_csv, product_attributes_task_payload, product_task_payload, summarize_recent_runs,
-};
-use crate::i18n::t;
-use super::components::provider_panel::AiProviderPanel;
-use super::components::tool_panel::AiToolPanel;
-use super::components::task_panel::AiTaskPanel;
-use super::components::jobs_panel::AiJobsPanel;
 use super::components::chat_session_panel::AiChatSessionPanel;
 use super::components::diagnostics_panel::AiDiagnosticsPanel;
+use super::components::jobs_panel::AiJobsPanel;
+use super::components::provider_panel::AiProviderPanel;
+use super::components::task_panel::AiTaskPanel;
+use super::components::tool_panel::AiToolPanel;
+use crate::core::{
+    alloy_task_payload, blog_task_payload, image_task_payload, optional_text, parse_csv,
+    product_attributes_task_payload, product_task_payload, summarize_recent_runs,
+};
+use crate::i18n::t;
 #[cfg(target_arch = "wasm32")]
 use crate::transport::graphql_adapter::{
     connection_init_message, graphql_ws_url_from_location, session_events_subscribe_message,
@@ -1243,7 +1245,8 @@ pub fn AiAdmin() -> impl IntoView {
         has_product_id && matches_product_attributes
     };
 
-    let can_submit_product_attributes_signal = Signal::derive(move || can_submit_product_attributes());
+    let can_submit_product_attributes_signal =
+        Signal::derive(move || can_submit_product_attributes());
 
     let on_run_product_attributes_job = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -1658,7 +1661,7 @@ pub fn AiAdmin() -> impl IntoView {
                                     <Show when=move || !diagnostics_only.get()>
                                         <AiJobsPanel
                                             ui_locale=ui_locale_jobs.clone()
-                                            
+
                                             blog_title=blog_title
                                             blog_locale=blog_locale
                                             blog_post_id=blog_post_id
@@ -1674,7 +1677,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             blog_copy_instructions=blog_copy_instructions
                                             blog_assistant_prompt=blog_assistant_prompt
                                             on_run_blog_job=Callback::new(on_run_blog_job.clone())
-                                            
+
                                             product_title=product_title
                                             product_locale=product_locale
                                             product_id=product_id
@@ -1686,7 +1689,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             product_copy_instructions=product_copy_instructions
                                             product_assistant_prompt=product_assistant_prompt
                                             on_run_product_job=Callback::new(on_run_product_job.clone())
-                                            
+
                                             product_attributes_title=product_attributes_title
                                             product_attributes_locale=product_attributes_locale
                                             product_attributes_product_id=product_attributes_product_id
@@ -1699,7 +1702,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             product_attributes_assistant_prompt=product_attributes_assistant_prompt
                                             on_run_product_attributes_job=Callback::new(on_run_product_attributes_job.clone())
                                             can_submit_product_attributes=can_submit_product_attributes_signal
-                                            
+
                                             image_title=image_title
                                             image_locale=image_locale
                                             image_prompt=image_prompt
@@ -1711,7 +1714,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             image_size=image_size
                                             image_assistant_prompt=image_assistant_prompt
                                             on_run_image_job=Callback::new(on_run_image_job.clone())
-                                            
+
                                             alloy_title=alloy_title
                                             alloy_locale=alloy_locale
                                             alloy_operation=alloy_operation
@@ -1721,7 +1724,7 @@ pub fn AiAdmin() -> impl IntoView {
                                             alloy_runtime_payload=alloy_runtime_payload
                                             alloy_prompt=alloy_prompt
                                             on_run_alloy_job=Callback::new(on_run_alloy_job.clone())
-                                            
+
                                             session_title=session_title
                                             session_locale=session_locale
                                             session_message=session_message
@@ -1811,7 +1814,10 @@ pub(crate) fn bucket_summary(locale: Option<&str>, buckets: &[AiMetricBucketPayl
     }
 }
 
-pub(crate) fn recent_run_summary(locale: Option<&str>, runs: &[model::AiRecentRunPayload]) -> String {
+pub(crate) fn recent_run_summary(
+    locale: Option<&str>,
+    runs: &[model::AiRecentRunPayload],
+) -> String {
     if runs.is_empty() {
         return t(
             locale,
@@ -1912,7 +1918,11 @@ pub(crate) fn task_profile_summary(
     .replace("{state}", active_state_label(locale, active).as_str())
 }
 
-pub(crate) fn direct_transport_summary(locale: Option<&str>, provider: &str, task_profile: &str) -> String {
+pub(crate) fn direct_transport_summary(
+    locale: Option<&str>,
+    provider: &str,
+    task_profile: &str,
+) -> String {
     t(
         locale,
         "ai.summary.transportDirect",
@@ -1976,7 +1986,11 @@ pub(crate) fn session_profile_summary(
     .replace("{mode}", mode)
 }
 
-pub(crate) fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>, resolved: &str) -> String {
+pub(crate) fn locale_flow_summary(
+    locale: Option<&str>,
+    requested: Option<&str>,
+    resolved: &str,
+) -> String {
     let requested_value = requested
         .map(ToString::to_string)
         .unwrap_or_else(|| t(locale, "ai.common.auto", "auto"));
@@ -1989,7 +2003,12 @@ pub(crate) fn locale_flow_summary(locale: Option<&str>, requested: Option<&str>,
     .replace("{resolved}", resolved)
 }
 
-pub(crate) fn run_path_summary(locale: Option<&str>, status: &str, mode: &str, path: &str) -> String {
+pub(crate) fn run_path_summary(
+    locale: Option<&str>,
+    status: &str,
+    mode: &str,
+    path: &str,
+) -> String {
     t(
         locale,
         "ai.summary.runPath",

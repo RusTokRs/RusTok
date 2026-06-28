@@ -91,11 +91,11 @@ pub use module::{
     MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
+pub use permissions::{Action, Permission, Resource};
 pub use ports::{
     PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
     PortOperationKind,
 };
-pub use permissions::{Action, Permission, Resource};
 pub use rbac::{PermissionScope, Rbac, SecurityContext};
 pub use registry::ModuleRegistry;
 pub use resilience::{

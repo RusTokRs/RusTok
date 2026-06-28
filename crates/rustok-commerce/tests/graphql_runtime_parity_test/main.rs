@@ -415,11 +415,15 @@ fn build_schema(
     auth: Option<AuthContext>,
 ) -> CommerceSchema {
     let event_bus = mock_transactional_event_bus();
-    let mut builder = Schema::build(CommerceQuery, CommerceMutation::default(), EmptySubscription)
-        .data(db.clone())
-        .data(event_bus)
-        .data(tenant)
-        .data(request_context);
+    let mut builder = Schema::build(
+        CommerceQuery,
+        CommerceMutation::default(),
+        EmptySubscription,
+    )
+    .data(db.clone())
+    .data(event_bus)
+    .data(tenant)
+    .data(request_context);
 
     if let Some(auth) = auth {
         builder = builder.data(auth);
@@ -1487,9 +1491,8 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
     .unwrap();
 }
 
-
-pub mod catalog;
-pub mod shipping;
-pub mod pricing;
 pub mod cart;
+pub mod catalog;
 pub mod checkout;
+pub mod pricing;
+pub mod shipping;

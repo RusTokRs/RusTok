@@ -1554,7 +1554,9 @@ fn ensure_remote_validation_claim_runner(
     Ok(())
 }
 
-pub(crate) fn validation_stage_details_value(stage: &registry_validation_stage::Model) -> serde_json::Value {
+pub(crate) fn validation_stage_details_value(
+    stage: &registry_validation_stage::Model,
+) -> serde_json::Value {
     serde_json::json!({
         "stage_id": stage.id.clone(),
         "stage_key": stage.stage_key.clone(),

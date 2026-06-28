@@ -13,9 +13,7 @@ mod tests;
 
 use loco_rs::{app::AppContext, controller::Routes, Error, Result};
 use rust_decimal::Decimal;
-use rustok_api::{
-    loco::transactional_event_bus_from_context, RequestContext,
-};
+use rustok_api::{loco::transactional_event_bus_from_context, RequestContext};
 use rustok_cart::CartError;
 use rustok_core::locale_tags_match;
 use rustok_inventory::check_variant_availability_for_public_channel;
@@ -28,6 +26,7 @@ use std::collections::BTreeSet;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use super::common::PaginationParams;
 use crate::{
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
@@ -42,10 +41,9 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    CartService, CustomerService, FulfillmentService, OrderService,
-    PricingService, StoreContextService,
+    CartService, CustomerService, FulfillmentService, OrderService, PricingService,
+    StoreContextService,
 };
-use super::common::PaginationParams;
 
 pub const MODULE_SLUG: &str = "commerce";
 
@@ -203,7 +201,10 @@ pub(crate) fn storefront_public_channel_slug_for_cart(
         .or_else(|| public_channel_slug_from_request(request_context))
 }
 
-pub(crate) fn ensure_store_cart_access(cart: &CartResponse, customer_id: Option<Uuid>) -> Result<()> {
+pub(crate) fn ensure_store_cart_access(
+    cart: &CartResponse,
+    customer_id: Option<Uuid>,
+) -> Result<()> {
     if let Some(expected_customer_id) = cart.customer_id {
         if customer_id != Some(expected_customer_id) {
             return Err(Error::Unauthorized(
@@ -563,7 +564,9 @@ pub(crate) async fn validate_selected_shipping_option(
     Ok(())
 }
 
-pub(crate) fn current_shipping_selections(cart: &CartResponse) -> Vec<crate::dto::CartShippingSelectionInput> {
+pub(crate) fn current_shipping_selections(
+    cart: &CartResponse,
+) -> Vec<crate::dto::CartShippingSelectionInput> {
     cart.delivery_groups
         .iter()
         .map(|group| crate::dto::CartShippingSelectionInput {
@@ -784,7 +787,9 @@ pub(crate) fn default_metadata() -> Value {
     json!({})
 }
 
-pub(crate) fn deserialize_patch_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+pub(crate) fn deserialize_patch_field<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

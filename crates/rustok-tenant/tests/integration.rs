@@ -3,13 +3,13 @@ use std::sync::Arc;
 use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
+    entities::{tenant, tenant_module},
     CreateTenantInput, PortActor, PortContext, PortErrorKind, TenantError, TenantReadPort,
     TenantReadRequest, TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
-    entities::{tenant, tenant_module},
 };
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, QueryOrder, Schema,
-    sea_query::TableCreateStatement,
+    sea_query::TableCreateStatement, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, QueryOrder, Schema,
 };
 
 async fn setup_db() -> DatabaseConnection {
@@ -440,21 +440,15 @@ async fn tenant_mutations_publish_outbox_events() {
         .expect("outbox events should load");
 
     assert_eq!(events.len(), 3);
-    assert!(
-        events
-            .iter()
-            .any(|event| event.event_type == "tenant.created")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event.event_type == "tenant.updated")
-    );
-    assert!(
-        events
-            .iter()
-            .any(|event| event.event_type == "tenant.module.toggled")
-    );
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tenant.created"));
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tenant.updated"));
+    assert!(events
+        .iter()
+        .any(|event| event.event_type == "tenant.module.toggled"));
 
     let module_toggle_payload = events
         .iter()

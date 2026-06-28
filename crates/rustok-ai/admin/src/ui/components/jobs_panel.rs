@@ -1,12 +1,12 @@
-use leptos::prelude::*;
-use leptos::ev::SubmitEvent;
-use crate::ui::leptos::{Card, TextField, direct_transport_summary, session_transport_summary};
 use crate::i18n::t;
+use crate::ui::leptos::{direct_transport_summary, session_transport_summary, Card, TextField};
+use leptos::ev::SubmitEvent;
+use leptos::prelude::*;
 
 #[component]
 pub fn AiJobsPanel(
     ui_locale: Option<String>,
-    
+
     // Blog Draft
     blog_title: RwSignal<String>,
     blog_locale: RwSignal<String>,

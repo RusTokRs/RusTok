@@ -1,18 +1,17 @@
 use std::collections::HashMap;
 
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
+    Json,
 };
 use chrono::Utc;
-use loco_rs::{Error, Result, app::AppContext, controller::Routes};
+use loco_rs::{app::AppContext, controller::Routes, Error, Result};
 use rustok_api::TenantContext;
 use uuid::Uuid;
 
 use crate::{
-    ScriptError,
     api::{
         CreateScriptRequest, EntityInput, ExecutionLogResponse, ListExecutionLogQuery,
         ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, RunScriptRequest,
@@ -22,6 +21,7 @@ use crate::{
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic},
+    ScriptError,
 };
 
 pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{id}/executions"];

@@ -8,17 +8,17 @@ use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, Tenant
 use rustok_core::Permission;
 use uuid::Uuid;
 
-use crate::{
-    dto::{
-        CancelOrderReturnInput, CreateOrderReturnInput, CreateRefundInput, CompleteRefundInput,
-        OrderReturnResponse, ListOrderReturnsInput,
-    },
-    OrderService, PaymentService, PostOrderOrchestrationService, CreateReturnDecisionInput,
-    ReturnDecisionResponse,
-};
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
     AdminCompleteOrderReturnInput, ListOrderReturnsParams,
+};
+use crate::{
+    dto::{
+        CancelOrderReturnInput, CompleteRefundInput, CreateOrderReturnInput, CreateRefundInput,
+        ListOrderReturnsInput, OrderReturnResponse,
+    },
+    CreateReturnDecisionInput, OrderService, PaymentService, PostOrderOrchestrationService,
+    ReturnDecisionResponse,
 };
 
 /// Create admin order return
@@ -317,7 +317,11 @@ pub async fn complete_order_return(
     }
 
     if let Some(exchange_input) = input.exchange {
-        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || has_refund_helper || has_claim_helper {
+        if complete_input.refund_id.is_some()
+            || complete_input.order_change_id.is_some()
+            || has_refund_helper
+            || has_claim_helper
+        {
             return Err(Error::BadRequest(
                 "exchange helper cannot be combined with explicit refund_id, order_change_id, refund helper, or claim helper"
                     .to_string(),
@@ -362,7 +366,11 @@ pub async fn complete_order_return(
     }
 
     if let Some(claim_input) = input.claim {
-        if complete_input.refund_id.is_some() || complete_input.order_change_id.is_some() || has_refund_helper || has_exchange_helper {
+        if complete_input.refund_id.is_some()
+            || complete_input.order_change_id.is_some()
+            || has_refund_helper
+            || has_exchange_helper
+        {
             return Err(Error::BadRequest(
                 "claim helper cannot be combined with explicit refund_id, order_change_id, refund helper, or exchange helper"
                     .to_string(),

@@ -1,13 +1,13 @@
+use super::{humanize_token, short_checksum, tr};
 use crate::entities::module::model::{
     RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryGovernanceEventLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
-    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
-    RegistryGovernanceEventPayloadLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryOwnerLifecycle, RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
+    RegistryValidationStageLifecycle,
 };
 use crate::entities::module::MarketplaceModule;
 use crate::features::modules::api::RegistryMutationResult;
 use crate::Locale;
-use super::{tr, humanize_token, short_checksum};
 
 #[derive(Clone)]
 pub struct RegistryLiveApiActionHint {
@@ -107,7 +107,10 @@ pub fn status_eq(value: &str, expected: &str) -> bool {
     value.eq_ignore_ascii_case(expected)
 }
 
-pub fn governance_action_available(actions: &[RegistryGovernanceActionLifecycle], key: &str) -> bool {
+pub fn governance_action_available(
+    actions: &[RegistryGovernanceActionLifecycle],
+    key: &str,
+) -> bool {
     actions
         .iter()
         .any(|action| action.key.eq_ignore_ascii_case(key))
@@ -539,9 +542,9 @@ pub fn lifecycle_detail_lines(
             tr(
                 locale,
                 "Owner: [No owner bound to this slug yet]",
-                "Владелец: [Владелец для этого slug ещё не привязан]"
+                "Владелец: [Владелец для этого slug ещё не привязан]",
             )
-            .to_string()
+            .to_string(),
         );
     }
 
@@ -563,9 +566,9 @@ pub fn lifecycle_detail_lines(
             tr(
                 locale,
                 "Release: [No release published yet]",
-                "Релиз: [Релиз ещё не опубликован]"
+                "Релиз: [Релиз ещё не опубликован]",
             )
-            .to_string()
+            .to_string(),
         );
     }
 
@@ -2065,7 +2068,10 @@ pub fn governance_event_title(event_type: &str, locale: Locale) -> String {
     .to_string()
 }
 
-pub fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Locale) -> String {
+pub fn governance_event_summary(
+    event: &RegistryGovernanceEventLifecycle,
+    locale: Locale,
+) -> String {
     let event_type = match event.event_type.as_str() {
         "validation_stage_started" => "validation_stage_running",
         other => other,
@@ -2472,7 +2478,11 @@ pub fn follow_up_gate_detail_lines(
     ));
 
     if !gate.detail.is_empty() {
-        lines.push(format!("{}: {}", tr(locale, "Detail", "Детали"), gate.detail));
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Detail", "Детали"),
+            gate.detail
+        ));
     }
 
     lines
@@ -2481,23 +2491,35 @@ pub fn follow_up_gate_detail_lines(
 pub fn governance_event_type_label(event_type: &str, locale: Locale) -> &'static str {
     match event_type {
         "publish_requested" => tr(locale, "Publish requested", "Запрошена публикация"),
-        "validation_queued" => tr(locale, "Validation queued", "Валидация поставлена в очередь"),
-        "validation_job_queued" => {
-            tr(locale, "Validation job queued", "Валидация job поставлен в очередь")
-        }
+        "validation_queued" => tr(
+            locale,
+            "Validation queued",
+            "Валидация поставлена в очередь",
+        ),
+        "validation_job_queued" => tr(
+            locale,
+            "Validation job queued",
+            "Валидация job поставлен в очередь",
+        ),
         "validation_job_started" => tr(locale, "Validation job started", "Валидация job запущен"),
-        "validation_job_succeeded" => {
-            tr(locale, "Validation job succeeded", "Валидация job завершён успешно")
-        }
-        "validation_job_failed" => {
-            tr(locale, "Validation job failed", "Валидация job завершён с ошибкой")
-        }
+        "validation_job_succeeded" => tr(
+            locale,
+            "Validation job succeeded",
+            "Валидация job завершён успешно",
+        ),
+        "validation_job_failed" => tr(
+            locale,
+            "Validation job failed",
+            "Валидация job завершён с ошибкой",
+        ),
         "validation_passed" => tr(locale, "Validation passed", "Валидация пройдена"),
         "validation_failed" => tr(locale, "Validation failed", "Валидация завершилась ошибкой"),
         "publish_approved" => tr(locale, "Publish approved", "Публикация одобрена"),
-        "publish_approval_override" => {
-            tr(locale, "Publish approved with override", "Публикация одобрена с override")
-        }
+        "publish_approval_override" => tr(
+            locale,
+            "Publish approved with override",
+            "Публикация одобрена с override",
+        ),
         "release_published" => tr(locale, "Release published", "Релиз опубликован"),
         "request_rejected" => tr(locale, "Request rejected", "Запрос отклонён"),
         "changes_requested" => tr(locale, "Changes requested", "Запрошены изменения"),
@@ -2513,8 +2535,8 @@ pub fn governance_event_type_label(event_type: &str, locale: Locale) -> &'static
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use crate::entities::module::model::RegistryOwnerLifecycle;
+    use serde_json::json;
 
     fn sample_owner(owner: &str) -> RegistryOwnerLifecycle {
         RegistryOwnerLifecycle {

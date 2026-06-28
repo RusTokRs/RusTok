@@ -76,11 +76,15 @@ fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> 
     all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")),
     feature = "ssr"
 ))]
-async fn execute_server_graphql(request: ServerGraphqlRequest) -> Result<Value, leptos_graphql::GraphqlHttpError> {
-    let mut graphql_request = leptos_graphql::GraphqlRequest::new(request.query, Some(request.variables));
+async fn execute_server_graphql(
+    request: ServerGraphqlRequest,
+) -> Result<Value, leptos_graphql::GraphqlHttpError> {
+    let mut graphql_request =
+        leptos_graphql::GraphqlRequest::new(request.query, Some(request.variables));
 
     if let Some(sha256_hash) = request.persisted_query_sha256.as_deref() {
-        graphql_request = graphql_request.with_extensions(leptos_graphql::persisted_query_extension(sha256_hash));
+        graphql_request =
+            graphql_request.with_extensions(leptos_graphql::persisted_query_extension(sha256_hash));
     }
 
     leptos_graphql::execute(
@@ -104,11 +108,15 @@ async fn auth_graphql(request: ServerGraphqlRequest) -> Result<Value, ServerFnEr
     #[cfg(not(feature = "ssr"))]
     {
         let _ = request;
-        Err(ServerFnError::ServerError("SSR feature not enabled".to_string()))
+        Err(ServerFnError::ServerError(
+            "SSR feature not enabled".to_string(),
+        ))
     }
 }
 
-async fn execute_auth_graphql(request: ServerGraphqlRequest) -> Result<Value, leptos_graphql::GraphqlHttpError> {
+async fn execute_auth_graphql(
+    request: ServerGraphqlRequest,
+) -> Result<Value, leptos_graphql::GraphqlHttpError> {
     #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
     {
         execute_server_graphql(request).await
@@ -116,22 +124,20 @@ async fn execute_auth_graphql(request: ServerGraphqlRequest) -> Result<Value, le
 
     #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
     {
-        auth_graphql(request)
-            .await
-            .map_err(|err| {
-                let message = err.to_string();
-                if message == "Unauthorized" {
-                    leptos_graphql::GraphqlHttpError::Unauthorized
-                } else if message == "Network error" {
-                    leptos_graphql::GraphqlHttpError::Network
-                } else if let Some(value) = message.strip_prefix("Http error: ") {
-                    leptos_graphql::GraphqlHttpError::Http(value.to_string())
-                } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
-                    leptos_graphql::GraphqlHttpError::Graphql(value.to_string())
-                } else {
-                    leptos_graphql::GraphqlHttpError::Graphql(message)
-                }
-            })
+        auth_graphql(request).await.map_err(|err| {
+            let message = err.to_string();
+            if message == "Unauthorized" {
+                leptos_graphql::GraphqlHttpError::Unauthorized
+            } else if message == "Network error" {
+                leptos_graphql::GraphqlHttpError::Network
+            } else if let Some(value) = message.strip_prefix("Http error: ") {
+                leptos_graphql::GraphqlHttpError::Http(value.to_string())
+            } else if let Some(value) = message.strip_prefix("GraphQL error: ") {
+                leptos_graphql::GraphqlHttpError::Graphql(value.to_string())
+            } else {
+                leptos_graphql::GraphqlHttpError::Graphql(message)
+            }
+        })
     }
 }
 
@@ -154,7 +160,8 @@ where
     })
     .await?;
 
-    serde_json::from_value(response).map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
+    serde_json::from_value(response)
+        .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
 }
 
 pub async fn request_with_persisted<V, T>(
@@ -177,16 +184,20 @@ where
     })
     .await?;
 
-    serde_json::from_value(response).map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
+    serde_json::from_value(response)
+        .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
 }
 
-use crate::model::{GraphqlUserResponse, GraphqlUsersResponse, OAuthApp, AppType};
+use crate::model::{AppType, GraphqlUserResponse, GraphqlUsersResponse, OAuthApp};
 
 pub const USERS_QUERY: &str = "query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String) { users(pagination: $pagination, filter: $filter, search: $search) { edges { cursor node { id email name role status createdAt tenantName } } pageInfo { totalCount hasNextPage endCursor } } }";
-pub const USERS_QUERY_HASH: &str = "ff1e132e28d2e1c804d8d5ade5966307e17685b9f4b39262d70ecaa4d49abb66";
+pub const USERS_QUERY_HASH: &str =
+    "ff1e132e28d2e1c804d8d5ade5966307e17685b9f4b39262d70ecaa4d49abb66";
 
-pub const USER_DETAILS_QUERY: &str = "query User($id: UUID!) { user(id: $id) { id email name role status createdAt tenantName } }";
-pub const USER_DETAILS_QUERY_HASH: &str = "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7";
+pub const USER_DETAILS_QUERY: &str =
+    "query User($id: UUID!) { user(id: $id) { id email name role status createdAt tenantName } }";
+pub const USER_DETAILS_QUERY_HASH: &str =
+    "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7";
 
 pub const OAUTH_APPS_QUERY: &str = r#"
 query OAuthApps($limit: Int) {
@@ -352,7 +363,15 @@ pub async fn fetch_users(
     }
 
     #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::list_users_native(page, limit, search.clone(), role.clone(), status.clone()).await {
+    match native_server_adapter::list_users_native(
+        page,
+        limit,
+        search.clone(),
+        role.clone(),
+        status.clone(),
+    )
+    .await
+    {
         Ok(response) => Ok(response),
         Err(server_err) => {
             fetch_users_graphql(page, limit, search, role, status, token, tenant_slug)
@@ -452,20 +471,26 @@ pub async fn update_profile(
 ) -> Result<native_server_adapter::ProfileUser, String> {
     #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
     {
-        return update_profile_graphql(token, tenant, name).await.map_err(|err| err.to_string());
+        return update_profile_graphql(token, tenant, name)
+            .await
+            .map_err(|err| err.to_string());
     }
 
     #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::update_profile_native(token.clone(), tenant.clone(), name.clone()).await {
+    match native_server_adapter::update_profile_native(token.clone(), tenant.clone(), name.clone())
+        .await
+    {
         Ok(user) => Ok(user),
-        Err(server_err) => update_profile_graphql(token, tenant, name)
-            .await
-            .map_err(|graphql_err| {
-                format!(
-                    "native path failed: {}; graphql path failed: {}",
-                    server_err, graphql_err
-                )
-            }),
+        Err(server_err) => {
+            update_profile_graphql(token, tenant, name)
+                .await
+                .map_err(|graphql_err| {
+                    format!(
+                        "native path failed: {}; graphql path failed: {}",
+                        server_err, graphql_err
+                    )
+                })
+        }
     }
 }
 
@@ -523,11 +548,20 @@ pub async fn change_password(
 ) -> Result<native_server_adapter::SuccessPayload, String> {
     #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
     {
-        return change_password_graphql(token, tenant, current_password, new_password).await.map_err(|err| err.to_string());
+        return change_password_graphql(token, tenant, current_password, new_password)
+            .await
+            .map_err(|err| err.to_string());
     }
 
     #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
-    match native_server_adapter::change_password_native(token.clone(), tenant.clone(), current_password.clone(), new_password.clone()).await {
+    match native_server_adapter::change_password_native(
+        token.clone(),
+        tenant.clone(),
+        current_password.clone(),
+        new_password.clone(),
+    )
+    .await
+    {
         Ok(payload) => Ok(payload),
         Err(server_err) => change_password_graphql(token, tenant, current_password, new_password)
             .await
@@ -917,7 +951,3 @@ pub async fn revoke_oauth_app(
 
     Ok(response.revoke_oauth_app.id)
 }
-
-
-
-

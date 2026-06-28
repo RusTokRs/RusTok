@@ -8,13 +8,13 @@ use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, Tenant
 use rustok_core::Permission;
 use uuid::Uuid;
 
-use crate::{
-    dto::{CreateProductInput, ProductResponse, UpdateProductInput},
-    CatalogService,
-};
 use super::super::{
     common::{ensure_permissions, PaginatedResponse},
     products::{ListProductsParams, ProductListItem},
+};
+use crate::{
+    dto::{CreateProductInput, ProductResponse, UpdateProductInput},
+    CatalogService,
 };
 
 /// List admin ecommerce products

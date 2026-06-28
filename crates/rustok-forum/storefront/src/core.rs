@@ -211,8 +211,14 @@ mod tests {
 
     #[test]
     fn builds_storefront_copy_and_class_policies_without_framework_state() {
-        assert_eq!(forum_storefront_count_label("{count} threads", 12_u64), "12 threads");
-        assert_eq!(forum_storefront_slug_label("slug: {slug}", "welcome"), "slug: welcome");
+        assert_eq!(
+            forum_storefront_count_label("{count} threads", 12_u64),
+            "12 threads"
+        );
+        assert_eq!(
+            forum_storefront_slug_label("slug: {slug}", "welcome"),
+            "slug: welcome"
+        );
         assert!(forum_storefront_category_card_class(true).contains("border-primary/40"));
         assert!(forum_storefront_topic_card_class(false).contains("hover:shadow-sm"));
         assert!(forum_storefront_accent_style(Some(" #fff ")).contains(" #fff "));

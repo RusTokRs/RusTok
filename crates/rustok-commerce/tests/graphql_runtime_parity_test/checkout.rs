@@ -157,8 +157,6 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
     let (db, catalog, cart_service, checkout, fulfillment) = setup_checkout().await;
@@ -306,8 +304,6 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
         Value::from("Parity Product")
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_services() {
@@ -530,8 +526,6 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_refund_surface_matches_runtime_services() {
     let db = setup_test_db().await;
@@ -746,8 +740,6 @@ async fn admin_graphql_refund_surface_matches_runtime_services() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_refund_query_hides_foreign_tenant_refund() {
     let db = setup_test_db().await;
@@ -851,8 +843,6 @@ async fn admin_graphql_refund_query_hides_foreign_tenant_refund() {
     assert_eq!(json["paymentCollection"], Value::Null);
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_filter() {
     let db = setup_test_db().await;
@@ -954,8 +944,6 @@ async fn admin_graphql_refunds_list_ignores_foreign_tenant_payment_collection_fi
     assert_eq!(json["refunds"]["items"], Value::from(Vec::<Value>::new()));
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_create_refund_rejects_foreign_tenant_payment_collection() {
     let db = setup_test_db().await;
@@ -1037,8 +1025,6 @@ async fn admin_graphql_create_refund_rejects_foreign_tenant_payment_collection()
         response.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_complete_refund_hides_foreign_tenant_refund() {
@@ -1139,8 +1125,6 @@ async fn admin_graphql_complete_refund_hides_foreign_tenant_refund() {
         response.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_refunds_filter_normalizes_status_and_rejects_unknown_values() {
@@ -1258,8 +1242,6 @@ async fn admin_graphql_refunds_filter_normalizes_status_and_rejects_unknown_valu
         invalid_response.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_refunds_filter_supports_order_id() {
@@ -1426,8 +1408,6 @@ async fn admin_graphql_refunds_filter_supports_order_id() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_order_query_exposes_typed_adjustments_and_totals() {
     let db = setup_test_db().await;
@@ -1548,8 +1528,6 @@ async fn admin_graphql_order_query_exposes_typed_adjustments_and_totals() {
     assert_eq!(metadata["rule_code"], Value::from("admin-adjustment"));
     assert!(metadata.get("display_label").is_none());
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_order_query_exposes_shipping_total_and_shipping_scoped_adjustments() {
@@ -1677,8 +1655,6 @@ async fn admin_graphql_order_query_exposes_shipping_total_and_shipping_scoped_ad
     assert!(metadata.get("display_label").is_none());
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
     let db = setup_test_db().await;
@@ -1805,8 +1781,6 @@ async fn admin_graphql_order_query_exposes_tax_breakdown_with_provider_ids() {
         .any(|line| line["lineItemId"].is_null() && line["shippingOptionId"].is_null()));
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_return_decision_creates_completed_claim_order_change() {
     let db = setup_test_db().await;
@@ -1931,8 +1905,6 @@ async fn admin_graphql_return_decision_creates_completed_claim_order_change() {
     assert!(decision["refund"].is_null());
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_complete_return_with_exchange_helper() {
     let db = setup_test_db().await;
@@ -1998,11 +1970,13 @@ async fn admin_graphql_complete_return_with_exchange_helper() {
     );
     let preview_json = r#"{"exchange_type":"size_exchange","items":[{"sku":"GRAPHQL-COMPLETE-EXCHANGE-2","quantity":1}]}"#;
     let response = schema
-        .execute(Request::new(admin_complete_order_return_with_exchange_mutation(
-            tenant_id,
-            order_return.id,
-            preview_json,
-        )))
+        .execute(Request::new(
+            admin_complete_order_return_with_exchange_mutation(
+                tenant_id,
+                order_return.id,
+                preview_json,
+            ),
+        ))
         .await;
     assert!(
         response.errors.is_empty(),
@@ -2049,8 +2023,6 @@ async fn admin_graphql_complete_return_with_exchange_helper() {
         serde_json::json!("exchange")
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_complete_return_with_claim_helper() {
@@ -2117,11 +2089,13 @@ async fn admin_graphql_complete_return_with_claim_helper() {
     );
     let preview_json = r#"{"claim_type":"damaged_item","resolution":"replacement"}"#;
     let response = schema
-        .execute(Request::new(admin_complete_order_return_with_claim_mutation(
-            tenant_id,
-            order_return.id,
-            preview_json,
-        )))
+        .execute(Request::new(
+            admin_complete_order_return_with_claim_mutation(
+                tenant_id,
+                order_return.id,
+                preview_json,
+            ),
+        ))
         .await;
     assert!(
         response.errors.is_empty(),
@@ -2168,8 +2142,6 @@ async fn admin_graphql_complete_return_with_claim_helper() {
         serde_json::json!("claim")
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items() {
@@ -2276,8 +2248,6 @@ async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
     let db = setup_test_db().await;
@@ -2377,8 +2347,6 @@ async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
         Value::from("deliver")
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
@@ -2506,8 +2474,6 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
         Value::from("reopen")
     );
 }
-
-
 
 #[tokio::test]
 async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
@@ -2639,8 +2605,6 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
         Value::from("reship")
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read_path() {
@@ -2789,8 +2753,6 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() {
     let db = setup_test_db().await;
@@ -2903,8 +2865,6 @@ async fn storefront_graphql_refunds_query_returns_customer_order_refunds_only() 
     assert_eq!(items[0]["amount"], Value::from("10"));
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_refunds_query_rejects_foreign_customer_order() {
     let db = setup_test_db().await;
@@ -2993,8 +2953,6 @@ async fn storefront_graphql_refunds_query_rejects_foreign_customer_order() {
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_refunds_query_requires_authentication() {
     let db = setup_test_db().await;
@@ -3024,8 +2982,6 @@ async fn storefront_graphql_refunds_query_requires_authentication() {
         response.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_refunds_query_returns_empty_for_unknown_order() {
@@ -3082,8 +3038,6 @@ async fn storefront_graphql_refunds_query_returns_empty_for_unknown_order() {
         Value::from(Vec::<Value>::new())
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_values() {
@@ -3210,8 +3164,6 @@ async fn storefront_graphql_refunds_query_normalizes_status_and_rejects_unknown_
         invalid.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
@@ -3364,8 +3316,6 @@ async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
     assert!(metadata.get("display_label").is_none());
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
     let db = setup_test_db().await;
@@ -3458,8 +3408,6 @@ async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
         "Order does not belong to the current customer"
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_cart() {
@@ -3617,8 +3565,6 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         Value::from("EUR")
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment_amount() {
@@ -3951,8 +3897,6 @@ async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment
     assert!(order_adjustment_metadata.get("display_label").is_none());
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promotion_amount() {
     let db = setup_test_db().await;
@@ -4214,8 +4158,6 @@ async fn storefront_graphql_checkout_preserves_shipping_total_and_shipping_promo
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_payment_collection_rejects_foreign_customer_cart_access() {
     let db = setup_test_db().await;
@@ -4301,8 +4243,6 @@ async fn storefront_graphql_payment_collection_rejects_foreign_customer_cart_acc
         "Cart belongs to another customer"
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_context_contract() {
@@ -4418,4 +4358,3 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         }])
     );
 }
-

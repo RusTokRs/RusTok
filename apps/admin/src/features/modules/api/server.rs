@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use super::types::*;
 #[allow(unused_imports)]
 use crate::entities::module::model::{
     registry_principal_label_from_value, MarketplaceModuleVersion, RegistryFollowUpGateLifecycle,
@@ -11,15 +12,12 @@ use crate::entities::module::model::{
     RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo,
-    ReleaseInfo, TenantModule,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
 };
 use crate::shared::api::api_base_url;
-use super::types::*;
 
 #[cfg(feature = "ssr")]
 use super::manifest::*;
-
 
 #[cfg(feature = "ssr")]
 pub async fn registry_governance_get_native<T>(
@@ -40,7 +38,6 @@ where
     .await
 }
 
-
 #[cfg(feature = "ssr")]
 pub async fn registry_governance_request_native<B, T>(
     method: reqwest::Method,
@@ -55,7 +52,6 @@ where
 {
     registry_governance_http_request_native(method, path, token, tenant, Some(body)).await
 }
-
 
 #[cfg(feature = "ssr")]
 pub async fn registry_governance_http_request_native<B, T>(
@@ -107,7 +103,6 @@ where
     serde_json::from_str(&text).map_err(|err| ServerFnError::new(err.to_string()))
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
 pub struct RegistryValidationRequestPayload {
@@ -116,7 +111,6 @@ pub struct RegistryValidationRequestPayload {
     #[serde(rename = "dry_run")]
     pub dry_run: bool,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
@@ -128,7 +122,6 @@ pub struct RegistryDecisionRequestPayload {
     pub reason: Option<String>,
     pub reason_code: Option<String>,
 }
-
 
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
@@ -144,7 +137,6 @@ pub struct RegistryOwnerTransferPayload {
     pub reason_code: Option<String>,
 }
 
-
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Serialize)]
 pub struct RegistryYankPayload {
@@ -158,24 +150,20 @@ pub struct RegistryYankPayload {
     pub reason_code: Option<String>,
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn server_error(message: impl Into<String>) -> ServerFnError {
     ServerFnError::ServerError(message.into())
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn default_module_ownership() -> String {
     "third_party".to_string()
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn default_module_trust_level() -> String {
     "unverified".to_string()
 }
-
 
 #[cfg(feature = "ssr")]
 pub async fn modules_server_context() -> Result<
@@ -216,7 +204,6 @@ pub async fn modules_server_context() -> Result<
     Ok((app_ctx, auth, tenant))
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn upper_snake(value: &str) -> String {
     value
@@ -227,7 +214,6 @@ pub fn upper_snake(value: &str) -> String {
         .collect::<Vec<_>>()
         .join("_")
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
@@ -252,7 +238,6 @@ pub fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String 
     value.to_string()
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn platform_state_select_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
@@ -265,7 +250,6 @@ pub fn platform_state_select_sql(backend: sea_orm::DbBackend) -> &'static str {
     }
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
@@ -277,7 +261,6 @@ pub fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
         }
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub async fn active_runtime_platform_snapshot(
@@ -347,7 +330,6 @@ pub async fn active_runtime_platform_snapshot(
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub async fn effective_enabled_modules_native(
     db: &sea_orm::DatabaseConnection,
@@ -388,7 +370,6 @@ pub async fn effective_enabled_modules_native(
     Ok(enabled)
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn humanize_module_slug(slug: &str) -> String {
     slug.split('-')
@@ -403,7 +384,6 @@ pub fn humanize_module_slug(slug: &str) -> String {
         .join(" ")
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn fallback_module_category(slug: &str) -> &'static str {
     match slug {
@@ -413,7 +393,6 @@ pub fn fallback_module_category(slug: &str) -> &'static str {
         _ => "extensions",
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn runtime_setting_fields(
@@ -436,7 +415,6 @@ pub fn runtime_setting_fields(
         })
         .collect()
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -464,7 +442,6 @@ pub fn runtime_build_job_insert_sql(backend: sea_orm::DbBackend) -> &'static str
         }
     }
 }
-
 
 #[cfg(feature = "ssr")]
 #[allow(dead_code)]
@@ -497,7 +474,6 @@ pub fn runtime_build_job_select_sql(backend: sea_orm::DbBackend) -> &'static str
     }
 }
 
-
 pub fn runtime_setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
     match value_type {
         "string" => value.is_string(),
@@ -516,7 +492,6 @@ pub fn runtime_setting_value_matches_type(value_type: &str, value: &serde_json::
         _ => false,
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn validate_runtime_setting_value(
@@ -613,7 +588,6 @@ pub fn validate_runtime_setting_value(
     Ok(())
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn normalize_runtime_module_settings(
     module_slug: &str,
@@ -683,7 +657,6 @@ pub fn normalize_runtime_module_settings(
     Ok(serde_json::Value::Object(normalized))
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn map_build_job_row(row: sea_orm::QueryResult) -> Result<BuildJob, ServerFnError> {
     let modules_delta = row
@@ -752,7 +725,6 @@ pub fn map_build_job_row(row: sea_orm::QueryResult) -> Result<BuildJob, ServerFn
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, ServerFnError> {
     let modules = row
@@ -803,7 +775,6 @@ pub fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, Se
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn json_message_list(value: Option<serde_json::Value>) -> Vec<String> {
     value
@@ -813,7 +784,6 @@ pub fn json_message_list(value: Option<serde_json::Value>) -> Vec<String> {
         .filter_map(|item| item.as_str().map(ToString::to_string))
         .collect()
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn required_registry_principal_label(
@@ -830,7 +800,6 @@ pub fn required_registry_principal_label(
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn optional_registry_principal_label(
     row: &sea_orm::QueryResult,
@@ -841,7 +810,6 @@ pub fn optional_registry_principal_label(
         .map_err(|err| server_error(err.to_string()))?;
     Ok(value.as_ref().and_then(registry_principal_label_from_value))
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn map_registry_publish_request_row(
@@ -910,7 +878,6 @@ pub fn map_registry_publish_request_row(
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn map_registry_release_row(
     row: sea_orm::QueryResult,
@@ -942,7 +909,6 @@ pub fn map_registry_release_row(
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn map_registry_owner_row(
     row: sea_orm::QueryResult,
@@ -960,7 +926,6 @@ pub fn map_registry_owner_row(
             .map_err(|err| server_error(err.to_string()))?,
     })
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn map_registry_governance_event_row(
@@ -986,7 +951,6 @@ pub fn map_registry_governance_event_row(
             .map_err(|err| server_error(err.to_string()))?,
     })
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn map_registry_validation_stage_row(
@@ -1034,7 +998,6 @@ pub fn map_registry_validation_stage_row(
     })
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn registry_follow_up_gate_detail(key: &str) -> &'static str {
     match key {
@@ -1049,7 +1012,6 @@ pub fn registry_follow_up_gate_detail(key: &str) -> &'static str {
     }
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
     match key {
@@ -1058,7 +1020,6 @@ pub fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
         _ => "external",
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn fallback_validation_stage_reason_codes() -> Vec<String> {
@@ -1079,7 +1040,6 @@ pub fn fallback_validation_stage_reason_codes() -> Vec<String> {
     .collect()
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str> {
     match key {
@@ -1088,7 +1048,6 @@ pub fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static 
         _ => None,
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static str> {
@@ -1100,7 +1059,6 @@ pub fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'stat
     }
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
     match key {
@@ -1109,7 +1067,6 @@ pub fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'stat
         _ => None,
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn registry_governance_action(
@@ -1130,7 +1087,6 @@ pub fn registry_governance_action(
         destructive,
     }
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn derive_registry_governance_actions(
@@ -1187,7 +1143,6 @@ pub fn derive_registry_governance_actions(
         .filter(|action| seen.insert(action.key.clone()))
         .collect()
 }
-
 
 #[cfg(feature = "ssr")]
 pub fn derive_registry_validation_stages(
@@ -1288,7 +1243,6 @@ pub fn derive_registry_validation_stages(
     stages
 }
 
-
 #[cfg(feature = "ssr")]
 pub fn derive_registry_follow_up_gates(
     validation_stages: &[RegistryValidationStageLifecycle],
@@ -1356,7 +1310,6 @@ pub fn derive_registry_follow_up_gates(
 
     gates
 }
-
 
 #[cfg(feature = "ssr")]
 pub async fn load_registry_module_lifecycle(
@@ -1661,7 +1614,6 @@ pub async fn load_registry_module_lifecycle(
     }))
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/list-enabled-modules")]
 pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -1707,7 +1659,6 @@ pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError>
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/module-registry")]
 pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError> {
@@ -1783,7 +1734,6 @@ pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnEr
     }
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/installed-modules")]
 pub async fn list_installed_modules_native() -> Result<Vec<InstalledModule>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -1815,7 +1765,6 @@ pub async fn list_installed_modules_native() -> Result<Vec<InstalledModule>, Ser
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/list-tenant-modules")]
 pub async fn list_tenant_modules_native() -> Result<Vec<TenantModule>, ServerFnError> {
@@ -1849,7 +1798,6 @@ pub async fn list_tenant_modules_native() -> Result<Vec<TenantModule>, ServerFnE
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/marketplace")]
 pub async fn list_marketplace_modules_native(
@@ -1954,7 +1902,6 @@ pub async fn list_marketplace_modules_native(
     }
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/marketplace-module")]
 pub async fn marketplace_module_native(
     slug: String,
@@ -1989,7 +1936,6 @@ pub async fn marketplace_module_native(
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/active-build")]
 pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
@@ -2072,7 +2018,6 @@ pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
     }
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/active-release")]
 pub async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -2141,7 +2086,6 @@ pub async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnErro
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/build-history")]
 pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJob>, ServerFnError> {
@@ -2229,7 +2173,6 @@ pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJo
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/update-module-settings")]
 pub async fn update_module_settings_native(
@@ -2324,7 +2267,6 @@ pub async fn update_module_settings_native(
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/rollback-build")]
 pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnError> {
@@ -2657,7 +2599,6 @@ pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerF
     }
 }
 
-
 #[server(
     prefix = "/api/fn",
     endpoint = "admin/registry-fetch-publish-request-status"
@@ -2680,7 +2621,6 @@ pub async fn fetch_registry_publish_request_status_native(
         ))
     }
 }
-
 
 #[server(
     prefix = "/api/fn",
@@ -2714,7 +2654,6 @@ pub async fn validate_registry_publish_request_native(
         ))
     }
 }
-
 
 #[server(
     prefix = "/api/fn",
@@ -2753,7 +2692,6 @@ pub async fn approve_registry_publish_request_native(
     }
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/registry-reject-publish-request")]
 pub async fn reject_registry_publish_request_native(
     token: String,
@@ -2787,7 +2725,6 @@ pub async fn reject_registry_publish_request_native(
         ))
     }
 }
-
 
 #[server(
     prefix = "/api/fn",
@@ -2826,7 +2763,6 @@ pub async fn request_changes_registry_publish_request_native(
     }
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/registry-hold-publish-request")]
 pub async fn hold_registry_publish_request_native(
     token: String,
@@ -2861,7 +2797,6 @@ pub async fn hold_registry_publish_request_native(
     }
 }
 
-
 #[server(prefix = "/api/fn", endpoint = "admin/registry-resume-publish-request")]
 pub async fn resume_registry_publish_request_native(
     token: String,
@@ -2895,7 +2830,6 @@ pub async fn resume_registry_publish_request_native(
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-transfer-owner")]
 pub async fn transfer_registry_owner_native(
@@ -2941,7 +2875,6 @@ pub async fn transfer_registry_owner_native(
         ))
     }
 }
-
 
 #[server(prefix = "/api/fn", endpoint = "admin/registry-yank-release")]
 pub async fn yank_registry_release_native(

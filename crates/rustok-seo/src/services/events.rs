@@ -1604,9 +1604,9 @@ mod tests {
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::{Arc, Mutex};
 
+    use rustok_core::events::EventEnvelope;
     use rustok_core::events::{EventTransport, ReliabilityLevel};
     use rustok_core::{Error as CoreError, Result as CoreResult};
-    use rustok_core::events::EventEnvelope;
     use rustok_outbox::{
         entity as outbox_entity, OutboxTransport, SysEventsMigration, TransactionalEventBus,
     };

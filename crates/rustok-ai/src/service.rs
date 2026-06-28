@@ -1,41 +1,41 @@
-pub mod types;
-pub mod mapping;
 pub mod helpers;
+pub mod mapping;
 pub mod mcp;
+pub mod types;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use chrono::Utc;
+use loco_rs::app::AppContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
-use loco_rs::app::AppContext;
 
 use rustok_core::permissions::Permission;
 
+use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
+use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
 use crate::model::{
     ChatMessage, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderStreamEmitter,
     ProviderStreamEvent, ProviderTestResult, RuntimeOutcome, ToolTrace,
 };
-use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
-use crate::metrics::{self as ai_metrics, AiRuntimeMetricsSnapshot};
+use crate::provider::{provider_for_kind, ModelProvider};
 use crate::router::AiRouter;
 use crate::runtime::AiRuntime;
-use crate::provider::{provider_for_kind, ModelProvider};
 use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
 use crate::{AiError, AiResult, McpClientAdapter};
 
-pub use types::*;
-pub use mapping::*;
 pub use helpers::*;
+pub use mapping::*;
 pub use mcp::*;
+pub use types::*;
 
 pub struct AiManagementService;
 
@@ -105,8 +105,7 @@ impl AiManagementService {
                 .collect()
         };
 
-        runs
-            .into_iter()
+        runs.into_iter()
             .map(|run| map_recent_run_record(run, &session_map, &provider_map, &task_map))
             .collect()
     }

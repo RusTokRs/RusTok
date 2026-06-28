@@ -6,15 +6,15 @@ use leptos_router::path;
 
 use crate::pages::{
     cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage, events::EventsPage,
-    installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules,
-    not_found::NotFound, roles::RolesPage, workflow_detail::WorkflowDetailPage, workflows::Workflows,
-};
-use rustok_auth_admin::{
-    Login, Register, ResetPassword, Profile, Security, Users, UserDetails, OAuthAppsPage,
+    installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
+    roles::RolesPage, workflow_detail::WorkflowDetailPage, workflows::Workflows,
 };
 use crate::shared::ui::LanguageToggle;
 use crate::widgets::app_shell::AppLayout;
 use crate::I18nContextProvider;
+use rustok_auth_admin::{
+    Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails, Users,
+};
 
 #[component]
 pub fn App() -> impl IntoView {

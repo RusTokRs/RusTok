@@ -1,20 +1,20 @@
-use std::collections::{HashSet, BTreeSet, HashMap};
-use uuid::Uuid;
-use serde_json::Value;
-use unicode_normalization::UnicodeNormalization;
 use rust_decimal::prelude::ToPrimitive;
+use rustok_commerce_foundation::dto::{
+    ProductOptionTranslationInput, ProductOptionTranslationResponse,
+    ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
+    ProductTranslationInput, ProductTranslationResponse,
+};
+use rustok_commerce_foundation::entities;
+use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
+use rustok_core::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
-use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
-use rustok_core::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
-use rustok_commerce_foundation::entities;
-use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
-use rustok_commerce_foundation::dto::{
-    ProductResponse, ProductTranslationResponse, ProductTranslationInput,
-    ProductOptionTranslationResponse, ProductOptionTranslationInput,
-    ProductOptionTranslationResponse as ProductOptionTranslationResponseDto,
-};
+use serde_json::Value;
+use std::collections::{BTreeSet, HashMap, HashSet};
+use unicode_normalization::UnicodeNormalization;
+use uuid::Uuid;
 
 pub mod product_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("product_field_definitions");
@@ -38,8 +38,7 @@ pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
 
 pub fn slugify(text: &str) -> String {
     const MAX_LENGTH: usize = 255;
-    const RESERVED_NAMES: &[&str] =
-        &["admin", "api", "null", "undefined", "new", "edit", "delete"];
+    const RESERVED_NAMES: &[&str] = &["admin", "api", "null", "undefined", "new", "edit", "delete"];
 
     let normalized: String = text.nfc().collect();
 
@@ -239,10 +238,8 @@ pub fn normalize_create_product_metadata(
     metadata: Value,
 ) -> (Value, Option<Vec<String>>) {
     let normalized_tags = normalize_metadata_tag_state(&input_tags, &metadata);
-    let metadata = apply_shipping_profile_to_metadata(
-        strip_metadata_tags(metadata),
-        shipping_profile_slug,
-    );
+    let metadata =
+        apply_shipping_profile_to_metadata(strip_metadata_tags(metadata), shipping_profile_slug);
 
     (metadata, Some(normalized_tags))
 }
@@ -258,10 +255,7 @@ pub fn normalize_update_product_metadata(
             let normalized_tags = normalize_tag_names(&tags);
             let metadata = metadata.unwrap_or(existing_metadata);
             Some((
-                apply_shipping_profile_to_metadata(
-                    strip_metadata_tags(metadata),
-                    profile_slug,
-                ),
+                apply_shipping_profile_to_metadata(strip_metadata_tags(metadata), profile_slug),
                 Some(normalized_tags),
             ))
         }
@@ -269,10 +263,7 @@ pub fn normalize_update_product_metadata(
             let normalized_tags = metadata_has_tags_field(&metadata)
                 .then(|| normalize_tag_names(&extract_metadata_tags(&metadata)));
             Some((
-                apply_shipping_profile_to_metadata(
-                    strip_metadata_tags(metadata),
-                    profile_slug,
-                ),
+                apply_shipping_profile_to_metadata(strip_metadata_tags(metadata), profile_slug),
                 normalized_tags,
             ))
         }
@@ -306,9 +297,7 @@ pub fn build_option_translations(
                         .and_then(|items| {
                             items
                                 .iter()
-                                .find(|item| {
-                                    locale_tags_match(&item.locale, &translation.locale)
-                                })
+                                .find(|item| locale_tags_match(&item.locale, &translation.locale))
                                 .map(|item| item.value.clone())
                         })
                         .or_else(|| {
@@ -634,8 +623,7 @@ where
     let (reserved_patch, flex_payload) = split_product_metadata_payload(&schema, &payload);
     let (existing_reserved_metadata, existing_flex_metadata) =
         split_product_metadata_payload(&schema, existing_metadata);
-    let reserved_payload =
-        merge_product_metadata_patch(existing_reserved_metadata, reserved_patch);
+    let reserved_payload = merge_product_metadata_patch(existing_reserved_metadata, reserved_patch);
     flex::prepare_attached_values_update(
         conn,
         flex::AttachedEntityRef {
@@ -954,13 +942,13 @@ where
 
 #[cfg(test)]
 mod product_metadata_tests {
-    use std::collections::HashMap;
-    use serde_json::json;
-    use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
     use super::{
         merge_product_metadata_patch, merge_reserved_product_metadata,
         split_product_metadata_payload,
     };
+    use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
+    use serde_json::json;
+    use std::collections::HashMap;
 
     fn definition(field_key: &str) -> FieldDefinition {
         FieldDefinition {
@@ -1045,4 +1033,3 @@ mod product_metadata_tests {
         );
     }
 }
-

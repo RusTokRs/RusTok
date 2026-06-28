@@ -1,7 +1,7 @@
-use leptos::prelude::*;
-use crate::Locale;
+use super::{short_checksum, tr};
 use crate::entities::module::model::MarketplaceModuleVersion;
-use super::{tr, short_checksum};
+use crate::Locale;
+use leptos::prelude::*;
 
 #[component]
 pub fn VersionTrailView(

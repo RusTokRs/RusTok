@@ -102,7 +102,10 @@ mod tests {
         assert_eq!(vertical.task_slug, ALLOY_CODE_TASK_SLUG);
         assert_eq!(vertical.tool_name, ALLOY_CODE_TOOL_NAME);
         assert_eq!(vertical.runtime_operation, "run_script");
-        assert_eq!(vertical.runtime_payload_json_shape, "absent_blank_or_json_object");
+        assert_eq!(
+            vertical.runtime_payload_json_shape,
+            "absent_blank_or_json_object"
+        );
         assert_eq!(vertical.transport_owner, "rustok-ai");
     }
 
@@ -113,7 +116,12 @@ mod tests {
         assert_eq!(policy.remote_transport, "not_started");
         assert_eq!(
             policy.allowed_operations,
-            ["list_scripts", "get_script", "validate_script", "run_script"]
+            [
+                "list_scripts",
+                "get_script",
+                "validate_script",
+                "run_script"
+            ]
         );
     }
 }

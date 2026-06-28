@@ -55,8 +55,6 @@ async fn admin_graphql_exposes_shipping_profile_slug_for_products() {
     assert_eq!(json["product"]["shippingProfileSlug"], Value::from("bulky"));
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_supports_shipping_option_create_update_and_list() {
     let (db, _, _) = setup().await;
@@ -330,8 +328,6 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_supports_shipping_profile_create_update_and_list() {
     let (db, _, _) = setup().await;
@@ -517,8 +513,6 @@ async fn admin_graphql_supports_shipping_profile_create_update_and_list() {
     );
 }
 
-
-
 #[tokio::test]
 async fn admin_graphql_rejects_unknown_shipping_profile_references() {
     let (db, _, _) = setup().await;
@@ -610,8 +604,6 @@ async fn admin_graphql_rejects_unknown_shipping_profile_references() {
         product_response.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profiles() {
@@ -759,8 +751,6 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
     );
 }
 
-
-
 #[tokio::test]
 async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_profile_option() {
     let (db, catalog, cart_service) = setup().await;
@@ -876,8 +866,6 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
         response.errors[0].message
     );
 }
-
-
 
 #[tokio::test]
 async fn storefront_graphql_shipping_options_reject_foreign_customer_cart_access() {

@@ -491,7 +491,11 @@ async fn complete_checkout_rejects_channel_hidden_inventory_on_deny_policy() {
         .create_product(tenant_id, actor_id, product_input)
         .await
         .unwrap();
-    let variant = product.variants.first().expect("variant must exist").clone();
+    let variant = product
+        .variants
+        .first()
+        .expect("variant must exist")
+        .clone();
 
     // Give the variant enough inventory from the commerce InventoryService side
     let inventory = InventoryService::new(db.clone(), mock_transactional_event_bus());
@@ -678,7 +682,11 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
         .create_product(tenant_id, actor_id, product_input)
         .await
         .unwrap();
-    let variant = product.variants.first().expect("variant must exist").clone();
+    let variant = product
+        .variants
+        .first()
+        .expect("variant must exist")
+        .clone();
 
     // Restrict stock location to a different channel — backorder should still pass
     set_stock_location_channel_visibility(&db, tenant_id, &["other-channel-only"]).await;
@@ -818,7 +826,11 @@ async fn complete_checkout_accepts_variant_when_stock_location_visible_for_cart_
         .create_product(tenant_id, actor_id, product_input)
         .await
         .unwrap();
-    let variant = product.variants.first().expect("variant must exist").clone();
+    let variant = product
+        .variants
+        .first()
+        .expect("variant must exist")
+        .clone();
 
     // Give sufficient inventory
     let inventory = InventoryService::new(db.clone(), mock_transactional_event_bus());

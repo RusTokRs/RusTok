@@ -1,11 +1,11 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use loco_rs::app::AppContext;
 use once_cell::sync::Lazy;
-use uuid::Uuid;
+use schemars::schema_for;
 use serde::Serialize;
 use serde_json::json;
-use schemars::schema_for;
-use loco_rs::app::AppContext;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
 use rustok_mcp::alloy_tools::{
     self, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest, DeleteScriptRequest,
@@ -31,8 +31,8 @@ use crate::mcp::{McpClientAdapter, ToolExecutionResult};
 use crate::model::ToolDefinition;
 use crate::{AiError, AiResult};
 
+use super::helpers::{json_err, parse_uuid_str};
 use super::types::{AiOperatorContext, SharedAiModuleRegistry};
-use super::helpers::{parse_uuid_str, json_err};
 
 static STAGED_SCAFFOLDS: Lazy<Arc<Mutex<HashMap<Uuid, StagedModuleScaffold>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));

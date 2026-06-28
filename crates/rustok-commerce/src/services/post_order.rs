@@ -312,7 +312,9 @@ impl PostOrderOrchestrationService {
         let refund_input = match difference_refund {
             Some(input) => Some(input),
             None => {
-                let amount_val = order_change.preview.get("difference_refund_amount")
+                let amount_val = order_change
+                    .preview
+                    .get("difference_refund_amount")
                     .or_else(|| order_change.metadata.get("difference_refund_amount"))
                     .or_else(|| order_change.preview.get("refund_amount"))
                     .or_else(|| order_change.metadata.get("refund_amount"));
@@ -327,7 +329,9 @@ impl PostOrderOrchestrationService {
                         None
                     };
                     if let Some(amount) = amount {
-                        let reason = order_change.preview.get("difference_refund_reason")
+                        let reason = order_change
+                            .preview
+                            .get("difference_refund_reason")
                             .or_else(|| order_change.metadata.get("difference_refund_reason"))
                             .or_else(|| order_change.preview.get("refund_reason"))
                             .or_else(|| order_change.metadata.get("refund_reason"))
@@ -351,8 +355,7 @@ impl PostOrderOrchestrationService {
             if refund_input.amount > Decimal::ZERO {
                 let payment_service = PaymentService::new(self.db.clone());
                 let collection_id =
-                    resolve_order_payment_collection(&payment_service, tenant_id, order_id)
-                        .await?;
+                    resolve_order_payment_collection(&payment_service, tenant_id, order_id).await?;
                 let refund = payment_service
                     .create_refund(
                         tenant_id,

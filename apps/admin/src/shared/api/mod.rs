@@ -84,9 +84,13 @@ pub fn combine_native_and_graphql_error(
     graphql_err: ApiError,
 ) -> ApiError {
     let err_str = server_err.to_string();
-    let clean_err = err_str.strip_prefix("error running server function: ").unwrap_or(&err_str);
+    let clean_err = err_str
+        .strip_prefix("error running server function: ")
+        .unwrap_or(&err_str);
     let graph_str = graphql_err.to_string();
-    let clean_graph = graph_str.strip_prefix("GraphQL error: ").unwrap_or(&graph_str);
+    let clean_graph = graph_str
+        .strip_prefix("GraphQL error: ")
+        .unwrap_or(&graph_str);
     let payload = serde_json::json!({
         "kind": "dual_path_failure",
         "native": clean_err,

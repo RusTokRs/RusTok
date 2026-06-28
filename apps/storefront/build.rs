@@ -98,7 +98,8 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
     let manifest_path = workspace_root().join("modules.toml");
     println!("cargo::rerun-if-changed={}", manifest_path.display());
 
-    let storefront_cargo_toml = fs::read_to_string(workspace_root().join("apps/storefront/Cargo.toml"))?;
+    let storefront_cargo_toml =
+        fs::read_to_string(workspace_root().join("apps/storefront/Cargo.toml"))?;
 
     let modules: ModulesManifest = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
     let mut entries = Vec::new();
@@ -127,7 +128,8 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
         };
 
         if !storefront_cargo_toml.contains(&format!("{} =", leptos_crate))
-            && !storefront_cargo_toml.contains(&format!("\"{}\"", leptos_crate)) {
+            && !storefront_cargo_toml.contains(&format!("\"{}\"", leptos_crate))
+        {
             continue;
         }
 

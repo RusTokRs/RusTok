@@ -10,17 +10,17 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{
-    dto::{
-        ApplyOrderChangeInput, CancelOrderChangeInput, CreateOrderChangeInput, ListOrderChangesInput,
-        OrderChangeResponse,
-    },
-    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, OrderService,
-    PostOrderOrchestrationError, PostOrderOrchestrationService,
-};
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
     ListOrderChangesParams,
+};
+use crate::{
+    dto::{
+        ApplyOrderChangeInput, CancelOrderChangeInput, CreateOrderChangeInput,
+        ListOrderChangesInput, OrderChangeResponse,
+    },
+    ApplyOrderChangeResult, ExchangeDifferenceRefundInput, OrderService,
+    PostOrderOrchestrationError, PostOrderOrchestrationService,
 };
 
 /// Create admin order change preview
@@ -179,32 +179,28 @@ pub async fn apply_order_change(
         .map_err(super::map_order_error)?;
 
     let result = match order_change.change_type.as_str() {
-        "exchange" => {
-            orchestration_service
-                .apply_exchange_order_change(
-                    tenant.id,
-                    order_change.order_id,
-                    id,
-                    input.difference_refund,
-                    input.metadata,
-                )
-                .await
-                .map_err(|err| match err {
-                    PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
-                    PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
-                    PostOrderOrchestrationError::Validation(msg) => Error::BadRequest(msg),
-                })?
-        }
-        "claim" => {
-            orchestration_service
-                .apply_claim_order_change(tenant.id, id, input.metadata)
-                .await
-                .map_err(|err| match err {
-                    PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
-                    PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
-                    PostOrderOrchestrationError::Validation(msg) => Error::BadRequest(msg),
-                })?
-        }
+        "exchange" => orchestration_service
+            .apply_exchange_order_change(
+                tenant.id,
+                order_change.order_id,
+                id,
+                input.difference_refund,
+                input.metadata,
+            )
+            .await
+            .map_err(|err| match err {
+                PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
+                PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
+                PostOrderOrchestrationError::Validation(msg) => Error::BadRequest(msg),
+            })?,
+        "claim" => orchestration_service
+            .apply_claim_order_change(tenant.id, id, input.metadata)
+            .await
+            .map_err(|err| match err {
+                PostOrderOrchestrationError::Order(e) => super::map_order_error(e),
+                PostOrderOrchestrationError::Payment(e) => super::map_payment_error(e),
+                PostOrderOrchestrationError::Validation(msg) => Error::BadRequest(msg),
+            })?,
         _ => {
             let item = order_service
                 .apply_order_change(

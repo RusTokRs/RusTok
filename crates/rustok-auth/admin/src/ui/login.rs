@@ -5,13 +5,11 @@ use leptos_hook_form::FormState;
 use leptos_router::hooks::use_navigate;
 use rustok_api::UiRouteContext;
 
-use crate::ui::components::{Button, Input};
 use crate::i18n::t;
+use crate::ui::components::{Button, Input};
 
 #[component]
-pub fn Login<F, IV>(
-    language_toggle: F,
-) -> impl IntoView
+pub fn Login<F, IV>(language_toggle: F) -> impl IntoView
 where
     F: Fn() -> IV + 'static,
     IV: IntoView + 'static,
@@ -30,7 +28,8 @@ where
     let (password, set_password) = signal(String::new());
     let (form_state, set_form_state) = signal(FormState::idle());
 
-    let error_required_msg = StoredValue::new(t_local("auth.errorRequired", "Please fill in all fields"));
+    let error_required_msg =
+        StoredValue::new(t_local("auth.errorRequired", "Please fill in all fields"));
 
     let on_submit = Callback::new(move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {

@@ -147,5 +147,3 @@ pub struct UpdateUserInput {
     pub role: String,
     pub status: String,
 }
-
-

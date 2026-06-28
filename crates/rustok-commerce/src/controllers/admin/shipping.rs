@@ -8,6 +8,10 @@ use rustok_api::{AuthContext, TenantContext};
 use rustok_core::Permission;
 use uuid::Uuid;
 
+use super::{
+    super::common::{ensure_permissions, PaginatedResponse},
+    ListShippingOptionsParams, ListShippingProfilesParams,
+};
 use crate::{
     dto::{
         CreateShippingOptionInput, CreateShippingProfileInput, ListShippingProfilesInput,
@@ -15,10 +19,6 @@ use crate::{
         UpdateShippingProfileInput,
     },
     FulfillmentService, ShippingProfileService,
-};
-use super::{
-    super::common::{ensure_permissions, PaginatedResponse},
-    ListShippingOptionsParams, ListShippingProfilesParams,
 };
 
 /// List admin shipping profiles

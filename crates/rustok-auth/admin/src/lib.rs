@@ -5,5 +5,5 @@ pub mod transport;
 pub mod ui;
 
 pub use ui::{
-    Login, Register, ResetPassword, Profile, Security, Users, UserDetails, OAuthAppsPage, AuthAdmin,
+    AuthAdmin, Login, OAuthAppsPage, Profile, Register, ResetPassword, Security, UserDetails, Users,
 };

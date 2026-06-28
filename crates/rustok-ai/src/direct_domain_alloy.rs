@@ -2,9 +2,7 @@
 
 use std::sync::Arc;
 
-use rustok_ai_alloy::{
-    register_alloy_ai_vertical_handlers, ALLOY_CODE_TASK_SLUG,
-};
+use rustok_ai_alloy::{register_alloy_ai_vertical_handlers, ALLOY_CODE_TASK_SLUG};
 
 use super::{AlloyScriptAssistHandler, DirectExecutionRegistry, DirectTaskHandler};
 

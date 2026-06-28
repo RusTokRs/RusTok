@@ -1,11 +1,12 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 use chrono::Utc;
 use rust_decimal::Decimal;
-use serde_json::Value;
-use uuid::Uuid;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
+    Statement,
 };
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use uuid::Uuid;
 
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_core::{generate_id, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
@@ -15,8 +16,8 @@ use rustok_tax::{
 };
 
 use crate::dto::{
-    CartAdjustmentResponse, CartLineItemResponse, CartResponse, CartTaxLineResponse,
-    UpdateCartContextInput, CartDeliveryGroupResponse,
+    CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineItemResponse, CartResponse,
+    CartTaxLineResponse, UpdateCartContextInput,
 };
 use crate::entities;
 use crate::error::{CartError, CartResult};
@@ -589,7 +590,11 @@ where
 
 // Database helper functions relocated from cart.rs for modular service sizing
 
-pub async fn load_cart<C>(conn: &C, tenant_id: Uuid, cart_id: Uuid) -> CartResult<entities::cart::Model>
+pub async fn load_cart<C>(
+    conn: &C,
+    tenant_id: Uuid,
+    cart_id: Uuid,
+) -> CartResult<entities::cart::Model>
 where
     C: ConnectionTrait,
 {
@@ -647,8 +652,7 @@ where
     let shipping_total = cart.shipping_total;
     let total_amount = cart.total_amount;
     let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
-    let selection_map =
-        selection_map_from_records(&delivery_group_snapshots, shipping_selections);
+    let selection_map = selection_map_from_records(&delivery_group_snapshots, shipping_selections);
     let delivery_groups = build_delivery_groups(&line_items, &selection_map);
     let selected_shipping_option_id = match delivery_groups.len() {
         0 => cart.selected_shipping_option_id,
@@ -919,7 +923,8 @@ where
         .all(conn)
         .await?;
     let shipping_total = load_shipping_total(conn, &cart, &shipping_selections).await?;
-    let (tax_total, tax_included) = recalculate_tax_lines(conn, tax_service, &cart, &line_items, &shipping_selections).await?;
+    let (tax_total, tax_included) =
+        recalculate_tax_lines(conn, tax_service, &cart, &line_items, &shipping_selections).await?;
     let subtotal = subtotal_amount(&line_items);
     let adjusted_total = net_total(subtotal, adjustment_total(&adjustments));
     let total_amount = if tax_included {
@@ -962,8 +967,7 @@ where
             let normalized =
                 normalize_shipping_profile_slug(Some(selection.shipping_profile_slug.as_str()));
             let normalized_seller_id = normalize_seller_id(selection.seller_id.as_deref());
-            let normalized_seller_scope =
-                normalize_seller_scope(selection.seller_scope.as_deref());
+            let normalized_seller_scope = normalize_seller_scope(selection.seller_scope.as_deref());
             let matching_keys = matching_delivery_group_keys(
                 &available_group_snapshots,
                 normalized.as_str(),
@@ -1022,8 +1026,7 @@ where
 
     for (group_key, selected_shipping_option_id) in &desired {
         if let Some(current) = existing_map.get(group_key) {
-            let mut active: entities::cart_shipping_selection::ActiveModel =
-                current.clone().into();
+            let mut active: entities::cart_shipping_selection::ActiveModel = current.clone().into();
             active.selected_shipping_option_id = Set(*selected_shipping_option_id);
             active.updated_at = Set(now.into());
             active.update(conn).await?;
@@ -1119,9 +1122,7 @@ where
         .collect::<Vec<_>>();
     entities::cart_adjustment::Entity::delete_many()
         .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
-        .filter(
-            entities::cart_adjustment::Column::SourceType.eq(PRICING_ADJUSTMENT_SOURCE_TYPE),
-        )
+        .filter(entities::cart_adjustment::Column::SourceType.eq(PRICING_ADJUSTMENT_SOURCE_TYPE))
         .filter(entities::cart_adjustment::Column::CartLineItemId.is_in(line_item_ids))
         .exec(conn)
         .await?;
@@ -1142,7 +1143,7 @@ where
             source_type: Set(PRICING_ADJUSTMENT_SOURCE_TYPE.to_string()),
             source_id: Set(normalize_adjustment_source_id(
                 adjustment.source_id.as_deref(),
-                )),
+            )),
             amount: Set(adjustment.amount),
             currency_code: Set(currency_code.to_ascii_uppercase()),
             metadata: Set(sanitize_adjustment_metadata(adjustment.metadata)),
