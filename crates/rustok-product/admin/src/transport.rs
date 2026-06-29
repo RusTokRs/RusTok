@@ -1,4 +1,6 @@
-use crate::api::{self, ApiError};
+mod graphql_adapter;
+
+use graphql_adapter::ApiError;
 use crate::model::{
     ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductPricingDetail,
     ShippingProfileList,
@@ -8,7 +10,7 @@ pub(crate) async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<ProductAdminBootstrap, ApiError> {
-    api::fetch_bootstrap(token, tenant_slug).await
+    graphql_adapter::fetch_bootstrap(token, tenant_slug).await
 }
 
 pub(crate) async fn fetch_products(
@@ -19,7 +21,7 @@ pub(crate) async fn fetch_products(
     search: Option<String>,
     status: Option<String>,
 ) -> Result<ProductList, ApiError> {
-    api::fetch_products(token, tenant_slug, tenant_id, locale, search, status).await
+    graphql_adapter::fetch_products(token, tenant_slug, tenant_id, locale, search, status).await
 }
 
 pub(crate) async fn fetch_product(
@@ -29,7 +31,7 @@ pub(crate) async fn fetch_product(
     id: String,
     locale: Option<String>,
 ) -> Result<Option<ProductDetail>, ApiError> {
-    api::fetch_product(token, tenant_slug, tenant_id, id, locale).await
+    graphql_adapter::fetch_product(token, tenant_slug, tenant_id, id, locale).await
 }
 
 pub(crate) async fn fetch_product_pricing(
@@ -40,7 +42,8 @@ pub(crate) async fn fetch_product_pricing(
     locale: Option<String>,
     currency_code: Option<String>,
 ) -> Result<Option<ProductPricingDetail>, ApiError> {
-    api::fetch_product_pricing(token, tenant_slug, tenant_id, id, locale, currency_code).await
+    graphql_adapter::fetch_product_pricing(token, tenant_slug, tenant_id, id, locale, currency_code)
+        .await
 }
 
 pub(crate) async fn fetch_shipping_profiles(
@@ -48,7 +51,7 @@ pub(crate) async fn fetch_shipping_profiles(
     tenant_slug: Option<String>,
     tenant_id: String,
 ) -> Result<ShippingProfileList, ApiError> {
-    api::fetch_shipping_profiles(token, tenant_slug, tenant_id).await
+    graphql_adapter::fetch_shipping_profiles(token, tenant_slug, tenant_id).await
 }
 
 pub(crate) async fn create_product(
@@ -58,7 +61,7 @@ pub(crate) async fn create_product(
     user_id: String,
     draft: ProductDraft,
 ) -> Result<ProductDetail, ApiError> {
-    api::create_product(token, tenant_slug, tenant_id, user_id, draft).await
+    graphql_adapter::create_product(token, tenant_slug, tenant_id, user_id, draft).await
 }
 
 pub(crate) async fn update_product(
@@ -69,7 +72,7 @@ pub(crate) async fn update_product(
     id: String,
     draft: ProductDraft,
 ) -> Result<ProductDetail, ApiError> {
-    api::update_product(token, tenant_slug, tenant_id, user_id, id, draft).await
+    graphql_adapter::update_product(token, tenant_slug, tenant_id, user_id, id, draft).await
 }
 
 pub(crate) async fn change_product_status(
@@ -80,7 +83,7 @@ pub(crate) async fn change_product_status(
     id: String,
     status: &str,
 ) -> Result<ProductDetail, ApiError> {
-    api::change_product_status(token, tenant_slug, tenant_id, user_id, id, status).await
+    graphql_adapter::change_product_status(token, tenant_slug, tenant_id, user_id, id, status).await
 }
 
 pub(crate) async fn delete_product(
@@ -90,5 +93,5 @@ pub(crate) async fn delete_product(
     user_id: String,
     id: String,
 ) -> Result<bool, ApiError> {
-    api::delete_product(token, tenant_slug, tenant_id, user_id, id).await
+    graphql_adapter::delete_product(token, tenant_slug, tenant_id, user_id, id).await
 }

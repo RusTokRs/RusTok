@@ -69,7 +69,23 @@ pub fn ProductView() {
 
 function transportSource() {
   return `
+mod graphql_adapter;
+mod native_server_adapter;
 pub async fn fetch_products() {}
+`;
+}
+
+function graphqlAdapterSource() {
+  return `
+pub async fn fetch_storefront_products_graphql() {}
+`;
+}
+
+function nativeServerAdapterSource() {
+  return `
+use leptos_graphql::GraphqlRequest;
+#[server(prefix = "/api/fn", endpoint = "product/storefront-data")]
+async fn storefront_products_native() {}
 `;
 }
 
@@ -79,6 +95,9 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-product/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", transportSource());
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs", graphqlAdapterSource());
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", nativeServerAdapterSource());
+  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/storefront/src/api.rs", nativeServerAdapterSource());
   writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-product-storefront-boundary.mjs");
   writeFixtureFile(root, "package.json", JSON.stringify({
@@ -182,6 +201,17 @@ test("product storefront boundary verifier rejects raw api calls from UI", () =>
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
     assert.match(result.stderr, /UI adapter must not call raw transport or services/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product storefront boundary verifier rejects legacy api module", () => {
+  const root = withFixture({ legacyApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy api fixture to fail");
+    assert.match(result.stderr, /legacy api\.rs/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

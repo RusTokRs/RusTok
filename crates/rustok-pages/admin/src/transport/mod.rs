@@ -1,13 +1,14 @@
-use crate::api;
+mod graphql_adapter;
+
 use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
 
-pub type TransportError = api::ApiError;
+pub type TransportError = graphql_adapter::ApiError;
 
 pub async fn fetch_pages(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<PageList, TransportError> {
-    api::fetch_pages(token, tenant_slug).await
+    graphql_adapter::fetch_pages(token, tenant_slug).await
 }
 
 pub async fn fetch_page(
@@ -15,7 +16,7 @@ pub async fn fetch_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<Option<PageDetail>, TransportError> {
-    api::fetch_page(token, tenant_slug, id).await
+    graphql_adapter::fetch_page(token, tenant_slug, id).await
 }
 
 pub async fn create_page(
@@ -23,7 +24,7 @@ pub async fn create_page(
     tenant_slug: Option<String>,
     draft: CreatePageDraft,
 ) -> Result<PageMutationResult, TransportError> {
-    api::create_page(token, tenant_slug, draft).await
+    graphql_adapter::create_page(token, tenant_slug, draft).await
 }
 
 pub async fn update_page(
@@ -32,7 +33,7 @@ pub async fn update_page(
     id: String,
     draft: CreatePageDraft,
 ) -> Result<PageMutationResult, TransportError> {
-    api::update_page(token, tenant_slug, id, draft).await
+    graphql_adapter::update_page(token, tenant_slug, id, draft).await
 }
 
 pub async fn publish_page(
@@ -40,7 +41,7 @@ pub async fn publish_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<PageMutationResult, TransportError> {
-    api::publish_page(token, tenant_slug, id).await
+    graphql_adapter::publish_page(token, tenant_slug, id).await
 }
 
 pub async fn unpublish_page(
@@ -48,7 +49,7 @@ pub async fn unpublish_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<PageMutationResult, TransportError> {
-    api::unpublish_page(token, tenant_slug, id).await
+    graphql_adapter::unpublish_page(token, tenant_slug, id).await
 }
 
 pub async fn delete_page(
@@ -56,5 +57,5 @@ pub async fn delete_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<bool, TransportError> {
-    api::delete_page(token, tenant_slug, id).await
+    graphql_adapter::delete_page(token, tenant_slug, id).await
 }

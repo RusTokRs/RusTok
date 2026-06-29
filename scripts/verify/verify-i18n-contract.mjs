@@ -62,7 +62,7 @@ expectContains(
   "apps/next-frontend to use platform fallback locale 'en'",
 );
 expectContains(
-  "apps/next-admin/src/i18n/request.ts",
+  "apps/next-admin/src/i18n/config.ts",
   "export const defaultLocale: Locale = 'en';",
   "apps/next-admin to use platform fallback locale 'en'",
 );
@@ -77,12 +77,12 @@ expectNotContains(
   "legacy Locale::Ru fallback in Locale::from_code",
 );
 expectContains(
-  "apps/server/src/modules/manifest.rs",
+  "apps/server/src/modules/manifest/validation.rs",
   "normalize_locale_tag(locale)",
   "manifest i18n validation to normalize locale tags via rustok-core",
 );
 expectNotContains(
-  "apps/server/src/modules/manifest.rs",
+  "apps/server/src/modules/manifest/validation.rs",
   "is_valid_locale_key(",
   "legacy short-form locale validator in manifest i18n contract",
 );

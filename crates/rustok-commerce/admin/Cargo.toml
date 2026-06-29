@@ -20,7 +20,7 @@ ssr = [
     "dep:rustok-order",
     "dep:rust_decimal",
     "dep:uuid",
-    "rustok-api/server",
+    "rustok-api/loco-adapter",
 ]
 
 [dependencies]

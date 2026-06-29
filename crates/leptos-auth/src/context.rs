@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_use::use_interval_fn;
 
-use crate::api;
 use crate::storage;
+use crate::transport;
 use crate::{AuthError, AuthSession, AuthUser};
 
 fn now_unix_secs() -> i64 {
@@ -52,7 +52,7 @@ impl AuthContext {
         self.is_loading.set(true);
         self.error.set(None);
 
-        let result = api::sign_in(email, password, tenant).await;
+        let result = transport::sign_in(email, password, tenant).await;
 
         match result {
             Ok((user, session)) => {
@@ -81,7 +81,7 @@ impl AuthContext {
         self.is_loading.set(true);
         self.error.set(None);
 
-        let result = api::sign_up(email, password, name, tenant).await;
+        let result = transport::sign_up(email, password, name, tenant).await;
 
         match result {
             Ok((user, session)) => {
@@ -104,7 +104,7 @@ impl AuthContext {
         self.is_loading.set(true);
 
         if let Some(session) = self.session.get_untracked() {
-            let _ = api::sign_out(
+            let _ = transport::sign_out(
                 session.token.clone(),
                 session.refresh_token.clone(),
                 session.tenant.clone(),
@@ -144,7 +144,8 @@ impl AuthContext {
     pub async fn refresh_session(&self) -> Result<(), AuthError> {
         if let Some(session) = self.session.get_untracked() {
             let (new_session, new_user) =
-                api::refresh_token(session.refresh_token.clone(), session.tenant.clone()).await?;
+                transport::refresh_token(session.refresh_token.clone(), session.tenant.clone())
+                    .await?;
             let _ = storage::save_session(&new_session);
             let _ = storage::save_user(&new_user);
             self.session.set(Some(new_session));
@@ -157,8 +158,8 @@ impl AuthContext {
 
     pub async fn fetch_current_user(&self) -> Result<(), AuthError> {
         if let Some(session) = self.session.get_untracked() {
-            let user =
-                api::fetch_current_user(session.token.clone(), session.tenant.clone()).await?;
+            let user = transport::fetch_current_user(session.token.clone(), session.tenant.clone())
+                .await?;
             if let Some(ref u) = user {
                 let _ = storage::save_user(u);
             }

@@ -42,21 +42,25 @@ const libPath = "crates/rustok-forum/admin/src/lib.rs";
 const corePath = "crates/rustok-forum/admin/src/core.rs";
 const uiPath = "crates/rustok-forum/admin/src/ui/leptos.rs";
 const transportPath = "crates/rustok-forum/admin/src/transport.rs";
-const apiPath = "crates/rustok-forum/admin/src/api.rs";
+const legacyApiPath = "crates/rustok-forum/admin/src/api.rs";
+const restAdapterPath = "crates/rustok-forum/admin/src/transport/rest_adapter.rs";
 const implementationPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 const verifierTestPath = "scripts/verify/verify-forum-admin-boundary.test.mjs";
 
-for (const filePath of [libPath, corePath, uiPath, transportPath, apiPath, implementationPlanPath, registryPath, packagePath, verifierTestPath]) {
+for (const filePath of [libPath, corePath, uiPath, transportPath, restAdapterPath, implementationPlanPath, registryPath, packagePath, verifierTestPath]) {
   assertExists(filePath, `${filePath}: expected forum admin FFA boundary file`);
+}
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: forum admin legacy api.rs must stay removed; transport/rest_adapter.rs owns REST fallback operations`);
 }
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
-const api = readRepo(apiPath);
+const restAdapter = readRepo(restAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = JSON.parse(readRepo(packagePath));
@@ -66,6 +70,7 @@ assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::leptos::ForumAdmin;", `${libPath}: crate root must re-export ForumAdmin`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
@@ -165,8 +170,12 @@ assertNotContains(ui, /format!\("\{\}: \{err\}"/, `${uiPath}: transport error me
 for (const marker of ["fetch_categories", "fetch_category", "create_category", "update_category", "delete_category", "fetch_topics", "fetch_topic", "create_topic", "update_topic", "delete_topic", "fetch_replies"]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
-assertContains(transport, "use crate::api", `${transportPath}: transport facade may delegate to the current REST/api adapter`);
-assertContains(api, "reqwest", `${apiPath}: forum admin api adapter must keep the REST transport contract`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "mod rest_adapter;", `${transportPath}: transport facade must wire REST fallback adapter`);
+assertContains(transport, "graphql_adapter::fetch_categories", `${transportPath}: transport facade must prefer GraphQL adapter`);
+assertContains(transport, "rest_adapter::fetch_categories", `${transportPath}: transport facade must keep REST fallback adapter`);
+assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
+assertContains(restAdapter, "reqwest", `${restAdapterPath}: forum admin REST adapter must keep the REST transport contract`);
 
 assertContains(implementationPlan, "verify-forum-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the forum fast boundary guardrail`);
 assertContains(registry, "verify-forum-admin-boundary.mjs", `${registryPath}: central readiness board must mention the forum fast boundary guardrail`);
@@ -185,6 +194,7 @@ for (const marker of [
   "passes canonical fixture",
   "rejects Leptos-specific core",
   "rejects raw api calls from UI",
+  "rejects legacy admin api module",
   "rejects raw busy-key strings from UI",
   "rejects missing package fixture script",
 ]) {

@@ -66,9 +66,9 @@ pub fn RegionAdmin() {
 
 function transportSource({ omitApiDelegation = false } = {}) {
   return `
-${omitApiDelegation ? "" : "use crate::api;"}
+${omitApiDelegation ? "" : "mod native_server_adapter;"}
 pub async fn fetch_bootstrap() {}
-pub async fn fetch_regions() {}
+pub async fn fetch_regions() { native_server_adapter::fetch_regions().await; }
 pub async fn fetch_region_detail(region_id: String) {}
 pub async fn create_region(payload: String) {}
 pub async fn update_region(region_id: String, payload: String) {}
@@ -95,7 +95,7 @@ ${omitGuardrail ? "" : "- Fast guardrail: scripts/verify/verify-region-admin-bou
 function registrySource({ staleSlice = false, omitGuardrail = false } = {}) {
   return `
 | Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
-| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #39" : "slice #40"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
+| \`region\` | admin + storefront | \`in_progress\` | \`not_started\` | \`core_transport_ui\` | ${staleSlice ? "slice #41" : "slice #42"}; ${omitGuardrail ? "" : "scripts/verify/verify-region-admin-boundary.mjs"} |
 `;
 }
 
@@ -125,7 +125,8 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-region/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-region/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-region/admin/src/transport/mod.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-region/admin/src/api.rs", apiSource(options));
+  writeFixtureFile(root, "crates/rustok-region/admin/src/transport/native_server_adapter.rs", apiSource(options));
+  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-region/admin/src/api.rs", apiSource(options));
   writeFixtureFile(root, "crates/rustok-region/docs/implementation-plan.md", implementationPlanSource(options));
   writeFixtureFile(root, "docs/modules/registry.md", registrySource(options));
   writeFixtureFile(root, "package.json", packageJsonSource(options));
@@ -171,6 +172,13 @@ test("region admin boundary verifier rejects raw api calls from UI", () => {
   });
 });
 
+test("region admin boundary verifier rejects legacy admin api module", () => {
+  withTempFixture({ legacyApi: true }, (result) => {
+    assert.notEqual(result.status, 0, "Expected legacy api fixture to fail");
+    assert.match(result.stderr, /legacy api\.rs/);
+  });
+});
+
 test("region admin boundary verifier rejects missing route writer core helper", () => {
   withTempFixture({ omitRouteWriter: true }, (result) => {
     assert.notEqual(result.status, 0, "Expected missing route writer fixture to fail");
@@ -181,7 +189,7 @@ test("region admin boundary verifier rejects missing route writer core helper", 
 test("region admin boundary verifier rejects stale central readiness board", () => {
   withTempFixture({ staleSlice: true }, (result) => {
     assert.notEqual(result.status, 0, "Expected stale registry fixture to fail");
-    assert.match(result.stderr, /central readiness board must record slice #40/);
+    assert.match(result.stderr, /central readiness board must record slice #42/);
   });
 });
 

@@ -5,9 +5,9 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::ApiError;
 use crate::core::{CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMutationRequest};
 use crate::model::StorefrontCartData;
+use native_server_adapter::ApiError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

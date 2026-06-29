@@ -5,7 +5,7 @@
 ## Execution checkpoint
 
 - Current phase: `phase_d6_transport_parity_followup`
-- Last checkpoint: Закрыт grouped batch D6.1+D6.3: добавлены reusable control-plane widgets (`SeoControlPlaneWidgets`, `SeoControlPlaneWidgetStateCard`), расширен typed remediation mapping (`issue_code -> action`), введён единый state-contract (`loading/ready/empty/permission_denied/error`) и owner-module wiring `pages/product/blog/forum` переведён на host-locale-only contract.
+- Last checkpoint: Legacy `src/api.rs` file removed; shared SEO GraphQL helpers now live in `src/transport.rs`, and `SeoEntityPanel` consumes the internal transport module directly while keeping owner-module API unchanged.
 - Next step: Закрыть D6.2 — transport helpers parity (REST-first + GraphQL fallback) для diagnostics/sitemap/bulk control-plane read surfaces.
 - Open blockers:
   - Для D6.2 нужно согласовать минимальный REST surface в support crate без дублирования heavy client-кода из Next admin.
@@ -26,6 +26,7 @@
 
 - [x] создан support crate с root README и local docs;
 - [x] вынесены shared GraphQL helper-ы для `seoMeta`, `upsertSeoMeta`, `publishSeoRevision`;
+- [x] legacy `src/api.rs` file removed; shared SEO GraphQL helpers now live in `src/transport.rs`, and `SeoEntityPanel` consumes the internal transport module directly;
 - [x] реализован `SeoEntityPanel` для owner-side entity editors;
 - [x] реализован `SeoCapabilityNotice` для capability-slot сценариев;
 - [x] встроены owner-side SEO panels в `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin`;

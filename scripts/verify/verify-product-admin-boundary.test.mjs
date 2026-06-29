@@ -17,7 +17,6 @@ function writeFixtureFile(root, relativePath, content) {
 
 function libSource() {
   return `
-mod api;
 mod core;
 mod i18n;
 mod model;
@@ -87,17 +86,17 @@ pub fn ProductAdmin() {
 
 function transportSource({ includeServerEndpoint = false } = {}) {
   return `
-use crate::api;
+mod graphql_adapter;
 
-pub async fn fetch_bootstrap() { api::fetch_bootstrap().await; }
-pub async fn fetch_products() { api::fetch_products().await; }
-pub async fn fetch_product() { api::fetch_product().await; }
-pub async fn fetch_product_pricing() { api::fetch_product_pricing().await; }
-pub async fn fetch_shipping_profiles() { api::fetch_shipping_profiles().await; }
-pub async fn create_product() { api::create_product().await; }
-pub async fn update_product() { api::update_product().await; }
-pub async fn change_product_status() { api::change_product_status().await; }
-pub async fn delete_product() { api::delete_product().await; }
+pub async fn fetch_bootstrap() { graphql_adapter::fetch_bootstrap().await; }
+pub async fn fetch_products() { graphql_adapter::fetch_products().await; }
+pub async fn fetch_product() { graphql_adapter::fetch_product().await; }
+pub async fn fetch_product_pricing() { graphql_adapter::fetch_product_pricing().await; }
+pub async fn fetch_shipping_profiles() { graphql_adapter::fetch_shipping_profiles().await; }
+pub async fn create_product() { graphql_adapter::create_product().await; }
+pub async fn update_product() { graphql_adapter::update_product().await; }
+pub async fn change_product_status() { graphql_adapter::change_product_status().await; }
+pub async fn delete_product() { graphql_adapter::delete_product().await; }
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
@@ -123,7 +122,8 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-product/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-product/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-product/admin/src/transport.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-product/admin/src/api.rs", apiSource());
+  writeFixtureFile(root, "crates/rustok-product/admin/src/transport/graphql_adapter.rs", apiSource());
+  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/admin/src/api.rs", apiSource());
   writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-product-admin-boundary.mjs");
   writeFixtureFile(root, "package.json", JSON.stringify({
@@ -172,6 +172,17 @@ test("product admin boundary verifier rejects raw api calls from UI", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
     assert.match(result.stderr, /UI adapter must not call raw transport or services/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("product admin boundary verifier rejects legacy api module", () => {
+  const root = withFixture({ legacyApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy api fixture to fail");
+    assert.match(result.stderr, /legacy api\.rs/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

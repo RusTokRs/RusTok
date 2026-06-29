@@ -43,19 +43,24 @@ function assertSearchAdminBoundary() {
   const corePath = "crates/rustok-search/admin/src/core.rs";
   const uiPath = "crates/rustok-search/admin/src/ui/leptos.rs";
   const transportPath = "crates/rustok-search/admin/src/transport/mod.rs";
-  const apiPath = "crates/rustok-search/admin/src/api.rs";
+  const nativePath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
+  const legacyApiPath = "crates/rustok-search/admin/src/api.rs";
 
-  for (const checkedPath of [libPath, corePath, uiPath, transportPath, apiPath]) {
+  for (const checkedPath of [libPath, corePath, uiPath, transportPath, nativePath]) {
     assertExists(checkedPath, `${checkedPath}: expected search admin boundary file`);
+  }
+  if (existsSync(repoPath(legacyApiPath))) {
+    fail(`${legacyApiPath}: admin legacy api.rs must stay removed; transport adapters own native/GraphQL paths`);
   }
 
   const lib = readRepo(libPath);
   const core = readRepo(corePath);
   const ui = readRepo(uiPath);
   const transport = readRepo(transportPath);
-  const api = readRepo(apiPath);
+  const native = readRepo(nativePath);
 
   assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
+  assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api module`);
   assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
   assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
   assertContains(lib, "pub use ui::leptos::SearchAdmin;", `${libPath}: crate root must re-export SearchAdmin`);
@@ -83,15 +88,17 @@ function assertSearchAdminBoundary() {
     assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport (${marker})`);
   }
 
-  assertContains(transport, "use crate::api;", `${transportPath}: admin transport facade may delegate to legacy raw adapter while preserving UI boundary`);
-  assertContains(transport, "pub type TransportError = api::ApiError;", `${transportPath}: admin transport facade must own exposed transport error alias`);
+  assertContains(transport, "mod native_server_adapter;", `${transportPath}: admin transport facade must wire native server adapter`);
+  assertContains(transport, "pub type TransportError = native_server_adapter::ApiError;", `${transportPath}: admin transport facade must own exposed transport error alias`);
   for (const marker of ["fetch_bootstrap", "fetch_search_preview", "fetch_search_analytics", "fetch_dictionary_snapshot", "update_search_settings"]) {
     assertContains(transport, `pub async fn ${marker}`, `${transportPath}: facade must expose ${marker}`);
   }
-  assertNotContains(transport, "#[server", `${transportPath}: server functions belong in api.rs for the current admin adapter`);
+  assertContains(transport, "native_server_adapter::fetch_search_preview", `${transportPath}: facade must delegate preview through native adapter`);
+  assertNotContains(transport, "#[server", `${transportPath}: server functions belong in native_server_adapter.rs`);
+  assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 
-  assertContains(api, "#[server", `${apiPath}: admin raw adapter must keep native server-function endpoints`);
-  assertContains(api, "leptos_graphql", `${apiPath}: admin raw adapter must keep GraphQL fallback implementation`);
+  assertContains(native, "#[server", `${nativePath}: admin raw adapter must keep native server-function endpoints`);
+  assertContains(native, "leptos_graphql", `${nativePath}: admin raw adapter must keep GraphQL fallback implementation`);
 }
 
 function assertSearchStorefrontBoundary() {
@@ -101,9 +108,13 @@ function assertSearchStorefrontBoundary() {
   const transportPath = "crates/rustok-search/storefront/src/transport/mod.rs";
   const nativePath = "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
   const graphqlPath = "crates/rustok-search/storefront/src/transport/graphql_adapter.rs";
+  const legacyApiPath = "crates/rustok-search/storefront/src/api.rs";
 
   for (const checkedPath of [libPath, corePath, uiPath, transportPath, nativePath, graphqlPath]) {
     assertExists(checkedPath, `${checkedPath}: expected search storefront boundary file`);
+  }
+  if (existsSync(repoPath(legacyApiPath))) {
+    fail(`${legacyApiPath}: storefront legacy api.rs must stay removed; transport adapters own native/GraphQL paths`);
   }
 
   const lib = readRepo(libPath);
@@ -114,6 +125,7 @@ function assertSearchStorefrontBoundary() {
   const graphql = readRepo(graphqlPath);
 
   assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
+  assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api module`);
   assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
   assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
   assertContains(lib, "pub use ui::leptos::SearchView;", `${libPath}: crate root must re-export SearchView`);
@@ -150,7 +162,8 @@ function assertSearchStorefrontBoundary() {
   assertContains(transport, "native_server_adapter::fetch_suggestions", `${transportPath}: facade must prefer native suggestions path`);
   assertContains(transport, "graphql_adapter::fetch_suggestions", `${transportPath}: facade must keep GraphQL suggestions fallback`);
   assertNotContains(transport, "#[server", `${transportPath}: server-function endpoints belong in native_server_adapter.rs`);
-  assertNotContains(transport, "execute_graphql", `${transportPath}: raw GraphQL execution belongs in graphql_adapter.rs/api.rs`);
+  assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
+  assertNotContains(transport, "execute_graphql", `${transportPath}: raw GraphQL execution belongs in graphql_adapter.rs`);
 
   assertContains(native, "fetch_storefront_search_server", `${nativePath}: native adapter must call native search endpoint`);
   assertContains(native, "fetch_storefront_suggestions_server", `${nativePath}: native adapter must call native suggestions endpoint`);
@@ -159,6 +172,7 @@ function assertSearchStorefrontBoundary() {
   assertContains(graphql, "fetch_storefront_search_graphql", `${graphqlPath}: GraphQL adapter must call search fallback`);
   assertContains(graphql, "fetch_storefront_suggestions_graphql", `${graphqlPath}: GraphQL adapter must call suggestions fallback`);
   assertNotContains(graphql, "fetch_storefront_search_server", `${graphqlPath}: GraphQL adapter must not call native server path`);
+  assertContains(graphql, "GraphqlRequest", `${graphqlPath}: GraphQL adapter must own raw GraphQL request execution`);
 }
 
 assertSearchAdminBoundary();

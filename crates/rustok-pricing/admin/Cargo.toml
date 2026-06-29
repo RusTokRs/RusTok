@@ -20,6 +20,7 @@ ssr = [
   "dep:rustok-core",
   "dep:rustok-pricing",
   "dep:sea-orm",
+  "rustok-api/loco-adapter",
 ]
 
 [dependencies]

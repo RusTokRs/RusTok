@@ -1,9 +1,9 @@
-use crate::api::{self, ApiError};
+use super::native_server_adapter::{self, ApiError};
 use crate::core::StorefrontPricingQuery;
 use crate::model::StorefrontPricingData;
 
 pub(crate) async fn fetch_storefront_pricing(
     query: StorefrontPricingQuery,
 ) -> Result<StorefrontPricingData, ApiError> {
-    api::fetch_storefront_pricing_graphql(query).await
+    native_server_adapter::fetch_storefront_pricing_graphql(query).await
 }

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // RusTok forum storefront FFA boundary guardrails.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const files = {
   lib: "crates/rustok-forum/storefront/src/lib.rs",
   core: "crates/rustok-forum/storefront/src/core.rs",
   ui: "crates/rustok-forum/storefront/src/ui/leptos.rs",
-  transport: "crates/rustok-forum/storefront/src/transport.rs",
-  api: "crates/rustok-forum/storefront/src/api.rs",
+  transport: "crates/rustok-forum/storefront/src/transport/mod.rs",
+  graphqlAdapter: "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
+  legacyApi: "crates/rustok-forum/storefront/src/api.rs",
   plan: "crates/rustok-forum/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
@@ -26,7 +27,7 @@ const lib = text(files.lib);
 const core = text(files.core);
 const ui = text(files.ui);
 const transport = text(files.transport);
-const api = text(files.api);
+const graphqlAdapter = text(files.graphqlAdapter);
 const plan = text(files.plan);
 const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
@@ -54,7 +55,14 @@ assertContains(ui, "forum_storefront_topic_card_view_model", `${files.ui}: UI mu
 assertContains(ui, "forum_storefront_status_badge_class", `${files.ui}: UI must consume core-owned status badge class policy`);
 assertContains(ui, "forum_storefront_count_label", `${files.ui}: UI must consume core-owned count label policy`);
 assertContains(transport, "fetch_storefront_forum", `${files.transport}: storefront transport facade must expose fetch_storefront_forum`);
-assertContains(api, "graphql", `${files.api}: storefront API must keep GraphQL-backed read contract`);
+assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport facade must own GraphQL adapter module`);
+assertContains(transport, "graphql_adapter::fetch_storefront_forum", `${files.transport}: transport facade must delegate through GraphQL adapter`);
+assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to legacy api module`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: storefront GraphQL adapter must keep GraphQL-backed read contract`);
+if (existsSync(files.legacyApi)) {
+  fail(`${files.legacyApi}: legacy api.rs must stay removed; transport/graphql_adapter.rs owns the read contract`);
+}
+assertNotContains(lib, "mod api;", `${files.lib}: lib must not wire legacy api module`);
 assertContains(lib, "pub use ui::leptos::ForumView", `${files.lib}: lib must only wire and re-export ForumView`);
 assertContains(plan, "verify-forum-storefront-boundary.mjs", `${files.plan}: local plan must mention storefront fast boundary guardrail`);
 assertContains(registry, "verify-forum-storefront-boundary.mjs", `${files.registry}: central readiness board must mention storefront fast boundary guardrail`);

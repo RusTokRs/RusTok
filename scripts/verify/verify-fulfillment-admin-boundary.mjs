@@ -42,7 +42,8 @@ const libPath = "crates/rustok-fulfillment/admin/src/lib.rs";
 const corePath = "crates/rustok-fulfillment/admin/src/core.rs";
 const uiPath = "crates/rustok-fulfillment/admin/src/ui/leptos.rs";
 const transportPath = "crates/rustok-fulfillment/admin/src/transport.rs";
-const apiPath = "crates/rustok-fulfillment/admin/src/api.rs";
+const legacyApiPath = "crates/rustok-fulfillment/admin/src/api.rs";
+const graphqlAdapterPath = "crates/rustok-fulfillment/admin/src/transport/graphql_adapter.rs";
 const implementationPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 
@@ -51,22 +52,25 @@ for (const filePath of [
   corePath,
   uiPath,
   transportPath,
-  apiPath,
+  graphqlAdapterPath,
   implementationPlanPath,
   registryPath,
 ]) {
   assertExists(filePath, `${filePath}: expected fulfillment admin FFA boundary file`);
+}
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: fulfillment admin legacy api.rs must stay removed; transport/graphql_adapter.rs owns GraphQL operations`);
 }
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
-const api = readRepo(apiPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 
-assertContains(lib, "mod api;", `${libPath}: crate root must wire current GraphQL/api adapter privately`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
@@ -118,9 +122,11 @@ for (const marker of [
 ]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
-assertContains(transport, "use crate::api", `${transportPath}: transport facade may delegate to the current GraphQL/api adapter`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "graphql_adapter::fetch_bootstrap", `${transportPath}: transport facade must delegate through GraphQL adapter`);
+assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the fulfillment admin transport facade`);
-assertContains(api, "GraphqlRequest", `${apiPath}: fulfillment admin api adapter must keep the GraphQL transport contract`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: fulfillment admin GraphQL adapter must keep the GraphQL transport contract`);
 
 assertContains(implementationPlan, "verify-fulfillment-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the fulfillment fast boundary guardrail`);
 assertContains(registry, "verify-fulfillment-admin-boundary.mjs", `${registryPath}: central readiness board must mention the fulfillment fast boundary guardrail`);

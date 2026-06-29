@@ -15,7 +15,7 @@ const assertAll = (path, markers) => {
   return source;
 };
 
-const pagesStorefront = assertAll('crates/rustok-pages/storefront/src/api.rs', [
+const pagesStorefront = assertAll('crates/rustok-pages/storefront/src/transport/native_server_adapter.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'normalize_channel_slug',
@@ -43,7 +43,7 @@ assertAll('crates/rustok-pages/README.md', [
   'rustok-channel',
 ]);
 
-const blogStorefront = assertAll('crates/rustok-blog/storefront/src/api.rs', [
+const blogStorefront = assertAll('crates/rustok-blog/storefront/src/transport/native_server_adapter.rs', [
   'ChannelService::new',
   '.is_module_enabled(channel_id, MODULE_SLUG)',
   'normalize_channel_slug',
@@ -82,7 +82,7 @@ assertAll('crates/rustok-commerce/src/graphql/mod.rs', [
   'is_module_enabled_for_request_channel',
   "Module '{MODULE_SLUG}' is not enabled for channel",
 ]);
-assertAll('crates/rustok-commerce/storefront/src/api.rs', [
+assertAll('crates/rustok-commerce/storefront/src/transport/raw_adapter.rs', [
   'normalize_public_channel_slug',
   'request_context.channel_slug',
   '.channel_id',

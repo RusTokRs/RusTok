@@ -17,7 +17,6 @@ function writeFixtureFile(root, relativePath, content) {
 
 function libSource({ publicTransportPassthrough = false } = {}) {
   return `
-mod api;
 mod core;
 mod i18n;
 mod model;
@@ -64,16 +63,16 @@ pub fn FulfillmentAdmin() {
 
 function transportSource({ includeServerEndpoint = false } = {}) {
   return `
-use crate::api;
+mod graphql_adapter;
 
-pub async fn fetch_bootstrap() { api::fetch_bootstrap().await; }
-pub async fn fetch_shipping_options() { api::fetch_shipping_options().await; }
-pub async fn fetch_shipping_option() { api::fetch_shipping_option().await; }
-pub async fn fetch_shipping_profiles() { api::fetch_shipping_profiles().await; }
-pub async fn create_shipping_option() { api::create_shipping_option().await; }
-pub async fn update_shipping_option() { api::update_shipping_option().await; }
-pub async fn deactivate_shipping_option() { api::deactivate_shipping_option().await; }
-pub async fn reactivate_shipping_option() { api::reactivate_shipping_option().await; }
+pub async fn fetch_bootstrap() { graphql_adapter::fetch_bootstrap().await; }
+pub async fn fetch_shipping_options() { graphql_adapter::fetch_shipping_options().await; }
+pub async fn fetch_shipping_option() { graphql_adapter::fetch_shipping_option().await; }
+pub async fn fetch_shipping_profiles() { graphql_adapter::fetch_shipping_profiles().await; }
+pub async fn create_shipping_option() { graphql_adapter::create_shipping_option().await; }
+pub async fn update_shipping_option() { graphql_adapter::update_shipping_option().await; }
+pub async fn deactivate_shipping_option() { graphql_adapter::deactivate_shipping_option().await; }
+pub async fn reactivate_shipping_option() { graphql_adapter::reactivate_shipping_option().await; }
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
@@ -98,7 +97,8 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/transport.rs", transportSource(options));
-  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/api.rs", apiSource());
+  writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/transport/graphql_adapter.rs", apiSource());
+  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-fulfillment/admin/src/api.rs", apiSource());
   writeFixtureFile(root, "crates/rustok-fulfillment/docs/implementation-plan.md", "verify-fulfillment-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-fulfillment-admin-boundary.mjs");
   return root;
@@ -140,6 +140,17 @@ test("fulfillment admin boundary verifier rejects raw api calls from UI", () => 
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
     assert.match(result.stderr, /UI adapter must not call raw transport or services/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("fulfillment admin boundary verifier rejects legacy api module", () => {
+  const root = withFixture({ legacyApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy api fixture to fail");
+    assert.match(result.stderr, /legacy api\.rs/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

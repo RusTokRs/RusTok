@@ -1,4 +1,3 @@
-mod api;
 pub mod core;
 mod i18n;
 mod model;

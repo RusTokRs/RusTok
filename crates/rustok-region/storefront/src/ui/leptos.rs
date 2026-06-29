@@ -359,6 +359,12 @@ mod ssr_tests {
 
     #[test]
     fn region_rail_ssr_exposes_route_query_dom_evidence() {
+        provide_context(UiRouteContext {
+            route_segment: Some("regions".to_string()),
+            route_base: Some("/storefront/modules".to_string()),
+            ..UiRouteContext::default()
+        });
+
         let region = StorefrontRegion {
             id: "eu".to_string(),
             name: "Europe".to_string(),
@@ -377,7 +383,7 @@ mod ssr_tests {
         let html = view! { <RegionRail items=vec![region] total=1 /> }.to_html();
 
         assert!(
-            html.contains(r#"href="/modules/regions?region=eu""#),
+            html.contains(r#"href="/storefront/modules/regions?region=eu""#),
             "rendered rail link should use core route/query href: {html}"
         );
         assert!(

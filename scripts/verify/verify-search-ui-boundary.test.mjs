@@ -68,18 +68,21 @@ pub fn render() {
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-search-ui-boundary-"));
-  writeFixtureFile(root, "crates/rustok-search/admin/src/lib.rs", "mod api;\nmod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchAdmin;\n");
+  writeFixtureFile(root, "crates/rustok-search/admin/src/lib.rs", `${options.legacyAdminModApi ? "mod api;\n" : ""}mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchAdmin;\n`);
   writeFixtureFile(root, "crates/rustok-search/admin/src/core.rs", adminCore(options));
   writeFixtureFile(root, "crates/rustok-search/admin/src/ui/leptos.rs", adminUi(options));
-  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/mod.rs", "use crate::api;\npub type TransportError = api::ApiError;\npub async fn fetch_bootstrap() {}\npub async fn fetch_search_preview() {}\npub async fn fetch_search_analytics() {}\npub async fn fetch_dictionary_snapshot() {}\npub async fn update_search_settings() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/admin/src/api.rs", "use leptos_graphql as graphql;\n#[server]\npub async fn endpoint() {}\n");
+  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/mod.rs", "mod native_server_adapter;\npub type TransportError = native_server_adapter::ApiError;\npub async fn fetch_bootstrap() {}\npub async fn fetch_search_preview() { let _ = native_server_adapter::fetch_search_preview; }\npub async fn fetch_search_analytics() {}\npub async fn fetch_dictionary_snapshot() {}\npub async fn update_search_settings() {}\n");
+  writeFixtureFile(root, "crates/rustok-search/admin/src/transport/native_server_adapter.rs", "use leptos_graphql as graphql;\npub enum ApiError {}\n#[server]\npub async fn endpoint() {}\npub fn fetch_search_preview() {}\n");
+  if (options.legacyAdminApi) {
+    writeFixtureFile(root, "crates/rustok-search/admin/src/api.rs", "pub async fn fetch_search_preview() {}\n");
+  }
 
   writeFixtureFile(root, "crates/rustok-search/storefront/src/lib.rs", "mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchView;\n");
   writeFixtureFile(root, "crates/rustok-search/storefront/src/core.rs", storefrontCore(options));
   writeFixtureFile(root, "crates/rustok-search/storefront/src/ui/leptos.rs", storefrontUi(options));
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_search() { let _ = native_server_adapter::fetch_search; let _ = graphql_adapter::fetch_search; }\npub async fn fetch_suggestions() { let _ = native_server_adapter::fetch_suggestions; let _ = graphql_adapter::fetch_suggestions; }\n");
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/native_server_adapter.rs", "pub fn fetch_storefront_search_server() {}\npub fn fetch_storefront_suggestions_server() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
-  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/graphql_adapter.rs", "pub fn fetch_storefront_search_graphql() {}\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
+  writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/graphql_adapter.rs", "use leptos_graphql::GraphqlRequest;\npub fn fetch_storefront_search_graphql() {}\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
   return root;
 }
 
@@ -130,6 +133,28 @@ test("search UI boundary verifier rejects raw admin api calls from UI", () => {
     const result = runVerifier(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /UI adapter must not call raw transport/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("search UI boundary verifier rejects legacy admin api file", () => {
+  const root = withFixture({ legacyAdminApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /admin legacy api\.rs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("search UI boundary verifier rejects legacy admin api module", () => {
+  const root = withFixture({ legacyAdminModApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not wire legacy api module/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

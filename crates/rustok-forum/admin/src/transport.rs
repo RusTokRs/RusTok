@@ -1,6 +1,6 @@
 mod graphql_adapter;
+mod rest_adapter;
 
-use crate::api;
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
@@ -17,7 +17,7 @@ pub async fn fetch_categories(
         .await
     {
         Ok(categories) => Ok(categories),
-        Err(_) => api::fetch_categories(token, tenant_slug, locale).await,
+        Err(_) => rest_adapter::fetch_categories(token, tenant_slug, locale).await,
     }
 }
 
@@ -36,7 +36,7 @@ pub async fn fetch_category(
     .await
     {
         Ok(category) => Ok(category),
-        Err(_) => api::fetch_category(token, tenant_slug, id, locale).await,
+        Err(_) => rest_adapter::fetch_category(token, tenant_slug, id, locale).await,
     }
 }
 
@@ -48,7 +48,7 @@ pub async fn create_category(
     match graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft.clone()).await
     {
         Ok(category) => Ok(category),
-        Err(_) => api::create_category(token, tenant_slug, draft).await,
+        Err(_) => rest_adapter::create_category(token, tenant_slug, draft).await,
     }
 }
 
@@ -67,7 +67,7 @@ pub async fn update_category(
     .await
     {
         Ok(category) => Ok(category),
-        Err(_) => api::update_category(token, tenant_slug, id, draft).await,
+        Err(_) => rest_adapter::update_category(token, tenant_slug, id, draft).await,
     }
 }
 
@@ -78,7 +78,7 @@ pub async fn delete_category(
 ) -> Result<(), ApiError> {
     match graphql_adapter::delete_category(token.clone(), tenant_slug.clone(), id.clone()).await {
         Ok(()) => Ok(()),
-        Err(_) => api::delete_category(token, tenant_slug, id).await,
+        Err(_) => rest_adapter::delete_category(token, tenant_slug, id).await,
     }
 }
 
@@ -97,7 +97,7 @@ pub async fn fetch_topics(
     .await
     {
         Ok(topics) => Ok(topics),
-        Err(_) => api::fetch_topics(token, tenant_slug, locale, category_id).await,
+        Err(_) => rest_adapter::fetch_topics(token, tenant_slug, locale, category_id).await,
     }
 }
 
@@ -116,7 +116,7 @@ pub async fn fetch_topic(
     .await
     {
         Ok(topic) => Ok(topic),
-        Err(_) => api::fetch_topic(token, tenant_slug, id, locale).await,
+        Err(_) => rest_adapter::fetch_topic(token, tenant_slug, id, locale).await,
     }
 }
 
@@ -127,7 +127,7 @@ pub async fn create_topic(
 ) -> Result<TopicDetail, ApiError> {
     match graphql_adapter::create_topic(token.clone(), tenant_slug.clone(), draft.clone()).await {
         Ok(topic) => Ok(topic),
-        Err(_) => api::create_topic(token, tenant_slug, draft).await,
+        Err(_) => rest_adapter::create_topic(token, tenant_slug, draft).await,
     }
 }
 
@@ -146,7 +146,7 @@ pub async fn update_topic(
     .await
     {
         Ok(topic) => Ok(topic),
-        Err(_) => api::update_topic(token, tenant_slug, id, draft).await,
+        Err(_) => rest_adapter::update_topic(token, tenant_slug, id, draft).await,
     }
 }
 
@@ -157,7 +157,7 @@ pub async fn delete_topic(
 ) -> Result<(), ApiError> {
     match graphql_adapter::delete_topic(token.clone(), tenant_slug.clone(), id.clone()).await {
         Ok(()) => Ok(()),
-        Err(_) => api::delete_topic(token, tenant_slug, id).await,
+        Err(_) => rest_adapter::delete_topic(token, tenant_slug, id).await,
     }
 }
 
@@ -176,6 +176,6 @@ pub async fn fetch_replies(
     .await
     {
         Ok(replies) => Ok(replies),
-        Err(_) => api::fetch_replies(token, tenant_slug, topic_id, locale).await,
+        Err(_) => rest_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await,
     }
 }

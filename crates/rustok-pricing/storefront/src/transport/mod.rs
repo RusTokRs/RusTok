@@ -3,9 +3,9 @@ mod native_server_adapter;
 
 use std::future::Future;
 
-use crate::api::ApiError;
 use crate::core::StorefrontPricingQuery;
 use crate::model::StorefrontPricingData;
+use native_server_adapter::ApiError;
 
 pub(crate) async fn fetch_storefront_pricing(
     query: StorefrontPricingQuery,

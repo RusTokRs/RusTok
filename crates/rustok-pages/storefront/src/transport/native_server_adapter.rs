@@ -1,135 +1,15 @@
 use leptos::prelude::*;
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+
+use super::ApiError;
+use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
-use crate::model::{PageBlock, PageBody, PageListItem, PageTranslation};
-use crate::model::{PageDetail, PageList, StorefrontPagesData};
+use crate::model::{PageBlock, PageBody, PageDetail, PageList, PageListItem, PageTranslation};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ApiError {
-    Graphql(String),
-    ServerFn(String),
-}
-
-impl Display for ApiError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Graphql(error) => write!(f, "{error}"),
-            Self::ServerFn(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for ApiError {}
-
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
-impl From<ServerFnError> for ApiError {
-    fn from(value: ServerFnError) -> Self {
-        Self::ServerFn(value.to_string())
-    }
-}
-
-const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } blocks { id blockType position } } pages(filter: $filter) { total items { id title slug status template } } }";
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
 #[cfg(feature = "ssr")]
 const PLATFORM_FALLBACK_LOCALE: &str = "en";
-
-#[derive(Debug, Deserialize)]
-struct StorefrontPagesResponse {
-    #[serde(rename = "selectedPage")]
-    selected_page: Option<PageDetail>,
-    pages: PageList,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontPagesVariables {
-    #[serde(rename = "pageSlug")]
-    page_slug: String,
-    filter: ListPagesFilter,
-    locale: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct ListPagesFilter {
-    page: u64,
-    #[serde(rename = "perPage")]
-    per_page: u64,
-}
-
-fn configured_tenant_slug() -> Option<String> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-    })
-}
-
-fn graphql_url() -> String {
-    if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
-        return url.to_string();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
-
-async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(query, Some(variables)),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(ApiError::from)
-}
-
-pub async fn fetch_storefront_pages(
-    page_slug: String,
-    locale: Option<String>,
-) -> Result<StorefrontPagesData, ApiError> {
-    match fetch_storefront_pages_server(configured_tenant_slug(), page_slug.clone(), locale.clone())
-        .await
-    {
-        Ok(data) => Ok(data),
-        Err(_) => fetch_storefront_pages_graphql(page_slug, locale).await,
-    }
-}
 
 pub async fn fetch_storefront_pages_server(
     tenant_slug: Option<String>,
@@ -139,29 +19,6 @@ pub async fn fetch_storefront_pages_server(
     storefront_pages_native(tenant_slug, page_slug, locale)
         .await
         .map_err(ApiError::from)
-}
-
-pub async fn fetch_storefront_pages_graphql(
-    page_slug: String,
-    locale: Option<String>,
-) -> Result<StorefrontPagesData, ApiError> {
-    let response: StorefrontPagesResponse = request(
-        STOREFRONT_PAGES_QUERY,
-        StorefrontPagesVariables {
-            page_slug,
-            filter: ListPagesFilter {
-                page: 1,
-                per_page: 6,
-            },
-            locale,
-        },
-    )
-    .await?;
-
-    Ok(StorefrontPagesData {
-        selected_page: response.selected_page,
-        pages: response.pages,
-    })
 }
 
 #[server(prefix = "/api/fn", endpoint = "pages/storefront-data")]
@@ -182,12 +39,8 @@ async fn storefront_pages_native(
         use rustok_tenant::TenantService;
 
         let app_ctx = expect_context::<AppContext>();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
-        let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .ok();
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>().await.ok();
+        let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>().await.ok();
 
         let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
             (tenant.id, tenant.default_locale.clone())

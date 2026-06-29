@@ -1,11 +1,12 @@
 mod graphql_adapter;
 mod native_server_adapter;
+mod raw_adapter;
 
-use crate::api::ApiError;
 use crate::core::{
     CheckoutCompletionCommandRequest, FetchCommerceRequest, PaymentCollectionCommandRequest,
     SelectShippingOptionRequest,
 };
+use raw_adapter::ApiError;
 use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };

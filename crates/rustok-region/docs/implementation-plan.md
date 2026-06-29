@@ -6,12 +6,12 @@
 
 ## Execution checkpoint
 
-- Current phase: fba_region_read_projection_static_contract
-- Last checkpoint: FBA slice #2 перевёл `RegionReadPort` на shared `rustok_api::ports::PortContext`/`PortError` и `PortCallPolicy::read()`, обновив manifest/registry/verifier без долгой компиляции.
+- Current phase: admin_storefront_legacy_api_removed
+- Last checkpoint: FFA slice #42 retired `admin/src/api.rs`: admin native server-function code now lives in `admin/src/transport/native_server_adapter.rs`, the admin facade delegates through that adapter, and both admin/storefront crate roots no longer wire a legacy `api` module.
 - Next step: Собрать runtime contract/fallback smoke evidence для shared-context `RegionReadPort` и storefront native success/native failure + GraphQL success/double-failure error envelope; до runtime evidence статус остаётся `in_progress`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок; при изменении status code/locale key/DOM evidence сначала обновлять verify script и его test fixture.
-- Last updated at (UTC): 2026-06-20T01:00:00Z
+- Last updated at (UTC): 2026-06-29T00:00:00Z
 
 
 ## FFA/FBA status
@@ -38,8 +38,8 @@
   - FFA slice #13 добавила SSR smoke-тест Leptos rail adapter, который подтверждает rendered href и route/query DOM evidence без полноценного host runtime;
   - FFA slice #14 добавила `SelectedRegionCardViewModel`, чтобы selected-region card presentation data собирались вне Leptos render слоя;
   - FFA slice #15 добавила `RegionRailViewModel` / `RegionRailLabels`, чтобы rail list title, total, empty state, open label и item rows собирались вне Leptos render слоя;
-  - FFA slice #16 добавила admin `transport/` facade для bootstrap/list/detail/create/update operations; Leptos component больше не вызывает `api::*` напрямую, а native server-function adapter остался в `admin/src/api.rs`;
-  - admin transport profile зафиксирован как temporary native-only single-adapter state: `admin/src/transport/mod.rs` делегирует в native server-function endpoints из `admin/src/api.rs`; GraphQL/REST admin fallback пока не заявлен, а storefront сохраняет native/GraphQL transport split;
+  - FFA slice #16 добавила admin `transport/` facade для bootstrap/list/detail/create/update operations; Leptos component больше не вызывает raw native adapter напрямую;
+  - admin transport profile зафиксирован как native-only single-adapter state: `admin/src/transport/mod.rs` делегирует в native server-function endpoints из `admin/src/transport/native_server_adapter.rs`; GraphQL/REST admin fallback пока не заявлен, а legacy `admin/src/api.rs` удалён;
   - FFA slice #17 выделила `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные Leptos render adapters, а `admin/src/lib.rs` и `storefront/src/lib.rs` стали тонким module wiring/re-export слоем; verifier читает storefront DOM evidence из нового adapter path;
   - FFA slice #18 добавила admin `RegionAdminListItemViewModel`, `RegionAdminListLabels`, `RegionAdminDetailLabels`, core-owned selected-row CSS policy и detail meta formatting с unit-тестами без Leptos runtime; Leptos adapter больше не форматирует region row/meta/tax badge inline;
   - FFA slice #19 добавила `RegionAdminEditorFormState` и core-owned defaults для create/reset формы (`0`, `[]`, `{}`), а loaded-detail mapping (`tax_provider_id` fallback, countries CSV, pretty JSON fields) больше не живёт в Leptos signal helper;
@@ -64,7 +64,9 @@
   - FFA slice #38 усилила verifier self-check: `verify-region-admin-boundary.mjs` теперь проверяет `package.json` wiring для `test:verify:region:admin-boundary` и наличие canonical/docs-sync cases в fixture test file, а fixture suite отвергает отсутствующий package test script;
   - FFA slice #39 подключила `npm run test:verify:region:admin-boundary` в aggregate `test:verify:ffa:ui:migration` и добавила self-check/negative fixture, чтобы region boundary fixture evidence не выпадало из общего FFA UI migration test path.
   - FFA slice #40 добавила `scripts/verify/verify-region-storefront-boundary.mjs` и fixture suite: guardrail фиксирует native-first fallback order, наличие native/GraphQL adapters, transport error evidence, DOM status/locale-key attributes и запрет raw adapter calls из Leptos; scripts подключены к aggregate verify/test pipelines.
-- Last verified at (UTC): 2026-06-20T00:00:00Z
+  - FFA slice #41 retired storefront legacy `api.rs`; the native server-function endpoint and GraphQL fallback request path now live inside their module-owned transport adapters, and `verify-region-storefront-boundary.mjs` rejects reintroducing `storefront/src/api.rs` or `mod api`.
+  - FFA slice #42 retired admin legacy `api.rs`; the native server-function endpoints now live in `admin/src/transport/native_server_adapter.rs`, `admin/src/transport/mod.rs` delegates through that adapter, and `verify-region-admin-boundary.mjs` rejects reintroducing `admin/src/api.rs` or `mod api`.
+- Last verified at (UTC): 2026-06-29T00:00:00Z
 - Owner: `rustok-region` module team
 
 ## Область работ
@@ -145,7 +147,7 @@
 - [x] Slice 13: SSR smoke-тест `region_rail_ssr_exposes_route_query_dom_evidence` рендерит Leptos rail adapter и проверяет href + `data-region-route-query-key` / `data-region-route-query-value`; проверка: `cargo test -p rustok-region-storefront --lib --features ssr region_rail_ssr_exposes_route_query_dom_evidence`.
 - [x] Slice 14: `SelectedRegionCardViewModel` переносит selected-region header labels, metric list, countries summary и country policy row strings в core; Leptos selected card потребляет готовую модель; проверка: `cargo test -p rustok-region-storefront --lib selected_region_card_view_model_collects_render_ready_sections`.
 - [x] Slice 15: `RegionRailViewModel` / `RegionRailLabels` переносит rail title, total label, empty state, open label и item rows в core; Leptos rail adapter рендерит готовую модель и сохраняет route/query DOM evidence; проверка: `cargo test -p rustok-region-storefront --lib region_rail_view_model_collects_render_ready_list_state`.
-- [x] Slice 16: admin `transport/` facade покрывает bootstrap/list/detail/create/update operations, а Leptos adapter больше не вызывает `api::*` напрямую; native server-function adapter временно остаётся в `admin/src/api.rs`.
+- [x] Slice 16: admin `transport/` facade покрывает bootstrap/list/detail/create/update operations, а Leptos adapter больше не вызывает raw native adapter напрямую.
 - [x] Slice 17: `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` стали явными Leptos render adapters, crate roots — wiring/re-export слой поверх `core` + `transport`.
 - [x] Slice 18: admin list/detail render-fragment policy перенесена в core (`RegionAdminListItemViewModel`, `RegionAdminListLabels`, `RegionAdminDetailLabels`, selected-row CSS policy, detail meta formatting), Leptos adapter передаёт locale labels и рендерит готовые строки; проверка: `cargo test -p rustok-region-admin --lib --no-default-features` была остановлена по timeout, чтобы не уходить в долгую компиляцию.
 - [x] Slice 19: admin editor form-state defaults и loaded-detail snapshot mapping перенесены в core (`RegionAdminEditorFormState`, default input constants, `from_detail`); Leptos adapter только применяет готовый snapshot к signals; проверка: `timeout 120s cargo check -p rustok-region-admin --lib --no-default-features` завершилась успешно в заданном лимите.

@@ -1,5 +1,4 @@
 #![allow(clippy::too_many_arguments)]
-mod api;
 mod core;
 mod i18n;
 mod model;

@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: parity/evidence hardening + FBA provider metadata
-- Last checkpoint: Search FFA Phase B считается закрытой на slice #40; slice #41 добавил fast guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`; FBA slice #1 добавил provider registry `crates/rustok-search/contracts/search-fba-registry.json`, нейтральные `SearchQueryPort`/`SearchSuggestionPort` contracts и static matrix `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`; FBA slice #2 закрыл source-locked PostgreSQL implementation path для `SearchSuggestionPort`; FBA slice #3 перевёл ports на shared `PortCallPolicy::read()`; FBA slice #4 добавил executable no-compile runtime fallback smoke `scripts/verify/verify-search-fba-runtime-smoke.mjs` для deadline/locale/error/fallback semantics, проверяемый через `npm run verify:search:fba` без компиляции; FBA slice #5 расширил smoke registry/degraded-mode parity, source-lock для embedded PostgreSQL suggestion path и fixture regression suite `scripts/verify/verify-search-fba-runtime-smoke.test.mjs`; FBA slice #6 добавил executable no-compile runtime contract smoke `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json` / `scripts/verify/verify-search-fba-runtime-contract.mjs`, который source-locks real provider operation order и consumer profile parity без компиляции; FBA slice #7 добавил executable no-compile invocation trace `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json` / `scripts/verify/verify-search-fba-runtime-invocation.mjs` с fixture suite для policy short-circuit, locale preservation, single provider invocation и typed error mapping.
+- Current phase: storefront_legacy_api_removed
+- Last checkpoint: Search admin/storefront retired legacy `admin/src/api.rs` and `storefront/src/api.rs`; admin native/GraphQL adapter now lives in `admin/src/transport/native_server_adapter.rs`, storefront native server-function endpoints live in `storefront/src/transport/native_server_adapter.rs`, GraphQL fallback execution lives in `storefront/src/transport/graphql_adapter.rs`, and `scripts/verify/verify-search-ui-boundary.mjs` rejects reintroducing legacy API modules.
 - Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths; следующий блокер перед повышением FBA выше `in_progress` — live runtime contract execution с реальным provider invocation, так как no-compile runtime contract smoke уже добавлен.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-26T00:00:00Z
+- Last updated at (UTC): 2026-06-29T00:00:00Z
 
 
 ## FFA/FBA status
@@ -32,12 +32,12 @@
   - Phase B slice #23 перенёс diagnostics card state badge и newest-indexed summary в core view-model, оставив Leptos слой только для i18n labels и render;
   - Phase B slice #24 перенёс форматирование lagging diagnostics table rows в core row view-model, сохранив transport/native+GraphQL paths без изменений;
   - Phase B slice #25 перенёс consistency diagnostics issue labels, badge classes, source/status labels и indexed fallback в core row view-model;
-  - Phase B slice #26 добавил module-owned `admin/src/transport/` facade для bootstrap, preview, analytics, diagnostics, settings и dictionary operations; Leptos admin больше не вызывает `api::*` напрямую, а existing native/GraphQL fallback adapter остался в `admin/src/api.rs`;
+  - Phase B slice #26 добавил module-owned `admin/src/transport/` facade для bootstrap, preview, analytics, diagnostics, settings и dictionary operations; Leptos admin больше не вызывает `api::*` напрямую, а native/GraphQL fallback adapter теперь живёт в `admin/src/transport/native_server_adapter.rs`;
   - Phase B slice #27 выделил `admin/src/ui/leptos.rs` и `storefront/src/ui/leptos.rs` как явные render adapters; `admin/src/lib.rs` и `storefront/src/lib.rs` теперь только объявляют слои и re-export публичных entry points, без изменения native/GraphQL transport contract;
   - Phase B slice #28 добавил `SearchSynonymRowViewModel`, `SearchStopWordRowViewModel` и `SearchQueryRuleRowViewModel` в `admin/src/core.rs`; Leptos dictionaries tables больше не форматируют synonyms summary, pinned position и document/source path inline;
   - Phase B slice #29 добавил `SearchSynonymMutationRequest`, `SearchStopWordMutationRequest` и `SearchPinRuleMutationRequest` builders в `admin/src/core.rs`; Leptos dictionaries forms теперь передают в transport core-owned request objects вместо inline parsing/request construction;
   - Phase B slice #30 добавил `SearchResultsLabels`, `SearchResultItemViewModel` и `SearchResultsViewModel` в `storefront/src/core.rs`; Leptos storefront results больше не форматируют summary/preset/locale/source/score/snippet inline.
-  - Phase B slice #31 разделил storefront transport facade на `native_server_adapter` и `graphql_adapter`; native-first fallback orchestration теперь находится в `storefront/src/transport/mod.rs`, а raw `api.rs` предоставляет только adapter endpoints.
+  - Phase B slice #31 разделил storefront transport facade на `native_server_adapter` и `graphql_adapter`; native-first fallback orchestration теперь находится в `storefront/src/transport/mod.rs`, native endpoints живут в `storefront/src/transport/native_server_adapter.rs`, GraphQL fallback execution живёт в `storefront/src/transport/graphql_adapter.rs`, а legacy `storefront/src/api.rs` удалён.
   - Phase B slice #32 добавил `SearchSuggestionsLabels`, `SearchSuggestionNavigation` и `SearchSuggestionItemViewModel` в `storefront/src/core.rs`; Leptos suggestions adapter больше не решает inline document-vs-query navigation или action/kind labels.
   - Phase B slice #33 добавил `SearchPresetChipViewModel`, preset chip class constants и builder в `storefront/src/core.rs`; Leptos preset chips больше не хранят selected/idle class strings и next-selection policy inline.
   - Phase B slice #34 добавил `SearchFacetGroupViewModel`, `SearchFacetBucketViewModel` и `build_search_facet_view_models` в `storefront/src/core.rs`; Leptos facet cards больше не форматируют facet names/bucket labels inline.
@@ -49,8 +49,8 @@
   - Phase B slice #39 добавил `StorefrontSearchRouteIntent` и `build_storefront_search_route_intent` в `storefront/src/core.rs`; storefront Leptos navigation больше не решает inline set/delete policy для `q` и `preset`, а только применяет prepared route intent к browser URL.
   - Phase B slice #40 добавил `DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest` и `build_storefront_suggestion_fetch_request` в `storefront/src/core.rs`; storefront Leptos suggestions resource больше не владеет inline autocomplete min-length gate или query trim policy.
   - Phase B closure decision: search FFA больше не расширяется без нового функционального surface; текущий кодовый split достаточен для `phase_b_ready`, а дальнейшая работа переводится в parity/evidence hardening.
-  - Slice #41 evidence hardening добавил `verify-search-ui-boundary.mjs` и fixture tests, проверяющие admin/storefront crate-root wiring, Leptos-free core helpers, запрет raw `api::*`/adapter calls из UI и storefront native-first + GraphQL fallback split.
-- Last verified at (UTC): 2026-06-26T00:00:00Z
+  - Slice #41 evidence hardening добавил `verify-search-ui-boundary.mjs` и fixture tests, проверяющие admin/storefront crate-root wiring, Leptos-free core helpers, запрет raw `api::*`/adapter calls из UI, storefront native-first + GraphQL fallback split и отсутствие legacy storefront `api.rs`; latest update also forbids legacy admin `api.rs` and pins `admin/src/transport/native_server_adapter.rs`.
+- Last verified at (UTC): 2026-06-29T00:00:00Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -152,7 +152,7 @@
 - [x] Slice 28: dictionaries table rows перенесены в core (`SearchSynonymRowViewModel`, `SearchStopWordRowViewModel`, `SearchQueryRuleRowViewModel`), поэтому Leptos adapter больше не форматирует synonyms summary, pinned position и document/source path inline.
 - [x] Slice 29: dictionaries mutation request construction перенесён в core (`SearchSynonymMutationRequest`, `SearchStopWordMutationRequest`, `SearchPinRuleMutationRequest`), поэтому Leptos forms больше не парсят CSV/pinned position и не собирают transport payloads inline.
 - [x] Slice 30: storefront results render-ready presentation перенесён в core (`SearchResultsLabels`, `SearchResultItemViewModel`, `SearchResultsViewModel`), поэтому Leptos results adapter рендерит подготовленные summary/preset/locale/item поля.
-- [x] Slice 31: storefront transport facade разделён на `transport/native_server_adapter.rs` и `transport/graphql_adapter.rs`; `transport/mod.rs` владеет native-first fallback orchestration для search, suggestions, presets и click tracking, а `api.rs` оставлен raw adapter endpoint слоем.
+- [x] Slice 31: storefront transport facade разделён на `transport/native_server_adapter.rs` и `transport/graphql_adapter.rs`; `transport/mod.rs` владеет native-first fallback orchestration для search, suggestions, presets и click tracking, а legacy `storefront/src/api.rs` удалён.
 - [x] Slice 32: storefront suggestions presentation перенесён в core (`SearchSuggestionsLabels`, `SearchSuggestionNavigation`, `SearchSuggestionItemViewModel`, `build_search_suggestion_view_models`), поэтому Leptos adapter получает готовые kind/action labels и исполняет core-owned navigation target без inline document-vs-query branching.
 - [x] Slice 33: storefront filter preset chips перенесены в core (`SearchPresetChipViewModel`, `build_search_preset_chip_view_models`, `preset_chip_class`), поэтому Leptos adapter рендерит готовые labels/state и не хранит selected/idle class strings или next-selection policy inline.
 - [x] Slice 34: storefront facet cards перенесены в core (`SearchFacetGroupViewModel`, `SearchFacetBucketViewModel`, `build_search_facet_view_models`), поэтому Leptos adapter рендерит готовые facet display names and bucket labels без inline formatting.
@@ -164,6 +164,7 @@
 - [x] Slice 40: storefront suggestions request policy перенесён в core (`DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest`, `build_storefront_suggestion_fetch_request`), поэтому Leptos suggestions resource исполняет prepared request и не владеет autocomplete threshold/query trim policy.
 
 - [x] Slice 41: parity/evidence hardening добавил fast boundary guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`; aggregate `verify:ffa:ui:migration`/`test:verify:ffa:ui:migration` теперь запускают search UI boundary без компиляции.
+- [x] Slice 42: admin legacy `api.rs` удалён; native/GraphQL fallback adapter перенесён в `admin/src/transport/native_server_adapter.rs`, а `verify-search-ui-boundary.mjs` запрещает возврат `admin/src/api.rs` и `mod api`.
 
 - [x] FBA slice #1: provider metadata и нейтральные read ports (`SearchQueryPort`, `SearchSuggestionPort`) зафиксированы в `search-fba-registry.json`; static evidence matrix и `npm run verify:search:fba` проверяют deadline/error/locale fallback markers без долгой компиляции.
 

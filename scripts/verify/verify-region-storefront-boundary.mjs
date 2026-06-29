@@ -9,6 +9,7 @@ const root = process.env.RUSTOK_VERIFY_REPO_ROOT
 const failures = [];
 const files = {
   lib: "crates/rustok-region/storefront/src/lib.rs",
+  legacyApi: "crates/rustok-region/storefront/src/api.rs",
   core: "crates/rustok-region/storefront/src/core.rs",
   ui: "crates/rustok-region/storefront/src/ui/leptos.rs",
   transport: "crates/rustok-region/storefront/src/transport/mod.rs",
@@ -19,11 +20,19 @@ const files = {
   package: "package.json",
 };
 const resolve = (file) => path.join(root, file);
-for (const file of Object.values(files)) {
+for (const [key, file] of Object.entries(files)) {
+  if (key === "legacyApi") continue;
   if (!existsSync(resolve(file))) failures.push(`${file}: expected region storefront boundary file`);
 }
+if (existsSync(resolve(files.legacyApi))) {
+  failures.push(`${files.legacyApi}: legacy api.rs must stay removed; transport adapters own native/GraphQL endpoints`);
+}
 const read = (file) => readFileSync(resolve(file), "utf8");
-const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, read(file)]));
+const source = Object.fromEntries(
+  Object.entries(files)
+    .filter(([key]) => key !== "legacyApi")
+    .map(([key, file]) => [key, read(file)]),
+);
 const has = (key, marker, message) => {
   if (!source[key].includes(marker)) failures.push(message);
 };
@@ -34,6 +43,7 @@ const lacks = (key, marker, message) => {
 for (const marker of ["mod core;", "mod transport;", "mod ui;", "pub use ui::RegionView;"]) {
   has("lib", marker, `${files.lib}: missing layer marker ${marker}`);
 }
+lacks("lib", "mod api;", `${files.lib}: legacy api module must not be wired`);
 for (const marker of ["leptos::", "leptos_", "#[component]", "Resource<", "web_sys::"]) {
   lacks("core", marker, `${files.core}: core must stay Leptos/runtime free (${marker})`);
 }

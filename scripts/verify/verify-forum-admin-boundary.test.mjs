@@ -66,8 +66,14 @@ pub mod leptos {
 
 function transportSource() {
   return `
-use crate::api;
-pub async fn fetch_categories() {}
+mod graphql_adapter;
+mod rest_adapter;
+pub async fn fetch_categories() {
+  match graphql_adapter::fetch_categories().await {
+    Ok(categories) => Ok(categories),
+    Err(_) => rest_adapter::fetch_categories().await,
+  }
+}
 pub async fn fetch_category() {}
 pub async fn create_category() {}
 pub async fn update_category() {}
@@ -97,11 +103,13 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-forum/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/transport.rs", transportSource());
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", "pub async fn fetch_categories() {}\n");
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", "use reqwest;\npub async fn fetch_categories() {}\n");
+  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
   writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-admin-boundary.mjs forum-wave1-rollout-evidence.json");
   writeFixtureFile(root, "package.json", packageJsonSource(options));
-  writeFixtureFile(root, "scripts/verify/verify-forum-admin-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects raw api calls from UI\nrejects raw busy-key strings from UI\nrejects missing package fixture script\n");
+  writeFixtureFile(root, "scripts/verify/verify-forum-admin-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects raw api calls from UI\nrejects legacy admin api module\nrejects raw busy-key strings from UI\nrejects missing package fixture script\n");
   return root;
 }
 
@@ -140,6 +148,13 @@ test("forum admin boundary verifier rejects raw api calls from UI", () => {
   withTempFixture({ rawApi: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /UI adapter must not call raw transport or services/);
+  });
+});
+
+test("forum admin boundary verifier rejects legacy admin api module", () => {
+  withTempFixture({ legacyApi: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /legacy api\.rs/);
   });
 });
 

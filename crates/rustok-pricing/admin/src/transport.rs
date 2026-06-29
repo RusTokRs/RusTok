@@ -1,15 +1,17 @@
-use crate::api::{self, ApiError};
+mod native_server_adapter;
+
 use crate::model::{
     PricingAdjustmentPreview, PricingAdminBootstrap, PricingDiscountDraft, PricingPriceDraft,
     PricingPriceListOption, PricingPriceListRuleDraft, PricingPriceListScopeDraft,
     PricingProductDetail, PricingProductList,
 };
+use native_server_adapter::ApiError;
 
 pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<PricingAdminBootstrap, ApiError> {
-    api::fetch_bootstrap(token, tenant_slug).await
+    native_server_adapter::fetch_bootstrap(token, tenant_slug).await
 }
 
 pub async fn fetch_active_price_lists(
@@ -18,7 +20,8 @@ pub async fn fetch_active_price_lists(
     channel_id: Option<String>,
     channel_slug: Option<String>,
 ) -> Result<Vec<PricingPriceListOption>, ApiError> {
-    api::fetch_active_price_lists(token, tenant_slug, channel_id, channel_slug).await
+    native_server_adapter::fetch_active_price_lists(token, tenant_slug, channel_id, channel_slug)
+        .await
 }
 
 pub async fn fetch_products(
@@ -29,7 +32,8 @@ pub async fn fetch_products(
     search: Option<String>,
     status: Option<String>,
 ) -> Result<PricingProductList, ApiError> {
-    api::fetch_products(token, tenant_slug, tenant_id, locale, search, status).await
+    native_server_adapter::fetch_products(token, tenant_slug, tenant_id, locale, search, status)
+        .await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -46,7 +50,7 @@ pub async fn fetch_product(
     channel_slug: Option<String>,
     quantity: Option<i32>,
 ) -> Result<Option<PricingProductDetail>, ApiError> {
-    api::fetch_product(
+    native_server_adapter::fetch_product(
         token,
         tenant_slug,
         tenant_id,
@@ -66,33 +70,33 @@ pub async fn update_variant_price(
     variant_id: String,
     payload: PricingPriceDraft,
 ) -> Result<(), ApiError> {
-    api::update_variant_price(variant_id, payload).await
+    native_server_adapter::update_variant_price(variant_id, payload).await
 }
 
 pub async fn preview_variant_discount(
     variant_id: String,
     payload: PricingDiscountDraft,
 ) -> Result<PricingAdjustmentPreview, ApiError> {
-    api::preview_variant_discount(variant_id, payload).await
+    native_server_adapter::preview_variant_discount(variant_id, payload).await
 }
 
 pub async fn apply_variant_discount(
     variant_id: String,
     payload: PricingDiscountDraft,
 ) -> Result<PricingAdjustmentPreview, ApiError> {
-    api::apply_variant_discount(variant_id, payload).await
+    native_server_adapter::apply_variant_discount(variant_id, payload).await
 }
 
 pub async fn update_price_list_rule(
     price_list_id: String,
     payload: PricingPriceListRuleDraft,
 ) -> Result<PricingPriceListOption, ApiError> {
-    api::update_price_list_rule(price_list_id, payload).await
+    native_server_adapter::update_price_list_rule(price_list_id, payload).await
 }
 
 pub async fn update_price_list_scope(
     price_list_id: String,
     payload: PricingPriceListScopeDraft,
 ) -> Result<PricingPriceListOption, ApiError> {
-    api::update_price_list_scope(price_list_id, payload).await
+    native_server_adapter::update_price_list_scope(price_list_id, payload).await
 }

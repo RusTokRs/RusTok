@@ -3,11 +3,40 @@ pub(crate) mod native_server_adapter;
 
 use std::fmt::{Display, Formatter};
 
+use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::api::ApiError;
 use crate::core::{RegionErrorEvidence, RegionStorefrontErrorPath};
 use crate::model::StorefrontRegionsData;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum ApiError {
+    Graphql(String),
+    ServerFn(String),
+}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Graphql(error) => write!(f, "{error}"),
+            Self::ServerFn(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+impl From<leptos_graphql::GraphqlHttpError> for ApiError {
+    fn from(value: leptos_graphql::GraphqlHttpError) -> Self {
+        Self::Graphql(value.to_string())
+    }
+}
+
+impl From<ServerFnError> for ApiError {
+    fn from(value: ServerFnError) -> Self {
+        Self::ServerFn(value.to_string())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegionFetchFallbackPolicy {

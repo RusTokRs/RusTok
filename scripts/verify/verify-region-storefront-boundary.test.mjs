@@ -12,9 +12,10 @@ function put(root, file, content) {
   mkdirSync(path.dirname(target), { recursive: true });
   writeFileSync(target, content);
 }
-function fixture({ graphqlFirst = false, rawUi = false, leptosCore = false } = {}) {
+function fixture({ graphqlFirst = false, rawUi = false, leptosCore = false, legacyApi = false } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "region-storefront-"));
-  put(root, "crates/rustok-region/storefront/src/lib.rs", "mod core; mod transport; mod ui; pub use ui::RegionView;");
+  put(root, "crates/rustok-region/storefront/src/lib.rs", `${legacyApi ? "mod api;" : ""} mod core; mod transport; mod ui; pub use ui::RegionView;`);
+  if (legacyApi) put(root, "crates/rustok-region/storefront/src/api.rs", "legacy api module");
   put(root, "crates/rustok-region/storefront/src/core.rs", `${leptosCore ? "leptos::" : ""} RegionErrorEvidence RegionErrorViewModel RegionErrorDomEvidence selected_region_query_update`);
   put(root, "crates/rustok-region/storefront/src/ui/leptos.rs", `transport::fetch_regions data-region-error-status data-region-error-locale-key ${rawUi ? "graphql_adapter::" : ""}`);
   const native = "native_server_adapter::fetch_regions";
@@ -56,3 +57,4 @@ test("region storefront boundary verifier passes native-first fixture", () => {
 test("rejects GraphQL-first fallback", () => verifyFailure({ graphqlFirst: true }, /fallback order must remain native then GraphQL/));
 test("rejects raw adapter calls from UI", () => verifyFailure({ rawUi: true }, /UI must not call raw adapter/));
 test("rejects Leptos-specific core", () => verifyFailure({ leptosCore: true }, /core must stay Leptos\/runtime free/));
+test("rejects legacy storefront api module", () => verifyFailure({ legacyApi: true }, /legacy api/));

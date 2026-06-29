@@ -4,7 +4,6 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_seo_targets::SeoTargetSlug;
 
-use crate::api;
 use crate::components::{
     SeoControlPlaneWidgets, SeoSchemaPreviewCard, SeoSnippetPreviewCard, SeoSummaryTile,
 };
@@ -16,6 +15,7 @@ use crate::model::{
     derive_control_plane_widget_state, validate_target_id, SeoCompletenessReport, SeoEntityForm,
     SeoEventDeliverySummary, SeoMetaView,
 };
+use crate::transport;
 
 #[component]
 pub fn SeoEntityPanel(
@@ -76,7 +76,7 @@ pub fn SeoEntityPanel(
         busy_key.set(Some("load".to_string()));
         status_message.set(None);
         spawn_local(async move {
-            match api::fetch_seo_meta(
+            match transport::fetch_seo_meta(
                 token_value,
                 tenant_value,
                 target_kind.clone(),
@@ -264,7 +264,7 @@ pub fn SeoEntityPanel(
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         spawn_local(async move {
-            match api::save_seo_meta(token_value, tenant_value, input).await {
+            match transport::save_seo_meta(token_value, tenant_value, input).await {
                 Ok(meta) => {
                     form.update(|draft| draft.apply_record(&meta));
                     loaded_meta.set(Some(meta));
@@ -307,7 +307,7 @@ pub fn SeoEntityPanel(
         let tenant_value = tenant.get_untracked();
         let publish_target_kind = publish_target_kind.clone();
         spawn_local(async move {
-            match api::publish_seo_revision(
+            match transport::publish_seo_revision(
                 token_value,
                 tenant_value,
                 publish_target_kind,

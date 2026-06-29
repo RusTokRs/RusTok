@@ -42,7 +42,8 @@ const libPath = "crates/rustok-product/admin/src/lib.rs";
 const corePath = "crates/rustok-product/admin/src/core.rs";
 const uiPath = "crates/rustok-product/admin/src/ui/leptos.rs";
 const transportPath = "crates/rustok-product/admin/src/transport.rs";
-const apiPath = "crates/rustok-product/admin/src/api.rs";
+const legacyApiPath = "crates/rustok-product/admin/src/api.rs";
+const graphqlAdapterPath = "crates/rustok-product/admin/src/transport/graphql_adapter.rs";
 const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
@@ -52,19 +53,22 @@ for (const filePath of [
   corePath,
   uiPath,
   transportPath,
-  apiPath,
+  graphqlAdapterPath,
   implementationPlanPath,
   registryPath,
   packagePath,
 ]) {
   assertExists(filePath, `${filePath}: expected product admin FFA boundary file`);
 }
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: product admin legacy api.rs must stay removed; transport/graphql_adapter.rs owns GraphQL operations`);
+}
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
-const api = readRepo(apiPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
@@ -73,6 +77,7 @@ assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::leptos::ProductAdmin;", `${libPath}: crate root must re-export ProductAdmin`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
@@ -138,9 +143,11 @@ for (const marker of [
 ]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
-assertContains(transport, "use crate::api", `${transportPath}: transport facade may delegate to the current GraphQL/api adapter`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "graphql_adapter::fetch_products", `${transportPath}: transport facade must delegate through GraphQL adapter`);
+assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the product admin transport facade`);
-assertContains(api, "GraphqlRequest", `${apiPath}: product admin api adapter must keep the GraphQL transport contract`);
+assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: product admin GraphQL adapter must keep the GraphQL transport contract`);
 
 assertContains(implementationPlan, "verify-product-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the product fast boundary guardrail`);
 assertContains(registry, "verify-product-admin-boundary.mjs", `${registryPath}: central readiness board must mention the product fast boundary guardrail`);

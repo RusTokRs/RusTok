@@ -681,10 +681,13 @@ mod tests {
         assert_eq!(clear_update.update.into_query_value(), None);
 
         assert_eq!(
-            region_href("/modules/regions", " eu "),
-            "/modules/regions?region=eu"
+            region_href("/storefront/regions", " eu "),
+            "/storefront/regions?region=eu"
         );
-        assert_eq!(region_href("/modules/regions", "   "), "/modules/regions");
+        assert_eq!(
+            region_href("/storefront/regions", "   "),
+            "/storefront/regions"
+        );
     }
 
     #[test]
@@ -698,7 +701,7 @@ mod tests {
     fn rail_view_model_formats_route_and_region_summaries() {
         let region = sample_region();
         let view_model = rail_item_view_model(
-            "/modules/regions",
+            "/storefront/regions",
             &region,
             "tax included",
             "tax excluded",
@@ -708,7 +711,7 @@ mod tests {
         );
 
         assert_eq!(view_model.name, "Europe");
-        assert_eq!(view_model.href, "/modules/regions?region=eu");
+        assert_eq!(view_model.href, "/storefront/regions?region=eu");
         assert_eq!(
             view_model.query_key_attribute,
             REGION_ROUTE_QUERY_KEY_DOM_ATTRIBUTE
@@ -729,7 +732,7 @@ mod tests {
     fn region_rail_view_model_collects_render_ready_list_state() {
         let regions = vec![sample_region()];
         let view_model = region_rail_view_model(
-            "/modules/regions",
+            "/storefront/regions",
             &regions,
             1,
             RegionRailLabels {
@@ -751,7 +754,7 @@ mod tests {
         assert_eq!(view_model.open_label, "Open");
         assert_eq!(view_model.items.len(), 1);
         assert_eq!(view_model.items[0].name, "Europe");
-        assert_eq!(view_model.items[0].href, "/modules/regions?region=eu");
+        assert_eq!(view_model.items[0].href, "/storefront/regions?region=eu");
         assert_eq!(view_model.items[0].country_summary, "EUR | DE, FR");
     }
 

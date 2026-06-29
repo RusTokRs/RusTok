@@ -42,6 +42,9 @@ const libPath = "crates/rustok-product/storefront/src/lib.rs";
 const corePath = "crates/rustok-product/storefront/src/core.rs";
 const uiPath = "crates/rustok-product/storefront/src/ui/leptos.rs";
 const transportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
+const legacyApiPath = "crates/rustok-product/storefront/src/api.rs";
+const graphqlAdapterPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
+const nativeServerAdapterPath = "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
 const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
@@ -51,17 +54,24 @@ for (const filePath of [
   corePath,
   uiPath,
   transportPath,
+  graphqlAdapterPath,
+  nativeServerAdapterPath,
   implementationPlanPath,
   registryPath,
   packagePath,
 ]) {
   assertExists(filePath, `${filePath}: expected product storefront FFA boundary file`);
 }
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: product storefront legacy api.rs must stay removed; transport adapters own raw operations`);
+}
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
+const nativeServerAdapter = readRepo(nativeServerAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
@@ -70,6 +80,7 @@ assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
 assertContains(lib, "pub use ui::leptos::ProductView;", `${libPath}: crate root must re-export ProductView`);
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "Resource<", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay Leptos/server-function free (${marker})`);
@@ -118,6 +129,12 @@ for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "Produ
 }
 
 assertContains(transport, "fetch_products", `${transportPath}: transport facade must expose fetch_products`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter`);
+assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not import legacy api module`);
+assertContains(graphqlAdapter, "fetch_storefront_products_graphql", `${graphqlAdapterPath}: GraphQL adapter must expose GraphQL request path`);
+assertContains(nativeServerAdapter, "#[server", `${nativeServerAdapterPath}: native server adapter must keep native server-function endpoint`);
+assertContains(nativeServerAdapter, "GraphqlRequest", `${nativeServerAdapterPath}: moved adapter must keep GraphQL fallback request contract until split further`);
 assertContains(implementationPlan, "verify-product-storefront-boundary.mjs", `${implementationPlanPath}: local plan must mention the product storefront fast boundary guardrail`);
 assertContains(registry, "verify-product-storefront-boundary.mjs", `${registryPath}: central readiness board must mention the product storefront fast boundary guardrail`);
 assertContains(packageJson, "verify:product:storefront-boundary", `${packagePath}: package scripts must expose product storefront boundary verification`);

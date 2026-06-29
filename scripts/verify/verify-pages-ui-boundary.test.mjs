@@ -17,7 +17,6 @@ function writeFixtureFile(root, relativePath, content) {
 
 function libSource(entrypoint, { publicTransportPassthrough = false } = {}) {
   return `
-mod api;
 mod core;
 mod i18n;
 mod model;
@@ -25,6 +24,20 @@ mod transport;
 mod ui;
 
 pub use ui::leptos::${entrypoint};
+${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
+`;
+}
+
+function adminLibSource({ publicTransportPassthrough = false, legacyApi = false } = {}) {
+  return `
+${legacyApi ? "mod api;" : ""}
+mod core;
+mod i18n;
+mod model;
+mod transport;
+mod ui;
+
+pub use ui::leptos::PagesAdmin;
 ${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
 `;
 }
@@ -115,24 +128,30 @@ pub fn PagesView() {
 
 function adminTransportSource({ includeServerEndpoint = false } = {}) {
   return `
-use crate::api;
+mod graphql_adapter;
 
-pub async fn fetch_pages() { api::fetch_pages().await; }
-pub async fn fetch_page() { api::fetch_page().await; }
-pub async fn create_page() { api::create_page().await; }
-pub async fn update_page() { api::update_page().await; }
-pub async fn publish_page() { api::publish_page().await; }
-pub async fn unpublish_page() { api::unpublish_page().await; }
-pub async fn delete_page() { api::delete_page().await; }
+pub async fn fetch_pages() { graphql_adapter::fetch_pages().await; }
+pub async fn fetch_page() { graphql_adapter::fetch_page().await; }
+pub async fn create_page() { graphql_adapter::create_page().await; }
+pub async fn update_page() { graphql_adapter::update_page().await; }
+pub async fn publish_page() { graphql_adapter::publish_page().await; }
+pub async fn unpublish_page() { graphql_adapter::unpublish_page().await; }
+pub async fn delete_page() { graphql_adapter::delete_page().await; }
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
 
 function storefrontTransportSource({ includeServerEndpoint = false } = {}) {
   return `
-use crate::api;
+mod graphql_adapter;
+mod native_server_adapter;
 
-pub async fn fetch_pages() { api::fetch_storefront_pages().await; }
+pub async fn fetch_pages() {
+    match native_server_adapter::fetch_storefront_pages_server().await {
+        Ok(data) => Ok(data),
+        Err(_) => graphql_adapter::fetch_storefront_pages().await,
+    }
+}
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
@@ -161,16 +180,19 @@ pub async fn fetch_storefront_pages() {}
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-pages-boundary-"));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/lib.rs", libSource("PagesAdmin", options));
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/lib.rs", adminLibSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/core.rs", adminCoreSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/ui/leptos.rs", adminUiSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/mod.rs", adminTransportSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/api.rs", adminApiSource());
+  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-pages/admin/src/api.rs", adminApiSource());
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/graphql_adapter.rs", adminApiSource());
   writeFixtureFile(root, "crates/rustok-pages/storefront/src/lib.rs", libSource("PagesView", options));
   writeFixtureFile(root, "crates/rustok-pages/storefront/src/core.rs", storefrontCoreSource(options));
   writeFixtureFile(root, "crates/rustok-pages/storefront/src/ui/leptos.rs", storefrontUiSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport.rs", storefrontTransportSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/api.rs", storefrontApiSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/mod.rs", storefrontTransportSource(options));
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs", adminApiSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs", storefrontApiSource());
+  if (options.storefrontLegacyApi) writeFixtureFile(root, "crates/rustok-pages/storefront/src/api.rs", storefrontApiSource());
   writeFixtureFile(root, "crates/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pages-ui-boundary.mjs");
   return root;
@@ -223,6 +245,28 @@ test("pages UI boundary verifier rejects public crate-root transport passthrough
     const result = runVerifier(root);
     assert.notEqual(result.status, 0, "Expected public transport passthrough fixture to fail");
     assert.match(result.stderr, /crate root must not expose public transport passthroughs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("pages UI boundary verifier rejects legacy admin api module", () => {
+  const root = withFixture({ legacyApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy admin api fixture to fail");
+    assert.match(result.stderr, /admin legacy api\.rs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("pages UI boundary verifier rejects legacy storefront api module", () => {
+  const root = withFixture({ storefrontLegacyApi: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected legacy storefront api fixture to fail");
+    assert.match(result.stderr, /storefront legacy api\.rs/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

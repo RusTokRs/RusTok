@@ -32,6 +32,7 @@
 - `SeoSummaryTile`
 - `SeoEntityForm`
 - `SeoMetaView`
+- internal `transport` helpers for SEO GraphQL operations
 
 ## Current execution wave (Phase D)
 

@@ -1,4 +1,4 @@
-use crate::api::{self, ApiError};
+use super::raw_adapter::{self, ApiError};
 use crate::model::{
     CommerceAdminBootstrap, ShippingProfile, ShippingProfileDraft, ShippingProfileList,
 };
@@ -7,7 +7,7 @@ pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<CommerceAdminBootstrap, ApiError> {
-    api::fetch_bootstrap(token, tenant_slug).await
+    raw_adapter::fetch_bootstrap(token, tenant_slug).await
 }
 
 pub async fn fetch_shipping_profiles(
@@ -16,7 +16,7 @@ pub async fn fetch_shipping_profiles(
     tenant_id: String,
     search: Option<String>,
 ) -> Result<ShippingProfileList, ApiError> {
-    api::fetch_shipping_profiles(token, tenant_slug, tenant_id, search).await
+    raw_adapter::fetch_shipping_profiles(token, tenant_slug, tenant_id, search).await
 }
 
 pub async fn fetch_shipping_profile(
@@ -25,7 +25,7 @@ pub async fn fetch_shipping_profile(
     tenant_id: String,
     id: String,
 ) -> Result<Option<ShippingProfile>, ApiError> {
-    api::fetch_shipping_profile(token, tenant_slug, tenant_id, id).await
+    raw_adapter::fetch_shipping_profile(token, tenant_slug, tenant_id, id).await
 }
 
 pub async fn create_shipping_profile(
@@ -34,7 +34,7 @@ pub async fn create_shipping_profile(
     tenant_id: String,
     draft: ShippingProfileDraft,
 ) -> Result<ShippingProfile, ApiError> {
-    api::create_shipping_profile(token, tenant_slug, tenant_id, draft).await
+    raw_adapter::create_shipping_profile(token, tenant_slug, tenant_id, draft).await
 }
 
 pub async fn update_shipping_profile(
@@ -44,7 +44,7 @@ pub async fn update_shipping_profile(
     id: String,
     draft: ShippingProfileDraft,
 ) -> Result<ShippingProfile, ApiError> {
-    api::update_shipping_profile(token, tenant_slug, tenant_id, id, draft).await
+    raw_adapter::update_shipping_profile(token, tenant_slug, tenant_id, id, draft).await
 }
 
 pub async fn deactivate_shipping_profile(
@@ -53,7 +53,7 @@ pub async fn deactivate_shipping_profile(
     tenant_id: String,
     id: String,
 ) -> Result<ShippingProfile, ApiError> {
-    api::deactivate_shipping_profile(token, tenant_slug, tenant_id, id).await
+    raw_adapter::deactivate_shipping_profile(token, tenant_slug, tenant_id, id).await
 }
 
 pub async fn reactivate_shipping_profile(
@@ -62,7 +62,7 @@ pub async fn reactivate_shipping_profile(
     tenant_id: String,
     id: String,
 ) -> Result<ShippingProfile, ApiError> {
-    api::reactivate_shipping_profile(token, tenant_slug, tenant_id, id).await
+    raw_adapter::reactivate_shipping_profile(token, tenant_slug, tenant_id, id).await
 }
 
 #[cfg(test)]

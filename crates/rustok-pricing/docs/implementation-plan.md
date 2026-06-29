@@ -26,15 +26,15 @@ rule и scope write paths, а полный promotions engine и остально
   - метаданные FBA-provider открыты для `pricing read projection` через `crates/rustok-pricing/contracts/pricing-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
   - registry теперь фиксирует `contract_tests.status = planned_cases_locked`: для каждой port operation задана in-process/remote-adapter-placeholder case matrix, baseline assertions (`typed_port_error_mapping`, `context_deadline_preserved`) с явным deadline enforcement для read path и `write_idempotency_required` только на write operations; fallback smoke profile set; static evidence packet `crates/rustok-pricing/contracts/evidence/pricing-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates) and `npm run verify:ecommerce:fba-contract-evidence`; это закрывает metadata/evidence anti-drift для будущих contract tests, но не повышает статус без runtime evidence;
   - storefront pricing route теперь использует framework-agnostic `storefront/src/core.rs` для summary/label/effective context formatting, query href building и shared `StorefrontPricingQuery`; Leptos `lib.rs` больше не владеет этой presentation/request policy;
-  - storefront transport разделён на thin facade + explicit `native_server_adapter` и `graphql_adapter`, при этом fallback order (`native #[server]` first, GraphQL second) сохранён;
+  - storefront transport разделён на thin facade + explicit `native_server_adapter` и `graphql_adapter`, при этом fallback order (`native #[server]` first, GraphQL second) сохранён; legacy `storefront/src/api.rs` удалён, raw operations живут в `storefront/src/transport/`, а `scripts/verify/verify-pricing-storefront-boundary.mjs` блокирует возврат legacy API;
   - Leptos render/bind adapter выделен в `storefront/src/ui/leptos.rs`, а `storefront/src/lib.rs` стал crate-level composition/re-export boundary;
   - targeted facade tests подтверждают обе ветки orchestration: native success не вызывает GraphQL, native error передаёт исходный `StorefrontPricingQuery` в GraphQL fallback;
   - request normalization/validation перенесены в `storefront/src/core.rs`, включая typed `StorefrontPricingQueryError`; API layer конвертирует core validation errors в existing transport envelope без изменения public behavior;
   - parity evidence: `cargo test -p rustok-pricing-storefront --lib` подтверждает existing transport validation tests, pure-core route/channel formatting tests, core request validation tests и transport facade fallback tests без изменения native/GraphQL fallback contract;
-  - admin FFA slice добавил module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `PricingAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered flows;
+  - admin FFA slice добавил module-owned `admin/src/transport.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `PricingAdmin`, а Leptos adapter больше не вызывает raw `api::*` напрямую для covered flows; legacy `admin/src/api.rs` удалён, raw native/GraphQL operations живут в `admin/src/transport/native_server_adapter.rs`, а `scripts/verify/verify-pricing-admin-boundary.mjs` блокирует возврат legacy API;
   - admin pricing presentation/request policy продолжает FFA-декомпозицию в `admin/src/core/`: `presentation.rs` владеет summary/labels/formatters, `routing.rs` — channel scope/query helpers, `requests.rs` — resolution context normalization и write draft builders; targeted pure-core tests покрывают pricing summary, resolution context normalization, channel-key policy и DTO builders;
   - admin write request construction для variant price, percentage discount и price-list rule/scope остаётся в core-owned draft builders; Leptos adapter использует explicit core imports вместо wildcard и не конструирует covered write DTO inline;
-  - admin GraphQL/native input sanitization для active price-list/product context (`currency_code`, UUID strings, channel slug, resolution quantity/context) перенесена из `admin/src/api.rs` в `core/requests.rs`; API layer сохраняет existing `ApiError`/`ServerFnError` envelope через adapter mapping;
+  - admin GraphQL/native input sanitization для active price-list/product context (`currency_code`, UUID strings, channel slug, resolution quantity/context) перенесена из legacy `admin/src/api.rs` в `core/requests.rs`; transport adapter сохраняет existing `ApiError`/`ServerFnError` envelope через adapter mapping;
   - admin detail header presentation теперь собирается `PricingProductDetailHeaderViewModel` в `admin/src/core/presentation.rs`: translation fallback, status badge/label, meta/seller/shipping/timestamp строки больше не форматируются inline в Leptos render path, а pure-core unit test фиксирует fallback policy; latest admin variant-card slice добавил `PricingVariantCardViewModel`, который собирает health label/badge, identity/profile lines, effective price line и price table вне Leptos adapter; latest admin product-list slice добавил `PricingProductListItemViewModel`, который собирает row id/title, status label/badge, shipping-profile fallback, meta line и selected-row class policy вне Leptos adapter; latest admin editor routing slice добавил `legacy_channel_option_label` в `admin/src/core/routing.rs`, чтобы legacy channel option label/not-set fallback больше не дублировался в Leptos variant price, discount и price-list rule editors; latest variant editor presentation slice добавил `format_variant_price_editor_title`, `format_variant_count_label` и `default_variant_price_editor_currency` в `admin/src/core/presentation.rs`, поэтому editor title/count/default-currency policy больше не принадлежит Leptos adapter.
 - Last verified at (UTC): 2026-06-20T00:00:00Z
 - Owner: `rustok-pricing` module team
@@ -97,8 +97,9 @@ rule и scope write paths, а полный promotions engine и остально
   fallback path с сохранением исходного `StorefrontPricingQuery`;
 - [x] перенести request normalization/validation из `api.rs` в `core`: UUID,
   currency, quantity, channel slug и resolution context sanitization с typed error;
-- [~] продолжить сокращать `api.rs` до transport adapter implementation, не меняя
-  public route/transport contract.
+- [x] удалить legacy `storefront/src/api.rs`: native/GraphQL raw operations живут в
+  `storefront/src/transport/{native_server_adapter.rs,graphql_adapter.rs}`, а guardrail
+  `scripts/verify/verify-pricing-storefront-boundary.mjs` запрещает возврат legacy API.
 
 ### 2. Pricing transport split
 
@@ -244,6 +245,10 @@ rule и scope write paths, а полный promotions engine и остально
 
 - `cargo xtask module validate pricing`
 - `cargo xtask module test pricing`
+- `npm run verify:pricing:admin-boundary`
+- `npm run test:verify:pricing:admin-boundary`
+- `npm run verify:pricing:storefront-boundary`
+- `npm run test:verify:pricing:storefront-boundary`
 - targeted tests для price resolution, pricing transport и money semantics
 - текущий широкий verification baseline для этого slice:
   `cargo test -p rustok-commerce --test pricing_service_test`,

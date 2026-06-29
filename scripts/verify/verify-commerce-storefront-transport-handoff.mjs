@@ -40,9 +40,12 @@ function assertNotContains(text, pattern, description) {
 }
 
 const requestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
+const libPath = "crates/rustok-commerce/storefront/src/lib.rs";
 const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const nativePath = "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs";
 const graphqlPath = "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
+const rawPath = "crates/rustok-commerce/storefront/src/transport/raw_adapter.rs";
+const legacyApiPath = "crates/rustok-commerce/storefront/src/api.rs";
 const paymentTransportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const orderTransportPath = "crates/rustok-order/storefront/src/transport.rs";
 const fulfillmentTransportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
@@ -53,14 +56,19 @@ const fulfillmentPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [requestsPath, transportPath, nativePath, graphqlPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
+for (const filePath of [requestsPath, libPath, transportPath, nativePath, graphqlPath, rawPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected storefront transport handoff file`);
+}
+if (existsSync(repoPath(legacyApiPath))) {
+  fail(`${legacyApiPath}: commerce storefront legacy api.rs must stay removed; transport/raw_adapter.rs owns raw operations`);
 }
 
 const requests = readRepo(requestsPath);
+const lib = readRepo(libPath);
 const transport = readRepo(transportPath);
 const nativeAdapter = readRepo(nativePath);
 const graphqlAdapter = readRepo(graphqlPath);
+const rawAdapter = readRepo(rawPath);
 const paymentTransport = readRepo(paymentTransportPath);
 const orderTransport = readRepo(orderTransportPath);
 const fulfillmentTransport = readRepo(fulfillmentTransportPath);
@@ -116,6 +124,14 @@ for (const marker of [
 ]) {
   assertNotContains(transport, marker, `${transportPath}: broad GraphQL fallback is forbidden for owner handoff paths (${marker})`);
 }
+assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api module`);
+assertContains(transport, "mod raw_adapter;", `${transportPath}: transport facade must wire raw adapter inside transport boundary`);
+assertContains(transport, "use raw_adapter::ApiError;", `${transportPath}: transport facade must expose ApiError from raw adapter`);
+assertNotContains(transport, "crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
+assertNotContains(nativeAdapter, "crate::api", `${nativePath}: native adapter must not delegate to legacy api module`);
+assertNotContains(graphqlAdapter, "crate::api", `${graphqlPath}: GraphQL adapter must not delegate to legacy api module`);
+assertContains(rawAdapter, "#[server", `${rawPath}: raw adapter must keep native server-function endpoints`);
+assertContains(rawAdapter, "GraphqlRequest", `${rawPath}: raw adapter must keep GraphQL fallback request contract until split further`);
 
 for (const [ownerTransport, ownerPath, fallbackFn, errorType] of [
   [paymentTransport, paymentTransportPath, "create_payment_collection_with_fallback", "PaymentCollectionTransportError"],
@@ -139,10 +155,12 @@ for (const [operation, requestType] of [
 }
 
 assertContains(commercePlan, "verify-commerce-storefront-transport-handoff.mjs", `${commercePlanPath}: commerce plan must mention transport handoff guardrail`);
+assertContains(commercePlan, "storefront/src/transport/raw_adapter.rs", `${commercePlanPath}: commerce plan must document storefront raw adapter location`);
 assertContains(paymentPlan, "compatibility fallback is now MissingServer-only", `${paymentPlanPath}: payment plan must document narrowed fallback policy`);
 assertContains(orderPlan, "compatibility fallback is now MissingServer-only", `${orderPlanPath}: order plan must document narrowed fallback policy`);
 assertContains(fulfillmentPlan, "compatibility fallback is now MissingServer-only", `${fulfillmentPlanPath}: fulfillment plan must document narrowed fallback policy`);
 assertContains(registry, "verify-commerce-storefront-transport-handoff.mjs", `${registryPath}: central registry must mention transport handoff guardrail`);
+assertContains(registry, "storefront/src/transport/raw_adapter.rs", `${registryPath}: central registry must document commerce storefront raw adapter location`);
 assertContains(packageJson, "verify:commerce:storefront-transport-handoff", `${packagePath}: expected transport handoff script`);
 assertContains(packageJson, "npm run verify:commerce:storefront-transport-handoff", `${packagePath}: aggregate FFA migration verification must include transport handoff guardrail`);
 

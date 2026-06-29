@@ -18,7 +18,8 @@
 - `GuestRoute`
 - `RequireAuth`
 - `use_auth`
-- `api`
+- `transport`
+- `api` compatibility re-export for existing callers
 
 ## Interactions
 
