@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+  "status": "planned_cases_locked",
+  "consumer_profile": "ai_product_generation_context",
+  "cases": [
+    {
+      "provider": "product",
+      "operation": "read_product_projection",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "product_copy_shape_preserved",
+        "product_attributes_shape_preserved",
+        "degraded_generate_from_prompt_only_on_unavailable"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "source_smoke_locked",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "generate_from_prompt_only",
+      "skip_catalog_enrichment",
+      "require_operator_review"
+    ]
+  }
+}

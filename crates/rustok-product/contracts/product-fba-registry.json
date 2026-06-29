@@ -41,6 +41,18 @@
       "fallback_profiles": [
         "embedded_native"
       ]
+    },
+    {
+      "module": "ai-product",
+      "profile": "ai_product_generation_context",
+      "degraded_modes": [
+        "generate_from_prompt_only",
+        "skip_catalog_enrichment",
+        "require_operator_review"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     }
   ],
   "evidence": {

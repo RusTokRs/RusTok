@@ -1,10 +1,40 @@
 use leptos::prelude::*;
+use rustok_api::UiRouteContext;
 
 use crate::core::{
     build_payment_collection_card_view_model, payment_collection_action_label,
     PaymentCollectionActionLabels, PaymentCollectionCardData, PaymentCollectionCardLabels,
 };
+use crate::i18n::t;
 use crate::transport::{build_payment_collection_create_request, PaymentCollectionCreateRequest};
+
+#[component]
+pub fn PaymentView() -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let locale = locale.as_deref();
+    let payment_collection = None;
+    let labels = PaymentCollectionCardLabels {
+        badge: t(locale, "payment.collection.badge", "Payment"),
+        module_ownership: t(
+            locale,
+            "payment.collection.moduleOwnership",
+            "Payment collection presentation stays in payment-owned UI.",
+        ),
+        empty_id: t(
+            locale,
+            "payment.collection.emptyId",
+            "No payment collection",
+        ),
+        empty_status: t(locale, "payment.collection.emptyStatus", "Not started"),
+    };
+
+    view! {
+        <PaymentCollectionCard
+            payment_collection
+            labels
+        />
+    }
+}
 
 #[component]
 pub fn PaymentCollectionCard(

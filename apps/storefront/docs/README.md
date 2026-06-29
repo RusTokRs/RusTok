@@ -34,6 +34,9 @@
 - `rustok-blog-storefront`
 - `rustok-cart-storefront`
 - `rustok-commerce-storefront`
+- `rustok-fulfillment-storefront`
+- `rustok-order-storefront`
+- `rustok-payment-storefront`
 - `rustok-pricing-storefront`
 - `rustok-product-storefront`
 - `rustok-region-storefront`
@@ -41,6 +44,9 @@
 - `rustok-search-storefront`
 
 Build-time wiring генерируется из `modules.toml` и `rustok-module.toml` через `apps/storefront/build.rs`.
+Checkout composition использует отдельные platform-known slots `checkout_shipping_handoff`,
+`checkout_payment_handoff` и `checkout_result_handoff`; host передаёт effective locale через
+`UiRouteContext`, а модульные пакеты разрешают строки из собственных manifest-declared каталогов.
 
 ## Доступ к данным
 

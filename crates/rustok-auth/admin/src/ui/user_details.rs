@@ -7,8 +7,8 @@ use leptos_router::params::Params;
 use leptos_ui::{Select, SelectOption};
 use rustok_api::UiRouteContext;
 
+use crate::core::prepare_update_user_input;
 use crate::i18n::t;
-use crate::model::UpdateUserInput;
 use crate::transport::{delete_user_details, fetch_user, update_user_details};
 use crate::ui::components::{Button, Input, PageHeader};
 
@@ -96,15 +96,7 @@ pub fn UserDetails() -> impl IntoView {
         set_form_state.set(FormState::submitting());
 
         spawn_local(async move {
-            let input = UpdateUserInput {
-                name: if name_val.is_empty() {
-                    None
-                } else {
-                    Some(name_val)
-                },
-                role: role_val,
-                status: status_val,
-            };
+            let input = prepare_update_user_input(name_val, role_val, status_val);
             match update_user_details(token_val, tenant_val, user_id, input).await {
                 Ok(_) => {
                     set_form_state.set(FormState::idle());

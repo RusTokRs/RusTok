@@ -1,0 +1,11 @@
+{
+  "payment.collection.badge": "Payment",
+  "payment.collection.title": "Payment collection",
+  "payment.collection.emptyId": "No payment collection",
+  "payment.collection.emptyStatus": "Not started",
+  "payment.collection.idLabel": "Collection",
+  "payment.collection.statusLabel": "Status",
+  "payment.collection.moduleOwnership": "Payment collection presentation stays in payment-owned UI.",
+  "payment.collection.createOrReuse": "Create or reuse payment",
+  "payment.collection.pending": "Processing..."
+}

@@ -81,7 +81,14 @@ impl RusToKModule for AuthModule {
     }
 
     fn permissions(&self) -> Vec<Permission> {
-        AUTH_USER_PERMISSIONS.to_vec()
+        vec![
+            Permission::USERS_CREATE,
+            Permission::USERS_READ,
+            Permission::USERS_UPDATE,
+            Permission::USERS_DELETE,
+            Permission::USERS_LIST,
+            Permission::USERS_MANAGE,
+        ]
     }
 
     async fn health(&self) -> HealthStatus {

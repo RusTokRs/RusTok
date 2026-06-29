@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Default payment submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "capability_only"
+ui_classification = "storefront_only"
 [crate]
 entry_type = "PaymentModule"
 
@@ -14,6 +14,11 @@ leptos_crate = "rustok-payment-storefront"
 slot = "checkout_payment_handoff"
 route_segment = "payment"
 page_title = "Payment"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
 
 [fba.provider]
 status = "in_progress"

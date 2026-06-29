@@ -65,6 +65,9 @@ enum StorefrontSlot {
     HomeAfterHero,
     HomeAfterCatalog,
     HomeBeforeFooter,
+    CheckoutPaymentHandoff,
+    CheckoutResultHandoff,
+    CheckoutShippingHandoff,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -248,6 +251,9 @@ fn storefront_slot_from_manifest(raw: Option<&str>) -> Result<StorefrontSlot, Bo
         "home_after_hero" => Ok(StorefrontSlot::HomeAfterHero),
         "home_after_catalog" => Ok(StorefrontSlot::HomeAfterCatalog),
         "home_before_footer" => Ok(StorefrontSlot::HomeBeforeFooter),
+        "checkout_payment_handoff" => Ok(StorefrontSlot::CheckoutPaymentHandoff),
+        "checkout_result_handoff" => Ok(StorefrontSlot::CheckoutResultHandoff),
+        "checkout_shipping_handoff" => Ok(StorefrontSlot::CheckoutShippingHandoff),
         other => Err(format!("unsupported storefront slot `{other}`").into()),
     }
 }
@@ -257,6 +263,9 @@ fn storefront_slot_expr(slot: StorefrontSlot) -> &'static str {
         StorefrontSlot::HomeAfterHero => "StorefrontSlot::HomeAfterHero",
         StorefrontSlot::HomeAfterCatalog => "StorefrontSlot::HomeAfterCatalog",
         StorefrontSlot::HomeBeforeFooter => "StorefrontSlot::HomeBeforeFooter",
+        StorefrontSlot::CheckoutPaymentHandoff => "StorefrontSlot::CheckoutPaymentHandoff",
+        StorefrontSlot::CheckoutResultHandoff => "StorefrontSlot::CheckoutResultHandoff",
+        StorefrontSlot::CheckoutShippingHandoff => "StorefrontSlot::CheckoutShippingHandoff",
     }
 }
 

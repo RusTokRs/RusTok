@@ -39,8 +39,12 @@ async fn storefront_pages_native(
         use rustok_tenant::TenantService;
 
         let app_ctx = expect_context::<AppContext>();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>().await.ok();
-        let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>().await.ok();
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .ok();
+        let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .ok();
 
         let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
             (tenant.id, tenant.default_locale.clone())

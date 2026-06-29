@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+  "status": "source_smoke_locked",
+  "profile": "embedded_native",
+  "degraded_mode": "generate_from_prompt_only",
+  "cases": [
+    {
+      "provider": "product",
+      "operation": "read_product_projection",
+      "expected_behavior": "product_copy and product_attributes requests keep module-owned validation and fall back to prompt-only generation context when catalog projection is unavailable"
+    }
+  ]
+}

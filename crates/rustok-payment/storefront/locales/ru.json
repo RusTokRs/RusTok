@@ -1,0 +1,11 @@
+{
+  "payment.collection.badge": "Оплата",
+  "payment.collection.title": "Платёжная коллекция",
+  "payment.collection.emptyId": "Платёжная коллекция отсутствует",
+  "payment.collection.emptyStatus": "Не начато",
+  "payment.collection.idLabel": "Коллекция",
+  "payment.collection.statusLabel": "Статус",
+  "payment.collection.moduleOwnership": "Отображение платёжной коллекции остаётся в UI модуля payment.",
+  "payment.collection.createOrReuse": "Создать или переиспользовать оплату",
+  "payment.collection.pending": "Выполняется..."
+}

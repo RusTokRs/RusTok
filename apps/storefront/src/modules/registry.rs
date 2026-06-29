@@ -8,6 +8,9 @@ pub enum StorefrontSlot {
     HomeAfterHero,
     HomeAfterCatalog,
     HomeBeforeFooter,
+    CheckoutPaymentHandoff,
+    CheckoutResultHandoff,
+    CheckoutShippingHandoff,
 }
 
 #[derive(Clone)]

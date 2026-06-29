@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Default fulfillment submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "admin_only"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
@@ -25,6 +25,12 @@ leptos_crate = "rustok-fulfillment-storefront"
 slot = "checkout_shipping_handoff"
 route_segment = "fulfillment"
 page_title = "Fulfillment"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
+
 [fba.provider]
 status = "in_progress"
 role = "provider"

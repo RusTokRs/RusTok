@@ -1,0 +1,8 @@
+{
+  "order.checkout.badge": "Order",
+  "order.checkout.title": "Checkout complete",
+  "order.checkout.orderStatus": "Order status",
+  "order.checkout.moduleOwnership": "Order status and checkout completion stay in order-owned UI.",
+  "order.checkout.complete": "Complete checkout",
+  "order.checkout.pending": "Completing..."
+}

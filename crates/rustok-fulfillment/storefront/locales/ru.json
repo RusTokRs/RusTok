@@ -1,0 +1,13 @@
+{
+  "fulfillment.shipping.badge": "Доставка",
+  "fulfillment.shipping.title": "Варианты доставки",
+  "fulfillment.shipping.subtitle": "Выберите вариант доставки для каждой группы отправки.",
+  "fulfillment.shipping.empty": "Для этой корзины нет доступных групп отправки.",
+  "fulfillment.shipping.group": "Группа отправки",
+  "fulfillment.shipping.lineItems": "позиции",
+  "fulfillment.shipping.provider": "Провайдер",
+  "fulfillment.shipping.selected": "Выбрано",
+  "fulfillment.shipping.select": "Выбрать",
+  "fulfillment.shipping.pending": "Выполняется...",
+  "fulfillment.shipping.noSelection": "Без варианта доставки"
+}

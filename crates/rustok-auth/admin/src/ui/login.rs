@@ -5,6 +5,7 @@ use leptos_hook_form::FormState;
 use leptos_router::hooks::use_navigate;
 use rustok_api::UiRouteContext;
 
+use crate::core::{prepare_login_request, AuthFormInputError};
 use crate::i18n::t;
 use crate::ui::components::{Button, Input};
 
@@ -32,14 +33,13 @@ where
         StoredValue::new(t_local("auth.errorRequired", "Please fill in all fields"));
 
     let on_submit = Callback::new(move |_| {
-        if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_form_state.set(FormState::with_form_error(error_required_msg.get_value()));
-            return;
-        }
-
-        let tenant_value = tenant.get().trim().to_string();
-        let email_value = email.get().trim().to_string();
-        let password_value = password.get();
+        let request = match prepare_login_request(tenant.get(), email.get(), password.get()) {
+            Ok(request) => request,
+            Err(AuthFormInputError::MissingRequiredFields) => {
+                set_form_state.set(FormState::with_form_error(error_required_msg.get_value()));
+                return;
+            }
+        };
         let auth = auth.clone();
         let navigate = navigate.clone();
 
@@ -47,7 +47,7 @@ where
 
         spawn_local(async move {
             match auth
-                .sign_in(email_value, password_value, tenant_value)
+                .sign_in(request.email, request.password, request.tenant)
                 .await
             {
                 Ok(()) => {

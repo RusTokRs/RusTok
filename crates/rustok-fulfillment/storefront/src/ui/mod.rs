@@ -1,3 +1,5 @@
 pub mod leptos;
 
-pub use leptos::{FulfillmentShippingHandoffNotice, FulfillmentShippingSelectionPanel};
+pub use leptos::{
+    FulfillmentShippingHandoffNotice, FulfillmentShippingSelectionPanel, FulfillmentView,
+};

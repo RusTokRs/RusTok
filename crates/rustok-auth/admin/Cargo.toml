@@ -14,6 +14,7 @@ hydrate = ["leptos/hydrate"]
 csr = []
 ssr = [
   "leptos/ssr",
+  "rustok-api/server",
   "dep:leptos_axum",
   "dep:loco-rs",
   "dep:rustok-core",
@@ -45,5 +46,4 @@ gloo-storage = { workspace = true }
 reqwest = { workspace = true, optional = true }
 serde_urlencoded.workspace = true
 web-sys = { version = "0.3", features = ["MouseEvent"] }
-
 

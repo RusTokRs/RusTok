@@ -1,8 +1,12 @@
+use crate::core::{
+    format_oauth_app_timestamp, oauth_app_type_defaults, prepare_create_oauth_app_input,
+    prepare_update_oauth_app_input,
+};
 use crate::i18n::t;
 use crate::model::{AppType, OAuthApp};
 use crate::transport::{
     create_oauth_app, list_oauth_apps, revoke_oauth_app, rotate_oauth_app_secret, update_oauth_app,
-    CreateOAuthAppInput, CreateOAuthAppResult, UpdateOAuthAppInput,
+    CreateOAuthAppResult,
 };
 use crate::ui::components::{Button, Input};
 use leptos::prelude::*;
@@ -36,12 +40,6 @@ pub fn AppTypeBadge(app_type: AppType) -> impl IntoView {
             {label}
         </Badge>
     }
-}
-
-fn format_timestamp(value: Option<chrono::DateTime<chrono::Utc>>) -> String {
-    value
-        .map(|timestamp| timestamp.format("%Y-%m-%d %H:%M UTC").to_string())
-        .unwrap_or_else(|| "Never".to_string())
 }
 
 #[component]
@@ -127,7 +125,7 @@ pub fn OAuthAppsList(
                                         {app.active_token_count}
                                     </td>
                                     <td class="px-4 py-3 align-top text-xs text-slate-500">
-                                        {format_timestamp(app.last_used_at)}
+                                        {format_oauth_app_timestamp(app.last_used_at)}
                                     </td>
                                     <td class="px-4 py-3 align-top">
                                         <div class="flex justify-end gap-2">
@@ -172,30 +170,6 @@ pub fn OAuthAppsList(
     }
 }
 
-fn lines_to_vec(value: &str) -> Vec<String> {
-    value
-        .lines()
-        .map(str::trim)
-        .filter(|item| !item.is_empty())
-        .map(ToString::to_string)
-        .collect()
-}
-
-fn default_redirects(app_type: &str) -> &'static str {
-    match app_type {
-        "Mobile" => "myapp://auth/callback",
-        "Service" => "",
-        _ => "http://localhost:3000/auth/callback",
-    }
-}
-
-fn default_grants(app_type: &str) -> &'static str {
-    match app_type {
-        "Service" => "client_credentials",
-        _ => "authorization_code\nrefresh_token",
-    }
-}
-
 #[component]
 pub fn CreateAppForm(
     token: Option<String>,
@@ -208,9 +182,10 @@ pub fn CreateAppForm(
     let (description, set_description) = signal(String::new());
     let (icon_url, set_icon_url) = signal(String::new());
     let (app_type, set_app_type) = signal("ThirdParty".to_string());
-    let (redirect_uris, set_redirect_uris) = signal(default_redirects("ThirdParty").to_string());
+    let initial_defaults = oauth_app_type_defaults("ThirdParty");
+    let (redirect_uris, set_redirect_uris) = signal(initial_defaults.redirect_uris.to_string());
     let (scopes, set_scopes) = signal(String::new());
-    let (grant_types, set_grant_types) = signal(default_grants("ThirdParty").to_string());
+    let (grant_types, set_grant_types) = signal(initial_defaults.grant_types.to_string());
     let (submitting, set_submitting) = signal(false);
     let (error, set_error) = signal(None::<String>);
 
@@ -221,25 +196,16 @@ pub fn CreateAppForm(
         };
 
         let tenant_value = tenant.clone();
-        let input = CreateOAuthAppInput {
-            name: name.get_untracked().trim().to_string(),
-            slug: slug.get_untracked().trim().to_string(),
-            description: (!description.get_untracked().trim().is_empty())
-                .then(|| description.get_untracked().trim().to_string()),
-            icon_url: (!icon_url.get_untracked().trim().is_empty())
-                .then(|| icon_url.get_untracked().trim().to_string()),
-            app_type: match app_type.get_untracked().as_str() {
-                "Mobile" => AppType::Mobile,
-                "Service" => AppType::Service,
-                _ => AppType::ThirdParty,
-            },
-            redirect_uris: {
-                let values = lines_to_vec(&redirect_uris.get_untracked());
-                (!values.is_empty()).then_some(values)
-            },
-            scopes: lines_to_vec(&scopes.get_untracked()),
-            grant_types: lines_to_vec(&grant_types.get_untracked()),
-        };
+        let input = prepare_create_oauth_app_input(
+            name.get_untracked(),
+            slug.get_untracked(),
+            description.get_untracked(),
+            icon_url.get_untracked(),
+            app_type.get_untracked(),
+            redirect_uris.get_untracked(),
+            scopes.get_untracked(),
+            grant_types.get_untracked(),
+        );
         let on_success = on_success.clone();
 
         set_submitting.set(true);
@@ -281,8 +247,9 @@ pub fn CreateAppForm(
                     on:change=move |ev| {
                         let next = event_target_value(&ev);
                         set_app_type.set(next.clone());
-                        set_redirect_uris.set(default_redirects(&next).to_string());
-                        set_grant_types.set(default_grants(&next).to_string());
+                        let defaults = oauth_app_type_defaults(&next);
+                        set_redirect_uris.set(defaults.redirect_uris.to_string());
+                        set_grant_types.set(defaults.grant_types.to_string());
                     }
                 >
                     <option value="ThirdParty">"Third Party"</option>
@@ -367,16 +334,14 @@ pub fn EditAppForm(
 
         let tenant_value = tenant.clone();
         let on_success = on_success.clone();
-        let input = UpdateOAuthAppInput {
-            name: name.get_untracked().trim().to_string(),
-            description: (!description.get_untracked().trim().is_empty())
-                .then(|| description.get_untracked().trim().to_string()),
-            icon_url: (!icon_url.get_untracked().trim().is_empty())
-                .then(|| icon_url.get_untracked().trim().to_string()),
-            redirect_uris: lines_to_vec(&redirect_uris.get_untracked()),
-            scopes: lines_to_vec(&scopes.get_untracked()),
-            grant_types: lines_to_vec(&grant_types.get_untracked()),
-        };
+        let input = prepare_update_oauth_app_input(
+            name.get_untracked(),
+            description.get_untracked(),
+            icon_url.get_untracked(),
+            redirect_uris.get_untracked(),
+            scopes.get_untracked(),
+            grant_types.get_untracked(),
+        );
 
         set_submitting.set(true);
         set_error.set(None);

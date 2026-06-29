@@ -1,0 +1,13 @@
+{
+  "fulfillment.shipping.badge": "Shipping",
+  "fulfillment.shipping.title": "Delivery options",
+  "fulfillment.shipping.subtitle": "Choose shipping options for each delivery group.",
+  "fulfillment.shipping.empty": "No delivery groups are available for this cart.",
+  "fulfillment.shipping.group": "Delivery group",
+  "fulfillment.shipping.lineItems": "line items",
+  "fulfillment.shipping.provider": "Provider",
+  "fulfillment.shipping.selected": "Selected",
+  "fulfillment.shipping.select": "Select",
+  "fulfillment.shipping.pending": "Processing...",
+  "fulfillment.shipping.noSelection": "No shipping option"
+}

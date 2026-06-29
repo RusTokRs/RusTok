@@ -12,7 +12,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - Next step: Move the remaining select-shipping-option server-function endpoint/body from commerce compatibility into a fulfillment-owned SSR adapter, preserve GraphQL fallback parity, then move from evidence-only external carrier contract execution to production adapter wiring in host composition.
 - Open blockers: None.
 - Hand-off notes for next agent: Без компиляции: поддерживать fast source guardrails; при следующем transport cutover синхронизировать commerce plan и центральную FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-29T00:00:00Z
 
 ## FFA/FBA status
 
@@ -34,7 +34,8 @@ SPI и post-order delivery changes ещё остаются в активном b
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - admin FFA slice добавил framework-agnostic `admin/src/core.rs` request policy для списка и фильтров, module-owned `admin/src/transport.rs` facade, GraphQL adapter `admin/src/transport/graphql_adapter.rs` и явный Leptos адаптер отрисовки `admin/src/ui/leptos.rs`; `admin/src/lib.rs` теперь только wires modules и re-export `FulfillmentAdmin`, legacy `admin/src/api.rs` удалён, а Leptos adapter больше не вызывает raw adapter напрямую для covered shipping-option flows; fast guardrail `scripts/verify/verify-fulfillment-admin-boundary.mjs` закрепляет boundary и docs sync без full-workspace compile;
   - storefront handoff + shipping-selection slice lives in `storefront/src/model.rs`, `storefront/src/core/mod.rs`, `storefront/src/transport.rs` and `storefront/src/ui/leptos.rs` as fulfillment-owned seller-aware delivery-group presentation/normalization plus native-first/GraphQL fallback policy consumed by commerce checkout orchestration; compatibility fallback is now MissingServer-only while the temporary commerce adapter remains, and fast guardrails `scripts/verify/verify-fulfillment-storefront-boundary.mjs` plus `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` validate the owner UI/core/transport split, narrowed fallback policy and aggregate package wiring while commerce temporarily retains the SSR endpoint body.
-- Last verified at (UTC): 2026-06-20T00:00:00Z
+  - manifest-driven storefront composition now registers `rustok-fulfillment-storefront` in `checkout_shipping_handoff`; `FulfillmentView` is the zero-prop host entry adapter, reads the effective locale from `UiRouteContext.locale`, and resolves copy through the module-owned `en`/`ru` catalog declared by `[provides.storefront_ui.i18n]`.
+- Last verified at (UTC): 2026-06-29T00:00:00Z
 - Owner: `rustok-fulfillment` module team
 
 ## Область работ

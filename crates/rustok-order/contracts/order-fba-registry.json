@@ -31,6 +31,18 @@
         "embedded_native",
         "graphql_checkout_compat"
       ]
+    },
+    {
+      "module": "ai-order",
+      "profile": "ai_order_operator_context",
+      "degraded_modes": [
+        "generate_summary_without_live_status",
+        "require_operator_review",
+        "skip_prefill_execution"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     }
   ],
   "evidence": {

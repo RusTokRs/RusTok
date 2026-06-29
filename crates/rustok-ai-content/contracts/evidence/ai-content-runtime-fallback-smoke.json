@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+  "status": "source_smoke_locked",
+  "profile": "embedded_native",
+  "degraded_modes": [
+    "require_operator_review",
+    "skip_publish_and_keep_draft_review"
+  ],
+  "cases": [
+    {
+      "operation": "content_moderation",
+      "expected_behavior": "content moderation keeps content-owned approval policy and falls back to operator review when policy/runtime confidence is unavailable"
+    },
+    {
+      "operation": "blog_draft",
+      "expected_behavior": "blog draft generation keeps content-owned payload validation and does not publish generated text without owner review"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai/contracts/ai-fba-registry.json",
+  "status": "planned_cases_locked",
+  "capability_profile": "ai_runtime_direct_execution",
+  "cases": [
+    {
+      "operation": "direct_execution_registration",
+      "profiles": [
+        "in_process"
+      ],
+      "assertions": [
+        "domain_task_identity_not_hardcoded_in_runtime_binding",
+        "support_adapter_registration_api_consumed",
+        "sensitive_tool_policy_merged_from_owner_crates"
+      ]
+    },
+    {
+      "operation": "provider_router_policy",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "candidate_status_taxonomy_locked",
+        "selected_fallback_decision_trace_locked",
+        "operator_diagnostics_surface_preserved"
+      ]
+    },
+    {
+      "operation": "admin_transport_boundary",
+      "profiles": [
+        "in_process"
+      ],
+      "assertions": [
+        "native_server_functions_remain_primary_for_leptos",
+        "graphql_headless_contract_remains_parallel",
+        "leptos_adapter_consumes_core_and_transport"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "source_smoke_locked",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "provider_fallback",
+      "direct_task_operator_review",
+      "diagnostics_explain_unavailable_candidate"
+    ]
+  }
+}

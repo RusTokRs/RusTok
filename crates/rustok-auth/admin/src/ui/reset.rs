@@ -4,6 +4,7 @@ use leptos_auth::hooks::use_tenant;
 use leptos_hook_form::FormState;
 use rustok_api::UiRouteContext;
 
+use crate::core::{prepare_password_reset_request, AuthFormInputError};
 use crate::i18n::t;
 use crate::transport;
 use crate::ui::components::{Button, Input};
@@ -34,19 +35,19 @@ where
     ));
 
     let on_request = Callback::new(move |_| {
-        if tenant.get().is_empty() || email.get().is_empty() {
-            set_form_state.set(FormState::with_form_error(error_required_msg.get_value()));
-            return;
-        }
-
-        let tenant_value = tenant.get().trim().to_string();
-        let email_value = email.get().trim().to_string();
+        let request = match prepare_password_reset_request(tenant.get(), email.get()) {
+            Ok(request) => request,
+            Err(AuthFormInputError::MissingRequiredFields) => {
+                set_form_state.set(FormState::with_form_error(error_required_msg.get_value()));
+                return;
+            }
+        };
 
         set_form_state.set(FormState::submitting());
         set_success_message.set(None);
 
         spawn_local(async move {
-            match transport::request_password_reset(email_value, tenant_value).await {
+            match transport::request_password_reset(request.email, request.tenant).await {
                 Ok(message) => {
                     set_form_state.set(FormState::idle());
                     set_success_message.set(Some(message));

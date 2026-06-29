@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "module": "auth",
+  "crate": "rustok-auth",
+  "role": "core_capability_provider",
+  "status": "in_progress",
+  "capability_profile": "auth_identity_permission_surface",
+  "provider_dependencies": [],
+  "owned_contracts": [
+    {
+      "name": "AuthModule",
+      "source": "crates/rustok-auth/src/lib.rs",
+      "operations": [
+        "permissions",
+        "migrations",
+        "health"
+      ],
+      "published_permissions": [
+        "users:create",
+        "users:read",
+        "users:update",
+        "users:delete",
+        "users:list",
+        "users:manage"
+      ],
+      "context": "rustok_core::module::RusToKModule",
+      "error": "rustok_auth::AuthError"
+    }
+  ],
+  "admin_boundary": {
+    "source": "crates/rustok-auth/admin/src",
+    "transport_facade": "crates/rustok-auth/admin/src/transport/mod.rs",
+    "core_policy": "crates/rustok-auth/admin/src/core.rs",
+    "verifier": "scripts/verify/verify-auth-admin-boundary.mjs"
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-auth/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "static_matrix": "crates/rustok-auth/contracts/evidence/auth-capability-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-auth/contracts/auth-fba-registry.json",
+    "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "profiles": [
+      "in_process"
+    ],
+    "cases": [
+      {
+        "operation": "permissions",
+        "assertions": [
+          "auth_permission_surface_owned_by_module",
+          "host_consumes_published_permissions",
+          "admin_request_normalization_core_owned",
+          "host_locale_catalog_consumed"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "source_smoke_locked",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "deny_on_missing_auth_context",
+        "surface_actionable_admin_error"
+      ]
+    }
+  }
+}

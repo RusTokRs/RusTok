@@ -39,7 +39,7 @@ status: verified
 - [Как писать модуль в RusToK](./modules/module-authoring.md)
 - [Контракт `rustok-module.toml`](./modules/manifest.md)
 - [Реестр модулей и приложений](./modules/registry.md)
-- [FFA/FBA readiness board (внутри реестра модулей)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
+- [FFA/FBA readiness board и boundary evidence (внутри реестра модулей)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
 - [Runtime-контракт `rustok-page-builder`](../crates/rustok-page-builder/docs/README.md)
 - [Machine-readable FBA registry page-builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
@@ -60,7 +60,7 @@ status: verified
 
 - [Обзор UI](./UI/README.md)
 - [GraphQL и Leptos server functions](./UI/graphql-architecture.md)
-- [Контракт storefront](./UI/storefront.md)
+- [Контракт storefront и checkout slots](./UI/storefront.md)
 - [Flutter mobile host витрины](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 - [Flutter mobile package catalog/cart](../rustok_mobile/packages/rustok_catalog_mobile/README.md)
 - [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)

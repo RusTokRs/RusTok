@@ -7,8 +7,11 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use rustok_api::UiRouteContext;
 
+use crate::core::{
+    prepare_create_user_input, user_list_page, user_list_query_params, CreateUserInputError,
+};
 use crate::i18n::t;
-use crate::model::{CreateUserInput, GraphqlUser};
+use crate::model::GraphqlUser;
 use crate::transport::{create_user, fetch_users};
 use crate::ui::components::{Button, Input, PageHeader};
 
@@ -61,11 +64,7 @@ pub fn Users() -> impl IntoView {
     let initial_search = query.get_untracked().get("search").unwrap_or_default();
     let initial_role = query.get_untracked().get("role").unwrap_or_default();
     let initial_status = query.get_untracked().get("status").unwrap_or_default();
-    let initial_page = query
-        .get_untracked()
-        .get("page")
-        .and_then(|p| p.parse::<i64>().ok())
-        .unwrap_or(1);
+    let initial_page = user_list_page(query.get_untracked().get("page").as_deref());
 
     let (refresh_counter, set_refresh_counter) = signal(0u32);
     let (page, set_page) = signal(initial_page);
@@ -98,19 +97,7 @@ pub fn Users() -> impl IntoView {
         let st = status_filter.get();
         let p = page.get();
 
-        let mut params: Vec<(&str, String)> = Vec::new();
-        if !s.is_empty() {
-            params.push(("search", s));
-        }
-        if !r.is_empty() {
-            params.push(("role", r));
-        }
-        if !st.is_empty() {
-            params.push(("status", st));
-        }
-        if p > 1 {
-            params.push(("page", p.to_string()));
-        }
+        let params = user_list_query_params(s, r, st, p);
 
         let search_string = serde_urlencoded::to_string(params)
             .ok()
@@ -192,34 +179,24 @@ pub fn Users() -> impl IntoView {
         let token_val = token.get();
         let tenant_val = tenant.get();
 
-        if email_val.is_empty() || password_val.is_empty() {
-            set_create_error.set(Some(create_user_msg.get_value()));
-            return;
-        }
+        let input = match prepare_create_user_input(
+            email_val,
+            password_val,
+            name_val,
+            role_val,
+            status_val,
+        ) {
+            Ok(input) => input,
+            Err(CreateUserInputError::MissingCredentials) => {
+                set_create_error.set(Some(create_user_msg.get_value()));
+                return;
+            }
+        };
 
         set_is_creating.set(true);
         set_create_error.set(None);
 
         spawn_local(async move {
-            let input = CreateUserInput {
-                email: email_val,
-                password: password_val,
-                name: if name_val.is_empty() {
-                    None
-                } else {
-                    Some(name_val)
-                },
-                role: if role_val.is_empty() {
-                    None
-                } else {
-                    Some(role_val.to_uppercase())
-                },
-                status: if status_val.is_empty() {
-                    None
-                } else {
-                    Some(status_val.to_uppercase())
-                },
-            };
             match create_user(token_val, tenant_val, input).await {
                 Ok(_) => {
                     set_is_creating.set(false);

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-auth/contracts/auth-fba-registry.json",
+  "status": "planned_cases_locked",
+  "capability_profile": "auth_identity_permission_surface",
+  "cases": [
+    {
+      "operation": "permissions",
+      "profiles": [
+        "in_process"
+      ],
+      "assertions": [
+        "auth_permission_surface_owned_by_module",
+        "host_consumes_published_permissions",
+        "admin_request_normalization_core_owned",
+        "host_locale_catalog_consumed"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "source_smoke_locked",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "deny_on_missing_auth_context",
+      "surface_actionable_admin_error"
+    ]
+  }
+}

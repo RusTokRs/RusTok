@@ -7,6 +7,8 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use crate::model::{CreateOAuthAppInput, UpdateOAuthAppInput};
+
 pub async fn request_password_reset(email: String, tenant: String) -> Result<String, String> {
     leptos_auth::api::forgot_password(email, tenant)
         .await
@@ -188,7 +190,7 @@ where
         .map_err(|err| leptos_graphql::GraphqlHttpError::Graphql(err.to_string()))
 }
 
-use crate::model::{AppType, GraphqlUserResponse, GraphqlUsersResponse, OAuthApp};
+use crate::model::{GraphqlUserResponse, GraphqlUsersResponse, OAuthApp};
 
 pub const USERS_QUERY: &str = "query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String) { users(pagination: $pagination, filter: $filter, search: $search) { edges { cursor node { id email name role status createdAt tenantName } } pageInfo { totalCount hasNextPage endCursor } } }";
 pub const USERS_QUERY_HASH: &str =
@@ -812,19 +814,6 @@ pub struct CreateOAuthAppVariables {
     pub input: CreateOAuthAppInput,
 }
 
-#[derive(serde::Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateOAuthAppInput {
-    pub name: String,
-    pub slug: String,
-    pub description: Option<String>,
-    pub icon_url: Option<String>,
-    pub app_type: AppType,
-    pub redirect_uris: Option<Vec<String>>,
-    pub scopes: Vec<String>,
-    pub grant_types: Vec<String>,
-}
-
 #[derive(serde::Deserialize)]
 pub struct CreateOAuthAppResponse {
     #[serde(rename = "createOAuthApp")]
@@ -842,17 +831,6 @@ pub struct CreateOAuthAppResult {
 pub struct UpdateOAuthAppVariables {
     pub id: uuid::Uuid,
     pub input: UpdateOAuthAppInput,
-}
-
-#[derive(serde::Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateOAuthAppInput {
-    pub name: String,
-    pub description: Option<String>,
-    pub icon_url: Option<String>,
-    pub redirect_uris: Vec<String>,
-    pub scopes: Vec<String>,
-    pub grant_types: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]

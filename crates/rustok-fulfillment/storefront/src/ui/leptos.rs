@@ -1,10 +1,55 @@
 use leptos::prelude::*;
+use rustok_api::UiRouteContext;
 
 use crate::core::{
     build_select_shipping_option_request, format_shipping_option_price,
     SelectShippingOptionRequest, ShippingSelectionLabels,
 };
+use crate::i18n::t;
 use crate::model::{StorefrontDeliveryGroup, StorefrontShippingOption};
+
+#[component]
+pub fn FulfillmentView() -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let locale = locale.as_deref();
+    let busy = RwSignal::new(false).read_only();
+    let on_select_shipping_option = Callback::new(|_: SelectShippingOptionRequest| {});
+    let delivery_groups = Vec::<StorefrontDeliveryGroup>::new();
+    let labels = ShippingSelectionLabels {
+        badge: t(locale, "fulfillment.shipping.badge", "Shipping"),
+        title: t(locale, "fulfillment.shipping.title", "Delivery options"),
+        subtitle: t(
+            locale,
+            "fulfillment.shipping.subtitle",
+            "Choose shipping options for each delivery group.",
+        ),
+        empty: t(
+            locale,
+            "fulfillment.shipping.empty",
+            "No delivery groups are available for this cart.",
+        ),
+        group_label: t(locale, "fulfillment.shipping.group", "Delivery group"),
+        line_items_label: t(locale, "fulfillment.shipping.lineItems", "line items"),
+        provider_label: t(locale, "fulfillment.shipping.provider", "Provider"),
+        selected_label: t(locale, "fulfillment.shipping.selected", "Selected"),
+        select_label: t(locale, "fulfillment.shipping.select", "Select"),
+        pending_label: t(locale, "fulfillment.shipping.pending", "Processing..."),
+        no_selection_label: t(
+            locale,
+            "fulfillment.shipping.noSelection",
+            "No shipping option",
+        ),
+    };
+
+    view! {
+        <FulfillmentShippingSelectionPanel
+            delivery_groups
+            labels
+            busy
+            on_select_shipping_option
+        />
+    }
+}
 
 #[component]
 pub fn FulfillmentShippingHandoffNotice(message: String) -> impl IntoView {

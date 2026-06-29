@@ -1,0 +1,8 @@
+{
+  "order.checkout.badge": "Заказ",
+  "order.checkout.title": "Оформление завершено",
+  "order.checkout.orderStatus": "Статус заказа",
+  "order.checkout.moduleOwnership": "Статус заказа и завершение оформления остаются в UI модуля order.",
+  "order.checkout.complete": "Завершить оформление",
+  "order.checkout.pending": "Завершается..."
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai/contracts/ai-fba-registry.json",
+  "status": "source_smoke_locked",
+  "profile": "embedded_native",
+  "degraded_modes": [
+    "provider_fallback",
+    "direct_task_operator_review",
+    "diagnostics_explain_unavailable_candidate"
+  ],
+  "cases": [
+    {
+      "operation": "provider_router_policy",
+      "expected_behavior": "router candidate statuses and decision traces explain provider fallback or unavailable candidates without hiding policy failures"
+    },
+    {
+      "operation": "direct_execution_registration",
+      "expected_behavior": "direct task registration consumes owner support adapters and keeps sensitive tasks on explicit operator-review policy"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - Next step: Move the async native/GraphQL payment collection transport adapter behind `rustok-payment/storefront` when the host route can depend on the owner package without circular orchestration, then move from evidence-only external gateway contract execution to production adapter wiring in host composition.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-06-29T00:00:00Z
 
 ## FFA/FBA status
 
@@ -31,8 +31,9 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
   - live external gateway execution evidence теперь закреплён в `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json`: packet фиксирует concrete-adapter contract execution для guarded single invocation, typed provider-error mapping без lifecycle persistence, degraded fallback profile `manual_review`, unavailable-mode adapter blocking и idempotent webhook replay delegation; `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` теперь валидирует этот executed evidence рядом со static/runtime-smoke/contract packets без Cargo compilation;
   - storefront UI slice now lives in `storefront/src/core.rs` + `storefront/src/ui/leptos.rs` and owns payment-collection card presentation/fallback policy plus create/reuse action button labels; `storefront/src/transport.rs` owns payment collection create/reuse request normalization, command metadata, typed `PaymentCollectionTransportError` mapping and the `create_payment_collection_with_fallback` native/GraphQL fallback facade; `PaymentCollectionActionButton` emits `PaymentCollectionCreateRequest` to the temporary commerce checkout orchestration callback during the compatibility window, and commerce maps the owner DTO metadata into native/GraphQL payloads instead of exposing a duplicate payment request builder;
   - fast boundary guardrail `scripts/verify/verify-payment-storefront-boundary.mjs` is wired into `npm run verify:ffa:ui:migration`, self-checks package wiring, and checks the payment-owned core/transport/ui split without long Cargo compilation;
+  - manifest-driven storefront composition now registers `rustok-payment-storefront` in `checkout_payment_handoff`; `PaymentView` is the zero-prop host entry adapter, reads the effective locale from `UiRouteContext.locale`, and resolves copy through the module-owned `en`/`ru` catalog declared by `[provides.storefront_ui.i18n]`;
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте.
-- Last verified at (UTC): 2026-06-20T00:00:00Z
+- Last verified at (UTC): 2026-06-29T00:00:00Z
 - Owner: `rustok-payment` module team
 
 ## Область работ

@@ -23,11 +23,12 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - `admin/src/core.rs`, `admin/src/transport.rs`, and `admin/src/ui/leptos.rs` provide the module-owned admin FFA split.
   - Transport exposes a native-server plus GraphQL fallback placeholder profile; concrete host rendering remains a follow-up.
+  - FBA support-consumer metadata is locked in `crates/rustok-ai-content/contracts/ai-content-fba-registry.json` for content moderation/blog draft task identity, policy matrix and generated-payload validation, including `require_operator_review` and `skip_publish_and_keep_draft_review` degraded modes, mirrored by `crates/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json` and source-smoke `crates/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`, and checked by `scripts/verify/verify-ai-fba-baseline.mjs`.
   - The global readiness board uses the canonical hyphenated module slug `ai-content`.
 
 ## Quality backlog

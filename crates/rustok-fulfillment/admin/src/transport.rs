@@ -1,10 +1,10 @@
 mod graphql_adapter;
 
-pub use graphql_adapter::ApiError;
 use crate::model::{
     FulfillmentAdminBootstrap, ShippingOption, ShippingOptionDraft, ShippingOptionList,
     ShippingProfile,
 };
+pub use graphql_adapter::ApiError;
 
 pub async fn fetch_bootstrap(
     token: Option<String>,

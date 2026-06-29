@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+  "status": "source_smoke_locked",
+  "profile": "embedded_native",
+  "degraded_mode": "generate_summary_without_live_status",
+  "cases": [
+    {
+      "provider": "order",
+      "operation": "read_order_status",
+      "expected_behavior": "order analytics and ops assistant keep order-owned generated payload validation and require operator review when live order status cannot be read"
+    }
+  ]
+}

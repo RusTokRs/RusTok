@@ -1,10 +1,38 @@
 use leptos::prelude::*;
+use rustok_api::UiRouteContext;
 
 use crate::core::{
     build_order_checkout_result_view_model, order_checkout_action_label, OrderCheckoutActionLabels,
     OrderCheckoutResultData, OrderCheckoutResultLabels,
 };
+use crate::i18n::t;
 use crate::transport::{build_complete_checkout_request, CompleteCheckoutRequest};
+
+#[component]
+pub fn OrderView() -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let locale = locale.as_deref();
+    let result = OrderCheckoutResultData {
+        order_id: "pending".to_string(),
+        order_status: "not_started".to_string(),
+    };
+    let labels = OrderCheckoutResultLabels {
+        badge: t(locale, "order.checkout.badge", "Order"),
+        module_ownership: t(
+            locale,
+            "order.checkout.moduleOwnership",
+            "Order status and checkout completion stay in order-owned UI.",
+        ),
+        order_status_label: t(locale, "order.checkout.orderStatus", "Order status"),
+    };
+
+    view! {
+        <OrderCheckoutResultCard
+            result
+            labels
+        />
+    }
+}
 
 #[component]
 pub fn OrderCheckoutResultCard(

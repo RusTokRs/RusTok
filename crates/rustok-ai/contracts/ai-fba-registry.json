@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "module": "ai",
+  "crate": "rustok-ai",
+  "role": "capability_orchestrator",
+  "status": "in_progress",
+  "capability_profile": "ai_runtime_direct_execution",
+  "support_adapters": [
+    {
+      "module": "ai-content",
+      "registry": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+      "registration_api": "register_content_ai_vertical_handlers",
+      "runtime_binding": "crates/rustok-ai/src/direct_domain_content.rs"
+    },
+    {
+      "module": "ai-order",
+      "registry": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+      "registration_api": "register_order_ai_vertical_handlers",
+      "runtime_binding": "crates/rustok-ai/src/direct_domain_orders.rs"
+    },
+    {
+      "module": "ai-product",
+      "registry": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+      "registration_api": "register_product_ai_vertical_handlers",
+      "runtime_binding": "crates/rustok-ai/src/direct_domain_commerce.rs"
+    },
+    {
+      "module": "ai-media",
+      "registry": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+      "registration_api": "register_media_ai_vertical_handlers",
+      "runtime_binding": "crates/rustok-ai/src/direct_domain_media.rs"
+    },
+    {
+      "module": "ai-alloy",
+      "registry": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+      "registration_api": "register_alloy_ai_vertical_handlers",
+      "runtime_binding": "crates/rustok-ai/src/direct_domain_alloy.rs"
+    }
+  ],
+  "runtime_contracts": {
+    "router_policy_source": "crates/rustok-ai/src/router.rs",
+    "direct_registry_source": "crates/rustok-ai/src/direct.rs",
+    "service_source": "crates/rustok-ai/src/service.rs",
+    "admin_core": "crates/rustok-ai/admin/src/core.rs",
+    "admin_transport": "crates/rustok-ai/admin/src/transport",
+    "admin_ui": "crates/rustok-ai/admin/src/ui/leptos.rs"
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-ai/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "static_matrix": "crates/rustok-ai/contracts/evidence/ai-runtime-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-ai/contracts/ai-fba-registry.json",
+    "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "direct_execution_registration",
+        "assertions": [
+          "domain_task_identity_not_hardcoded_in_runtime_binding",
+          "support_adapter_registration_api_consumed",
+          "sensitive_tool_policy_merged_from_owner_crates"
+        ]
+      },
+      {
+        "operation": "provider_router_policy",
+        "assertions": [
+          "candidate_status_taxonomy_locked",
+          "selected_fallback_decision_trace_locked",
+          "operator_diagnostics_surface_preserved"
+        ]
+      },
+      {
+        "operation": "admin_transport_boundary",
+        "assertions": [
+          "native_server_functions_remain_primary_for_leptos",
+          "graphql_headless_contract_remains_parallel",
+          "leptos_adapter_consumes_core_and_transport"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "source_smoke_locked",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "provider_fallback",
+        "direct_task_operator_review",
+        "diagnostics_explain_unavailable_candidate"
+      ]
+    }
+  }
+}

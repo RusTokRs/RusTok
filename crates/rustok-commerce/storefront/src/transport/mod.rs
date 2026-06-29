@@ -6,10 +6,10 @@ use crate::core::{
     CheckoutCompletionCommandRequest, FetchCommerceRequest, PaymentCollectionCommandRequest,
     SelectShippingOptionRequest,
 };
-use raw_adapter::ApiError;
 use crate::model::{
     StorefrontCheckoutCompletion, StorefrontCheckoutPaymentCollection, StorefrontCommerceData,
 };
+use raw_adapter::ApiError;
 use rustok_fulfillment_storefront::transport::{
     select_shipping_option_with_fallback, ShippingSelectionTransportError,
 };

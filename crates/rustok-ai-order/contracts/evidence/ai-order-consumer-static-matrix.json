@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+  "status": "planned_cases_locked",
+  "consumer_profile": "ai_order_operator_context",
+  "cases": [
+    {
+      "provider": "order",
+      "operation": "read_order_status",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "order_analytics_shape_preserved",
+        "ops_assistant_prefill_requires_structured_value",
+        "degraded_require_operator_review_on_unavailable"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "source_smoke_locked",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "generate_summary_without_live_status",
+      "require_operator_review",
+      "skip_prefill_execution"
+    ]
+  }
+}

@@ -5,6 +5,7 @@ use leptos_hook_form::FormState;
 use leptos_ui::{Select, SelectOption};
 use rustok_api::UiRouteContext;
 
+use crate::core::{classify_profile_update_error, prepare_profile_name, ProfileUpdateErrorKind};
 use crate::i18n::t;
 use crate::transport::update_profile;
 use crate::ui::components::{Button, Input, PageHeader};
@@ -53,7 +54,7 @@ where
             return;
         }
 
-        let name_value = name.get().trim().to_string();
+        let name_value = prepare_profile_name(name.get());
 
         set_form_state.set(FormState::submitting());
         set_success_message.set(None);
@@ -62,11 +63,7 @@ where
             let result = update_profile(
                 token_value.clone().unwrap_or_default(),
                 tenant_value.clone().unwrap_or_default(),
-                if name_value.is_empty() {
-                    None
-                } else {
-                    Some(name_value)
-                },
+                name_value,
             )
             .await;
 
@@ -79,17 +76,20 @@ where
                     set_success_message.set(Some(t_local("profile.saved", "Profile updated.")));
                 }
                 Err(err_str) => {
-                    let message = if err_str.contains("Unauthorized") {
-                        t_local(
+                    let message = match classify_profile_update_error(&err_str) {
+                        ProfileUpdateErrorKind::Unauthorized => t_local(
                             "errors.auth.unauthorized",
                             "You are not authorized to perform this action.",
-                        )
-                    } else if err_str.contains("HTTP") {
-                        t_local("errors.http", "Server error. Please try again.")
-                    } else if err_str.contains("Network") {
-                        t_local("errors.network", "Network error. Check your connection.")
-                    } else {
-                        t_local("errors.unknown", "Something went wrong. Please try again.")
+                        ),
+                        ProfileUpdateErrorKind::Http => {
+                            t_local("errors.http", "Server error. Please try again.")
+                        }
+                        ProfileUpdateErrorKind::Network => {
+                            t_local("errors.network", "Network error. Check your connection.")
+                        }
+                        ProfileUpdateErrorKind::Unknown => {
+                            t_local("errors.unknown", "Something went wrong. Please try again.")
+                        }
                     };
                     set_form_state.set(FormState::with_form_error(message));
                     set_success_message.set(None);

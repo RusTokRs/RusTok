@@ -42,6 +42,8 @@ const libPath = "crates/rustok-fulfillment/storefront/src/lib.rs";
 const modelPath = "crates/rustok-fulfillment/storefront/src/model.rs";
 const corePath = "crates/rustok-fulfillment/storefront/src/core/mod.rs";
 const uiPath = "crates/rustok-fulfillment/storefront/src/ui/leptos.rs";
+const i18nPath = "crates/rustok-fulfillment/storefront/src/i18n.rs";
+const manifestPath = "crates/rustok-fulfillment/rustok-module.toml";
 const transportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
 const commerceTransportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
@@ -49,7 +51,7 @@ const planPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, modelPath, corePath, uiPath, transportPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, modelPath, corePath, uiPath, i18nPath, manifestPath, transportPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected fulfillment storefront FFA file`);
 }
 
@@ -57,6 +59,8 @@ const lib = readRepo(libPath);
 const model = readRepo(modelPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
+const i18n = readRepo(i18nPath);
+const manifest = readRepo(manifestPath);
 const transport = readRepo(transportPath);
 const commerceTransport = readRepo(commerceTransportPath);
 const commerceUi = readRepo(commerceUiPath);
@@ -91,6 +95,9 @@ for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", 
 }
 
 for (const marker of [
+  "FulfillmentView",
+  "use_context::<UiRouteContext>()",
+  "crate::i18n::t",
   "FulfillmentShippingSelectionPanel",
   "build_select_shipping_option_request",
   "on_select_shipping_option",
@@ -98,6 +105,12 @@ for (const marker of [
   "StorefrontShippingOption",
 ]) {
   assertContains(ui, marker, `${uiPath}: expected fulfillment-owned selection UI marker ${marker}`);
+}
+for (const marker of ["include_str!(\"../locales/en.json\")", "include_str!(\"../locales/ru.json\")", "resolve_ui_message_or_fallback"]) {
+  assertContains(i18n, marker, `${i18nPath}: expected host-locale catalog marker ${marker}`);
+}
+for (const marker of ["slot = \"checkout_shipping_handoff\"", "[provides.storefront_ui.i18n]", "leptos_locales_path = \"storefront/locales\""]) {
+  assertContains(manifest, marker, `${manifestPath}: expected locale-aware storefront manifest marker ${marker}`);
 }
 for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[server"]) {
   assertNotContains(ui, marker, `${uiPath}: UI adapter must not call commerce transport directly (${marker})`);

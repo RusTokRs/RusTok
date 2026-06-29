@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "module": "ai-product",
+  "crate": "rustok-ai-product",
+  "role": "consumer_support_adapter",
+  "status": "in_progress",
+  "consumer_profile": "ai_product_generation_context",
+  "provider_dependencies": [
+    {
+      "module": "product",
+      "registry": "crates/rustok-product/contracts/product-fba-registry.json",
+      "contract_version": "product.catalog_read.v1",
+      "port": "ProductCatalogReadPort",
+      "operations": [
+        "read_product_projection"
+      ],
+      "required_profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "generate_from_prompt_only",
+        "skip_catalog_enrichment",
+        "require_operator_review"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError"
+    }
+  ],
+  "support_adapter": {
+    "source": "crates/rustok-ai-product/src/lib.rs",
+    "task_slugs": [
+      "product_copy",
+      "product_attributes"
+    ],
+    "tool_names": [
+      "direct.commerce.product_copy",
+      "direct.commerce.product_attributes"
+    ],
+    "registration_api": "register_product_ai_vertical_handlers",
+    "validation_helpers": [
+      "validate_product_copy_payload",
+      "validate_product_attributes_payload"
+    ]
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-ai-product/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-product-fba.mjs",
+    "static_matrix": "crates/rustok-ai-product/contracts/evidence/ai-product-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+    "runner": "scripts/verify/verify-ai-product-fba.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "provider": "product",
+        "operation": "read_product_projection",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "product_copy_shape_preserved",
+          "product_attributes_shape_preserved",
+          "degraded_generate_from_prompt_only_on_unavailable"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "source_smoke_locked",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "generate_from_prompt_only",
+        "skip_catalog_enrichment",
+        "require_operator_review"
+      ]
+    }
+  }
+}

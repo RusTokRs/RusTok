@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Default order submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "admin_only"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]
@@ -26,6 +26,11 @@ leptos_crate = "rustok-order-storefront"
 slot = "checkout_result_handoff"
 route_segment = "orders"
 page_title = "Orders"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
 
 [fba.provider]
 status = "in_progress"

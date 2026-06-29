@@ -20,6 +20,7 @@ RusToK поддерживает два web storefront host-приложения 
 
 - Host рендерит shell и generic module pages.
 - Module-owned storefront packages подключаются через manifest-driven wiring.
+- Checkout module surfaces монтируются через platform-known slots `checkout_shipping_handoff`, `checkout_payment_handoff` и `checkout_result_handoff`; slot не передаёт ownership бизнес-логики host-приложению.
 - Generic storefront routes живут в семействе `/modules/{route_segment}` с locale-aware вариантом там, где это требуется host runtime.
 - Module-owned packages обязаны строить внутренние ссылки через host route context, а не через hardcoded route strings.
 - Для Leptos storefront packages query/state reads тоже должны идти через общий helper layer
@@ -41,6 +42,7 @@ RusToK поддерживает два web storefront host-приложения 
 - Canonical URL policy и alias storage живут в backend/domain слое, а не в storefront host.
 - Storefront использует backend preflight для canonical route resolution до рендера страницы.
 - Effective locale выбирается runtime/host слоем один раз и затем прокидывается в UI surface.
+- Manifest-entry adapters используют `UiRouteContext.locale` и module-owned locale bundles из `[provides.storefront_ui.i18n]`; hardcoded copy допустим только как последний fallback для отсутствующего ключа.
 - Query-based locale fallback допустим только как backward-compatible path; module-owned UI не должен вводить свою fallback-цепочку.
 - Route/query parity между `apps/storefront`, `apps/next-frontend` и `rustok_frontend_mobile` должна соблюдаться на уровне
   key semantics и host contract, даже если конкретные helper implementations различаются.

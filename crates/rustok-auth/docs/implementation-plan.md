@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: ui_modularization_complete
-- Last checkpoint: Auth and user management admin UI surfaces extracted from apps/admin into the new `rustok-auth-admin` crate. Local i18n dynamic mapping registered, routing configured, host legacy pages removed, and workspace compilation fully verified.
-- Next step: Expand unit tests for auth-admin views and helpers.
+- Current phase: auth_admin_core_policy_hardening
+- Last checkpoint: Login, register and password-reset callbacks now consume typed core requests; tenant/email/name normalization and whitespace-only validation live in `admin/src/core.rs`, passwords remain byte-for-byte unchanged, and profile name/error classification policy is core-owned. Focused unit coverage reached 12 tests and the auth boundary guard forbids request normalization and profile error classification from returning to Leptos files.
+- Next step: Audit direct `leptos-auth` hook calls and remaining UI-owned state/policy against the Phase B checklist; introduce a module-owned facade only where it reduces coupling without wrapping hooks mechanically, then decide whether auth can move to `phase_b_ready`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-20T16:00:00Z
+- Last updated at (UTC): 2026-06-29T00:00:00Z
 
 ## Область работ
 
@@ -42,9 +42,9 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `not_started`
+- FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
-- Evidence: auth admin UI pages (Login, Register, ResetPassword, Profile, Security, Users, UserDetails, and OAuthAppsPage) are fully relocated to `crates/rustok-auth/admin`. `admin/src/ui/leptos.rs` is the explicit Leptos aggregation adapter, while password-reset dispatch goes through the module-owned `admin/src/transport/mod.rs` facade instead of a raw UI API call. The package implements its own client-side and server-side request/response models and translation lookup catalog matching `UiRouteContext.locale`. Host application `apps/admin` integrates the module pages dynamically via routing.
+- Evidence: auth admin UI pages (Login, Register, ResetPassword, Profile, Security, Users, UserDetails, and OAuthAppsPage) are fully relocated to `crates/rustok-auth/admin`. `admin/src/ui/leptos.rs` is the explicit Leptos aggregation adapter, while password-reset dispatch goes through the module-owned `admin/src/transport/mod.rs` facade instead of a raw UI API call. The package implements its own client-side and server-side request/response models and translation lookup catalog matching `UiRouteContext.locale`. Users list/query policy, user and OAuth create/update request preparation, OAuth multiline/default/timestamp policy, typed login/register/reset request normalization, profile name normalization and profile transport-error classification now live in Leptos-free `admin/src/core.rs`; OAuth transport input DTOs live in framework-neutral `admin/src/model.rs`. Twelve focused unit tests cover these policies, while `scripts/verify/verify-auth-admin-boundary.mjs` prevents UI-owned DTO reconstruction/normalization and is wired into `npm run verify:ffa:ui:migration`. The package `ssr` feature explicitly enables `rustok-api/server`, so native adapters compile with canonical auth/tenant contexts. Host application `apps/admin` integrates the module pages dynamically via routing. FBA capability metadata is locked in `crates/rustok-auth/contracts/auth-fba-registry.json` for `AUTH_USER_PERMISSIONS` and auth-owned admin boundary contracts, mirrored by `crates/rustok-auth/contracts/evidence/auth-capability-static-matrix.json` and source-smoke `crates/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json`, and checked by `scripts/verify/verify-ai-fba-baseline.mjs`.
 
 ## Проверка
 
@@ -54,6 +54,7 @@
 - `cargo check -p rustok-auth-admin`
 - `cargo check -p rustok-admin`
 - `npm run verify:i18n:ui`
+- `npm run verify:auth:admin-boundary`
 
 ## Правила обновления
 

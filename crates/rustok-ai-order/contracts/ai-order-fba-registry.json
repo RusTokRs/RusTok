@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "module": "ai-order",
+  "crate": "rustok-ai-order",
+  "role": "consumer_support_adapter",
+  "status": "in_progress",
+  "consumer_profile": "ai_order_operator_context",
+  "provider_dependencies": [
+    {
+      "module": "order",
+      "registry": "crates/rustok-order/contracts/order-fba-registry.json",
+      "contract_version": "order.checkout_completion.v1",
+      "port": "CheckoutCompletionPort",
+      "operations": [
+        "read_order_status"
+      ],
+      "required_profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "generate_summary_without_live_status",
+        "require_operator_review",
+        "skip_prefill_execution"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError"
+    }
+  ],
+  "support_adapter": {
+    "source": "crates/rustok-ai-order/src/lib.rs",
+    "runtime_binding": "crates/rustok-ai/src/direct_domain_orders.rs",
+    "task_slugs": [
+      "order_analytics",
+      "order_ops_assistant"
+    ],
+    "tool_names": [
+      "direct.orders.analytics",
+      "direct.orders.ops_assistant"
+    ],
+    "registration_api": "register_order_ai_vertical_handlers",
+    "validation_helpers": [
+      "validate_order_analytics_payload",
+      "validate_order_ops_assistant_payload",
+      "validate_order_ops_assistant_confidence"
+    ]
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-ai-order/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "static_matrix": "crates/rustok-ai-order/contracts/evidence/ai-order-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+    "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "provider": "order",
+        "operation": "read_order_status",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "order_analytics_shape_preserved",
+          "ops_assistant_prefill_requires_structured_value",
+          "degraded_require_operator_review_on_unavailable"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "source_smoke_locked",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "generate_summary_without_live_status",
+        "require_operator_review",
+        "skip_prefill_execution"
+      ]
+    }
+  }
+}

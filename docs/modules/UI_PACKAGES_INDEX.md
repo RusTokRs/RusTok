@@ -82,6 +82,7 @@ status: verified
 - `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
 - `rustok-index` admin UI: [README](../../crates/rustok-index/admin/README.md)
 - `rustok-outbox` admin UI: [README](../../crates/rustok-outbox/admin/README.md)
+- `rustok-auth` admin UI: [README](../../crates/rustok-auth/admin/README.md), fast boundary gate `npm run verify:auth:admin-boundary`
 - `rustok-tenant` admin UI: [README](../../crates/rustok-tenant/admin/README.md)
 - `rustok-rbac` admin UI: [README](../../crates/rustok-rbac/admin/README.md)
 

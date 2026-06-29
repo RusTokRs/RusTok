@@ -31,10 +31,16 @@ ssr = [
   "rustok-cart-storefront/ssr",
   "dep:rustok-commerce-storefront",
   "rustok-commerce-storefront/ssr",
+  "dep:rustok-fulfillment-storefront",
+  "rustok-fulfillment-storefront/ssr",
   "dep:rustok-forum-storefront",
   "rustok-forum-storefront/ssr",
+  "dep:rustok-order-storefront",
+  "rustok-order-storefront/ssr",
   "dep:rustok-pages-storefront",
   "rustok-pages-storefront/ssr",
+  "dep:rustok-payment-storefront",
+  "rustok-payment-storefront/ssr",
   "dep:rustok-pricing-storefront",
   "rustok-pricing-storefront/ssr",
   "dep:rustok-product-storefront",
@@ -78,8 +84,11 @@ rustok-tenant = { workspace = true, optional = true }
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false, optional = true }
 rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false, optional = true }
 rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false, optional = true }
+rustok-fulfillment-storefront = { path = "../../crates/rustok-fulfillment/storefront", default-features = false, optional = true }
 rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront", default-features = false, optional = true }
+rustok-order-storefront = { path = "../../crates/rustok-order/storefront", default-features = false, optional = true }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }
+rustok-payment-storefront = { path = "../../crates/rustok-payment/storefront", default-features = false, optional = true }
 rustok-pricing-storefront = { path = "../../crates/rustok-pricing/storefront", default-features = false, optional = true }
 rustok-product-storefront = { path = "../../crates/rustok-product/storefront", default-features = false, optional = true }
 rustok-region-storefront = { path = "../../crates/rustok-region/storefront", default-features = false, optional = true }
@@ -109,8 +118,11 @@ normal = [
   "rustok-blog-storefront",
   "rustok-cart-storefront",
   "rustok-commerce-storefront",
+  "rustok-fulfillment-storefront",
   "rustok-forum-storefront",
+  "rustok-order-storefront",
   "rustok-pages-storefront",
+  "rustok-payment-storefront",
   "rustok-pricing-storefront",
   "rustok-product-storefront",
   "rustok-region-storefront",

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+  "status": "planned_cases_locked",
+  "consumer_profile": "ai_content_generation_context",
+  "cases": [
+    {
+      "operation": "content_moderation",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "task_identity_owned_by_support_crate",
+        "operator_approval_policy_preserved",
+        "typed_generated_payload_validation",
+        "degraded_require_operator_review_on_policy_uncertainty"
+      ]
+    },
+    {
+      "operation": "blog_draft",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "task_identity_owned_by_support_crate",
+        "patch_style_payload_shape_preserved",
+        "blank_generated_fields_rejected",
+        "degraded_skip_publish_and_keep_draft_review"
+      ]
+    }
+  ],
+  "fallback_smoke": {
+    "status": "source_smoke_locked",
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "require_operator_review",
+      "skip_publish_and_keep_draft_review"
+    ]
+  }
+}

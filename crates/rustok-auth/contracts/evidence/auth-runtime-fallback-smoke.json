@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-auth/contracts/auth-fba-registry.json",
+  "status": "source_smoke_locked",
+  "profile": "embedded_native",
+  "degraded_modes": [
+    "deny_on_missing_auth_context",
+    "surface_actionable_admin_error"
+  ],
+  "cases": [
+    {
+      "operation": "permissions",
+      "expected_behavior": "auth-owned permission surface remains canonical and admin transport surfaces actionable errors instead of silently bypassing missing auth context"
+    }
+  ]
+}

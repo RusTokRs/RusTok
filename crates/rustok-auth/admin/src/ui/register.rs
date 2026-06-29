@@ -5,6 +5,7 @@ use leptos_hook_form::FormState;
 use leptos_router::hooks::use_navigate;
 use rustok_api::UiRouteContext;
 
+use crate::core::{prepare_register_request, AuthFormInputError};
 use crate::i18n::t;
 use crate::ui::components::{Button, Input};
 
@@ -35,20 +36,14 @@ where
     ));
 
     let on_submit = Callback::new(move |_| {
-        if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_form_state.set(FormState::with_form_error(error_required_msg.get_value()));
-            return;
-        }
-
-        let tenant_value = tenant.get().trim().to_string();
-        let email_value = email.get().trim().to_string();
-        let password_value = password.get();
-        let name_value = name.get().trim().to_string();
-        let name_opt = if name_value.is_empty() {
-            None
-        } else {
-            Some(name_value)
-        };
+        let request =
+            match prepare_register_request(tenant.get(), email.get(), password.get(), name.get()) {
+                Ok(request) => request,
+                Err(AuthFormInputError::MissingRequiredFields) => {
+                    set_form_state.set(FormState::with_form_error(error_required_msg.get_value()));
+                    return;
+                }
+            };
         let auth = auth.clone();
         let navigate = navigate.clone();
 
@@ -56,7 +51,12 @@ where
 
         spawn_local(async move {
             match auth
-                .sign_up(email_value, password_value, name_opt, tenant_value)
+                .sign_up(
+                    request.email,
+                    request.password,
+                    request.name,
+                    request.tenant,
+                )
                 .await
             {
                 Ok(()) => {

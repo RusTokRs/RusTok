@@ -67,6 +67,30 @@ pub enum AppType {
     ThirdParty,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateOAuthAppInput {
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    pub app_type: AppType,
+    pub redirect_uris: Option<Vec<String>>,
+    pub scopes: Vec<String>,
+    pub grant_types: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateOAuthAppInput {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    pub redirect_uris: Vec<String>,
+    pub scopes: Vec<String>,
+    pub grant_types: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthApp {
@@ -132,7 +156,7 @@ pub struct GraphqlPageInfo {
     pub total_count: i64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CreateUserInput {
     pub email: String,
     pub password: String,
@@ -141,7 +165,7 @@ pub struct CreateUserInput {
     pub status: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct UpdateUserInput {
     pub name: Option<String>,
     pub role: String,

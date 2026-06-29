@@ -7,6 +7,8 @@ Module-owned storefront UI package for `rustok-payment`.
 - Own storefront payment collection presentation and handoff copy.
 - Keep payment display policy outside umbrella `rustok-commerce`.
 - Provide Leptos adapters that can later be reused/replaced by Dioxus-facing adapters through the same payment-owned core contract.
+- Ship package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
+- Resolve manifest-entry copy from the host-provided `UiRouteContext.locale`; do not negotiate locale inside the package.
 
 ## Entry points
 

@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "module": "ai-content",
+  "crate": "rustok-ai-content",
+  "role": "consumer_support_adapter",
+  "status": "in_progress",
+  "consumer_profile": "ai_content_generation_context",
+  "provider_dependencies": [],
+  "support_adapter": {
+    "source": "crates/rustok-ai-content/src/lib.rs",
+    "runtime_binding": "crates/rustok-ai/src/direct_domain_content.rs",
+    "task_slugs": [
+      "content_moderation",
+      "blog_draft"
+    ],
+    "tool_names": [
+      "direct.content.moderation",
+      "direct.blog.generate_draft"
+    ],
+    "registration_api": "register_content_ai_vertical_handlers",
+    "validation_helpers": [
+      "validate_blog_draft_payload",
+      "validate_moderation_decision",
+      "normalize_moderation_decision",
+      "validate_moderation_severity"
+    ],
+    "policy_helpers": [
+      "content_ai_policy_matrix",
+      "content_ai_sensitive_tools"
+    ]
+  },
+  "evidence": {
+    "local_plan": "crates/rustok-ai-content/docs/implementation-plan.md",
+    "central_registry": "docs/modules/registry.md",
+    "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "static_matrix": "crates/rustok-ai-content/contracts/evidence/ai-content-consumer-static-matrix.json",
+    "runtime_fallback_smoke": "crates/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json"
+  },
+  "contract_tests": {
+    "status": "planned_cases_locked",
+    "source": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+    "runner": "scripts/verify/verify-ai-fba-baseline.mjs",
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder"
+    ],
+    "cases": [
+      {
+        "operation": "content_moderation",
+        "assertions": [
+          "task_identity_owned_by_support_crate",
+          "operator_approval_policy_preserved",
+          "typed_generated_payload_validation",
+          "degraded_require_operator_review_on_policy_uncertainty"
+        ]
+      },
+      {
+        "operation": "blog_draft",
+        "assertions": [
+          "task_identity_owned_by_support_crate",
+          "patch_style_payload_shape_preserved",
+          "blank_generated_fields_rejected",
+          "degraded_skip_publish_and_keep_draft_review"
+        ]
+      }
+    ],
+    "fallback_smoke": {
+      "status": "source_smoke_locked",
+      "profiles": [
+        "embedded_native"
+      ],
+      "degraded_modes": [
+        "require_operator_review",
+        "skip_publish_and_keep_draft_review"
+      ]
+    }
+  }
+}

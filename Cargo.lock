@@ -10150,6 +10150,7 @@ name = "rustok-fulfillment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "rustok-api",
  "serde",
 ]
 
@@ -10379,6 +10380,7 @@ name = "rustok-order-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "rustok-api",
  "serde",
 ]
 
@@ -10526,6 +10528,7 @@ name = "rustok-payment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "rustok-api",
  "serde",
 ]
 
@@ -11062,7 +11065,10 @@ dependencies = [
  "rustok-content",
  "rustok-core",
  "rustok-forum-storefront",
+ "rustok-fulfillment-storefront",
+ "rustok-order-storefront",
  "rustok-pages-storefront",
+ "rustok-payment-storefront",
  "rustok-pricing-storefront",
  "rustok-product-storefront",
  "rustok-region-storefront",

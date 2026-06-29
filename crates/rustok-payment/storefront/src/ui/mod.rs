@@ -1,3 +1,3 @@
 pub mod leptos;
 
-pub use leptos::{PaymentCollectionActionButton, PaymentCollectionCard};
+pub use leptos::{PaymentCollectionActionButton, PaymentCollectionCard, PaymentView};

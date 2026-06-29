@@ -1,10 +1,10 @@
 mod graphql_adapter;
 
-use graphql_adapter::ApiError;
 use crate::model::{
     ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductPricingDetail,
     ShippingProfileList,
 };
+use graphql_adapter::ApiError;
 
 pub(crate) async fn fetch_bootstrap(
     token: Option<String>,
