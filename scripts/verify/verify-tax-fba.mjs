@@ -56,7 +56,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   if (!libSource.includes('pub mod ports;') || !libSource.includes('pub use ports::*;')) fail('tax lib.rs must export ports');
   if (!portSource.includes('trait TaxCalculationPort')) fail('tax port source lacks trait');
   if (!portSource.includes('impl TaxCalculationPort for crate::TaxService')) fail('tax port source lacks in-process TaxService impl');
-  if (!portSource.includes('context.require_deadline_semantics()?')) fail('tax calculate_tax must enforce deadline semantics');
+  if (!portSource.includes('context.require_policy(PortCallPolicy::read())?')) fail('tax calculate_tax must enforce shared read/deadline semantics');
   if (portSource.includes('require_write_semantics()?')) fail('tax calculate_tax must not require write idempotency semantics');
   if (!portSource.includes('PortError::validation("tax.validation"')) fail('tax errors must map to typed PortError validation');
   if (!servicesSource.includes('Serialize, Deserialize')) fail('tax service DTOs must be serializable for transport-neutral ports');

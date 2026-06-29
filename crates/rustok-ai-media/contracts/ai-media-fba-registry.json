@@ -24,7 +24,8 @@
       ],
       "degraded_modes": [
         "skip_asset_enrichment",
-        "proxy_storage_relative_url"
+        "proxy_storage_relative_url",
+        "summarize_internal_binary"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError"
@@ -79,7 +80,8 @@
       ],
       "degraded_modes": [
         "skip_asset_enrichment",
-        "proxy_storage_relative_url"
+        "proxy_storage_relative_url",
+        "summarize_internal_binary"
       ]
     }
   }
