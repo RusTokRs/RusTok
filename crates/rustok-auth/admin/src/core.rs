@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 
 use crate::model::{
-    AppType, CreateOAuthAppInput, CreateUserInput, UpdateOAuthAppInput, UpdateUserInput,
+    AppType, CreateOAuthAppInput, CreateUserInput, GraphqlUser, UpdateOAuthAppInput,
+    UpdateUserInput,
 };
 
 // Leptos-free copy definitions and auth UI helpers.
@@ -41,8 +42,22 @@ pub struct PasswordResetRequest {
     pub email: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChangePasswordRequest {
+    pub token: String,
+    pub tenant: String,
+    pub current_password: String,
+    pub new_password: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProfileUpdateErrorKind {
+pub enum ChangePasswordInputError {
+    MissingPasswords,
+    Unauthorized,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthTransportErrorKind {
     Unauthorized,
     Http,
     Network,
@@ -55,10 +70,65 @@ pub struct OAuthAppTypeDefaults {
     pub grant_types: &'static str,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct OAuthAppListItemViewModel {
+    pub app: crate::model::OAuthApp,
+    pub description: Option<String>,
+    pub scopes_summary: String,
+    pub grants_summary: String,
+    pub capability_label: &'static str,
+    pub client_id: String,
+    pub last_used_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserEditFormValues {
+    pub name: String,
+    pub role: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GraphqlUserViewModel {
+    pub id: String,
+    pub email: String,
+    pub name: String,
+    pub role: String,
+    pub status: String,
+    pub created_at: String,
+    pub tenant_name: String,
+    pub detail_href: String,
+    pub is_active: bool,
+    pub edit_form: UserEditFormValues,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UserListPagination {
+    pub page: i64,
+    pub previous_page: i64,
+    pub can_previous: bool,
+    pub can_next: bool,
+}
+
 pub fn user_list_page(raw: Option<&str>) -> i64 {
     raw.and_then(|value| value.parse::<i64>().ok())
         .filter(|page| *page > 0)
         .unwrap_or(1)
+}
+
+pub fn user_list_pagination(page: i64, limit: i64, total: i64) -> UserListPagination {
+    let page = page.max(1);
+    let limit = limit.max(1);
+    UserListPagination {
+        page,
+        previous_page: user_list_previous_page(page),
+        can_previous: page > 1,
+        can_next: page.saturating_mul(limit) < total.max(0),
+    }
+}
+
+pub fn user_list_previous_page(page: i64) -> i64 {
+    (page.max(1) - 1).max(1)
 }
 
 pub fn user_list_query_params(
@@ -149,19 +219,38 @@ pub fn prepare_password_reset_request(
     Ok(PasswordResetRequest { tenant, email })
 }
 
+pub fn prepare_change_password_request(
+    token: Option<String>,
+    tenant: Option<String>,
+    current_password: String,
+    new_password: String,
+) -> Result<ChangePasswordRequest, ChangePasswordInputError> {
+    if current_password.is_empty() || new_password.is_empty() {
+        return Err(ChangePasswordInputError::MissingPasswords);
+    }
+
+    let token = token.ok_or(ChangePasswordInputError::Unauthorized)?;
+    Ok(ChangePasswordRequest {
+        token,
+        tenant: tenant.unwrap_or_default(),
+        current_password,
+        new_password,
+    })
+}
+
 pub fn prepare_profile_name(name: String) -> Option<String> {
     optional_trimmed(name)
 }
 
-pub fn classify_profile_update_error(error: &str) -> ProfileUpdateErrorKind {
+pub fn classify_auth_transport_error(error: &str) -> AuthTransportErrorKind {
     if error.contains("Unauthorized") {
-        ProfileUpdateErrorKind::Unauthorized
+        AuthTransportErrorKind::Unauthorized
     } else if error.contains("HTTP") {
-        ProfileUpdateErrorKind::Http
+        AuthTransportErrorKind::Http
     } else if error.contains("Network") {
-        ProfileUpdateErrorKind::Network
+        AuthTransportErrorKind::Network
     } else {
-        ProfileUpdateErrorKind::Unknown
+        AuthTransportErrorKind::Unknown
     }
 }
 
@@ -206,6 +295,7 @@ pub fn prepare_create_oauth_app_input(
         redirect_uris: (!redirect_uris.is_empty()).then_some(redirect_uris),
         scopes: normalize_lines(&scopes),
         grant_types: normalize_lines(&grant_types),
+        granted_permissions: Vec::new(),
     }
 }
 
@@ -224,6 +314,7 @@ pub fn prepare_update_oauth_app_input(
         redirect_uris: normalize_lines(&redirect_uris),
         scopes: normalize_lines(&scopes),
         grant_types: normalize_lines(&grant_types),
+        granted_permissions: Vec::new(),
     }
 }
 
@@ -231,6 +322,50 @@ pub fn format_oauth_app_timestamp(value: Option<DateTime<Utc>>) -> String {
     value
         .map(|timestamp| timestamp.format("%Y-%m-%d %H:%M UTC").to_string())
         .unwrap_or_else(|| "Never".to_string())
+}
+
+pub fn oauth_app_list_item_view(app: crate::model::OAuthApp) -> OAuthAppListItemViewModel {
+    let description = app.description.clone().filter(|value| !value.is_empty());
+    let scopes_summary = list_summary(&app.scopes);
+    let grants_summary = list_summary(&app.grant_types);
+    let capability_label = if app.managed_by_manifest {
+        "Managed by config/manifest"
+    } else {
+        "Manual app"
+    };
+    let client_id = app.client_id.to_string();
+    let last_used_at = format_oauth_app_timestamp(app.last_used_at);
+
+    OAuthAppListItemViewModel {
+        app,
+        description,
+        scopes_summary,
+        grants_summary,
+        capability_label,
+        client_id,
+        last_used_at,
+    }
+}
+
+pub fn graphql_user_view(user: GraphqlUser, missing_value: String) -> GraphqlUserViewModel {
+    let edit_form = UserEditFormValues {
+        name: user.name.clone().unwrap_or_default(),
+        role: user.role.clone(),
+        status: user.status.clone(),
+    };
+
+    GraphqlUserViewModel {
+        detail_href: format!("/users/{}", user.id),
+        is_active: user.status.eq_ignore_ascii_case("active"),
+        id: user.id,
+        email: user.email,
+        name: user.name.unwrap_or_else(|| missing_value.clone()),
+        role: user.role,
+        status: user.status,
+        created_at: user.created_at,
+        tenant_name: user.tenant_name.unwrap_or(missing_value),
+        edit_form,
+    }
 }
 
 fn push_non_empty_query(
@@ -261,6 +396,14 @@ fn normalize_lines(value: &str) -> Vec<String> {
         .collect()
 }
 
+fn list_summary(values: &[String]) -> String {
+    if values.is_empty() {
+        "None".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,6 +427,28 @@ mod tests {
             ]
         );
         assert!(user_list_query_params(String::new(), String::new(), String::new(), 1).is_empty());
+    }
+
+    #[test]
+    fn list_pagination_bounds_previous_and_next_navigation() {
+        assert_eq!(
+            user_list_pagination(0, 0, 12),
+            UserListPagination {
+                page: 1,
+                previous_page: 1,
+                can_previous: false,
+                can_next: true,
+            }
+        );
+        assert_eq!(
+            user_list_pagination(2, 12, 24),
+            UserListPagination {
+                page: 2,
+                previous_page: 1,
+                can_previous: true,
+                can_next: false,
+            }
+        );
     }
 
     #[test]
@@ -362,21 +527,54 @@ mod tests {
         );
         assert_eq!(prepare_profile_name("  ".into()), None);
         assert_eq!(
-            classify_profile_update_error("Unauthorized request"),
-            ProfileUpdateErrorKind::Unauthorized
+            classify_auth_transport_error("Unauthorized request"),
+            AuthTransportErrorKind::Unauthorized
         );
         assert_eq!(
-            classify_profile_update_error("HTTP 500"),
-            ProfileUpdateErrorKind::Http
+            classify_auth_transport_error("HTTP 500"),
+            AuthTransportErrorKind::Http
         );
         assert_eq!(
-            classify_profile_update_error("Network unavailable"),
-            ProfileUpdateErrorKind::Network
+            classify_auth_transport_error("Network unavailable"),
+            AuthTransportErrorKind::Network
         );
         assert_eq!(
-            classify_profile_update_error("unexpected"),
-            ProfileUpdateErrorKind::Unknown
+            classify_auth_transport_error("unexpected"),
+            AuthTransportErrorKind::Unknown
         );
+    }
+
+    #[test]
+    fn change_password_request_preserves_credentials_and_requires_auth() {
+        assert_eq!(
+            prepare_change_password_request(
+                Some("token".into()),
+                Some("tenant".into()),
+                String::new(),
+                "new-secret".into(),
+            ),
+            Err(ChangePasswordInputError::MissingPasswords)
+        );
+        assert_eq!(
+            prepare_change_password_request(
+                None,
+                Some("tenant".into()),
+                "current-secret".into(),
+                "new-secret".into(),
+            ),
+            Err(ChangePasswordInputError::Unauthorized)
+        );
+
+        let request = prepare_change_password_request(
+            Some("token".into()),
+            None,
+            " current secret ".into(),
+            " new secret ".into(),
+        )
+        .expect("valid request");
+        assert_eq!(request.tenant, "");
+        assert_eq!(request.current_password, " current secret ");
+        assert_eq!(request.new_password, " new secret ");
     }
 
     #[test]
@@ -443,5 +641,63 @@ mod tests {
     #[test]
     fn oauth_app_timestamp_uses_stable_never_fallback() {
         assert_eq!(format_oauth_app_timestamp(None), "Never");
+    }
+
+    #[test]
+    fn oauth_app_list_item_view_owns_summary_and_capability_fallbacks() {
+        let app = crate::model::OAuthApp {
+            id: uuid::Uuid::nil(),
+            name: "Managed app".into(),
+            slug: "managed-app".into(),
+            description: Some(String::new()),
+            icon_url: None,
+            app_type: AppType::FirstParty,
+            client_id: uuid::Uuid::nil(),
+            redirect_uris: Vec::new(),
+            scopes: vec!["read".into(), "write".into()],
+            grant_types: Vec::new(),
+            manifest_ref: Some("module.toml".into()),
+            auto_created: true,
+            managed_by_manifest: true,
+            is_active: true,
+            can_edit: false,
+            can_rotate_secret: false,
+            can_revoke: false,
+            active_token_count: 0,
+            last_used_at: None,
+            created_at: Utc::now(),
+        };
+
+        let view = oauth_app_list_item_view(app);
+        assert_eq!(view.description, None);
+        assert_eq!(view.scopes_summary, "read, write");
+        assert_eq!(view.grants_summary, "None");
+        assert_eq!(view.capability_label, "Managed by config/manifest");
+        assert_eq!(view.client_id, uuid::Uuid::nil().to_string());
+        assert_eq!(view.last_used_at, "Never");
+    }
+
+    #[test]
+    fn graphql_user_view_is_shared_by_list_detail_and_edit_surfaces() {
+        let view = graphql_user_view(
+            GraphqlUser {
+                id: "user-1".into(),
+                email: "user@example.com".into(),
+                name: None,
+                role: "ADMIN".into(),
+                status: "active".into(),
+                created_at: "2026-06-29".into(),
+                tenant_name: None,
+            },
+            "—".into(),
+        );
+
+        assert_eq!(view.name, "—");
+        assert_eq!(view.tenant_name, "—");
+        assert_eq!(view.detail_href, "/users/user-1");
+        assert!(view.is_active);
+        assert_eq!(view.edit_form.name, "");
+        assert_eq!(view.edit_form.role, "ADMIN");
+        assert_eq!(view.edit_form.status, "active");
     }
 }

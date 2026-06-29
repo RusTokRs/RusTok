@@ -3,7 +3,7 @@ use rustok_api::graphql::require_module_enabled;
 use rustok_core::Permission;
 use uuid::Uuid;
 
-use crate::CatalogService;
+use rustok_product::CatalogService;
 
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;

@@ -16,10 +16,12 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Версия FBA-контракта: `order.checkout_completion.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - Boundary readiness update: `crates/rustok-order/contracts/order-fba-registry.json` now has `runtime_evidence.checkout_completion_owner_path.status = "runtime_verified"`; `npm run verify:ecommerce:fba` gates the owner `OrderService` checkout-completion path, while remote/base fallback smoke remains a follow-up before `transport_verified`.
+  - umbrella facade `rustok_commerce::{services::order, OrderService}` is removed; commerce REST/GraphQL/admin/storefront/test consumers import `OrderService` from `rustok-order` directly, so order owner service is no longer masked by the ecommerce umbrella.
   - FBA provider registry `crates/rustok-order/contracts/order-fba-registry.json` now also declares `ai-order` as an operator-context consumer of `CheckoutCompletionPort` / `order.checkout_completion.v1` `read_order_status`, with `generate_summary_without_live_status`, `require_operator_review`, and `skip_prefill_execution` degraded modes locked by `scripts/verify/verify-ai-fba-baseline.mjs`.
   - FBA maintenance slice перевёл read-only checkout result/status paths на shared `PortCallPolicy::read()`, а complete-checkout write path — на shared `PortCallPolicy::write()` без изменения temporary commerce transport handoff.
   - `src/ports.rs` теперь экспортирует `CheckoutCompletionPort` и DTO для complete/result/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;

@@ -6,6 +6,7 @@ use axum::{
 use loco_rs::{app::AppContext, Error, Result};
 use rustok_api::{AuthContext, TenantContext};
 use rustok_core::Permission;
+use rustok_fulfillment::FulfillmentService;
 use uuid::Uuid;
 
 use super::{
@@ -18,7 +19,7 @@ use crate::{
         FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput, ReshipFulfillmentInput,
         ShipFulfillmentInput,
     },
-    FulfillmentOrchestrationService, FulfillmentService,
+    FulfillmentOrchestrationService,
 };
 
 /// List admin fulfillments

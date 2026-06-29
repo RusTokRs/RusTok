@@ -1,4 +1,5 @@
 use loco_rs::app::AppContext;
+use rustok_auth::OAuthAdminMutationRuntime;
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexerRuntimeConfig;
@@ -64,6 +65,19 @@ pub fn build_shared_runtime_extensions(
     Arc::new(extensions)
 }
 
+pub fn build_shared_runtime_extensions_with_host_providers(
+    registry: &ModuleRegistry,
+    settings: &RustokSettings,
+    db: DatabaseConnection,
+) -> Arc<ModuleRuntimeExtensions> {
+    let base = build_shared_runtime_extensions(registry, settings);
+    let mut extensions = base.as_ref().clone();
+    extensions.insert(OAuthAdminMutationRuntime::new(Arc::new(
+        crate::services::auth_admin_mutation_provider::ServerOAuthAdminMutationProvider::new(db),
+    )));
+    Arc::new(extensions)
+}
+
 pub fn build_module_event_dispatcher(
     registry: &ModuleRegistry,
     bus: EventBus,
@@ -90,7 +104,10 @@ pub fn build_module_event_dispatcher(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_module_event_dispatcher, build_shared_runtime_extensions};
+    use super::{
+        build_module_event_dispatcher, build_shared_runtime_extensions,
+        build_shared_runtime_extensions_with_host_providers,
+    };
     use crate::common::settings::RustokSettings;
     use rustok_core::{EventBus, ModuleRegistry};
     use rustok_index::IndexModule;
@@ -115,5 +132,19 @@ mod tests {
 
         let expected = if cfg!(feature = "mod-workflow") { 5 } else { 4 };
         assert_eq!(dispatcher.handler_count(), expected);
+    }
+
+    #[tokio::test]
+    async fn host_runtime_extensions_register_oauth_admin_mutation_provider() {
+        let registry = ModuleRegistry::new();
+        let settings = RustokSettings::default();
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+
+        let extensions =
+            build_shared_runtime_extensions_with_host_providers(&registry, &settings, db);
+
+        assert!(extensions.contains::<rustok_auth::OAuthAdminMutationRuntime>());
     }
 }

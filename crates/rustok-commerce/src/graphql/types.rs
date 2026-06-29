@@ -1,4 +1,5 @@
 use async_graphql::{Enum, InputObject, MaybeUndefined, SimpleObject};
+use rustok_product::entities::product::ProductStatus;
 use uuid::Uuid;
 
 use crate::dto;
@@ -10,22 +11,22 @@ pub enum GqlProductStatus {
     Archived,
 }
 
-impl From<crate::entities::product::ProductStatus> for GqlProductStatus {
-    fn from(status: crate::entities::product::ProductStatus) -> Self {
+impl From<ProductStatus> for GqlProductStatus {
+    fn from(status: ProductStatus) -> Self {
         match status {
-            crate::entities::product::ProductStatus::Draft => GqlProductStatus::Draft,
-            crate::entities::product::ProductStatus::Active => GqlProductStatus::Active,
-            crate::entities::product::ProductStatus::Archived => GqlProductStatus::Archived,
+            ProductStatus::Draft => GqlProductStatus::Draft,
+            ProductStatus::Active => GqlProductStatus::Active,
+            ProductStatus::Archived => GqlProductStatus::Archived,
         }
     }
 }
 
-impl From<GqlProductStatus> for crate::entities::product::ProductStatus {
+impl From<GqlProductStatus> for ProductStatus {
     fn from(status: GqlProductStatus) -> Self {
         match status {
-            GqlProductStatus::Draft => crate::entities::product::ProductStatus::Draft,
-            GqlProductStatus::Active => crate::entities::product::ProductStatus::Active,
-            GqlProductStatus::Archived => crate::entities::product::ProductStatus::Archived,
+            GqlProductStatus::Draft => ProductStatus::Draft,
+            GqlProductStatus::Active => ProductStatus::Active,
+            GqlProductStatus::Archived => ProductStatus::Archived,
         }
     }
 }
@@ -1461,8 +1462,8 @@ impl From<crate::controllers::admin::AdminOrderDetailResponse> for GqlAdminOrder
     }
 }
 
-impl From<dto::CustomerResponse> for GqlCustomer {
-    fn from(value: dto::CustomerResponse) -> Self {
+impl From<rustok_customer::dto::CustomerResponse> for GqlCustomer {
+    fn from(value: rustok_customer::dto::CustomerResponse) -> Self {
         Self {
             id: value.id,
             tenant_id: value.tenant_id,

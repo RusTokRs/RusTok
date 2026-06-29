@@ -3,14 +3,15 @@
 // discounts, and price validation logic.
 
 use rust_decimal_macros::dec;
-use rustok_commerce::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
-};
-use rustok_commerce::entities;
-use rustok_commerce::services::{CatalogService, PriceAdjustmentKind, PricingService};
 use rustok_commerce::CommerceError;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_pricing::entities;
+use rustok_pricing::{PriceAdjustmentKind, PricingService};
+use rustok_product::dto::{
+    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+};
+use rustok_product::CatalogService;
 use rustok_test_utils::{
     db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus, MockEventTransport,
 };

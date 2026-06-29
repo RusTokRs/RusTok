@@ -118,7 +118,7 @@ pub fn spawn_outbox_relay_worker(
             // the stop signal, so it does not need its own stop_rx.
             let mut inner_handle = tokio::spawn(async move {
                 loop {
-                    if let Err(error) = relay.process_pending_once().await {
+                    if let Err(error) = relay.process_pending_once(None).await {
                         tracing::error!("Outbox relay iteration failed: {error}");
                     }
                     tokio::time::sleep(interval).await;

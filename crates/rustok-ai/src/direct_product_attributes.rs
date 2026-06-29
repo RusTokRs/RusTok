@@ -14,7 +14,7 @@ use crate::{AiError, AiResult};
 use loco_rs::app::AppContext;
 use rustok_ai_product::{PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_ATTRIBUTES_TOOL_NAME};
 use rustok_api::loco::transactional_event_bus_from_context;
-use rustok_commerce::CatalogService;
+use rustok_product::CatalogService;
 
 pub struct ProductAttributesHandler;
 

@@ -21,10 +21,10 @@ pub fn AuthAdmin() -> impl IntoView {
                         </div>
                         <div class="space-y-2">
                             <h1 class="text-3xl font-semibold tracking-tight text-card-foreground">
-                                "Identity & Access Control Panel"
+                                {t_local("authAdmin.title", "Identity & Access Control Panel")}
                             </h1>
                             <p class="max-w-2xl text-sm leading-6 text-muted-foreground">
-                                "Configure authentication policies, inspect active sessions, manage organization members, and register trusted OAuth client integrations."
+                                {t_local("authAdmin.subtitle", "Configure authentication policies, inspect active sessions, manage organization members, and register trusted OAuth client integrations.")}
                             </p>
                         </div>
                     </div>
@@ -39,13 +39,13 @@ pub fn AuthAdmin() -> impl IntoView {
                         </svg>
                     </div>
                     <h3 class="mt-4 text-base font-semibold text-foreground group-hover:text-indigo-600">
-                        "User Accounts"
+                        {t_local("authAdmin.usersTitle", "User Accounts")}
                     </h3>
                     <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        "Manage member rosters, configure security roles, activate or suspend credentials, and inspect profiles."
+                        {t_local("authAdmin.usersDescription", "Manage member rosters, configure security roles, activate or suspend credentials, and inspect profiles.")}
                     </p>
                     <div class="mt-4 inline-flex items-center text-xs font-semibold text-indigo-600">
-                        "Open Workspace →"
+                        {t_local("authAdmin.usersAction", "Open Workspace ->")}
                     </div>
                 </a>
 
@@ -56,13 +56,13 @@ pub fn AuthAdmin() -> impl IntoView {
                         </svg>
                     </div>
                     <h3 class="mt-4 text-base font-semibold text-foreground group-hover:text-indigo-600">
-                        "OAuth Connections"
+                        {t_local("authAdmin.oauthTitle", "OAuth Connections")}
                     </h3>
                     <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        "Register custom client integrations, manage callback endpoints, customize scopes, and rotate client secrets."
+                        {t_local("authAdmin.oauthDescription", "Register custom client integrations, manage callback endpoints, customize scopes, and rotate client secrets.")}
                     </p>
                     <div class="mt-4 inline-flex items-center text-xs font-semibold text-indigo-600">
-                        "Open Connections →"
+                        {t_local("authAdmin.oauthAction", "Open Connections ->")}
                     </div>
                 </a>
 
@@ -73,13 +73,13 @@ pub fn AuthAdmin() -> impl IntoView {
                         </svg>
                     </div>
                     <h3 class="mt-4 text-base font-semibold text-foreground group-hover:text-indigo-600">
-                        "Profile Settings"
+                        {t_local("authAdmin.profileTitle", "Profile Settings")}
                     </h3>
                     <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        "Configure your personal administrator profile, set name and details, and choose interface language preferences."
+                        {t_local("authAdmin.profileDescription", "Configure your personal administrator profile, set name and details, and choose interface language preferences.")}
                     </p>
                     <div class="mt-4 inline-flex items-center text-xs font-semibold text-indigo-600">
-                        "Open Profile →"
+                        {t_local("authAdmin.profileAction", "Open Profile ->")}
                     </div>
                 </a>
 
@@ -90,13 +90,13 @@ pub fn AuthAdmin() -> impl IntoView {
                         </svg>
                     </div>
                     <h3 class="mt-4 text-base font-semibold text-foreground group-hover:text-indigo-600">
-                        "Security & Sessions"
+                        {t_local("authAdmin.securityTitle", "Security & Sessions")}
                     </h3>
                     <p class="mt-2 text-xs leading-5 text-muted-foreground">
-                        "Change password, review recent login activity logs, trace IP locations, and force logout active sessions."
+                        {t_local("authAdmin.securityDescription", "Change password, review recent login activity logs, trace IP locations, and force logout active sessions.")}
                     </p>
                     <div class="mt-4 inline-flex items-center text-xs font-semibold text-indigo-600">
-                        "Open Security →"
+                        {t_local("authAdmin.securityAction", "Open Security ->")}
                     </div>
                 </a>
             </div>

@@ -108,7 +108,7 @@ async fn relay_delivers_successfully() -> TestResult<()> {
         ..Default::default()
     });
 
-    let processed = relay.process_pending_once().await?;
+    let processed = relay.process_pending_once(None).await?;
     assert_eq!(processed, 1);
 
     let record = entity::Entity::find_by_id(envelope.id)
@@ -142,7 +142,7 @@ async fn relay_retries_then_succeeds() -> TestResult<()> {
         ..Default::default()
     });
 
-    let processed_first = relay.process_pending_once().await?;
+    let processed_first = relay.process_pending_once(None).await?;
     assert_eq!(processed_first, 1);
 
     let mut failed_once: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
@@ -153,7 +153,7 @@ async fn relay_retries_then_succeeds() -> TestResult<()> {
     failed_once.next_attempt_at = Set(Some(Utc::now() - chrono::Duration::milliseconds(1)));
     failed_once.update(&db).await?;
 
-    let processed_second = relay.process_pending_once().await?;
+    let processed_second = relay.process_pending_once(None).await?;
     assert_eq!(processed_second, 1);
 
     let record = entity::Entity::find_by_id(envelope.id)
@@ -188,7 +188,7 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
         ..Default::default()
     });
 
-    let _ = relay.process_pending_once().await?;
+    let _ = relay.process_pending_once(None).await?;
 
     let mut first_failed: entity::ActiveModel = entity::Entity::find_by_id(envelope.id)
         .one(&db)
@@ -198,7 +198,7 @@ async fn relay_moves_to_dlq_on_max_retry() -> TestResult<()> {
     first_failed.next_attempt_at = Set(Some(Utc::now() - chrono::Duration::milliseconds(1)));
     first_failed.update(&db).await?;
 
-    let _ = relay.process_pending_once().await?;
+    let _ = relay.process_pending_once(None).await?;
 
     let record = entity::Entity::find_by_id(envelope.id)
         .one(&db)
@@ -234,7 +234,7 @@ async fn relay_reclaims_stale_claims() -> TestResult<()> {
             ..Default::default()
         });
 
-    assert_eq!(relay.process_pending_once().await?, 1);
+    assert_eq!(relay.process_pending_once(None).await?, 1);
     let record = entity::Entity::find_by_id(envelope.id)
         .one(&db)
         .await?
@@ -258,7 +258,7 @@ async fn relay_bounds_parallel_dispatch() -> TestResult<()> {
         ..Default::default()
     });
 
-    assert_eq!(relay.process_pending_once().await?, 4);
+    assert_eq!(relay.process_pending_once(None).await?, 4);
     assert_eq!(transport.max_active(), 2);
     Ok(())
 }
@@ -277,7 +277,7 @@ async fn relay_processes_baseline_batch_with_bounded_latency() -> TestResult<()>
     });
 
     let started = std::time::Instant::now();
-    assert_eq!(relay.process_pending_once().await?, 32);
+    assert_eq!(relay.process_pending_once(None).await?, 32);
     let elapsed = started.elapsed();
 
     assert_eq!(transport.max_active(), 8);

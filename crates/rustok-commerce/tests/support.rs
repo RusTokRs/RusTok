@@ -3,23 +3,26 @@ use rustok_cart::entities::{
     cart_tax_line,
 };
 use rustok_channel::entities::{channel, channel_module_binding};
-use rustok_commerce::entities::{
-    inventory_item, inventory_level, price, price_list, price_list_translation, product,
-    product_image, product_image_translation, product_option, product_option_translation,
-    product_option_value, product_option_value_translation, product_translation, product_variant,
-    region, region_country_tax_policy, region_translation, reservation_item, shipping_profile,
-    shipping_profile_translation, stock_location, stock_location_translation, variant_translation,
-};
+use rustok_commerce::entities::{shipping_profile, shipping_profile_translation};
 use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{
     fulfillment, fulfillment_item, shipping_option, shipping_option_translation,
+};
+use rustok_inventory::entities::{
+    inventory_item, inventory_level, reservation_item, stock_location, stock_location_translation,
 };
 use rustok_order::entities::{
     order, order_adjustment, order_change, order_line_item, order_line_item_translation,
     order_return, order_return_item, order_tax_line,
 };
 use rustok_payment::entities::{payment, payment_collection, refund};
-use rustok_product::entities::product_tag;
+use rustok_pricing::entities::{price, price_list, price_list_translation};
+use rustok_product::entities::{
+    product, product_image, product_image_translation, product_option, product_option_translation,
+    product_option_value, product_option_value_translation, product_tag, product_translation,
+    product_variant, variant_translation,
+};
+use rustok_region::entities::{region, region_country_tax_policy, region_translation};
 use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};

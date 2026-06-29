@@ -17,12 +17,14 @@ runtime RBAC surface `users:*`.
 - password hashing, verify и refresh-token helpers;
 - auth-owned migrations;
 - публикация permission surface `users:*` через `AUTH_USER_PERMISSIONS` и `RusToKModule::permissions()`.
+- typed application boundaries `UserAdminMutationPort` и `OAuthAdminMutationPort` для admin mutations без зависимости module crate от host transport.
 
 ## Интеграция
 
 - зависит только от `rustok-core` и общих библиотек, без зависимости на `rustok-rbac`;
 - используется `apps/server` для REST, GraphQL, session lifecycle и user-management flow;
 - `apps/server` сверяет registry wiring и GraphQL security hints с `AUTH_USER_PERMISSIONS`, чтобы host-слой не расходился с auth-owned permission surface;
+- `apps/server` реализует mutation ports поверх существующих auth lifecycle/OAuth services и регистрирует providers в shared runtime extensions; GraphQL и native `#[server]` adapters должны потреблять один provider для каждого boundary;
 - публикует собственный UI через подпакет `crates/rustok-auth/admin` с `ui_classification = "admin_only"`;
 - email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
 

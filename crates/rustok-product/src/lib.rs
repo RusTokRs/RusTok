@@ -15,6 +15,9 @@ use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
 pub mod entities;
+pub mod dto {
+    pub use rustok_commerce_foundation::dto::*;
+}
 pub mod migrations;
 pub mod ports;
 mod seo_targets;

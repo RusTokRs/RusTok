@@ -587,7 +587,7 @@ async fn admin_graphql_refund_surface_matches_runtime_services() {
         .authorize_collection(
             tenant_id,
             payment_collection.id,
-            rustok_commerce::dto::AuthorizePaymentInput {
+            rustok_payment::dto::AuthorizePaymentInput {
                 provider_id: Some("manual".to_string()),
                 provider_payment_id: Some("graphql-refund-pay-1".to_string()),
                 amount: None,
@@ -600,7 +600,7 @@ async fn admin_graphql_refund_surface_matches_runtime_services() {
         .capture_collection(
             tenant_id,
             payment_collection.id,
-            rustok_commerce::dto::CapturePaymentInput {
+            rustok_payment::dto::CapturePaymentInput {
                 amount: Some(Decimal::from_str("25.00").expect("valid decimal")),
                 metadata: serde_json::json!({ "step": "captured" }),
             },
@@ -2292,7 +2292,7 @@ async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
                 customer_id: Some(customer_id),
                 carrier: None,
                 tracking_number: None,
-                items: Some(vec![rustok_commerce::dto::CreateFulfillmentItemInput {
+                items: Some(vec![rustok_fulfillment::dto::CreateFulfillmentItemInput {
                     order_line_item_id: order.line_items[0].id,
                     quantity: 3,
                     metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
@@ -2392,7 +2392,7 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
                 customer_id: Some(customer_id),
                 carrier: None,
                 tracking_number: None,
-                items: Some(vec![rustok_commerce::dto::CreateFulfillmentItemInput {
+                items: Some(vec![rustok_fulfillment::dto::CreateFulfillmentItemInput {
                     order_line_item_id: order.line_items[0].id,
                     quantity: 3,
                     metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
@@ -2409,10 +2409,12 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
                 tracking_number: "GRAPHQL-REOPEN".to_string(),
-                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
-                    fulfillment_item_id: fulfillment.items[0].id,
-                    quantity: 3,
-                }]),
+                items: Some(vec![
+                    rustok_fulfillment::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: fulfillment.items[0].id,
+                        quantity: 3,
+                    },
+                ]),
                 metadata: serde_json::json!({ "source": "graphql-reopen-ship" }),
             },
         )
@@ -2424,10 +2426,12 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
             fulfillment.id,
             DeliverFulfillmentInput {
                 delivered_note: Some("done".to_string()),
-                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
-                    fulfillment_item_id: fulfillment.items[0].id,
-                    quantity: 3,
-                }]),
+                items: Some(vec![
+                    rustok_fulfillment::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: fulfillment.items[0].id,
+                        quantity: 3,
+                    },
+                ]),
                 metadata: serde_json::json!({ "source": "graphql-reopen-deliver" }),
             },
         )
@@ -2519,7 +2523,7 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
                 customer_id: Some(customer_id),
                 carrier: None,
                 tracking_number: None,
-                items: Some(vec![rustok_commerce::dto::CreateFulfillmentItemInput {
+                items: Some(vec![rustok_fulfillment::dto::CreateFulfillmentItemInput {
                     order_line_item_id: order.line_items[0].id,
                     quantity: 2,
                     metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
@@ -2536,10 +2540,12 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
             ShipFulfillmentInput {
                 carrier: "manual".to_string(),
                 tracking_number: "GRAPHQL-RESHIP-OLD".to_string(),
-                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
-                    fulfillment_item_id: fulfillment.items[0].id,
-                    quantity: 2,
-                }]),
+                items: Some(vec![
+                    rustok_fulfillment::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: fulfillment.items[0].id,
+                        quantity: 2,
+                    },
+                ]),
                 metadata: serde_json::json!({ "source": "graphql-reship-ship" }),
             },
         )
@@ -2551,10 +2557,12 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
             fulfillment.id,
             DeliverFulfillmentInput {
                 delivered_note: Some("done".to_string()),
-                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
-                    fulfillment_item_id: fulfillment.items[0].id,
-                    quantity: 2,
-                }]),
+                items: Some(vec![
+                    rustok_fulfillment::dto::FulfillmentItemQuantityInput {
+                        fulfillment_item_id: fulfillment.items[0].id,
+                        quantity: 2,
+                    },
+                ]),
                 metadata: serde_json::json!({ "source": "graphql-reship-deliver" }),
             },
         )

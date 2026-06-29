@@ -3,6 +3,13 @@ use rustok_core::permissions::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod entities {
+    pub use rustok_commerce_foundation::entities::{
+        inventory_item, inventory_level, reservation_item, stock_location,
+        stock_location_translation,
+    };
+}
+
 pub mod migrations;
 pub mod ports;
 pub mod services;

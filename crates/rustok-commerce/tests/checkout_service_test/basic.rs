@@ -284,7 +284,7 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
     let existing_collection = PaymentService::new(db.clone())
         .create_collection(
             tenant_id,
-            rustok_commerce::dto::CreatePaymentCollectionInput {
+            rustok_payment::dto::CreatePaymentCollectionInput {
                 cart_id: Some(cart.id),
                 order_id: None,
                 customer_id: cart.customer_id,

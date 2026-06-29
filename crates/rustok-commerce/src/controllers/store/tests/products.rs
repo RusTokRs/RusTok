@@ -1,5 +1,9 @@
 use super::*;
 
+fn inventory_service(db: &DatabaseConnection) -> rustok_inventory::InventoryService {
+    rustok_inventory::InventoryService::new(db.clone(), mock_transactional_event_bus())
+}
+
 #[tokio::test]
 async fn store_products_transport_rejects_disabled_channel_module() {
     let db = setup_test_db().await;
@@ -151,6 +155,7 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
     let resolved = resolve_store_line_item_input(
         &db,
         tenant_id,
+        &inventory_service(&db),
         &pricing_service,
         &pricing_context,
         "de",
@@ -212,6 +217,7 @@ async fn storefront_line_item_resolution_rejects_missing_price_for_cart_currency
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
+        &inventory_service(&db),
         &pricing_service,
         &pricing_context,
         "de",
@@ -264,6 +270,7 @@ async fn storefront_line_item_resolution_falls_back_to_first_product_translation
     let resolved = resolve_store_line_item_input(
         &db,
         tenant_id,
+        &inventory_service(&db),
         &pricing_service,
         &pricing_context,
         "fr",
@@ -302,6 +309,7 @@ async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant()
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
+        &inventory_service(&db),
         &pricing_service,
         &pricing_context,
         "de",
@@ -348,6 +356,7 @@ async fn storefront_line_item_resolution_rejects_quantity_above_channel_visible_
     let error = resolve_store_line_item_input(
         &db,
         tenant_id,
+        &inventory_service(&db),
         &pricing_service,
         &pricing_context,
         "de",

@@ -2,13 +2,13 @@
 // This test verifies the complete workflow from product creation to indexing
 
 use rust_decimal::Decimal;
-use rustok_commerce::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
-};
-use rustok_commerce::entities::product::ProductStatus;
-use rustok_commerce::services::CatalogService;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
+use rustok_product::dto::{
+    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
+};
+use rustok_product::entities::product::ProductStatus;
+use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, MockEventTransport};
 use std::str::FromStr;
 use std::sync::Arc;

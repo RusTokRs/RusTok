@@ -8,6 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+pub mod admin_mutations;
 pub mod config;
 pub mod credentials;
 pub mod error;
@@ -15,6 +16,12 @@ pub mod jwt;
 pub mod migrations;
 
 // Re-exports for convenience
+pub use admin_mutations::{
+    AuthAdminMutationContext, AuthAdminMutationError, CreateOAuthAppCommand, CreateUserCommand,
+    OAuthAdminMutationPort, OAuthAdminMutationRuntime, OAuthAppMutationRecord,
+    OAuthAppSecretResult, UpdateOAuthAppCommand, UpdateUserCommand, UserAdminMutationPort,
+    UserAdminMutationRuntime, UserMutationRecord,
+};
 pub use config::{
     build_auth_config, build_auth_config_with_env, validate_auth_config, AuthConfig,
     AuthSettingsOverrides, JwtAlgorithm,

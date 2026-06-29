@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "module": "tenant",
-  "status": "static_matrix_locked",
+  "status": "runtime_verified",
   "generated_from": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
   "runner": "scripts/verify/verify-tenant-fba.mjs",
   "contract_version": "tenant.read_projection.v1",
@@ -12,7 +12,7 @@
   "cases": [
     {
       "operation": "read_tenant",
-      "execution_status": "runtime_cases_authored_uncompiled",
+      "execution_status": "runtime_verified",
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved",
@@ -23,7 +23,7 @@
     }
   ],
   "fallback_smoke": {
-    "status": "runtime_smoke_authored_uncompiled",
+    "status": "runtime_verified",
     "profiles": [
       "embedded_native"
     ],
@@ -33,7 +33,7 @@
     ]
   },
   "host_integration": {
-    "status": "source_locked_uncompiled",
+    "status": "runtime_verified",
     "source": "apps/server/src/middleware/tenant.rs",
     "assertions": [
       "server_resolver_uses_tenant_read_port",
@@ -44,7 +44,7 @@
     ]
   },
   "installer_integration": {
-    "status": "source_locked_uncompiled",
+    "status": "runtime_verified",
     "source": "apps/server/src/installer_cli.rs",
     "assertions": [
       "installer_seed_inspection_uses_tenant_read_port",

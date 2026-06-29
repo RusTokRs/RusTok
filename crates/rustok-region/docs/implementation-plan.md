@@ -22,6 +22,8 @@
 - Evidence:
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - FBA provider slice: `crates/rustok-region/src/ports.rs` declares `RegionReadPort` / `region.read_projection.v1` for region/country read projection consumers with shared `rustok_api::ports::PortContext`/`PortError`, tenant-scope preservation, locale fallback preservation and `PortCallPolicy::read()` deadline semantics; `crates/rustok-region/contracts/region-fba-registry.json` plus `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:region:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`;
+  - commerce store-context consumer теперь вызывает только `RegionReadPort`: concrete `RegionService` dependency удалён из orchestration service, runtime provider передаётся через единственный constructor, а старого compatibility path нет;
+  - commerce storefront REST/GraphQL list consumers также вызывают `RegionReadPort`; прежние `rustok-commerce` re-exports owner service и module alias удалены, composition с concrete provider остаётся только в host wiring;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FFA slice #1 вынесла нормализацию admin-формы региона в module-local core и переиспользовала `rustok-api::normalize_ui_text` без изменений транспорта;
   - FFA slice #2 вынесла storefront route segment fallback, tax-provider fallback, country/tax summaries, policy-row formatting и selected-region metric view-model в `storefront/src/core.rs` с unit-тестами без Leptos runtime;

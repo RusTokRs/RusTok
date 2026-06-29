@@ -19,6 +19,7 @@ mod tests;
 
 use loco_rs::{controller::Routes, Error, Result};
 use rust_decimal::Decimal;
+use rustok_payment::PaymentService;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -26,8 +27,7 @@ use uuid::Uuid;
 use crate::{
     dto::{FulfillmentResponse, OrderResponse, PaymentCollectionResponse},
     storefront_shipping::normalize_shipping_profile_slug,
-    FulfillmentOrchestrationError, PaymentService, PostOrderOrchestrationError,
-    ShippingProfileService,
+    FulfillmentOrchestrationError, PostOrderOrchestrationError, ShippingProfileService,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

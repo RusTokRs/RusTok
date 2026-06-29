@@ -19,6 +19,22 @@
     "tenantLabel": "Tenant Slug",
     "title": "Вход в админ-панель"
   },
+  "authAdmin": {
+    "title": "Панель идентификации и доступа",
+    "subtitle": "Настраивайте политики аутентификации, проверяйте сессии, управляйте участниками и OAuth-интеграциями.",
+    "usersTitle": "Учетные записи",
+    "usersDescription": "Управляйте списками участников, ролями, активацией и профилями.",
+    "usersAction": "Открыть users ->",
+    "oauthTitle": "OAuth-подключения",
+    "oauthDescription": "Регистрируйте клиентские интеграции, callback-адреса, scopes и секреты.",
+    "oauthAction": "Открыть OAuth ->",
+    "profileTitle": "Профиль",
+    "profileDescription": "Настраивайте личный админский профиль, имя, данные и язык.",
+    "profileAction": "Открыть profile ->",
+    "securityTitle": "Безопасность и сессии",
+    "securityDescription": "Меняйте пароль, проверяйте входы, IP-адреса и активные сессии.",
+    "securityAction": "Открыть security ->"
+  },
   "errors": {
     "auth": {
       "invalid_credentials": "Неверный email или пароль.",

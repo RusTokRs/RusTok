@@ -3,14 +3,14 @@
 // pricing, and publishing workflows.
 
 use rust_decimal::Decimal;
-use rustok_commerce::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
-};
 use rustok_commerce::entities;
-use rustok_commerce::entities::product::ProductStatus;
-use rustok_commerce::services::CatalogService;
 use rustok_commerce::CommerceError;
 use rustok_core::field_schema::FieldType;
+use rustok_product::dto::{
+    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
+};
+use rustok_product::entities::product::ProductStatus;
+use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::DatabaseConnection;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -594,8 +594,8 @@ async fn test_create_product_populates_option_and_variant_translation_groups() {
         meta_title: None,
         meta_description: None,
     });
-    input.options = vec![rustok_commerce::dto::ProductOptionInput {
-        translations: vec![rustok_commerce::dto::ProductOptionTranslationInput {
+    input.options = vec![rustok_product::dto::ProductOptionInput {
+        translations: vec![rustok_product::dto::ProductOptionTranslationInput {
             locale: "en".to_string(),
             name: "Size".to_string(),
             values: vec!["S".to_string(), "M".to_string()],

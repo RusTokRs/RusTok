@@ -32,18 +32,15 @@ extern crate self as rustok_commerce;
 #[cfg(test)]
 mod state_machine_proptest;
 
-pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
-    ApplyOrderChangeResult, CartService, CatalogService, CheckoutError, CheckoutResult,
-    CheckoutService, CreateReturnDecisionInput, CustomerService, ExchangeDifferenceRefundInput,
-    FulfillmentService, InventoryService, OrderService, PaymentOrchestrationError,
-    PaymentOrchestrationResult, PaymentOrchestrationService, PaymentService,
-    PostOrderOrchestrationError, PostOrderOrchestrationService, PricingService, RegionService,
-    ReturnClaimDecisionInput, ReturnDecisionInput, ReturnDecisionResponse,
-    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
-    StoreContextError, StoreContextResult, StoreContextService,
+    ApplyOrderChangeResult, CheckoutError, CheckoutResult, CheckoutService,
+    CreateReturnDecisionInput, ExchangeDifferenceRefundInput, PaymentOrchestrationError,
+    PaymentOrchestrationResult, PaymentOrchestrationService, PostOrderOrchestrationError,
+    PostOrderOrchestrationService, ReturnClaimDecisionInput, ReturnDecisionInput,
+    ReturnDecisionResponse, ReturnExchangeDecisionInput, ReturnRefundDecisionInput,
+    ShippingProfileService, StoreContextError, StoreContextResult, StoreContextService,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 pub use state_machine::{
@@ -63,7 +60,7 @@ impl RusToKModule for CommerceModule {
     }
 
     fn description(&self) -> &'static str {
-        "Ecommerce umbrella/root module for the commerce family, compatibility facade, and orchestration surface"
+        "Ecommerce umbrella/root module for the commerce family and orchestration surface"
     }
 
     fn version(&self) -> &'static str {

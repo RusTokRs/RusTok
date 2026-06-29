@@ -8,7 +8,7 @@ fn module_metadata() {
     assert_eq!(module.name(), "Ecommerce");
     assert_eq!(
         module.description(),
-        "Ecommerce umbrella/root module for the commerce family, compatibility facade, and orchestration surface"
+        "Ecommerce umbrella/root module for the commerce family and orchestration surface"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -28,7 +28,7 @@ fn module_metadata() {
 }
 
 #[test]
-fn module_exposes_facade_migrations() {
+fn module_exposes_umbrella_migrations() {
     let module = CommerceModule;
     let migrations = module.migrations();
     assert!(

@@ -6,6 +6,8 @@ use uuid::Uuid;
 use crate::StorefrontProductList;
 use rustok_commerce_foundation::dto::ProductResponse;
 
+const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
+
 /// Transport-neutral owner boundary for product catalog read projections.
 #[async_trait]
 pub trait ProductCatalogReadPort: Send + Sync {
@@ -64,6 +66,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        validate_published_products_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         self.list_published_products_with_locale_fallback(
@@ -77,6 +80,26 @@ impl ProductCatalogReadPort for crate::CatalogService {
         .await
         .map_err(product_error_to_port_error)
     }
+}
+
+fn validate_published_products_request(
+    request: &PublishedProductsRequest,
+) -> Result<(), PortError> {
+    if request.page == 0 {
+        return Err(PortError::validation(
+            "product.page_invalid",
+            "published products page must be greater than zero",
+        ));
+    }
+    if !(1..=MAX_PUBLISHED_PRODUCTS_PER_PAGE).contains(&request.per_page) {
+        return Err(PortError::validation(
+            "product.per_page_invalid",
+            format!(
+                "published products per_page must be between 1 and {MAX_PUBLISHED_PRODUCTS_PER_PAGE}"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {

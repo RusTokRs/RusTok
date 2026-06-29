@@ -1,7 +1,9 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{GraphqlUserResponse, GraphqlUsersResponse, OAuthApp};
+use crate::model::{
+    CreateOAuthAppInput, GraphqlUserResponse, GraphqlUsersResponse, OAuthApp, UpdateOAuthAppInput,
+};
 
 #[cfg(feature = "ssr")]
 use crate::model::{
@@ -767,6 +769,209 @@ pub async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, ServerF
         let _ = limit;
         Err(ServerFnError::new(
             "admin/list-oauth-apps requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn oauth_app_from_mutation_record(record: rustok_auth::OAuthAppMutationRecord) -> OAuthApp {
+    let app_type = parse_app_type(&record.app_type);
+    let is_manual = !record.auto_created;
+    let can_manage = is_manual
+        && matches!(
+            record.app_type.as_str(),
+            "third_party" | "mobile" | "service"
+        );
+    OAuthApp {
+        id: record.id,
+        name: record.name,
+        slug: record.slug,
+        description: record.description,
+        icon_url: record.icon_url,
+        app_type,
+        client_id: record.client_id,
+        redirect_uris: record.redirect_uris,
+        scopes: record.scopes,
+        grant_types: record.grant_types,
+        manifest_ref: record.manifest_ref.clone(),
+        auto_created: record.auto_created,
+        managed_by_manifest: record.auto_created && record.manifest_ref.is_some(),
+        is_active: record.is_active,
+        can_edit: can_manage,
+        can_rotate_secret: record.app_type != "embedded",
+        can_revoke: can_manage,
+        active_token_count: record.active_token_count,
+        last_used_at: record.last_used_at,
+        created_at: record.created_at,
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn oauth_mutation_context() -> Result<
+    (
+        rustok_auth::AuthAdminMutationContext,
+        rustok_auth::OAuthAdminMutationRuntime,
+    ),
+    ServerFnError,
+> {
+    use leptos::prelude::expect_context;
+    use loco_rs::app::AppContext;
+    use rustok_api::AuthContext;
+    use rustok_core::ModuleRuntimeExtensions;
+    use std::sync::Arc;
+
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(|error| server_error(error.to_string()))?;
+    let app_ctx = expect_context::<AppContext>();
+    let extensions = app_ctx
+        .shared_store
+        .get::<Arc<ModuleRuntimeExtensions>>()
+        .ok_or_else(|| server_error("ModuleRuntimeExtensions not initialized"))?;
+    let runtime = extensions
+        .get::<rustok_auth::OAuthAdminMutationRuntime>()
+        .cloned()
+        .ok_or_else(|| {
+            server_error(
+                "OAuthAdminMutationRuntime is not registered; initialize shared host runtime providers",
+            )
+        })?;
+
+    Ok((
+        rustok_auth::AuthAdminMutationContext {
+            actor_id: auth.user_id,
+            tenant_id: auth.tenant_id,
+            request_id: None,
+        },
+        runtime,
+    ))
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/create-oauth-app")]
+pub async fn create_oauth_app_native(
+    input: CreateOAuthAppInput,
+) -> Result<super::CreateOAuthAppResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = oauth_mutation_context().await?;
+        let result = runtime
+            .port()
+            .create_oauth_app(
+                &context,
+                rustok_auth::CreateOAuthAppCommand {
+                    name: input.name,
+                    slug: input.slug,
+                    description: input.description,
+                    icon_url: input.icon_url,
+                    app_type: match input.app_type {
+                        AppType::Embedded => "embedded",
+                        AppType::FirstParty => "first_party",
+                        AppType::Mobile => "mobile",
+                        AppType::Service => "service",
+                        AppType::ThirdParty => "third_party",
+                    }
+                    .to_string(),
+                    redirect_uris: input.redirect_uris.unwrap_or_default(),
+                    scopes: input.scopes,
+                    grant_types: input.grant_types,
+                    granted_permissions: input.granted_permissions,
+                },
+            )
+            .await
+            .map_err(|error| server_error(error.to_string()))?;
+        Ok(super::CreateOAuthAppResult {
+            app: oauth_app_from_mutation_record(result.app),
+            client_secret: result.client_secret,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "admin/create-oauth-app requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/update-oauth-app")]
+pub async fn update_oauth_app_native(
+    id: uuid::Uuid,
+    input: UpdateOAuthAppInput,
+) -> Result<OAuthApp, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = oauth_mutation_context().await?;
+        let result = runtime
+            .port()
+            .update_oauth_app(
+                &context,
+                rustok_auth::UpdateOAuthAppCommand {
+                    id,
+                    name: input.name,
+                    description: input.description,
+                    icon_url: input.icon_url,
+                    redirect_uris: input.redirect_uris,
+                    scopes: input.scopes,
+                    grant_types: input.grant_types,
+                    granted_permissions: input.granted_permissions,
+                },
+            )
+            .await
+            .map_err(|error| server_error(error.to_string()))?;
+        Ok(oauth_app_from_mutation_record(result))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, input);
+        Err(ServerFnError::new(
+            "admin/update-oauth-app requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/rotate-oauth-app-secret")]
+pub async fn rotate_oauth_app_secret_native(
+    id: uuid::Uuid,
+) -> Result<super::CreateOAuthAppResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = oauth_mutation_context().await?;
+        let result = runtime
+            .port()
+            .rotate_oauth_app_secret(&context, id)
+            .await
+            .map_err(|error| server_error(error.to_string()))?;
+        Ok(super::CreateOAuthAppResult {
+            app: oauth_app_from_mutation_record(result.app),
+            client_secret: result.client_secret,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = id;
+        Err(ServerFnError::new(
+            "admin/rotate-oauth-app-secret requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/revoke-oauth-app")]
+pub async fn revoke_oauth_app_native(id: uuid::Uuid) -> Result<uuid::Uuid, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = oauth_mutation_context().await?;
+        runtime
+            .port()
+            .revoke_oauth_app(&context, id)
+            .await
+            .map(|app| app.id)
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = id;
+        Err(ServerFnError::new(
+            "admin/revoke-oauth-app requires the `ssr` feature",
         ))
     }
 }

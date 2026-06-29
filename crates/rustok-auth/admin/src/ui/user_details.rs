@@ -7,8 +7,8 @@ use leptos_router::params::Params;
 use leptos_ui::{Select, SelectOption};
 use rustok_api::UiRouteContext;
 
-use crate::core::prepare_update_user_input;
-use crate::i18n::t;
+use crate::core::{graphql_user_view, prepare_update_user_input};
+use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::{delete_user_details, fetch_user, update_user_details};
 use crate::ui::components::{Button, Input, PageHeader};
 
@@ -104,7 +104,9 @@ pub fn UserDetails() -> impl IntoView {
                     user_resource.refetch();
                 }
                 Err(e) => {
-                    set_form_state.set(FormState::with_form_error(format!("{:?}", e)));
+                    set_form_state.set(FormState::with_form_error(locale.with_value(|locale| {
+                        auth_transport_error_message(locale.as_deref(), &e.to_string())
+                    })));
                 }
             }
         });
@@ -131,7 +133,11 @@ pub fn UserDetails() -> impl IntoView {
                         navigate_to_users("/users", Default::default());
                     }
                     Err(e) => {
-                        set_delete_form_state.set(FormState::with_form_error(format!("{:?}", e)));
+                        set_delete_form_state.set(FormState::with_form_error(locale.with_value(
+                            |locale| {
+                                auth_transport_error_message(locale.as_deref(), &e.to_string())
+                            },
+                        )));
                         set_show_delete_confirm.set(false);
                     }
                 }
@@ -157,12 +163,13 @@ pub fn UserDetails() -> impl IntoView {
                             on_click=move |_| {
                                 if let Some(Ok(ref resp)) = user_resource.get() {
                                     if let Some(ref user) = resp.user {
+                                        let user = graphql_user_view(user.clone(), String::new());
                                         let (_, set_n) = edit_name;
                                         let (_, set_r) = edit_role;
                                         let (_, set_s) = edit_status;
-                                        set_n.set(user.name.clone().unwrap_or_default());
-                                        set_r.set(user.role.clone());
-                                        set_s.set(user.status.clone());
+                                        set_n.set(user.edit_form.name);
+                                        set_r.set(user.edit_form.role);
+                                        set_s.set(user.edit_form.status);
                                         set_form_state.set(FormState::idle());
                                         set_is_editing.set(true);
                                     }
@@ -265,15 +272,17 @@ pub fn UserDetails() -> impl IntoView {
                         .into_any(),
                         Some(Ok(response)) => {
                             if let Some(user) = response.user {
-                                let email = user.email.clone();
-                                let name_display = user.name.clone()
-                                    .unwrap_or_else(|| t_local("users.placeholderDash", "—"));
-                                let role_display = user.role.clone();
-                                let status_display = user.status.clone();
-                                let tenant_display = user.tenant_name.clone()
-                                    .unwrap_or_else(|| "—".to_string());
-                                let created_at = user.created_at.clone();
-                                let id = user.id.clone();
+                                let user = graphql_user_view(
+                                    user,
+                                    t_local("users.placeholderDash", "—"),
+                                );
+                                let email = user.email;
+                                let name_display = user.name;
+                                let role_display = user.role;
+                                let status_display = user.status;
+                                let tenant_display = user.tenant_name;
+                                let created_at = user.created_at;
+                                let id = user.id;
 
                                 view! {
                                     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

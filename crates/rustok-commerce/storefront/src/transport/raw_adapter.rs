@@ -640,7 +640,7 @@ async fn resolve_storefront_customer_id(
 
 #[cfg(feature = "ssr")]
 fn ensure_storefront_cart_access(
-    cart: &rustok_commerce::CartResponse,
+    cart: &rustok_cart::dto::CartResponse,
     storefront_customer_id: Option<Uuid>,
 ) -> Result<(), ServerFnError> {
     if let Some(owner_customer_id) = cart.customer_id {
@@ -673,8 +673,8 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
 
 #[cfg(feature = "ssr")]
 fn cart_context_metadata(
-    cart: &rustok_commerce::CartResponse,
-    context: &rustok_commerce::StoreContextResponse,
+    cart: &rustok_cart::dto::CartResponse,
+    context: &rustok_commerce::dto::StoreContextResponse,
 ) -> Value {
     json!({
         "cart_context": {
@@ -690,7 +690,7 @@ fn cart_context_metadata(
 
 #[cfg(feature = "ssr")]
 fn map_native_shipping_option(
-    value: rustok_commerce::CartShippingOptionSummary,
+    value: rustok_cart::dto::CartShippingOptionSummary,
 ) -> StorefrontCheckoutShippingOption {
     StorefrontCheckoutShippingOption {
         id: value.id.to_string(),
@@ -704,7 +704,7 @@ fn map_native_shipping_option(
 
 #[cfg(feature = "ssr")]
 fn map_native_delivery_group(
-    value: rustok_commerce::CartDeliveryGroupResponse,
+    value: rustok_cart::dto::CartDeliveryGroupResponse,
 ) -> StorefrontCheckoutDeliveryGroup {
     StorefrontCheckoutDeliveryGroup {
         shipping_profile_slug: value.shipping_profile_slug,
@@ -723,7 +723,7 @@ fn map_native_delivery_group(
 }
 
 #[cfg(feature = "ssr")]
-fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontCheckoutCart {
+fn map_native_checkout_cart(value: rustok_cart::dto::CartResponse) -> StorefrontCheckoutCart {
     let adjustments = value
         .adjustments
         .into_iter()
@@ -775,7 +775,7 @@ fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontC
 
 #[cfg(feature = "ssr")]
 fn map_native_payment_collection(
-    value: rustok_commerce::PaymentCollectionResponse,
+    value: rustok_payment::dto::PaymentCollectionResponse,
 ) -> StorefrontCheckoutPaymentCollection {
     StorefrontCheckoutPaymentCollection {
         id: value.id.to_string(),
@@ -794,7 +794,7 @@ fn map_native_payment_collection(
 
 #[cfg(feature = "ssr")]
 fn map_native_checkout_completion(
-    value: rustok_commerce::CompleteCheckoutResponse,
+    value: rustok_commerce::dto::CompleteCheckoutResponse,
 ) -> StorefrontCheckoutCompletion {
     let adjustments = value
         .order
@@ -874,7 +874,7 @@ fn build_graphql_shipping_selections(
 #[cfg(feature = "ssr")]
 fn build_native_shipping_selections(
     request: &FulfillmentSelectShippingOptionRequest,
-) -> Result<Vec<rustok_commerce::CartShippingSelectionInput>, ServerFnError> {
+) -> Result<Vec<rustok_cart::dto::CartShippingSelectionInput>, ServerFnError> {
     build_shipping_selection_plan(request)
         .map_err(|err| ServerFnError::new(shipping_selection_error_message(err)))?
         .into_iter()
@@ -884,7 +884,7 @@ fn build_native_shipping_selections(
                 "selected_shipping_option_id",
             )
             .map_err(|err| ServerFnError::new(err.to_string()))?;
-            Ok(rustok_commerce::CartShippingSelectionInput {
+            Ok(rustok_cart::dto::CartShippingSelectionInput {
                 shipping_profile_slug: selection.shipping_profile_slug,
                 seller_id: selection.seller_id,
                 seller_scope: selection.seller_scope,
@@ -1086,7 +1086,7 @@ async fn storefront_commerce_native(
             return Ok(data);
         };
 
-        let cart_service = rustok_commerce::CartService::new(app_ctx.db.clone());
+        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
         let cart = match cart_service.get_cart(tenant.id, cart_id).await {
             Ok(cart) => cart,
             Err(rustok_cart::CartError::CartNotFound(_)) => {
@@ -1111,7 +1111,7 @@ async fn storefront_commerce_native(
             Some(&request_context),
         )
         .await?;
-        let payment_collection = rustok_commerce::PaymentService::new(app_ctx.db.clone())
+        let payment_collection = rustok_payment::PaymentService::new(app_ctx.db.clone())
             .find_reusable_collection_by_cart(tenant.id, cart.id)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))?;
@@ -1158,7 +1158,7 @@ async fn storefront_create_payment_collection(
             return Err(ServerFnError::new("cart_id must not be empty"));
         };
 
-        let cart_service = rustok_commerce::CartService::new(app_ctx.db.clone());
+        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
         let cart = cart_service
             .get_cart(tenant.id, parsed_cart_id)
             .await
@@ -1175,7 +1175,7 @@ async fn storefront_create_payment_collection(
         )
         .await?;
 
-        let service = rustok_commerce::PaymentService::new(app_ctx.db.clone());
+        let service = rustok_payment::PaymentService::new(app_ctx.db.clone());
         if let Some(existing) = service
             .find_reusable_collection_by_cart(tenant.id, cart.id)
             .await
@@ -1184,27 +1184,30 @@ async fn storefront_create_payment_collection(
             return Ok(map_native_payment_collection(existing));
         }
 
-        let context = rustok_commerce::StoreContextService::new(app_ctx.db.clone())
-            .resolve_context(
-                tenant.id,
-                rustok_commerce::ResolveStoreContextInput {
-                    region_id: cart.region_id,
-                    country_code: cart.country_code.clone(),
-                    locale: Some(resolve_requested_locale(
-                        cart.locale_code.clone(),
-                        Some(request_context.locale.as_str()),
-                        tenant.default_locale.as_str(),
-                    )),
-                    currency_code: Some(cart.currency_code.clone()),
-                },
-            )
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
+        let context = rustok_commerce::StoreContextService::new(
+            app_ctx.db.clone(),
+            std::sync::Arc::new(rustok_region::RegionService::new(app_ctx.db.clone())),
+        )
+        .resolve_context(
+            tenant.id,
+            rustok_commerce::dto::ResolveStoreContextInput {
+                region_id: cart.region_id,
+                country_code: cart.country_code.clone(),
+                locale: Some(resolve_requested_locale(
+                    cart.locale_code.clone(),
+                    Some(request_context.locale.as_str()),
+                    tenant.default_locale.as_str(),
+                )),
+                currency_code: Some(cart.currency_code.clone()),
+            },
+        )
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))?;
 
         let collection = service
             .create_collection(
                 tenant.id,
-                rustok_commerce::CreatePaymentCollectionInput {
+                rustok_payment::dto::CreatePaymentCollectionInput {
                     cart_id: Some(cart.id),
                     order_id: None,
                     customer_id: cart.customer_id,
@@ -1255,7 +1258,7 @@ async fn storefront_select_shipping_option(
             return Err(ServerFnError::new("cart_id must not be empty"));
         };
 
-        let cart_service = rustok_commerce::CartService::new(app_ctx.db.clone());
+        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
         let cart = cart_service
             .get_cart(tenant.id, parsed_cart_id)
             .await
@@ -1270,7 +1273,7 @@ async fn storefront_select_shipping_option(
             .update_context(
                 tenant.id,
                 parsed_cart_id,
-                rustok_commerce::UpdateCartContextInput {
+                rustok_cart::dto::UpdateCartContextInput {
                     email: cart.email.clone(),
                     region_id: cart.region_id,
                     country_code: cart.country_code.clone(),
@@ -1305,7 +1308,7 @@ async fn storefront_select_shipping_option(
 async fn reprice_storefront_cart_line_items(
     app_ctx: &loco_rs::app::AppContext,
     tenant_id: Uuid,
-    cart_service: &rustok_commerce::CartService,
+    cart_service: &rustok_cart::CartService,
     cart: rustok_cart::CartResponse,
     request_context: Option<&rustok_api::RequestContext>,
 ) -> Result<rustok_cart::CartResponse, ServerFnError> {
@@ -1313,7 +1316,7 @@ async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
-    let pricing_service = rustok_commerce::PricingService::new(
+    let pricing_service = rustok_pricing::PricingService::new(
         app_ctx.db.clone(),
         rustok_api::loco::transactional_event_bus_from_context(app_ctx),
     );
@@ -1328,7 +1331,7 @@ async fn reprice_storefront_cart_line_items(
         let Some(variant_id) = line_item.variant_id else {
             continue;
         };
-        let pricing_context = rustok_commerce::services::PriceResolutionContext {
+        let pricing_context = rustok_pricing::PriceResolutionContext {
             currency_code: cart.currency_code.to_ascii_uppercase(),
             region_id: cart.region_id,
             price_list_id: None,
@@ -1364,7 +1367,7 @@ async fn reprice_storefront_cart_line_items(
 fn storefront_cart_pricing_update(
     line_item_id: Uuid,
     quantity: i32,
-    resolved_price: &rustok_commerce::services::ResolvedPrice,
+    resolved_price: &rustok_pricing::ResolvedPrice,
 ) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
     let base_unit_price = resolved_price
         .compare_at_amount
@@ -1462,7 +1465,7 @@ async fn storefront_complete_checkout(
             return Err(ServerFnError::new("cart_id must not be empty"));
         };
 
-        let cart_service = rustok_commerce::CartService::new(app_ctx.db.clone());
+        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
         let cart = cart_service
             .get_cart(tenant.id, parsed_cart_id)
             .await
@@ -1480,14 +1483,20 @@ async fn storefront_complete_checkout(
         .await?;
         let actor_id = auth.0.map(|auth| auth.user_id).unwrap_or_else(Uuid::nil);
 
+        let event_bus = rustok_api::loco::transactional_event_bus_from_context(&app_ctx);
         let response = rustok_commerce::CheckoutService::new(
             app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            event_bus.clone(),
+            std::sync::Arc::new(rustok_region::RegionService::new(app_ctx.db.clone())),
+            std::sync::Arc::new(rustok_inventory::InventoryService::new(
+                app_ctx.db.clone(),
+                event_bus,
+            )),
         )
         .complete_checkout(
             tenant.id,
             actor_id,
-            rustok_commerce::CompleteCheckoutInput {
+            rustok_commerce::dto::CompleteCheckoutInput {
                 cart_id: parsed_cart_id,
                 shipping_option_id: None,
                 shipping_selections: None,

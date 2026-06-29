@@ -6,6 +6,8 @@ use uuid::Uuid;
 use crate::dto::{CustomerResponse, ListCustomersInput};
 use crate::error::CustomerError;
 
+const MAX_CUSTOMERS_PER_PAGE: u64 = 100;
+
 /// Transport-neutral owner boundary for customer read projections used by checkout/order flows.
 #[async_trait]
 pub trait CustomerReadPort: Send + Sync {
@@ -60,6 +62,7 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        validate_customer_list_projection_request(&request)?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let (items, total) = self
             .list_customers(
@@ -74,6 +77,24 @@ impl CustomerReadPort for crate::CustomerService {
             .map_err(customer_error_to_port_error)?;
         Ok(CustomerListProjectionResponse { items, total })
     }
+}
+
+fn validate_customer_list_projection_request(
+    request: &CustomerListProjectionRequest,
+) -> Result<(), PortError> {
+    if request.page == 0 {
+        return Err(PortError::validation(
+            "customer.page_invalid",
+            "customer projection page must be greater than zero",
+        ));
+    }
+    if !(1..=MAX_CUSTOMERS_PER_PAGE).contains(&request.per_page) {
+        return Err(PortError::validation(
+            "customer.per_page_invalid",
+            format!("customer projection per_page must be between 1 and {MAX_CUSTOMERS_PER_PAGE}"),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {

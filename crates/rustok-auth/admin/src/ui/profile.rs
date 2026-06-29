@@ -5,8 +5,8 @@ use leptos_hook_form::FormState;
 use leptos_ui::{Select, SelectOption};
 use rustok_api::UiRouteContext;
 
-use crate::core::{classify_profile_update_error, prepare_profile_name, ProfileUpdateErrorKind};
-use crate::i18n::t;
+use crate::core::prepare_profile_name;
+use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::update_profile;
 use crate::ui::components::{Button, Input, PageHeader};
 
@@ -76,21 +76,9 @@ where
                     set_success_message.set(Some(t_local("profile.saved", "Profile updated.")));
                 }
                 Err(err_str) => {
-                    let message = match classify_profile_update_error(&err_str) {
-                        ProfileUpdateErrorKind::Unauthorized => t_local(
-                            "errors.auth.unauthorized",
-                            "You are not authorized to perform this action.",
-                        ),
-                        ProfileUpdateErrorKind::Http => {
-                            t_local("errors.http", "Server error. Please try again.")
-                        }
-                        ProfileUpdateErrorKind::Network => {
-                            t_local("errors.network", "Network error. Check your connection.")
-                        }
-                        ProfileUpdateErrorKind::Unknown => {
-                            t_local("errors.unknown", "Something went wrong. Please try again.")
-                        }
-                    };
+                    let message = locale_stored.with_value(|locale| {
+                        auth_transport_error_message(locale.as_deref(), &err_str)
+                    });
                     set_form_state.set(FormState::with_form_error(message));
                     set_success_message.set(None);
                 }

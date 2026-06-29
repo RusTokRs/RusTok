@@ -820,7 +820,7 @@ pub struct CreateOAuthAppResponse {
     pub create_oauth_app: CreateOAuthAppResult,
 }
 
-#[derive(serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateOAuthAppResult {
     pub app: OAuthApp,
@@ -861,7 +861,7 @@ pub struct RevokeOAuthAppPayload {
     pub id: uuid::Uuid,
 }
 
-pub async fn create_oauth_app(
+async fn create_oauth_app_graphql(
     token: Option<String>,
     tenant: Option<String>,
     input: CreateOAuthAppInput,
@@ -878,7 +878,7 @@ pub async fn create_oauth_app(
     Ok(response.create_oauth_app)
 }
 
-pub async fn update_oauth_app(
+async fn update_oauth_app_graphql(
     token: Option<String>,
     tenant: Option<String>,
     id: uuid::Uuid,
@@ -896,7 +896,7 @@ pub async fn update_oauth_app(
     Ok(response.update_oauth_app)
 }
 
-pub async fn rotate_oauth_app_secret(
+async fn rotate_oauth_app_secret_graphql(
     token: Option<String>,
     tenant: Option<String>,
     id: uuid::Uuid,
@@ -913,7 +913,7 @@ pub async fn rotate_oauth_app_secret(
     Ok(response.rotate_oauth_app_secret)
 }
 
-pub async fn revoke_oauth_app(
+async fn revoke_oauth_app_graphql(
     token: Option<String>,
     tenant: Option<String>,
     id: uuid::Uuid,
@@ -928,4 +928,99 @@ pub async fn revoke_oauth_app(
     .map_err(|err| ApiError::Graphql(err.to_string()))?;
 
     Ok(response.revoke_oauth_app.id)
+}
+
+pub async fn create_oauth_app(
+    token: Option<String>,
+    tenant: Option<String>,
+    input: CreateOAuthAppInput,
+) -> Result<CreateOAuthAppResult, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return create_oauth_app_graphql(token, tenant, input).await;
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::create_oauth_app_native(input.clone()).await {
+        Ok(result) => Ok(result),
+        Err(native_error) => create_oauth_app_graphql(token, tenant, input)
+            .await
+            .map_err(|graphql_error| {
+                ApiError::Graphql(format!(
+                    "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                ))
+            }),
+    }
+}
+
+pub async fn update_oauth_app(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: uuid::Uuid,
+    input: UpdateOAuthAppInput,
+) -> Result<OAuthApp, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return update_oauth_app_graphql(token, tenant, id, input).await;
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::update_oauth_app_native(id, input.clone()).await {
+        Ok(result) => Ok(result),
+        Err(native_error) => update_oauth_app_graphql(token, tenant, id, input)
+            .await
+            .map_err(|graphql_error| {
+                ApiError::Graphql(format!(
+                    "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                ))
+            }),
+    }
+}
+
+pub async fn rotate_oauth_app_secret(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: uuid::Uuid,
+) -> Result<CreateOAuthAppResult, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return rotate_oauth_app_secret_graphql(token, tenant, id).await;
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::rotate_oauth_app_secret_native(id).await {
+        Ok(result) => Ok(result),
+        Err(native_error) => rotate_oauth_app_secret_graphql(token, tenant, id)
+            .await
+            .map_err(|graphql_error| {
+                ApiError::Graphql(format!(
+                    "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                ))
+            }),
+    }
+}
+
+pub async fn revoke_oauth_app(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: uuid::Uuid,
+) -> Result<uuid::Uuid, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return revoke_oauth_app_graphql(token, tenant, id).await;
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::revoke_oauth_app_native(id).await {
+        Ok(result) => Ok(result),
+        Err(native_error) => {
+            revoke_oauth_app_graphql(token, tenant, id)
+                .await
+                .map_err(|graphql_error| {
+                    ApiError::Graphql(format!(
+                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                    ))
+                })
+        }
+    }
 }

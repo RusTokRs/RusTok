@@ -1,10 +1,13 @@
+use std::{sync::Arc, time::Duration};
+
+use rustok_api::{PortActor, PortContext, PortError};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use thiserror::Error;
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_region::dto::RegionResponse;
-use rustok_region::{RegionError, RegionService};
+use rustok_region::{RegionReadPort, RegionReadRequest, RegionReadSelector};
 
 use crate::dto::{ResolveStoreContextInput, StoreContextResponse};
 
@@ -24,22 +27,22 @@ pub enum StoreContextError {
         region_currency_code: String,
         region_id: Uuid,
     },
-    #[error(transparent)]
-    Region(#[from] RegionError),
+    #[error("region boundary `{code}` failed: {message}")]
+    RegionBoundary { code: String, message: String },
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
 }
 
 pub struct StoreContextService {
     db: DatabaseConnection,
-    region_service: RegionService,
+    region_read_port: Arc<dyn RegionReadPort>,
 }
 
 impl StoreContextService {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: DatabaseConnection, region_read_port: Arc<dyn RegionReadPort>) -> Self {
         Self {
-            region_service: RegionService::new(db.clone()),
             db,
+            region_read_port,
         }
     }
 
@@ -106,33 +109,35 @@ impl StoreContextService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> StoreContextResult<Option<RegionResponse>> {
-        if let Some(region_id) = input.region_id {
-            return Ok(Some(
-                self.region_service
-                    .get_region(
-                        tenant_id,
-                        region_id,
-                        requested_locale,
-                        tenant_default_locale,
-                    )
-                    .await?,
-            ));
-        }
+        let selector = if let Some(region_id) = input.region_id {
+            RegionReadSelector::Id(region_id)
+        } else if let Some(country_code) = input.country_code.as_deref() {
+            RegionReadSelector::CountryCode(country_code.to_string())
+        } else {
+            return Ok(None);
+        };
+        let locale = requested_locale.or(tenant_default_locale).unwrap_or("und");
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            PortActor::service("commerce.store-context"),
+            locale,
+            format!("store-context:{tenant_id}"),
+        )
+        .with_deadline(Duration::from_secs(3));
+        let projection = self
+            .region_read_port
+            .read_region(
+                context,
+                RegionReadRequest {
+                    selector,
+                    requested_locale: requested_locale.map(str::to_string),
+                    tenant_default_locale: tenant_default_locale.map(str::to_string),
+                },
+            )
+            .await
+            .map_err(map_region_port_error)?;
 
-        if let Some(country_code) = input.country_code.as_deref() {
-            return self
-                .region_service
-                .resolve_region_for_country(
-                    tenant_id,
-                    country_code,
-                    requested_locale,
-                    tenant_default_locale,
-                )
-                .await
-                .map_err(StoreContextError::from);
-        }
-
-        Ok(None)
+        Ok(projection.map(|projection| projection.region))
     }
 
     async fn load_default_locale(&self, tenant_id: Uuid) -> StoreContextResult<String> {
@@ -170,6 +175,13 @@ impl StoreContextService {
         }
 
         Ok(locales)
+    }
+}
+
+fn map_region_port_error(error: PortError) -> StoreContextError {
+    StoreContextError::RegionBoundary {
+        code: error.code,
+        message: error.message,
     }
 }
 

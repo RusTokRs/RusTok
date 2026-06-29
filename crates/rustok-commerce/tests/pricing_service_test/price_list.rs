@@ -32,7 +32,7 @@ async fn test_set_price_list_tier_resolves_active_price_list_override() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -207,7 +207,7 @@ async fn test_set_price_list_tier_with_channel_inherits_price_list_scope() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -349,7 +349,7 @@ async fn test_set_price_list_scope_propagates_to_existing_override_rows() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),

@@ -3,13 +3,12 @@ use std::sync::Arc;
 use rustok_outbox::entity as outbox_entity;
 use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_tenant::{
-    entities::{tenant, tenant_module},
     CreateTenantInput, PortActor, PortContext, PortErrorKind, TenantError, TenantReadPort,
     TenantReadRequest, TenantReadSelector, TenantService, ToggleModuleInput, UpdateTenantInput,
 };
 use sea_orm::{
-    sea_query::TableCreateStatement, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    EntityTrait, QueryOrder, Schema,
+    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait, QueryOrder,
+    Statement,
 };
 
 async fn setup_db() -> DatabaseConnection {
@@ -17,40 +16,55 @@ async fn setup_db() -> DatabaseConnection {
         .await
         .expect("failed to connect in-memory sqlite");
 
-    let builder = db.get_database_backend();
-    let schema = Schema::new(builder);
-
-    create_entity_table(
-        &db,
-        &builder,
-        schema.create_table_from_entity(tenant::Entity),
-    )
-    .await;
-    create_entity_table(
-        &db,
-        &builder,
-        schema.create_table_from_entity(tenant_module::Entity),
-    )
-    .await;
-    create_entity_table(
-        &db,
-        &builder,
-        schema.create_table_from_entity(outbox_entity::Entity),
-    )
-    .await;
+    create_sqlite_test_tables(&db).await;
 
     db
 }
 
-async fn create_entity_table(
-    db: &DatabaseConnection,
-    builder: &DbBackend,
-    mut statement: TableCreateStatement,
-) {
-    statement.if_not_exists();
-    db.execute(builder.build(&statement))
+async fn create_sqlite_test_tables(db: &DatabaseConnection) {
+    for sql in [
+        "CREATE TABLE IF NOT EXISTS tenants (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            domain TEXT UNIQUE,
+            settings TEXT NOT NULL DEFAULT '{}',
+            default_locale TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS tenant_modules (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        "CREATE TABLE IF NOT EXISTS sys_events (
+            id TEXT PRIMARY KEY NOT NULL,
+            event_type TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TEXT NULL,
+            last_error TEXT NULL,
+            claimed_by TEXT NULL,
+            claimed_at TEXT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            dispatched_at TEXT NULL
+        )",
+    ] {
+        db.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_string(),
+        ))
         .await
         .expect("failed to create tenant test table");
+    }
 }
 
 #[tokio::test]

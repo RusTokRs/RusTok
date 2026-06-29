@@ -2216,13 +2216,13 @@ mod tests {
         .await
         .expect("fractional update should succeed");
 
-        let price = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::CurrencyCode.eq("USD"))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.is_null())
-            .filter(rustok_commerce::entities::price::Column::ChannelId.is_null())
-            .filter(rustok_commerce::entities::price::Column::MinQuantity.is_null())
-            .filter(rustok_commerce::entities::price::Column::MaxQuantity.is_null())
+        let price = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::CurrencyCode.eq("USD"))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.is_null())
+            .filter(rustok_pricing::entities::price::Column::ChannelId.is_null())
+            .filter(rustok_pricing::entities::price::Column::MinQuantity.is_null())
+            .filter(rustok_pricing::entities::price::Column::MaxQuantity.is_null())
             .one(&db)
             .await
             .expect("price row query should succeed")
@@ -2308,13 +2308,13 @@ mod tests {
         .await
         .expect("compare_at clear should succeed");
 
-        let price = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::CurrencyCode.eq("USD"))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.is_null())
-            .filter(rustok_commerce::entities::price::Column::ChannelId.is_null())
-            .filter(rustok_commerce::entities::price::Column::MinQuantity.is_null())
-            .filter(rustok_commerce::entities::price::Column::MaxQuantity.is_null())
+        let price = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::CurrencyCode.eq("USD"))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.is_null())
+            .filter(rustok_pricing::entities::price::Column::ChannelId.is_null())
+            .filter(rustok_pricing::entities::price::Column::MinQuantity.is_null())
+            .filter(rustok_pricing::entities::price::Column::MaxQuantity.is_null())
             .one(&db)
             .await
             .expect("price row query should succeed")
@@ -3289,9 +3289,9 @@ mod tests {
         let (_product_id, variant_id) = create_test_product(&catalog, tenant_id, actor_id).await;
         let price_list_id = create_future_price_list(&db, tenant_id, "active").await;
 
-        let count_before = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+        let count_before = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
             .count(&db)
             .await
             .expect("price count should load");
@@ -3312,9 +3312,9 @@ mod tests {
         .await
         .expect_err("future list should be rejected");
 
-        let count_after = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+        let count_after = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
             .count(&db)
             .await
             .expect("price count should load");
@@ -3356,9 +3356,9 @@ mod tests {
         let (_product_id, variant_id) = create_test_product(&catalog, tenant_id, actor_id).await;
         let price_list_id = create_expired_price_list(&db, tenant_id, "active").await;
 
-        let count_before = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+        let count_before = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
             .count(&db)
             .await
             .expect("price count should load");
@@ -3379,9 +3379,9 @@ mod tests {
         .await
         .expect_err("expired list should be rejected");
 
-        let count_after = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+        let count_after = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
             .count(&db)
             .await
             .expect("price count should load");
@@ -3453,9 +3453,9 @@ mod tests {
             .await
             .expect("scoped override should be created");
 
-        let count_before = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+        let count_before = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
             .count(&db)
             .await
             .expect("price count should load");
@@ -3476,9 +3476,9 @@ mod tests {
         .await
         .expect_err("mismatched channel should be rejected");
 
-        let count_after = rustok_commerce::entities::price::Entity::find()
-            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
-            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+        let count_after = rustok_pricing::entities::price::Entity::find()
+            .filter(rustok_pricing::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_pricing::entities::price::Column::PriceListId.eq(price_list_id))
             .count(&db)
             .await
             .expect("price count should load");

@@ -2,14 +2,9 @@ use migration::Migrator;
 use rust_decimal::Decimal;
 use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
 use rustok_cart::services::CartService;
-use rustok_commerce::dto::{
-    CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput,
-    ProductOptionTranslationInput, ProductTranslationInput, ResolveStoreContextInput,
-};
+use rustok_commerce::dto::ResolveStoreContextInput;
 use rustok_commerce::entities;
-use rustok_commerce::services::{
-    CatalogService, InventoryService, PricingService, StoreContextService,
-};
+use rustok_commerce::services::StoreContextService;
 use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
 use rustok_customer::services::CustomerService;
 use rustok_fulfillment::dto::{
@@ -17,6 +12,7 @@ use rustok_fulfillment::dto::{
     ShipFulfillmentInput, ShippingOptionTranslationInput,
 };
 use rustok_fulfillment::services::FulfillmentService;
+use rustok_inventory::InventoryService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::services::OrderService;
 use rustok_payment::dto::{
@@ -24,6 +20,12 @@ use rustok_payment::dto::{
     CreateRefundInput,
 };
 use rustok_payment::services::PaymentService;
+use rustok_pricing::PricingService;
+use rustok_product::dto::{
+    CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput,
+    ProductOptionTranslationInput, ProductTranslationInput,
+};
+use rustok_product::CatalogService;
 use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
@@ -95,7 +97,10 @@ async fn pricing_service_supports_decimal_prices_on_migrated_schema() {
 async fn region_and_store_context_services_resolve_currency_and_locales_on_migrated_schema() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
     let region_service = RegionService::new(db.clone());
-    let context_service = StoreContextService::new(db.clone());
+    let context_service = StoreContextService::new(
+        db.clone(),
+        std::sync::Arc::new(RegionService::new(db.clone())),
+    );
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
     seed_tenant_locale(&db, tenant_id, "de", false).await;

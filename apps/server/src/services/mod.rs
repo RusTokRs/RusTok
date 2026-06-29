@@ -1,6 +1,7 @@
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
+pub mod auth_admin_mutation_provider;
 pub mod auth_lifecycle;
 pub mod build_event_hub;
 pub mod build_executor;

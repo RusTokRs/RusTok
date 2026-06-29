@@ -10,7 +10,7 @@ use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::PaymentService;
+use rustok_payment::PaymentService;
 
 const MANUAL_PROVIDER_ID: &str = "manual";
 

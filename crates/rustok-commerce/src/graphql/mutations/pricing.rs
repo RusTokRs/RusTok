@@ -3,7 +3,8 @@ use rustok_api::{graphql::require_module_enabled, TenantContext};
 use rustok_core::Permission;
 use uuid::Uuid;
 
-use crate::{CartService, PricingService};
+use rustok_cart::CartService;
+use rustok_pricing::PricingService;
 
 use super::super::{require_commerce_permission, types::*, MODULE_SLUG};
 use super::helpers::*;

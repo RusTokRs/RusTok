@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 use crate::{MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaTranslationItem};
 
+const MAX_MEDIA_LIST_LIMIT: u64 = 100;
+
 /// Transport-neutral read boundary for media asset metadata and SEO image descriptors.
 #[async_trait]
 pub trait MediaAssetReadPort: Send + Sync {
@@ -52,6 +54,7 @@ impl MediaAssetReadPort for MediaService {
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64), PortError> {
         require_media_read_policy(&context)?;
+        validate_media_list_limit(limit)?;
         let tenant_id = parse_tenant_id(&context)?;
         self.list(tenant_id, limit, offset)
             .await
@@ -84,6 +87,16 @@ impl MediaAssetReadPort for MediaService {
             .await
             .map_err(media_error_to_port_error)
     }
+}
+
+fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {
+    if !(1..=MAX_MEDIA_LIST_LIMIT).contains(&limit) {
+        return Err(PortError::validation(
+            "media.list_limit_invalid",
+            format!("media list limit must be between 1 and {MAX_MEDIA_LIST_LIMIT}"),
+        ));
+    }
+    Ok(())
 }
 
 fn require_media_read_policy(context: &PortContext) -> Result<(), PortError> {

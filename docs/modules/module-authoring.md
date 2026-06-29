@@ -93,6 +93,27 @@ repository interfaces являются optional late-stage seams, а не обя
 Рабочее название FBA не переносится в имена типов без необходимости: code-facing
 контракты используют нейтральные `*Port`, `PortContext`, `PortError`, `provider` и `consumer`.
 
+### Новая реализация без legacy-слоя
+
+RusToK находится на стадии начальной реализации. FFA/FBA-рефакторинг здесь не является
+миграцией старой production-системы и не должен сохранять прежнюю внутреннюю архитектуру.
+
+Обязательные правила:
+
+1. Сразу реализовывать целевой контракт и целевую структуру модуля.
+2. В одном change set переводить все внутренние call sites на новый порт, adapter или entry point.
+3. После перевода удалять заменённые порты, facade, adapter, alias, feature flag и wiring.
+4. Не добавлять compatibility wrapper, dual old/new path, fallback на legacy-реализацию,
+   deprecated alias или временный старый порт «на всякий случай».
+5. Не сохранять старую сигнатуру только ради внутренних callers: callers должны быть
+   переписаны под целевой контракт.
+6. Временный bridge допустим только по прямому требованию для поэтапной внешней миграции.
+   Для него в module plan обязательны владелец удаления и конкретный срок удаления.
+
+Обязательные актуальные platform contracts не считаются legacy-совместимостью. Например,
+GraphQL остаётся параллельным контрактом согласно правилам платформы, но не должен служить
+fallback на устаревший внутренний port или дублировать старую business-логику.
+
 ## Backend
 
 ### 1. Сначала зафиксируйте runtime contract
@@ -320,6 +341,10 @@ RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 - делать runtime authority из строковых акторов, display labels или недоверенных headers;
 - хранить локализуемый business text прямо в base rows, если модуль уже идёт по multilingual contract;
 - заменять typed public contract сырым `details` JSON;
+- сохранять старые внутренние ports, adapters, facade, aliases или execution paths после
+  внедрения целевого контракта;
+- добавлять compatibility/fallback-to-legacy слой без прямого требования, владельца удаления
+  и срока удаления в module plan;
 - обновлять только код без local/central docs, если изменился контракт.
 
 ## Быстрый шаблон решения
@@ -348,7 +373,8 @@ RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 7. Language-agnostic state хранится в base tables, локализуемые поля вынесены в `*_translations` или `*_bodies`.
 8. Typed public contract не заменён строковыми эвристиками, `details` JSON или header-based authority.
 9. Миграции, read-model и transport обновлены согласованно, без half-migrated contract.
-10. Пройдены `cargo xtask module validate <slug>` и targeted `cargo check` / `cargo test`.
+10. Старые внутренние ports, adapters, facade, aliases и call sites удалены; dual old/new path отсутствует.
+11. Пройдены `cargo xtask module validate <slug>` и targeted `cargo check` / `cargo test`.
 
 ### UI checklist
 
@@ -377,4 +403,3 @@ RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 - Module-specific scripts must live near the module in `crates/<module>/scripts/` (or `apps/<app>/scripts/` for app-owned scripts).
 - Repository-level `scripts/` is reserved for cross-platform orchestration and multi-module runners.
 - If a script affects module runtime/public contracts, update both local module docs and central `docs/` references in the same change.
-

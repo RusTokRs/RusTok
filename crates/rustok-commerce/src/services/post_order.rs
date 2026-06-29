@@ -13,7 +13,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{OrderService, PaymentService};
+use rustok_order::OrderService;
+use rustok_payment::PaymentService;
 
 #[derive(Debug, Error)]
 pub enum PostOrderOrchestrationError {

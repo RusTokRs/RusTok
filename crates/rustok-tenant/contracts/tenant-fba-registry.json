@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "tenant",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "tenant.read_projection.v1",
   "ports": [
     {
@@ -76,7 +76,7 @@
       }
     ],
     "fallback_smoke": {
-      "status": "planned",
+      "status": "runtime_verified",
       "profiles": [
         "embedded_native"
       ],

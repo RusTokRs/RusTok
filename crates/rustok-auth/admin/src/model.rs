@@ -67,7 +67,7 @@ pub enum AppType {
     ThirdParty,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateOAuthAppInput {
     pub name: String,
@@ -78,9 +78,11 @@ pub struct CreateOAuthAppInput {
     pub redirect_uris: Option<Vec<String>>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOAuthAppInput {
     pub name: String,
@@ -89,6 +91,8 @@ pub struct UpdateOAuthAppInput {
     pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

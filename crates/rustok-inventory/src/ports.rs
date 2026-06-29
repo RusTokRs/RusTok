@@ -81,7 +81,12 @@ impl InventoryReservationPort for crate::InventoryService {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let result = self
-            .check_variant_availability(tenant_id, request.variant_id, request.requested_quantity)
+            .check_variant_availability_for_channel(
+                tenant_id,
+                request.variant_id,
+                request.requested_quantity,
+                request.channel_slug.as_deref(),
+            )
             .await
             .map_err(inventory_error_to_port_error)?;
 
@@ -97,7 +102,7 @@ impl InventoryReservationPort for crate::InventoryService {
         context: PortContext,
         request: InventoryReservationRequest,
     ) -> Result<InventoryReservationSnapshot, PortError> {
-        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let result = self
             .reserve(tenant_id, request.variant_id, request.quantity)
@@ -117,7 +122,7 @@ impl InventoryReservationPort for crate::InventoryService {
         context: PortContext,
         request: InventoryReservationReleaseRequest,
     ) -> Result<InventoryReservationReleaseSnapshot, PortError> {
-        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let result = self
             .release_reservation_quantity(tenant_id, request.variant_id, request.quantity)

@@ -3,6 +3,10 @@ use rustok_core::permissions::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod entities {
+    pub use rustok_commerce_foundation::entities::{price, price_list, price_list_translation};
+}
+
 pub mod migrations;
 pub mod ports;
 pub mod services;

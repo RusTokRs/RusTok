@@ -1,9 +1,11 @@
 use async_graphql::{EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_commerce::dto::{CreateCustomerInput, CreateOrderInput, CreateOrderLineItemInput};
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
-use rustok_commerce::{CustomerService, OrderService};
+use rustok_customer::dto::CreateCustomerInput;
+use rustok_customer::CustomerService;
+use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::OrderService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::Value;
@@ -195,8 +197,8 @@ async fn create_customer_order(
     user_id: Uuid,
     email: &str,
 ) -> (
-    rustok_commerce::dto::CustomerResponse,
-    rustok_commerce::dto::OrderResponse,
+    rustok_customer::dto::CustomerResponse,
+    rustok_order::dto::OrderResponse,
 ) {
     let customer = CustomerService::new(db.clone())
         .create_customer(

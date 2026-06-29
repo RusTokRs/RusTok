@@ -3,38 +3,40 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use rustok_api::PortErrorKind;
 use rustok_cart::error::CartError;
+use rustok_cart::CartService;
 use rustok_core::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,
 };
-use rustok_inventory::check_variant_availability_for_public_channel;
+use rustok_inventory::{check_variant_availability_for_public_channel, InventoryReservationPort};
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
+use rustok_payment::PaymentService;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
 };
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
     CreateFulfillmentInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreateOrderTaxLineInput, CreatePaymentCollectionInput, ResolveStoreContextInput,
 };
-use crate::entities::{product, product_variant};
 use crate::storefront_channel::{
     is_metadata_visible_for_public_channel, normalize_public_channel_slug,
 };
 use crate::storefront_shipping::{
     is_shipping_option_compatible_with_profiles, load_current_shipping_profile_slug_for_line_item,
 };
-use crate::{
-    CartService, FulfillmentService, OrderService, PaymentService, StoreContextService,
-    UpdateCartContextInput,
-};
+use crate::{StoreContextService, UpdateCartContextInput};
+use rustok_fulfillment::FulfillmentService;
+use rustok_order::OrderService;
+use rustok_product::entities::{product, product_variant};
 
 const MANUAL_PROVIDER_ID: &str = "manual";
 
@@ -48,6 +50,14 @@ pub enum CheckoutError {
     CheckoutInProgress(Uuid),
     #[error("cart {0} has no line items")]
     EmptyCart(Uuid),
+    #[error("checkout boundary `{stage}` failed with `{code}` ({kind:?}, retryable={retryable}): {message}")]
+    BoundaryFailure {
+        stage: &'static str,
+        kind: PortErrorKind,
+        code: String,
+        message: String,
+        retryable: bool,
+    },
     #[error("checkout failed at stage `{stage}`: {source}")]
     StageFailure {
         stage: &'static str,
@@ -70,7 +80,12 @@ pub struct CheckoutService {
 }
 
 impl CheckoutService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        region_read_port: Arc<dyn rustok_region::RegionReadPort>,
+        _inventory_reservation_port: Arc<dyn InventoryReservationPort>,
+    ) -> Self {
         Self {
             db: db.clone(),
             cart_service: CartService::new(db.clone()),
@@ -79,7 +94,7 @@ impl CheckoutService {
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
             fulfillment_service: FulfillmentService::new(db.clone()),
             fulfillment_provider_registry: FulfillmentProviderRegistry::with_manual_provider(),
-            context_service: StoreContextService::new(db),
+            context_service: StoreContextService::new(db, region_read_port),
         }
     }
 
@@ -571,7 +586,6 @@ impl CheckoutService {
         cart: &rustok_cart::dto::CartResponse,
     ) -> CheckoutResult<()> {
         let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
-
         for line_item in &cart.line_items {
             let Some(variant_id) = line_item.variant_id else {
                 continue;

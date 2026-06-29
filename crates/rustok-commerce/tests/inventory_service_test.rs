@@ -3,13 +3,14 @@
 // low stock alerts, and availability checks.
 
 use rust_decimal::Decimal;
-use rustok_commerce::dto::{
+use rustok_commerce::CommerceError;
+use rustok_inventory::entities;
+use rustok_inventory::InventoryService;
+use rustok_product::dto::{
     AdjustInventoryInput, CreateProductInput, CreateVariantInput, PriceInput,
     ProductTranslationInput,
 };
-use rustok_commerce::entities;
-use rustok_commerce::services::{CatalogService, InventoryService};
-use rustok_commerce::CommerceError;
+use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use std::str::FromStr;

@@ -20,9 +20,10 @@ use rustok_ai_product::{
 use rustok_api::context::infer_user_role_from_permissions;
 use rustok_api::loco::transactional_event_bus_from_context;
 use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
-use rustok_commerce::{CatalogService, ProductTranslationInput, UpdateProductInput};
 use rustok_mcp::alloy_tools::{alloy_validate_script, AlloyMcpState, ValidateScriptRequest};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
+use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
+use rustok_product::CatalogService;
 use rustok_storage::StorageService;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -915,7 +916,7 @@ struct ProductSourceTranslation {
 }
 
 fn resolve_product_source_translation(
-    product: &rustok_commerce::ProductResponse,
+    product: &rustok_product::dto::ProductResponse,
     source_locale: Option<&str>,
     target_locale: &str,
     input: &AiProductCopyTaskInput,
@@ -1193,7 +1194,7 @@ pub(crate) async fn generate_product_attributes(
     system_prompt: Option<&str>,
     target_locale: &str,
     input: &AiProductAttributesTaskInput,
-    product: &rustok_commerce::ProductResponse,
+    product: &rustok_product::dto::ProductResponse,
 ) -> AiResult<GeneratedProductAttributes> {
     let locale_instruction = concat!(
         "Return valid JSON only with keys: `brand`, `material`, `color`, `size`, `dimensions`, ",
@@ -1267,9 +1268,9 @@ async fn generate_product_copy(
     provider_config: &AiProviderConfig,
     system_prompt: Option<&str>,
     target_locale: &str,
-    product: &rustok_commerce::ProductResponse,
+    product: &rustok_product::dto::ProductResponse,
     source_translation: &ProductSourceTranslation,
-    current_target_translation: Option<&rustok_commerce::ProductTranslationResponse>,
+    current_target_translation: Option<&rustok_product::dto::ProductTranslationResponse>,
     copy_instructions: Option<&str>,
 ) -> AiResult<GeneratedProductCopy> {
     let locale_instruction = concat!(

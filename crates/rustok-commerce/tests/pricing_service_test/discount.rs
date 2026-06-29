@@ -394,7 +394,7 @@ async fn test_apply_percentage_discount_targets_base_row_only() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -410,7 +410,7 @@ async fn test_apply_percentage_discount_targets_base_row_only() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -523,7 +523,7 @@ async fn test_apply_percentage_discount_targets_channel_scoped_base_row_only() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -539,7 +539,7 @@ async fn test_apply_percentage_discount_targets_channel_scoped_base_row_only() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -649,7 +649,7 @@ async fn test_apply_price_list_percentage_discount_targets_override_only() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -665,7 +665,7 @@ async fn test_apply_price_list_percentage_discount_targets_override_only() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -745,7 +745,7 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -761,7 +761,7 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -977,7 +977,7 @@ async fn test_apply_price_list_percentage_discount_rejects_channel_mismatch_with
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -1198,7 +1198,7 @@ async fn test_resolve_variant_price_reports_discount_percent() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -1238,7 +1238,7 @@ async fn test_resolve_variant_price_rounds_fractional_discount_percent() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -1273,7 +1273,7 @@ async fn test_resolve_variant_price_omits_discount_percent_for_non_sale_price() 
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,

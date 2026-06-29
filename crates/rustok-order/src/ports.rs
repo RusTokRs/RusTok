@@ -36,7 +36,7 @@ impl CheckoutCompletionPort for crate::OrderService {
         context: PortContext,
         request: CompleteCheckoutPortRequest,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
-        context.require_write_semantics()?;
+        context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_port_tenant_id(&context)?;
         let actor_id = parse_port_actor_id(&context)?;
         let CompleteCheckoutPortRequest {

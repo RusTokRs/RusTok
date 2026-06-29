@@ -4,6 +4,14 @@ import { fileURLToPath } from 'node:url';
 export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
 const boundaryReadyProviderSpiModules = new Set(['payment', 'fulfillment']);
 
+const expectedEcommerceFbaStatus = ({ module, registry }) => {
+  if (boundaryReadyProviderSpiModules.has(module)) return 'boundary_ready';
+  if (module === 'order' && registry.runtime_evidence?.checkout_completion_owner_path?.status === 'runtime_verified') {
+    return 'boundary_ready';
+  }
+  return 'in_progress';
+};
+
 export class EcommerceFbaRegistryVerificationError extends Error {
   constructor(message) {
     super(message);
@@ -152,7 +160,7 @@ export function verifyEcommerceFbaRegistries({
     if (registry.schema_version !== 1) fail(`${registryPath} schema_version must be 1`);
     if (registry.module !== module) fail(`${registryPath} has module=${registry.module}`);
     if (registry.role !== 'provider') fail(`${module} registry role must be provider`);
-    const expectedFbaStatus = boundaryReadyProviderSpiModules.has(module) ? 'boundary_ready' : 'in_progress';
+    const expectedFbaStatus = expectedEcommerceFbaStatus({ module, registry });
     if (registry.status !== expectedFbaStatus) fail(`${module} registry status must be ${expectedFbaStatus}`);
     if (!Array.isArray(registry.ports) || registry.ports.length === 0) fail(`${module} has no ports`);
     if (!Array.isArray(registry.consumers) || registry.consumers.length === 0) fail(`${module} has no consumers`);

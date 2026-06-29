@@ -1,6 +1,6 @@
 use crate::core::{
-    format_oauth_app_timestamp, oauth_app_type_defaults, prepare_create_oauth_app_input,
-    prepare_update_oauth_app_input,
+    oauth_app_list_item_view, oauth_app_type_defaults, prepare_create_oauth_app_input,
+    prepare_update_oauth_app_input, OAuthAppListItemViewModel,
 };
 use crate::i18n::t;
 use crate::model::{AppType, OAuthApp};
@@ -77,19 +77,22 @@ pub fn OAuthAppsList(
                     </Show>
                     {rows_apps
                         .into_iter()
-                        .map(|app| {
+                        .map(oauth_app_list_item_view)
+                        .map(|item| {
+                            let OAuthAppListItemViewModel {
+                                app,
+                                description,
+                                scopes_summary,
+                                grants_summary,
+                                capability_label,
+                                client_id,
+                                last_used_at,
+                            } = item;
                             let app_for_edit = app.clone();
                             let app_for_rotate = app.clone();
                             let app_for_revoke = app.clone();
-                            let description = app.description.clone().unwrap_or_default();
-                            let has_description = !description.is_empty();
-                            let scopes = app.scopes.join(", ");
-                            let grants = app.grant_types.join(", ");
-                            let capability_label = if app.managed_by_manifest {
-                                "Managed by config/manifest"
-                            } else {
-                                "Manual app"
-                            };
+                            let has_description = description.is_some();
+                            let description = description.unwrap_or_default();
 
                             view! {
                                 <tr class="transition-colors hover:bg-muted/40">
@@ -111,21 +114,21 @@ pub fn OAuthAppsList(
                                     <td class="px-4 py-3 align-top text-xs text-slate-600">
                                         <div>
                                             <span class="font-medium text-slate-900">"Scopes: "</span>
-                                            {if scopes.is_empty() { "None".to_string() } else { scopes }}
+                                            {scopes_summary.clone()}
                                         </div>
                                         <div class="mt-1">
                                             <span class="font-medium text-slate-900">"Grants: "</span>
-                                            {if grants.is_empty() { "None".to_string() } else { grants }}
+                                            {grants_summary.clone()}
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 align-top font-mono text-xs text-slate-500">
-                                        {app.client_id.to_string()}
+                                        {client_id}
                                     </td>
                                     <td class="px-4 py-3 align-top text-slate-500">
                                         {app.active_token_count}
                                     </td>
                                     <td class="px-4 py-3 align-top text-xs text-slate-500">
-                                        {format_oauth_app_timestamp(app.last_used_at)}
+                                        {last_used_at}
                                     </td>
                                     <td class="px-4 py-3 align-top">
                                         <div class="flex justify-end gap-2">

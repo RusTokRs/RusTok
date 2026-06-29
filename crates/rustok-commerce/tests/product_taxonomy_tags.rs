@@ -1,10 +1,9 @@
 use rust_decimal::Decimal;
-use rustok_commerce::dto::{
+use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
-use rustok_commerce::entities::product;
-use rustok_commerce::services::CatalogService;
-use rustok_product::entities::product_tag;
+use rustok_product::entities::{product, product_tag};
+use rustok_product::CatalogService;
 use rustok_taxonomy::{
     entities::taxonomy_term, CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService,
     TaxonomyTermKind,

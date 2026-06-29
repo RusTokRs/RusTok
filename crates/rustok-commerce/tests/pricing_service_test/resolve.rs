@@ -36,7 +36,7 @@ async fn test_resolve_variant_price_prefers_exact_region_over_global() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "usd".to_string(),
                 region_id: Some(region_id),
                 price_list_id: None,
@@ -108,7 +108,7 @@ async fn test_resolve_variant_price_prefers_more_specific_quantity_tier() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -180,7 +180,7 @@ async fn test_resolve_variant_price_prefers_narrower_max_quantity_when_min_quant
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -214,7 +214,7 @@ async fn test_resolve_variant_price_falls_back_to_global_price_without_region_sp
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: Some(Uuid::new_v4()),
                 price_list_id: None,
@@ -262,7 +262,7 @@ async fn test_resolve_variant_price_matches_channel_slug_without_channel_id() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -313,7 +313,7 @@ async fn test_resolve_variant_price_prefers_channel_scoped_base_price() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -364,7 +364,7 @@ async fn test_resolve_variant_price_does_not_leak_channel_scoped_price() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -418,7 +418,7 @@ async fn test_resolve_variant_price_prefers_active_price_list_over_base_price() 
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -457,7 +457,7 @@ async fn test_resolve_variant_price_applies_active_price_list_rule_without_overr
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -523,7 +523,7 @@ async fn test_resolve_variant_price_rule_uses_channel_quantity_tier_and_rounds()
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -582,7 +582,7 @@ async fn test_resolve_variant_price_prefers_explicit_override_over_price_list_ru
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -625,7 +625,7 @@ async fn test_resolve_variant_price_falls_back_to_base_after_clearing_price_list
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -656,7 +656,7 @@ async fn test_resolve_variant_price_rejects_inactive_price_list_context() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -694,7 +694,7 @@ async fn test_resolve_variant_price_rejects_price_list_not_active_yet() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -732,7 +732,7 @@ async fn test_resolve_variant_price_rejects_expired_price_list_context() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -779,7 +779,7 @@ async fn test_resolve_variant_price_rejects_price_list_outside_requested_channel
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: Some(price_list_id),
@@ -815,7 +815,7 @@ async fn test_resolve_variant_price_rejects_non_positive_quantity() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,
@@ -851,7 +851,7 @@ async fn test_resolve_variant_price_rejects_non_letter_currency_code() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "US1".to_string(),
                 region_id: None,
                 price_list_id: None,

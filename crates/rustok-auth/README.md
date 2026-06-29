@@ -10,6 +10,7 @@ refresh-token helpers, invite-token helpers, auth config assembly/validation, an
 - Provide `AuthModule` metadata for the runtime registry.
 - Expose auth primitives used by `apps/server` transport adapters and lifecycle services.
 - Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
+- Own typed `UserAdminMutationPort` and `OAuthAdminMutationPort` boundaries used by GraphQL and native admin mutation adapters.
 
 ## Interactions
 
@@ -24,6 +25,12 @@ refresh-token helpers, invite-token helpers, auth config assembly/validation, an
 
 - `AuthModule`
 - `AUTH_USER_PERMISSIONS`
+- `UserAdminMutationPort`
+- `UserAdminMutationRuntime`
+- `OAuthAdminMutationPort`
+- `OAuthAdminMutationRuntime`
+- `AuthAdminMutationContext`
+- `AuthAdminMutationError`
 - `AuthConfig`
 - `build_auth_config`
 - `build_auth_config_with_env`

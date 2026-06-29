@@ -30,7 +30,10 @@ use crate::dto::{
     CreateRefundInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput, RefundResponse,
     ShipFulfillmentInput, UpdateShippingOptionInput,
 };
-use crate::{FulfillmentService, OrderService, PaymentService, ShippingProfileService};
+use crate::ShippingProfileService;
+use rustok_fulfillment::FulfillmentService;
+use rustok_order::OrderService;
+use rustok_payment::PaymentService;
 
 mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));

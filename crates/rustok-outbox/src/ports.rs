@@ -49,10 +49,11 @@ impl OutboxRelayPort for crate::OutboxRelay {
     async fn process_pending_once(
         &self,
         context: PortContext,
-        _request: OutboxRelayRunOnceRequest,
+        request: OutboxRelayRunOnceRequest,
     ) -> Result<OutboxRelayRunOnceProjection, PortError> {
         require_outbox_relay_policy(&context)?;
-        let claimed_count = crate::OutboxRelay::process_pending_once(self)
+        let claimed_count = self
+            .process_pending_once(request.max_batch_hint)
             .await
             .map_err(map_outbox_error)?;
         let metrics = self.metrics();
@@ -68,5 +69,10 @@ impl OutboxRelayPort for crate::OutboxRelay {
 }
 
 fn map_outbox_error(error: rustok_core::Error) -> PortError {
-    PortError::unavailable("outbox.relay_failed", error.to_string())
+    match error {
+        rustok_core::Error::Validation(message) => {
+            PortError::validation("outbox.max_batch_hint_invalid", message)
+        }
+        other => PortError::unavailable("outbox.relay_failed", other.to_string()),
+    }
 }

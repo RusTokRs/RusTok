@@ -4,7 +4,8 @@ use leptos_auth::hooks::{use_auth, use_tenant, use_token};
 use leptos_hook_form::FormState;
 use rustok_api::UiRouteContext;
 
-use crate::i18n::t;
+use crate::core::{prepare_change_password_request, ChangePasswordInputError};
+use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::change_password;
 use crate::ui::components::{Button, Input, PageHeader};
 
@@ -26,36 +27,38 @@ pub fn Security() -> impl IntoView {
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_change_password = Callback::new(move |_| {
-        if current_password.get().is_empty() || new_password.get().is_empty() {
-            set_form_state.set(FormState::with_form_error(t_local(
-                "security.passwordRequired",
-                "Enter current and new passwords.",
-            )));
-            return;
-        }
-
-        let token_value = token.get();
-        let tenant_value = tenant.get();
-        if token_value.is_none() {
-            set_form_state.set(FormState::with_form_error(t_local(
-                "errors.auth.unauthorized",
-                "You are not authorized to perform this action.",
-            )));
-            return;
-        }
-
-        let current_password_value = current_password.get();
-        let new_password_value = new_password.get();
+        let request = match prepare_change_password_request(
+            token.get(),
+            tenant.get(),
+            current_password.get(),
+            new_password.get(),
+        ) {
+            Ok(request) => request,
+            Err(ChangePasswordInputError::MissingPasswords) => {
+                set_form_state.set(FormState::with_form_error(t_local(
+                    "security.passwordRequired",
+                    "Enter current and new passwords.",
+                )));
+                return;
+            }
+            Err(ChangePasswordInputError::Unauthorized) => {
+                set_form_state.set(FormState::with_form_error(t_local(
+                    "errors.auth.unauthorized",
+                    "You are not authorized to perform this action.",
+                )));
+                return;
+            }
+        };
 
         set_form_state.set(FormState::submitting());
         set_success_message.set(None);
 
         spawn_local(async move {
             let result = change_password(
-                token_value.clone().unwrap_or_default(),
-                tenant_value.clone().unwrap_or_default(),
-                current_password_value,
-                new_password_value,
+                request.token,
+                request.tenant,
+                request.current_password,
+                request.new_password,
             )
             .await;
 
@@ -70,18 +73,9 @@ pub fn Security() -> impl IntoView {
                     set_new_password.set(String::new());
                 }
                 Err(err_str) => {
-                    let message = if err_str.contains("Unauthorized") {
-                        t_local(
-                            "errors.auth.unauthorized",
-                            "You are not authorized to perform this action.",
-                        )
-                    } else if err_str.contains("HTTP") {
-                        t_local("errors.http", "Server error. Please try again.")
-                    } else if err_str.contains("Network") {
-                        t_local("errors.network", "Network error. Check your connection.")
-                    } else {
-                        t_local("errors.unknown", "Something went wrong. Please try again.")
-                    };
+                    let message = locale_stored.with_value(|locale| {
+                        auth_transport_error_message(locale.as_deref(), &err_str)
+                    });
                     set_form_state.set(FormState::with_form_error(message));
                     set_success_message.set(None);
                 }

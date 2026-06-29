@@ -7,13 +7,12 @@ use loco_rs::{app::AppContext, Error, Result};
 use rustok_api::{
     loco::transactional_event_bus_from_context, OptionalAuthContext, RequestContext, TenantContext,
 };
+use rustok_cart::CartService;
+use rustok_payment::PaymentService;
 use uuid::Uuid;
 
 use super::{StoreCartContextPatch, StoreCompleteCartInput, StoreCreatePaymentCollectionInput};
-use crate::{
-    dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollectionResponse},
-    CartService, PaymentService,
-};
+use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollectionResponse};
 
 /// Create payment collection from storefront cart
 #[utoipa::path(
@@ -155,8 +154,16 @@ pub async fn complete_cart_checkout(
     )
     .await?;
 
-    let service =
-        crate::CheckoutService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let event_bus = transactional_event_bus_from_context(&ctx);
+    let service = crate::CheckoutService::new(
+        ctx.db.clone(),
+        event_bus.clone(),
+        std::sync::Arc::new(rustok_region::RegionService::new(ctx.db.clone())),
+        std::sync::Arc::new(rustok_inventory::InventoryService::new(
+            ctx.db.clone(),
+            event_bus,
+        )),
+    );
     let response = service
         .complete_checkout(
             tenant.id,

@@ -19,6 +19,22 @@
     "tenantLabel": "Tenant Slug",
     "title": "Sign in to admin"
   },
+  "authAdmin": {
+    "title": "Identity & Access Control Panel",
+    "subtitle": "Configure authentication policies, inspect active sessions, manage organization members, and register trusted OAuth client integrations.",
+    "usersTitle": "User Accounts",
+    "usersDescription": "Manage member rosters, configure security roles, activate or suspend credentials, and inspect profiles.",
+    "usersAction": "Open Workspace ->",
+    "oauthTitle": "OAuth Connections",
+    "oauthDescription": "Register custom client integrations, manage callback endpoints, customize scopes, and rotate client secrets.",
+    "oauthAction": "Open Connections ->",
+    "profileTitle": "Profile Settings",
+    "profileDescription": "Configure your personal administrator profile, set name and details, and choose interface language preferences.",
+    "profileAction": "Open Profile ->",
+    "securityTitle": "Security & Sessions",
+    "securityDescription": "Change password, review recent login activity logs, trace IP locations, and force logout active sessions.",
+    "securityAction": "Open Security ->"
+  },
   "errors": {
     "auth": {
       "invalid_credentials": "Invalid email or password.",

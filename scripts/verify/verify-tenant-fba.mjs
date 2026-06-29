@@ -21,7 +21,7 @@ const serverTenantMiddleware = read('apps/server/src/middleware/tenant.rs');
 const serverInstallerCli = read('apps/server/src/installer_cli.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'tenant' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'tenant' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
 if (registry.contract_version !== 'tenant.read_projection.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'TenantReadPort') fail('TenantReadPort missing');
@@ -36,19 +36,19 @@ for (const marker of ['trait TenantReadPort', 'impl TenantReadPort for crate::Te
 }
 if (ports.includes('require_write_semantics()?')) fail('tenant read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('tenant FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('TenantReadPort') || !plan.includes('tenant-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `tenant` |') || !central.includes(registryPath) || !central.includes('`in_progress` | `in_progress`')) fail('central readiness board drift');
-if (evidence.schema_version !== 1 || evidence.module !== 'tenant' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
+if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('TenantReadPort') || !plan.includes('tenant-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `tenant` |') || !central.includes(registryPath) || !central.includes('| `tenant` | admin | `in_progress` | `boundary_ready`')) fail('central readiness board drift');
+if (evidence.schema_version !== 1 || evidence.module !== 'tenant' || evidence.status !== 'runtime_verified') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-tenant-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
 const registryCase = registry.contract_tests.cases.find((entry) => entry.operation === 'read_tenant');
 const evidenceCase = evidence.cases.find((entry) => entry.operation === 'read_tenant');
-if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'runtime_cases_authored_uncompiled' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('read_tenant evidence case drift');
-if (evidence.fallback_smoke.status !== 'runtime_smoke_authored_uncompiled') fail('fallback smoke status drift');
+if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'runtime_verified' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('read_tenant evidence case drift');
+if (evidence.fallback_smoke.status !== 'runtime_verified') fail('fallback smoke status drift');
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-if (evidence.host_integration?.status !== 'source_locked_uncompiled' || evidence.host_integration?.source !== 'apps/server/src/middleware/tenant.rs') fail('host integration evidence drift');
+if (evidence.host_integration?.status !== 'runtime_verified' || evidence.host_integration?.source !== 'apps/server/src/middleware/tenant.rs') fail('host integration evidence drift');
 if (!registry.consumers?.some((entry) => entry.module === 'server-installer' && entry.profile === 'installer_provisioning_read_projection_by_slug')) fail('installer provisioning consumer metadata missing');
-if (evidence.installer_integration?.status !== 'source_locked_uncompiled' || evidence.installer_integration?.source !== 'apps/server/src/installer_cli.rs') fail('installer integration evidence drift');
+if (evidence.installer_integration?.status !== 'runtime_verified' || evidence.installer_integration?.source !== 'apps/server/src/installer_cli.rs') fail('installer integration evidence drift');
 for (const marker of ['TenantReadPort', 'TenantService::new(ctx.db.clone())', 'tenant_read_request(&identifier)', 'tenant_read_context(&identifier)', '.read_tenant(tenant_port_context, tenant_request)', 'TenantReadSelector::Id', 'TenantReadSelector::Slug', 'TenantReadSelector::Domain', 'include_inactive: true', 'tenant_context_from_projection', 'CachedTenantMiss::Disabled', 'set_negative(negative_key_clone.clone(), CachedTenantMiss::Disabled)', 'set_negative(negative_key_clone.clone(), CachedTenantMiss::NotFound)', 'get_or_load_with_coalescing']) {
   if (!serverTenantMiddleware.includes(marker)) fail(`server tenant middleware missing ${marker}`);
 }

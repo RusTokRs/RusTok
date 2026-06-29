@@ -1,21 +1,30 @@
 use async_graphql::{EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_cart::dto::SetCartAdjustmentInput;
-use rustok_commerce::dto::{
-    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateCustomerInput,
-    CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
-    CreatePaymentCollectionInput, CreateProductInput, CreateShippingOptionInput,
-    CreateVariantInput, DeliverFulfillmentInput, PriceInput, ProductTranslationInput,
-    ShipFulfillmentInput, ShippingOptionTranslationInput, ShippingProfileTranslationInput,
-};
+use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput, SetCartAdjustmentInput};
+use rustok_cart::CartService;
+use rustok_commerce::dto::{CompleteCheckoutInput, ShippingProfileTranslationInput};
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
-use rustok_commerce::{
-    CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
-    OrderService, PaymentService, PricingService, ShippingProfileService,
-};
+use rustok_commerce::{CheckoutService, ShippingProfileService};
 use rustok_core::Permission;
-use rustok_payment::dto::{AuthorizePaymentInput, CapturePaymentInput, CreateRefundInput};
+use rustok_customer::dto::CreateCustomerInput;
+use rustok_customer::CustomerService;
+use rustok_fulfillment::dto::{
+    CreateFulfillmentInput, CreateShippingOptionInput, DeliverFulfillmentInput,
+    ShipFulfillmentInput, ShippingOptionTranslationInput,
+};
+use rustok_fulfillment::FulfillmentService;
+use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::OrderService;
+use rustok_payment::dto::{
+    AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput, CreateRefundInput,
+};
+use rustok_payment::PaymentService;
+use rustok_pricing::PricingService;
+use rustok_product::dto::{
+    CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
+};
+use rustok_product::CatalogService;
 use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
@@ -66,7 +75,15 @@ async fn setup_checkout() -> (
         db.clone(),
         CatalogService::new(db.clone(), event_bus.clone()),
         CartService::new(db.clone()),
-        CheckoutService::new(db.clone(), event_bus),
+        CheckoutService::new(
+            db.clone(),
+            event_bus.clone(),
+            std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+            std::sync::Arc::new(rustok_inventory::InventoryService::new(
+                db.clone(),
+                event_bus,
+            )),
+        ),
         FulfillmentService::new(db),
     )
 }

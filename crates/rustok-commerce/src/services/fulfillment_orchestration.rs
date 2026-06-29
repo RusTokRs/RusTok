@@ -4,12 +4,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
 
+use rustok_fulfillment::FulfillmentService;
+
 use crate::{
     dto::{CreateFulfillmentInput, FulfillmentResponse, ShippingOptionResponse},
     storefront_shipping::{
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    FulfillmentService,
 };
 
 #[derive(Debug, Error)]

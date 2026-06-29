@@ -2,7 +2,9 @@ use async_graphql::{Context, Object, Result};
 use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
 use uuid::Uuid;
 
-use crate::{CartService, PricingService, StoreContextService};
+use crate::StoreContextService;
+use rustok_cart::CartService;
+use rustok_pricing::PricingService;
 
 use super::super::{types::*, MODULE_SLUG};
 use super::helpers::*;
@@ -28,20 +30,23 @@ impl CommerceCartMutation {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let context = StoreContextService::new(db.clone())
-            .resolve_context(
-                tenant_id,
-                crate::dto::ResolveStoreContextInput {
-                    region_id: input.region_id,
-                    country_code: input.country_code.clone(),
-                    locale: input
-                        .locale
-                        .clone()
-                        .or_else(|| Some(request_context.locale.clone())),
-                    currency_code: input.currency_code.clone(),
-                },
-            )
-            .await?;
+        let context = StoreContextService::new(
+            db.clone(),
+            std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+        )
+        .resolve_context(
+            tenant_id,
+            crate::dto::ResolveStoreContextInput {
+                region_id: input.region_id,
+                country_code: input.country_code.clone(),
+                locale: input
+                    .locale
+                    .clone()
+                    .or_else(|| Some(request_context.locale.clone())),
+                currency_code: input.currency_code.clone(),
+            },
+        )
+        .await?;
         let currency_code = context
             .currency_code
             .clone()
@@ -106,6 +111,8 @@ impl CommerceCartMutation {
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+        let inventory_service =
+            rustok_inventory::InventoryService::new(db.clone(), event_bus.clone());
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
         let pricing_context = build_storefront_pricing_context(
             &cart,
@@ -116,6 +123,7 @@ impl CommerceCartMutation {
         let resolved_input = resolve_storefront_line_item_input(
             db,
             tenant_id,
+            &inventory_service,
             &pricing_service,
             &pricing_context,
             &cart.currency_code,
@@ -200,17 +208,20 @@ impl CommerceCartMutation {
             async_graphql::MaybeUndefined::Undefined => None,
         };
 
-        let context = StoreContextService::new(db.clone())
-            .resolve_context(
-                tenant_id,
-                crate::dto::ResolveStoreContextInput {
-                    region_id: requested_region_id,
-                    country_code: requested_country_code.clone(),
-                    locale: requested_locale,
-                    currency_code: Some(cart.currency_code.clone()),
-                },
-            )
-            .await?;
+        let context = StoreContextService::new(
+            db.clone(),
+            std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
+        )
+        .resolve_context(
+            tenant_id,
+            crate::dto::ResolveStoreContextInput {
+                region_id: requested_region_id,
+                country_code: requested_country_code.clone(),
+                locale: requested_locale,
+                currency_code: Some(cart.currency_code.clone()),
+            },
+        )
+        .await?;
         validate_selected_shipping_option(
             db,
             tenant_id,
@@ -286,15 +297,22 @@ impl CommerceCartMutation {
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let inventory_service =
+            rustok_inventory::InventoryService::new(db.clone(), event_bus.clone());
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
         if let Some(existing_line_item) = cart.line_items.iter().find(|item| item.id == line_id) {
             if let Some(variant_id) = existing_line_item.variant_id {
                 validate_storefront_line_item_quantity(
+                    &inventory_service,
                     db,
                     tenant_id,
                     variant_id,
                     input.quantity,
                     public_channel_slug.as_deref(),
+                    cart.locale_code
+                        .as_deref()
+                        .unwrap_or(request_context.locale.as_str()),
                 )
                 .await?;
             }
@@ -305,7 +323,6 @@ impl CommerceCartMutation {
             .find(|item| item.id == line_id)
             .and_then(|item| item.variant_id)
         {
-            let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
             let pricing_service = PricingService::new(db.clone(), event_bus.clone());
             let pricing_context = build_storefront_pricing_context(
                 &cart,

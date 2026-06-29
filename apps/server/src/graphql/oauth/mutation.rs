@@ -1,14 +1,18 @@
 //! GraphQL mutations for OAuth App management
 
 use async_graphql::{Context, FieldError, Object, Result};
+use rustok_auth::{
+    AuthAdminMutationContext, AuthAdminMutationError, CreateOAuthAppCommand,
+    OAuthAdminMutationRuntime, UpdateOAuthAppCommand,
+};
+use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::{DatabaseConnection, EntityTrait};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
-use crate::services::oauth_app::{self, OAuthAppService};
-
-use super::ensure_oauth_admin;
+use crate::services::oauth_app::OAuthAppService;
 
 use super::types::{
     CreateOAuthAppInput, CreateOAuthAppResultGql, OAuthAppGql, RotateSecretResultGql,
@@ -23,6 +27,53 @@ fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
 }
 
+fn mutation_runtime(ctx: &Context<'_>) -> Result<OAuthAdminMutationRuntime> {
+    ctx.data::<Arc<ModuleRuntimeExtensions>>()?
+        .get::<OAuthAdminMutationRuntime>()
+        .cloned()
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::internal_error(
+                "OAuthAdminMutationRuntime is not registered; initialize shared host runtime providers",
+            )
+            .into()
+        })
+}
+
+fn mutation_context(auth: &AuthContext) -> AuthAdminMutationContext {
+    AuthAdminMutationContext {
+        actor_id: auth.user_id,
+        tenant_id: auth.tenant_id,
+        request_id: None,
+    }
+}
+
+fn map_mutation_error(error: AuthAdminMutationError) -> FieldError {
+    match error {
+        AuthAdminMutationError::Unauthorized => <FieldError as GraphQLError>::unauthenticated(),
+        AuthAdminMutationError::Forbidden(message) => {
+            <FieldError as GraphQLError>::permission_denied(&message)
+        }
+        AuthAdminMutationError::Validation(message) | AuthAdminMutationError::Conflict(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        AuthAdminMutationError::NotFound(message) => {
+            <FieldError as GraphQLError>::not_found(&message)
+        }
+        AuthAdminMutationError::Internal(message) => {
+            <FieldError as GraphQLError>::internal_error(&message)
+        }
+    }
+}
+
+async fn load_oauth_app(db: &DatabaseConnection, id: Uuid) -> Result<OAuthAppGql> {
+    crate::models::oauth_apps::Entity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?
+        .map(OAuthAppGql)
+        .ok_or_else(|| <FieldError as GraphQLError>::not_found("OAuth app not found").into())
+}
+
 #[Object]
 impl OAuthMutation {
     /// Create a new OAuth app (admin only).
@@ -35,26 +86,28 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        ensure_oauth_admin(auth, db).await?;
-
-        let service_input = oauth_app::CreateOAuthAppInput {
-            name: input.name,
-            slug: input.slug,
-            description: input.description,
-            app_type: input.app_type.as_str().to_string(),
-            icon_url: input.icon_url,
-            redirect_uris: input.redirect_uris.unwrap_or_default(),
-            scopes: input.scopes,
-            grant_types: input.grant_types,
-            granted_permissions: input.granted_permissions,
-        };
-
-        let result = OAuthAppService::create_app(db, auth.tenant_id, service_input)
+        let runtime = mutation_runtime(ctx)?;
+        let result = runtime
+            .port()
+            .create_oauth_app(
+                &mutation_context(auth),
+                CreateOAuthAppCommand {
+                    name: input.name,
+                    slug: input.slug,
+                    description: input.description,
+                    app_type: input.app_type.as_str().to_string(),
+                    icon_url: input.icon_url,
+                    redirect_uris: input.redirect_uris.unwrap_or_default(),
+                    scopes: input.scopes,
+                    grant_types: input.grant_types,
+                    granted_permissions: input.granted_permissions,
+                },
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Failed to create app: {e}")))?;
+            .map_err(map_mutation_error)?;
 
         Ok(CreateOAuthAppResultGql {
-            app: OAuthAppGql(result.app),
+            app: load_oauth_app(db, result.app.id).await?,
             client_secret: result.client_secret,
         })
     }
@@ -69,36 +122,26 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        ensure_oauth_admin(auth, db).await?;
-
-        let app = crate::models::oauth_apps::Entity::find_by_id(id)
-            .one(db)
+        let runtime = mutation_runtime(ctx)?;
+        let updated = runtime
+            .port()
+            .update_oauth_app(
+                &mutation_context(auth),
+                UpdateOAuthAppCommand {
+                    id,
+                    name: input.name,
+                    description: input.description,
+                    icon_url: input.icon_url,
+                    redirect_uris: input.redirect_uris,
+                    scopes: input.scopes,
+                    grant_types: input.grant_types,
+                    granted_permissions: input.granted_permissions,
+                },
+            )
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {e}")))?
-            .ok_or_else(|| async_graphql::Error::new("App not found"))?;
+            .map_err(map_mutation_error)?;
 
-        if app.tenant_id != auth.tenant_id {
-            return Err("App not found".into());
-        }
-
-        let updated = OAuthAppService::update_app(
-            db,
-            auth.tenant_id,
-            id,
-            oauth_app::UpdateOAuthAppInput {
-                name: input.name,
-                description: input.description,
-                icon_url: input.icon_url,
-                redirect_uris: input.redirect_uris,
-                scopes: input.scopes,
-                grant_types: input.grant_types,
-                granted_permissions: input.granted_permissions,
-            },
-        )
-        .await
-        .map_err(|e| async_graphql::Error::new(format!("Failed to update app: {e}")))?;
-
-        Ok(OAuthAppGql(updated))
+        load_oauth_app(db, updated.id).await
     }
 
     /// Rotate client_secret for an OAuth app (admin only).
@@ -111,25 +154,15 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        ensure_oauth_admin(auth, db).await?;
-
-        // Verify tenant ownership
-        let app = crate::models::oauth_apps::Entity::find_by_id(id)
-            .one(db)
+        let runtime = mutation_runtime(ctx)?;
+        let result = runtime
+            .port()
+            .rotate_oauth_app_secret(&mutation_context(auth), id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {e}")))?
-            .ok_or_else(|| async_graphql::Error::new("App not found"))?;
-
-        if app.tenant_id != auth.tenant_id {
-            return Err("App not found".into());
-        }
-
-        let result = OAuthAppService::rotate_secret(db, id)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Failed to rotate secret: {e}")))?;
+            .map_err(map_mutation_error)?;
 
         Ok(RotateSecretResultGql {
-            app: OAuthAppGql(result.app),
+            app: load_oauth_app(db, result.app.id).await?,
             client_secret: result.client_secret,
         })
     }
@@ -139,24 +172,14 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        ensure_oauth_admin(auth, db).await?;
-
-        // Verify tenant ownership
-        let app = crate::models::oauth_apps::Entity::find_by_id(id)
-            .one(db)
+        let runtime = mutation_runtime(ctx)?;
+        let revoked = runtime
+            .port()
+            .revoke_oauth_app(&mutation_context(auth), id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {e}")))?
-            .ok_or_else(|| async_graphql::Error::new("App not found"))?;
+            .map_err(map_mutation_error)?;
 
-        if app.tenant_id != auth.tenant_id {
-            return Err("App not found".into());
-        }
-
-        let revoked = OAuthAppService::revoke_app(db, id)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Failed to revoke app: {e}")))?;
-
-        Ok(OAuthAppGql(revoked))
+        load_oauth_app(db, revoked.id).await
     }
 
     /// Grant consent to an application

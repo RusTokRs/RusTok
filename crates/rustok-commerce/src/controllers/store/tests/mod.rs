@@ -22,7 +22,7 @@ pub use rustok_api::{AuthContextExtension, ChannelContextExtension, TenantContex
 use rustok_cart::dto::SetCartAdjustmentInput;
 use rustok_core::events::EventTransport;
 use rustok_core::Permission;
-use rustok_pricing::PriceResolutionContext;
+use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_region::dto::{CreateRegionInput, RegionResponse, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::db::setup_test_db;
@@ -40,8 +40,11 @@ use crate::dto::{
     CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
     ShippingOptionTranslationInput, StoreContextResponse,
 };
-use crate::{CartService, CatalogService, CustomerService, FulfillmentService, PricingService};
+use rustok_cart::CartService;
 use rustok_customer::dto::CreateCustomerInput;
+use rustok_customer::CustomerService;
+use rustok_fulfillment::FulfillmentService;
+use rustok_product::CatalogService;
 
 mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support.rs"));

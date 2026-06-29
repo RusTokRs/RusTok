@@ -8,10 +8,10 @@ use leptos_use::use_debounce_fn;
 use rustok_api::UiRouteContext;
 
 use crate::core::{
-    prepare_create_user_input, user_list_page, user_list_query_params, CreateUserInputError,
+    graphql_user_view, prepare_create_user_input, user_list_page, user_list_pagination,
+    user_list_previous_page, user_list_query_params, CreateUserInputError,
 };
-use crate::i18n::t;
-use crate::model::GraphqlUser;
+use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::{create_user, fetch_users};
 use crate::ui::components::{Button, Input, PageHeader};
 
@@ -140,7 +140,7 @@ pub fn Users() -> impl IntoView {
     let refresh = Callback::new(move |_| set_refresh_counter.update(|value| *value += 1));
     let next_page = Callback::new(move |_| set_page.update(|value| *value += 1));
     let previous_page =
-        Callback::new(move |_| set_page.update(|value| *value = (*value - 1).max(1)));
+        Callback::new(move |_| set_page.update(|value| *value = user_list_previous_page(*value)));
 
     let (show_create_modal, set_show_create_modal) = signal(false);
     let (new_email, set_new_email) = signal(String::new());
@@ -205,7 +205,9 @@ pub fn Users() -> impl IntoView {
                 }
                 Err(e) => {
                     set_is_creating.set(false);
-                    set_create_error.set(Some(format!("{:?}", e)));
+                    set_create_error.set(Some(locale.with_value(|locale| {
+                        auth_transport_error_message(locale.as_deref(), &e.to_string())
+                    })));
                 }
             }
         });
@@ -294,38 +296,27 @@ pub fn Users() -> impl IntoView {
                                                 edges
                                                     .iter()
                                                     .map(|edge| {
-                                                        let GraphqlUser {
-                                                            id,
-                                                            email,
-                                                            name,
-                                                            role,
-                                                            status,
-                                                            created_at,
-                                                            ..
-                                                        } = edge.node.clone();
-                                                        let id_val = id.clone();
-                                                        let email_val = email.clone();
-                                                        let name_val = name.clone();
-                                                        let role_val = role.clone();
-                                                        let status_val = status.clone();
-                                                        let created_val = created_at.clone();
+                                                        let user = graphql_user_view(
+                                                            edge.node.clone(),
+                                                            t_local("users.placeholderDash", "—"),
+                                                        );
                                                         view! {
                                                             <tr>
                                                                 <td class="border-b border-border py-2">
-                                                                    <A href=format!("/users/{}", id_val)>
+                                                                    <A href=user.detail_href>
                                                                         <span class="text-primary hover:underline">
-                                                                            {email_val}
+                                                                            {user.email}
                                                                         </span>
                                                                     </A>
                                                                 </td>
                                                                 <td class="border-b border-border py-2 text-foreground">
-                                                                    {name_val.unwrap_or_else(|| t_local("users.placeholderDash", "—"))}
+                                                                    {user.name}
                                                                 </td>
-                                                                <td class="border-b border-border py-2 text-foreground">{role_val}</td>
+                                                                <td class="border-b border-border py-2 text-foreground">{user.role}</td>
                                                                 <td class="border-b border-border py-2">
-                                                                    <Badge variant=if status_val.eq_ignore_ascii_case("active") { BadgeVariant::Success } else { BadgeVariant::Default }>{status_val}</Badge>
+                                                                    <Badge variant=if user.is_active { BadgeVariant::Success } else { BadgeVariant::Default }>{user.status}</Badge>
                                                                 </td>
-                                                                <td class="border-b border-border py-2 text-foreground">{created_val}</td>
+                                                                <td class="border-b border-border py-2 text-foreground">{user.created_at}</td>
                                                             </tr>
                                                         }
                                                     })
@@ -338,7 +329,9 @@ pub fn Users() -> impl IntoView {
                                     <Button
                                         on_click=previous_page
                                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
-                                        disabled=Signal::derive(move || page.get() <= 1)
+                                        disabled=Signal::derive(move || {
+                                            !user_list_pagination(page.get(), limit.get(), total_count).can_previous
+                                        })
                                     >
                                         {t_local("users.pagination.prev", "Previous")}
                                     </Button>
@@ -349,8 +342,7 @@ pub fn Users() -> impl IntoView {
                                         on_click=next_page
                                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                         disabled=Signal::derive(move || {
-                                            let total = total_count;
-                                            page.get() * limit.get() >= total
+                                            !user_list_pagination(page.get(), limit.get(), total_count).can_next
                                         })
                                     >
                                         {t_local("users.pagination.next", "Next")}

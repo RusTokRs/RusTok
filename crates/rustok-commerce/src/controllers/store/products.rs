@@ -4,8 +4,16 @@ use axum::{
 };
 use loco_rs::{app::AppContext, Error, Result};
 use rustok_api::{
-    loco::transactional_event_bus_from_context, OptionalAuthContext, RequestContext, TenantContext,
+    loco::transactional_event_bus_from_context, OptionalAuthContext, PortActor, PortContext,
+    RequestContext, TenantContext,
 };
+use rustok_cart::CartService;
+use rustok_fulfillment::FulfillmentService;
+use rustok_product::{
+    entities::{product, product_translation},
+    CatalogService,
+};
+use rustok_region::{RegionListRequest, RegionReadPort};
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
@@ -16,7 +24,6 @@ use super::{
 use crate::controllers::products::ProductListItem;
 use crate::{
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
-    entities::{product, product_translation},
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
         public_channel_slug_from_request,
@@ -25,7 +32,6 @@ use crate::{
         is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
         shipping_profile_slug_from_product_metadata,
     },
-    CartService, CatalogService, FulfillmentService, RegionService,
 };
 
 /// List published storefront products
@@ -234,16 +240,29 @@ pub async fn list_regions(
 ) -> Result<Json<Vec<RegionResponse>>> {
     super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
 
-    let service = RegionService::new(ctx.db.clone());
+    let service = rustok_region::RegionService::new(ctx.db.clone());
     let regions = service
-        .list_regions(
-            tenant.id,
-            Some(request_context.locale.as_str()),
-            Some(tenant.default_locale.as_str()),
+        .list_regions_for_tenant(
+            PortContext::new(
+                tenant.id.to_string(),
+                PortActor::service("commerce.store-regions"),
+                request_context.locale.as_str(),
+                format!("store-regions:{}", tenant.id),
+            )
+            .with_deadline(std::time::Duration::from_secs(3)),
+            RegionListRequest {
+                requested_locale: Some(request_context.locale.clone()),
+                tenant_default_locale: Some(tenant.default_locale.clone()),
+            },
         )
         .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
-    Ok(Json(regions))
+        .map_err(|error| Error::BadRequest(format!("{}: {}", error.code, error.message)))?;
+    Ok(Json(
+        regions
+            .into_iter()
+            .map(|projection| projection.region)
+            .collect(),
+    ))
 }
 
 /// List active storefront shipping options

@@ -4,7 +4,14 @@ use rustok_api::{
     AuthContext, RequestContext, TenantContext,
 };
 use rustok_core::{locale_tags_match, Permission};
+use rustok_customer::CustomerService;
+use rustok_fulfillment::FulfillmentService;
+use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
+use rustok_payment::PaymentService;
+use rustok_pricing::PricingService;
+use rustok_product::CatalogService;
+use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -14,7 +21,6 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
-    entities::{product, product_translation},
     search::product_translation_title_search_condition,
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
@@ -24,9 +30,9 @@ use crate::{
         enrich_cart_delivery_groups, is_shipping_option_compatible_with_profiles,
         load_cart_shipping_profile_slugs, product_shipping_profile_slug,
     },
-    CatalogService, CommerceError, CustomerService, FulfillmentService, OrderService,
-    PaymentService, PricingService, RegionService, ShippingProfileService, StoreContextService,
+    CommerceError, ShippingProfileService, StoreContextService,
 };
+use rustok_product::entities::{product, product_translation};
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
 
@@ -249,15 +255,30 @@ impl CommerceQuery {
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let requested_locale =
             resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
-        let regions = RegionService::new(db.clone())
-            .list_regions(
-                tenant_id,
-                Some(requested_locale.as_str()),
-                Some(tenant.default_locale.as_str()),
+        let region_service = RegionService::new(db.clone());
+        let regions = region_service
+            .list_regions_for_tenant(
+                rustok_api::PortContext::new(
+                    tenant_id.to_string(),
+                    rustok_api::PortActor::service("commerce.graphql-regions"),
+                    requested_locale.as_str(),
+                    format!("graphql-regions:{tenant_id}"),
+                )
+                .with_deadline(std::time::Duration::from_secs(3)),
+                RegionListRequest {
+                    requested_locale: Some(requested_locale),
+                    tenant_default_locale: Some(tenant.default_locale.clone()),
+                },
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                async_graphql::Error::new(format!("{}: {}", error.code, error.message))
+            })?;
 
-        Ok(regions.into_iter().map(Into::into).collect())
+        Ok(regions
+            .into_iter()
+            .map(|projection| projection.region.into())
+            .collect())
     }
 
     async fn storefront_shipping_options(
@@ -284,7 +305,7 @@ impl CommerceQuery {
         });
         let (context, public_channel_slug, required_shipping_profiles) =
             if let Some(cart_id) = filter.cart_id {
-                let cart = crate::CartService::new(db.clone())
+                let cart = rustok_cart::CartService::new(db.clone())
                     .get_cart(tenant_id, cart_id)
                     .await?;
                 ensure_storefront_cart_access(&cart, customer_id)?;
@@ -611,7 +632,7 @@ impl CommerceQuery {
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
-        let cart = match crate::CartService::new(db.clone())
+        let cart = match rustok_cart::CartService::new(db.clone())
             .get_cart(tenant_id, id)
             .await
         {
@@ -1363,7 +1384,7 @@ impl CommerceQuery {
         let mut query = product::Entity::find().filter(product::Column::TenantId.eq(tenant_id));
 
         if let Some(status) = &filter.status {
-            let status: crate::entities::product::ProductStatus = (*status).into();
+            let status: rustok_product::entities::product::ProductStatus = (*status).into();
             query = query.filter(product::Column::Status.eq(status));
         }
         if let Some(vendor) = &filter.vendor {
@@ -1475,7 +1496,7 @@ impl CommerceQuery {
             Err(err) => return Err(err.to_string().into()),
         };
 
-        if product.status != crate::entities::product::ProductStatus::Active
+        if product.status != rustok_product::entities::product::ProductStatus::Active
             || product.published_at.is_none()
             || !is_metadata_visible_for_public_channel(
                 &product.metadata,
@@ -1531,7 +1552,10 @@ impl CommerceQuery {
 
         let mut query = product::Entity::find()
             .filter(product::Column::TenantId.eq(tenant_id))
-            .filter(product::Column::Status.eq(crate::entities::product::ProductStatus::Active))
+            .filter(
+                product::Column::Status
+                    .eq(rustok_product::entities::product::ProductStatus::Active),
+            )
             .filter(product::Column::PublishedAt.is_not_null());
 
         if let Some(vendor) = &filter.vendor {
@@ -1914,7 +1938,10 @@ async fn find_first_published_product(
     for translation in translations {
         let product = product::Entity::find_by_id(translation.product_id)
             .filter(product::Column::TenantId.eq(tenant_id))
-            .filter(product::Column::Status.eq(crate::entities::product::ProductStatus::Active))
+            .filter(
+                product::Column::Status
+                    .eq(rustok_product::entities::product::ProductStatus::Active),
+            )
             .filter(product::Column::PublishedAt.is_not_null())
             .one(db)
             .await?;
@@ -1997,18 +2024,21 @@ async fn resolve_storefront_context(
         locale.as_deref(),
         tenant.default_locale.as_str(),
     ));
-    StoreContextService::new(db.clone())
-        .resolve_context(
-            tenant_id,
-            crate::dto::ResolveStoreContextInput {
-                region_id,
-                country_code,
-                locale,
-                currency_code,
-            },
-        )
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))
+    StoreContextService::new(
+        db.clone(),
+        std::sync::Arc::new(RegionService::new(db.clone())),
+    )
+    .resolve_context(
+        tenant_id,
+        crate::dto::ResolveStoreContextInput {
+            region_id,
+            country_code,
+            locale,
+            currency_code,
+        },
+    )
+    .await
+    .map_err(|err| async_graphql::Error::new(err.to_string()))
 }
 
 fn resolve_commerce_graphql_locale(

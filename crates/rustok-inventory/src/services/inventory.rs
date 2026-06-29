@@ -346,6 +346,27 @@ impl InventoryService {
         Ok(InventoryAvailabilityCheckResult { available })
     }
 
+    #[instrument(skip(self))]
+    pub async fn check_variant_availability_for_channel(
+        &self,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+        requested_quantity: i32,
+        public_channel_slug: Option<&str>,
+    ) -> CommerceResult<InventoryAvailabilityCheckResult> {
+        let variant = self.load_variant(&self.db, tenant_id, variant_id).await?;
+        let available = super::public_channel::check_variant_availability_for_public_channel(
+            &self.db,
+            tenant_id,
+            &variant,
+            requested_quantity,
+            public_channel_slug,
+        )
+        .await?;
+
+        Ok(InventoryAvailabilityCheckResult { available })
+    }
+
     pub async fn check_availability(
         &self,
         tenant_id: Uuid,

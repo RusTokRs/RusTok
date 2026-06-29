@@ -195,7 +195,7 @@ async fn test_set_price_tier_persists_quantity_window_and_resolves() {
         .resolve_variant_price(
             tenant_id,
             variant_id,
-            rustok_commerce::services::PriceResolutionContext {
+            rustok_pricing::PriceResolutionContext {
                 currency_code: "USD".to_string(),
                 region_id: None,
                 price_list_id: None,

@@ -6,16 +6,14 @@ use axum::{
 use loco_rs::{app::AppContext, Error, Result};
 use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, TenantContext};
 use rustok_core::Permission;
+use rustok_product::CatalogService;
 use uuid::Uuid;
 
 use super::super::{
     common::{ensure_permissions, PaginatedResponse},
     products::{ListProductsParams, ProductListItem},
 };
-use crate::{
-    dto::{CreateProductInput, ProductResponse, UpdateProductInput},
-    CatalogService,
-};
+use crate::dto::{CreateProductInput, ProductResponse, UpdateProductInput};
 
 /// List admin ecommerce products
 #[utoipa::path(

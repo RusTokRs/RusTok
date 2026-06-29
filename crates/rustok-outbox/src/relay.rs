@@ -115,7 +115,7 @@ impl OutboxRelay {
 
     pub async fn run(&self) -> Result<()> {
         loop {
-            match self.process_pending_once().await {
+            match self.process_pending_once(None).await {
                 Ok(count) => {
                     if count == 0 {
                         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -129,8 +129,16 @@ impl OutboxRelay {
         }
     }
 
-    pub async fn process_pending_once(&self) -> Result<usize> {
-        let claimed = self.claim_batch().await?;
+    pub async fn process_pending_once(&self, max_batch_hint: Option<u64>) -> Result<usize> {
+        if max_batch_hint == Some(0) {
+            return Err(Error::Validation(
+                "outbox max_batch_hint must be greater than zero".to_string(),
+            ));
+        }
+        let batch_size = max_batch_hint
+            .unwrap_or(self.config.batch_size)
+            .min(self.config.batch_size);
+        let claimed = self.claim_batch(batch_size).await?;
         let claimed_count = claimed.len();
         let max_concurrency = self.config.max_concurrency.max(1);
         let mut tasks = tokio::task::JoinSet::new();
@@ -156,7 +164,7 @@ impl OutboxRelay {
         Ok(claimed_count)
     }
 
-    async fn claim_batch(&self) -> Result<Vec<entity::Model>> {
+    async fn claim_batch(&self, batch_size: u64) -> Result<Vec<entity::Model>> {
         let now = Utc::now();
         let stale_before = now
             - chrono::Duration::from_std(self.config.claim_ttl)
@@ -177,7 +185,7 @@ impl OutboxRelay {
                     .add(entity::Column::ClaimedAt.lte(stale_before)),
             )
             .order_by_asc(entity::Column::CreatedAt)
-            .limit(self.config.batch_size);
+            .limit(batch_size);
         let candidates = if self.db.get_database_backend() == DatabaseBackend::Postgres {
             candidates_query
                 .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)

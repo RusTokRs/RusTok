@@ -15,7 +15,10 @@ async fn setup() -> (DatabaseConnection, StoreContextService, RegionService) {
     support::ensure_commerce_schema(&db).await;
     (
         db.clone(),
-        StoreContextService::new(db.clone()),
+        StoreContextService::new(
+            db.clone(),
+            std::sync::Arc::new(RegionService::new(db.clone())),
+        ),
         RegionService::new(db),
     )
 }

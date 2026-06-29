@@ -22,6 +22,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA maintenance slice перевёл read-only `list_seller_shipping_options` path на shared `PortCallPolicy::read()`, а select/write path — на shared `PortCallPolicy::write()`, сохранив существующие FBA metadata без изменений runtime surface.
+  - umbrella facade `rustok_commerce::{services::fulfillment, FulfillmentService}` is removed; commerce REST/GraphQL/admin/storefront/test consumers import `FulfillmentService` from `rustok-fulfillment` directly, so fulfillment owner service is no longer masked by the ecommerce umbrella.
   - in-process реализация `ShippingSelectionPort for FulfillmentService` добавлена в `src/ports.rs`: read path фильтрует shipping options по profile slug, select path требует shared `PortCallPolicy::write()` и мапит `FulfillmentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `ShippingSelectionPort` и DTO для seller-aware shipping options/selection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `seller-aware shipping selection` через `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`; provider SPI boundary поднят до `boundary_ready` на executed live-adapter evidence, while base shipping-selection port contract/fallback evidence remains a follow-up before `transport_verified`;

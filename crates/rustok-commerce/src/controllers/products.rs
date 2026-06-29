@@ -8,6 +8,10 @@ use rustok_api::{
     loco::transactional_event_bus_from_context, AuthContext, RequestContext, TenantContext,
 };
 use rustok_core::{locale_tags_match, Permission};
+use rustok_product::{
+    entities::{product, product_translation},
+    CatalogService,
+};
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -17,11 +21,8 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    dto::ProductResponse,
-    entities::{product, product_translation},
-    search::product_translation_title_search_condition,
+    dto::ProductResponse, search::product_translation_title_search_condition,
     storefront_shipping::product_shipping_profile_slug,
-    CatalogService,
 };
 
 use super::common::{ensure_permissions, PaginatedResponse, PaginationMeta, PaginationParams};

@@ -20,6 +20,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA maintenance slice перевёл read-only `read_collection_status` path на shared `PortCallPolicy::read()`, а create/reuse write path — на shared `PortCallPolicy::write()` без изменения commerce compatibility transport.
+  - umbrella facade `rustok_commerce::{services::payment, PaymentService}` is removed; commerce REST/GraphQL/storefront/test consumers import `PaymentService` from `rustok-payment` directly, so payment owner service is no longer masked by the ecommerce umbrella.
   - in-process реализация `PaymentCollectionPort for PaymentService` добавлена в `src/ports.rs`: create/reuse path требует shared `PortCallPolicy::write()`, переиспользует reusable cart collection перед созданием новой и мапит `PaymentError` в `PortError`;
   - `src/ports.rs` теперь экспортирует `PaymentCollectionPort` и DTO для create/reuse/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `payment collection create/reuse` через `crates/rustok-payment/contracts/payment-fba-registry.json`; provider SPI boundary поднят до `boundary_ready` на executed live-adapter evidence, while base checkout port contract/fallback evidence remains a follow-up before `transport_verified`;

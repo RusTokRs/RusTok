@@ -1,24 +1,33 @@
 use async_graphql::{Context, FieldError, Result};
 use rust_decimal::Decimal;
 use rustok_api::{graphql::GraphQLError, AuthContext, RequestContext};
+use rustok_cart::CartService;
 use rustok_core::locale_tags_match;
-use rustok_inventory::check_variant_availability_for_public_channel;
-use rustok_pricing::{PriceResolutionContext, PricingService};
+use rustok_customer::CustomerService;
+use rustok_fulfillment::FulfillmentService;
+use rustok_inventory::{check_variant_availability_for_public_channel, InventoryReservationPort};
+use rustok_order::OrderService;
+use rustok_payment::PaymentService;
+use rustok_pricing::{
+    entities::{price, price_list},
+    PriceResolutionContext, PricingService,
+};
+use rustok_product::entities::{
+    product, product_translation, product_variant, variant_translation,
+};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
-    entities::{price_list, product, product_translation, product_variant, variant_translation},
     storefront_channel::{is_metadata_visible_for_public_channel, normalize_public_channel_slug},
     storefront_shipping::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    CartService, CreateReturnDecisionInput, CustomerService, FulfillmentService, OrderService,
-    PaymentService, ReturnClaimDecisionInput, ReturnDecisionInput, ReturnExchangeDecisionInput,
-    ReturnRefundDecisionInput, ShippingProfileService,
+    CreateReturnDecisionInput, ReturnClaimDecisionInput, ReturnDecisionInput,
+    ReturnExchangeDecisionInput, ReturnRefundDecisionInput, ShippingProfileService,
 };
 
 use super::super::types::*;
@@ -617,7 +626,7 @@ pub(crate) fn merge_graphql_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-pub(crate) fn map_price_row_to_gql_price(price: crate::entities::price::Model) -> GqlPricingPrice {
+pub(crate) fn map_price_row_to_gql_price(price: price::Model) -> GqlPricingPrice {
     let on_sale = price
         .compare_at_amount
         .filter(|compare_at| *compare_at > Decimal::ZERO)
@@ -940,6 +949,7 @@ pub(crate) fn maybe_undefined_or_existing<T>(
 pub(crate) async fn resolve_storefront_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
+    inventory_port: &dyn InventoryReservationPort,
     pricing_service: &PricingService,
     pricing_context: &PriceResolutionContext,
     currency_code: &str,
@@ -988,11 +998,13 @@ pub(crate) async fn resolve_storefront_line_item_input(
     let (base_unit_price, pricing_adjustment) =
         storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
     validate_storefront_variant_inventory(
+        inventory_port,
         db,
         tenant_id,
         &variant,
         input.quantity,
         public_channel_slug,
+        locale,
     )
     .await?;
 
@@ -1274,36 +1286,38 @@ pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
 }
 
 pub(crate) async fn validate_storefront_line_item_quantity(
+    inventory_port: &dyn InventoryReservationPort,
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     variant_id: Uuid,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
+    locale: &str,
 ) -> Result<()> {
-    let Some(variant) = product_variant::Entity::find_by_id(variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(db)
-        .await?
-    else {
-        return Ok(());
-    };
-
     validate_storefront_variant_inventory(
+        inventory_port,
         db,
         tenant_id,
-        &variant,
+        &product_variant::Entity::find_by_id(variant_id)
+            .filter(product_variant::Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await?
+            .ok_or_else(|| async_graphql::Error::new("Variant not found"))?,
         requested_quantity,
         public_channel_slug,
+        locale,
     )
     .await
 }
 
 pub(crate) async fn validate_storefront_variant_inventory(
+    _inventory_port: &dyn InventoryReservationPort,
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     variant: &product_variant::Model,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
+    locale: &str,
 ) -> Result<()> {
     let available = check_variant_availability_for_public_channel(
         db,
@@ -1313,7 +1327,9 @@ pub(crate) async fn validate_storefront_variant_inventory(
         public_channel_slug,
     )
     .await
-    .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+    .map_err(|error| {
+        async_graphql::Error::new(format!("graphql-cart-inventory:{}: {}", variant.id, error))
+    })?;
     if !available {
         return Err(async_graphql::Error::new(format!(
             "Variant {} does not have enough available inventory for the current channel",

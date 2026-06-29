@@ -22,7 +22,7 @@ use crate::services::marketplace_catalog::{
     MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
 use crate::services::module_event_dispatcher::{
-    build_shared_runtime_extensions, spawn_module_event_dispatcher,
+    build_shared_runtime_extensions_with_host_providers, spawn_module_event_dispatcher,
 };
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 use crate::services::platform_composition::PlatformCompositionService;
@@ -97,7 +97,8 @@ pub async fn bootstrap_app_runtime(
     };
 
     let registry = modules::build_registry();
-    let runtime_extensions = build_shared_runtime_extensions(&registry, settings);
+    let runtime_extensions =
+        build_shared_runtime_extensions_with_host_providers(&registry, settings, ctx.db.clone());
     ctx.shared_store.insert(runtime_extensions.clone());
     ctx.shared_store
         .insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));
