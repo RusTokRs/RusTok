@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const ecommerceFbaModules = ['payment', 'fulfillment', 'order', 'pricing', 'inventory', 'product', 'customer', 'cart'];
+const boundaryReadyProviderSpiModules = new Set(['payment', 'fulfillment']);
 
 export class EcommerceFbaRegistryVerificationError extends Error {
   constructor(message) {
@@ -151,7 +152,8 @@ export function verifyEcommerceFbaRegistries({
     if (registry.schema_version !== 1) fail(`${registryPath} schema_version must be 1`);
     if (registry.module !== module) fail(`${registryPath} has module=${registry.module}`);
     if (registry.role !== 'provider') fail(`${module} registry role must be provider`);
-    if (registry.status !== 'in_progress') fail(`${module} registry status must be in_progress`);
+    const expectedFbaStatus = boundaryReadyProviderSpiModules.has(module) ? 'boundary_ready' : 'in_progress';
+    if (registry.status !== expectedFbaStatus) fail(`${module} registry status must be ${expectedFbaStatus}`);
     if (!Array.isArray(registry.ports) || registry.ports.length === 0) fail(`${module} has no ports`);
     if (!Array.isArray(registry.consumers) || registry.consumers.length === 0) fail(`${module} has no consumers`);
     if (!registry.contract_tests || registry.contract_tests.status !== 'planned_cases_locked') {
@@ -237,7 +239,7 @@ export function verifyEcommerceFbaRegistries({
       }
     }
 
-    if (!plan.includes('- FBA status: `in_progress`')) fail(`${module} local plan FBA status drift`);
+    if (!plan.includes(`- FBA status: \`${expectedFbaStatus}\``)) fail(`${module} local plan FBA status drift`);
     if (!plan.includes(`${module}-fba-registry.json`)) fail(`${module} local plan lacks registry evidence`);
     if (registry.evidence?.local_plan !== `crates/rustok-${module}/docs/implementation-plan.md`) {
       fail(`${module} registry local_plan evidence drift`);

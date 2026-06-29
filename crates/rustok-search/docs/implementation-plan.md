@@ -7,7 +7,7 @@
 
 - Current phase: storefront_legacy_api_removed
 - Last checkpoint: Search admin/storefront retired legacy `admin/src/api.rs` and `storefront/src/api.rs`; admin native/GraphQL adapter now lives in `admin/src/transport/native_server_adapter.rs`, storefront native server-function endpoints live in `storefront/src/transport/native_server_adapter.rs`, GraphQL fallback execution lives in `storefront/src/transport/graphql_adapter.rs`, and `scripts/verify/verify-search-ui-boundary.mjs` rejects reintroducing legacy API modules.
-- Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths; следующий блокер перед повышением FBA выше `in_progress` — live runtime contract execution с реальным provider invocation, так как no-compile runtime contract smoke уже добавлен.
+- Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths; следующий блокер перед повышением FBA выше `boundary_ready` — live runtime contract execution с реальным provider invocation, так как no-compile runtime contract smoke уже добавлен.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
 - Last updated at (UTC): 2026-06-29T00:00:00Z
@@ -16,13 +16,13 @@
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA slice #3 перевёл `SearchQueryPort` и `SearchSuggestionPort` с ad-hoc deadline check на shared `PortCallPolicy::read()`, сохранив locale propagation и typed `PortError` mapping без изменения native/GraphQL transport.
   - module plan синхронизирован с central FFA/FBA readiness board;
   - FBA provider registry `crates/rustok-search/contracts/search-fba-registry.json` объявляет `SearchQueryPort`/`SearchSuggestionPort` (`search.query.v1`) для storefront/admin consumers с typed `PortContext`/`PortError`, read deadline semantics, degraded modes и fallback profiles;
-  - static evidence `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`, executable no-compile runtime fallback smoke `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json` + `scripts/verify/verify-search-fba-runtime-smoke.mjs`, runtime contract smoke `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json` + `scripts/verify/verify-search-fba-runtime-contract.mjs`, invocation trace `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json` + `scripts/verify/verify-search-fba-runtime-invocation.mjs`, fixture regression suites `scripts/verify/verify-search-fba-runtime-smoke.test.mjs` / `scripts/verify/verify-search-fba-runtime-contract.test.mjs` / `scripts/verify/verify-search-fba-runtime-invocation.test.mjs` и fast verifier `scripts/verify/verify-search-fba.mjs` удерживают metadata/port/source drift без компиляции; статус остаётся ниже `boundary_ready` до настоящего runtime contract execution;
+  - static evidence `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`, executable no-compile runtime fallback smoke `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json` + `scripts/verify/verify-search-fba-runtime-smoke.mjs`, runtime contract smoke `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json` + `scripts/verify/verify-search-fba-runtime-contract.mjs`, invocation trace `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json` + `scripts/verify/verify-search-fba-runtime-invocation.mjs`, fixture regression suites `scripts/verify/verify-search-fba-runtime-smoke.test.mjs` / `scripts/verify/verify-search-fba-runtime-contract.test.mjs` / `scripts/verify/verify-search-fba-runtime-invocation.test.mjs` и fast verifier `scripts/verify/verify-search-fba.mjs` удерживают metadata/port/source drift без компиляции; FBA статус поднят до `boundary_ready`, следующий статус требует настоящего runtime contract execution;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - Phase B slices #17-18 extracted admin route-query update semantics and preview form/request normalization into `admin/src/core.rs`; native/GraphQL transport was not modified;
   - Phase B slice #19 promoted reusable UI text/CSV and route-query update semantics to `rustok-api`, consumed by `leptos-ui-routing` and search admin core;

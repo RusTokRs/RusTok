@@ -17,7 +17,7 @@ const runtimeContract = json(runtimeContractPath);
 const runtimeInvocation = json(runtimeInvocationPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'search' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'search' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
 if (registry.contract_version !== 'search.query.v1') fail('contract_version drift');
 const ports = registry.ports ?? [];
 for (const expected of ['SearchQueryPort', 'SearchSuggestionPort']) {
@@ -80,8 +80,8 @@ for (const mode of registry.contract_tests.fallback_smoke.degraded_modes ?? []) 
 }
 
 const plan = read('crates/rustok-search/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `in_progress`'], 'central registry');
+hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `boundary_ready`'], 'central registry');
 
 console.log('[verify-search-fba] search FBA provider metadata, port semantics, static evidence and executable no-compile runtime smokes and invocation trace are consistent');

@@ -15,13 +15,14 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - Boundary readiness update: `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` are locked by `npm run verify:index:fba`; FBA status is `boundary_ready`, while persistence-backed Rust runtime contract execution remains the next step before `transport_verified`.
   - admin package split introduced `admin/src/core.rs` for Leptos-free view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-index` had no legacy GraphQL/REST operator contract for this overview;
   - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;
-  - FBA provider slice: `crates/rustok-index/src/ports.rs` declares `IndexReadModelPort` / `index.read_model.v1` for indexed document reads and `IndexRebuildPort` / `index.rebuild.v1` for operator rebuild orchestration with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, `PortCallPolicy::read()` deadline semantics and `PortCallPolicy::write()` idempotency/deadline semantics for rebuilds; `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` lock planned contract cases, fallback profiles, no-compile source markers and source-locked in-process adapter seams (`InProcessIndexReadModelAdapter`, `RebuildDisabledIndexAdapter`) under `npm run verify:index:fba`; persistence-backed Rust runtime contract execution remains pending before `boundary_ready`.
+  - FBA provider slice: `crates/rustok-index/src/ports.rs` declares `IndexReadModelPort` / `index.read_model.v1` for indexed document reads and `IndexRebuildPort` / `index.rebuild.v1` for operator rebuild orchestration with shared `rustok_api::PortContext`/`PortError`, tenant-scope preservation, `PortCallPolicy::read()` deadline semantics and `PortCallPolicy::write()` idempotency/deadline semantics for rebuilds; `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` lock planned contract cases, fallback profiles, no-compile source markers and source-locked in-process adapter seams (`InProcessIndexReadModelAdapter`, `RebuildDisabledIndexAdapter`) under `npm run verify:index:fba`; persistence-backed Rust runtime contract execution remains the next step before `transport_verified`.
 
 ## Область работ
 

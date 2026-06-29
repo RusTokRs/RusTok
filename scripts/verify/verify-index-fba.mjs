@@ -20,7 +20,7 @@ const lib = read('crates/rustok-index/src/lib.rs');
 const ports = read('crates/rustok-index/src/ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'index' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'index' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
 if (registry.contract_version !== 'index.read_model.v1') fail('contract version drift');
 for (const [name, op] of [['IndexReadModelPort', 'read_index_document'], ['IndexReadModelPort', 'list_index_documents'], ['IndexRebuildPort', 'request_rebuild']]) {
   const port = registry.ports.find((entry) => entry.name === name);
@@ -37,8 +37,8 @@ for (const marker of ['trait IndexReadModelPort', 'trait IndexRebuildPort', 'Por
   if (!ports.includes(marker) && !registryPath.includes(marker) && !evidencePath.includes(marker)) fail(`source/metadata missing ${marker}`);
 }
 if (!ports.includes('Serialize, Deserialize')) fail('index FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('IndexReadModelPort') || !plan.includes('index-contract-test-static-matrix.json') || !plan.includes('index-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `index` | admin | `in_progress` | `in_progress`') || !central.includes(registryPath) || !central.includes('index-runtime-fallback-smoke.json')) fail('central readiness board drift');
+if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('IndexReadModelPort') || !plan.includes('index-contract-test-static-matrix.json') || !plan.includes('index-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `index` | admin | `in_progress` | `boundary_ready`') || !central.includes(registryPath) || !central.includes('index-runtime-fallback-smoke.json')) fail('central readiness board drift');
 if (!unified.includes('`index` добавлен как provider track') || !unified.includes(registryPath)) fail('unified FBA plan drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'index' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-index-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');

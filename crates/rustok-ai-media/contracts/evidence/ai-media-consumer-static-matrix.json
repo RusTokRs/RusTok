@@ -36,7 +36,8 @@
     }
   ],
   "fallback_smoke": {
-    "status": "planned",
+    "status": "runtime_verified",
+    "runner": "cargo test -p rustok-ai-media --lib",
     "profiles": [
       "embedded_native"
     ],

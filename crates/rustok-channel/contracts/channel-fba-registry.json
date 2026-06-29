@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "channel",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "channel.read_projection.v1",
   "ports": [
     {

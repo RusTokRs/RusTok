@@ -18,7 +18,7 @@
     }
   ],
   "fallback_smoke": {
-    "status": "source_smoke_locked",
+    "status": "runtime_verified",
     "profiles": [
       "embedded_native"
     ],

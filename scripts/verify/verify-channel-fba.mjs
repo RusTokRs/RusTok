@@ -19,7 +19,7 @@ const lib = read('crates/rustok-channel/src/lib.rs');
 const ports = read('crates/rustok-channel/src/ports.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'channel' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'channel' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
 if (registry.contract_version !== 'channel.read_projection.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'ChannelReadPort') fail('ChannelReadPort missing');
@@ -35,8 +35,8 @@ for (const marker of ['trait ChannelReadPort', 'impl ChannelReadPort for crate::
 }
 if (ports.includes('require_write_semantics()?')) fail('channel read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('channel FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('ChannelReadPort') || !plan.includes('channel-contract-test-static-matrix.json') || !plan.includes('channel-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `channel` |') || !central.includes(registryPath) || !central.includes('channel-runtime-fallback-smoke.json') || !central.includes('| `channel` | admin | `in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('ChannelReadPort') || !plan.includes('channel-contract-test-static-matrix.json') || !plan.includes('channel-runtime-fallback-smoke.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `channel` |') || !central.includes(registryPath) || !central.includes('channel-runtime-fallback-smoke.json') || !central.includes('| `channel` | admin | `in_progress` | `boundary_ready`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'channel' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-channel-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

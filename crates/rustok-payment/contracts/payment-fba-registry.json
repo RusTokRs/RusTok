@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "payment",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "payment.checkout.v1+provider_spi.v1",
   "ports": [
     {

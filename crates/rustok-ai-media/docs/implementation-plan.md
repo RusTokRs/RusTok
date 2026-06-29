@@ -23,6 +23,6 @@
 ## FFA/FBA status
 
 - FFA status: `not_started`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
-- Evidence: crate owns media AI vertical task/tool identity, handler adapter API and pure image-size validation while executable provider/runtime composition remains in `rustok-ai`; FBA support-consumer metadata is locked in `crates/rustok-ai-media/contracts/ai-media-fba-registry.json` for `MediaAssetReadPort` / `media.asset_read.v1`, including `skip_asset_enrichment`, `proxy_storage_relative_url`, and `summarize_internal_binary` degraded modes, mirrored by `crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json`, and checked by `scripts/verify/verify-ai-media-fba.mjs` without long compilation; status remains below `boundary_ready` until runtime fallback smoke lands.
+- Evidence: crate owns media AI vertical task/tool identity, handler adapter API and pure image-size validation while executable provider/runtime composition remains in `rustok-ai`; FBA support-consumer metadata is locked in `crates/rustok-ai-media/contracts/ai-media-fba-registry.json` for `MediaAssetReadPort` / `media.asset_read.v1`, including `skip_asset_enrichment`, `proxy_storage_relative_url`, and `summarize_internal_binary` degraded modes, mirrored by `crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json` and runtime-verified smoke `crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`, and checked by `scripts/verify/verify-ai-media-fba.mjs` plus `cargo test -p rustok-ai-media --lib`.

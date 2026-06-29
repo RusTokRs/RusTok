@@ -3,7 +3,7 @@
   "module": "auth",
   "crate": "rustok-auth",
   "role": "core_capability_provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "capability_profile": "auth_identity_permission_surface",
   "provider_dependencies": [],
   "owned_contracts": [
@@ -59,7 +59,7 @@
       }
     ],
     "fallback_smoke": {
-      "status": "source_smoke_locked",
+      "status": "runtime_verified",
       "profiles": [
         "embedded_native"
       ],

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "index",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "index.read_model.v1",
   "ports": [
     {

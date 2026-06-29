@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "module": "email",
-  "status": "targeted_contract_tests_added_uncompiled",
+  "status": "runtime_verified",
   "generated_from": "crates/rustok-email/contracts/email-fba-registry.json",
   "runner": "scripts/verify/verify-email-fba.mjs",
   "contract_version": "email.delivery.v1",
@@ -12,7 +12,7 @@
   "cases": [
     {
       "operation": "send_transactional_email",
-      "execution_status": "targeted_rust_tests_added_uncompiled",
+      "execution_status": "runtime_verified",
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved",
@@ -30,7 +30,8 @@
     }
   ],
   "fallback_smoke": {
-    "status": "disabled_noop_runtime_test_added_uncompiled",
+    "status": "runtime_verified",
+    "runner": "cargo test -p rustok-email --lib",
     "profiles": [
       "embedded_disabled_noop",
       "embedded_smtp"

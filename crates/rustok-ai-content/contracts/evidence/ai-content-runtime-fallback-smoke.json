@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
   "generated_from": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
-  "status": "source_smoke_locked",
+  "status": "runtime_verified",
+  "runner": "cargo test -p rustok-ai-content --lib",
   "profile": "embedded_native",
   "degraded_modes": [
     "require_operator_review",

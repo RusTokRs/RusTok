@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
   "generated_from": "crates/rustok-auth/contracts/auth-fba-registry.json",
-  "status": "source_smoke_locked",
+  "status": "runtime_verified",
+  "runner": "cargo test -p rustok-auth --lib && npm run verify:auth:admin-boundary",
   "profile": "embedded_native",
   "degraded_modes": [
     "deny_on_missing_auth_context",

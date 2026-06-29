@@ -16,7 +16,7 @@ const lib = read('crates/rustok-email/src/lib.rs');
 const cargo = read('crates/rustok-email/Cargo.toml');
 const ports = read('crates/rustok-email/src/ports.rs');
 if (pkg.scripts?.['verify:email:fba'] !== 'node scripts/verify/verify-email-fba.mjs') fail('package script verify:email:fba drift');
-if (registry.schema_version !== 1 || registry.module !== 'email' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.schema_version !== 1 || registry.module !== 'email' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'email.delivery.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'EmailDeliveryPort' || !port.operations.includes('send_transactional_email')) fail('EmailDeliveryPort operation missing');
@@ -31,16 +31,16 @@ for (const assertion of ['disabled_provider_noop_preserved', 'template_error_not
   if (!JSON.stringify(registry).includes(assertion)) fail(`registry missing ${assertion}`);
 }
 if (!ports.includes('Serialize, Deserialize')) fail('FBA DTOs must be serializable');
-if (!plan.includes('## FFA/FBA status block') || !plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('EmailDeliveryPort') || !plan.includes('email-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `email` |') || !central.includes(registryPath) || !central.includes('`not_started` | `in_progress`')) fail('central readiness board drift');
-if (evidence.schema_version !== 1 || evidence.module !== 'email' || evidence.status !== 'targeted_contract_tests_added_uncompiled') fail('evidence identity drift');
+if (!plan.includes('## FFA/FBA status block') || !plan.includes(`- FBA status: \`${registry.status}\``) || !plan.includes(registryPath) || !plan.includes('EmailDeliveryPort') || !plan.includes('email-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `email` |') || !central.includes(registryPath) || !central.includes(`| \`email\` | none | \`not_started\` | \`${registry.status}\``)) fail('central readiness board drift');
+if (evidence.schema_version !== 1 || evidence.module !== 'email' || !['targeted_contract_tests_added_uncompiled', 'runtime_verified'].includes(evidence.status)) fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-email-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
 const rc = registry.contract_tests.cases.find((entry) => entry.operation === 'send_transactional_email');
 const ec = evidence.cases.find((entry) => entry.operation === 'send_transactional_email');
-if (!rc || !ec || ec.execution_status !== 'targeted_rust_tests_added_uncompiled' || !sameSet(ec.assertions, rc.assertions)) fail('send_transactional_email evidence case drift');
+if (!rc || !ec || !['targeted_rust_tests_added_uncompiled', 'runtime_verified'].includes(ec.execution_status) || !sameSet(ec.assertions, rc.assertions)) fail('send_transactional_email evidence case drift');
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-if (evidence.fallback_smoke.status !== 'disabled_noop_runtime_test_added_uncompiled') fail('fallback smoke status drift');
+if (!['disabled_noop_runtime_test_added_uncompiled', 'runtime_verified'].includes(evidence.fallback_smoke.status)) fail('fallback smoke status drift');
 if (!cargo.includes('[dev-dependencies]') || !cargo.includes('tokio.workspace = true')) fail('targeted async port tests require tokio dev-dependency');
 for (const testName of ec.test_names ?? []) {
   if (!ports.includes(`fn ${testName}`) && !ports.includes(`async fn ${testName}`)) fail(`evidence test missing ${testName}`);

@@ -118,7 +118,7 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
   write('crates/rustok-pricing/rustok-module.toml', '[fba.provider]\nregistry = "contracts/pricing-fba-registry.json"\ncontract_version = "pricing.read_projection.v1"\ncontext = "rustok_api::ports::PortContext"\nerror = "rustok_api::ports::PortError"\n');
   write('crates/rustok-pricing/Cargo.toml', '[dependencies]\nrustok-api.workspace = true\n');
   write('crates/rustok-pricing/src/lib.rs', 'pub mod ports;\npub use ports::*;\n');
-  write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) } }\n');
+  write('crates/rustok-pricing/src/ports.rs', 'use rustok_api::{PortCallPolicy, PortContext, PortError};\ntrait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PricingReadPort for crate::PricingService { fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) } }\n');
   write('crates/rustok-commerce/contracts/commerce-fba-registry.json', `${JSON.stringify(commerceRegistry, null, 2)}\n`);
   write('crates/rustok-commerce/rustok-module.toml', '[fba.consumer]\nregistry = "contracts/commerce-fba-registry.json"\n');
   write('crates/rustok-commerce/docs/implementation-plan.md', '# Plan\ncommerce-fba-registry.json\ncrates/rustok-pricing/contracts/pricing-fba-registry.json\n');
@@ -204,7 +204,7 @@ test('verifyEcommerceFbaRegistries rejects write-idempotency assertions on read-
   );
 });
 
-test('verifyEcommerceFbaRegistries rejects missing read deadline enforcement', () => {
+test('verifyEcommerceFbaRegistries rejects missing read policy enforcement', () => {
   const root = createFixtureRoot();
   const rootPath = fileURLToPath(root);
   writeFileSync(
@@ -216,7 +216,7 @@ test('verifyEcommerceFbaRegistries rejects missing read deadline enforcement', (
     () => verifyEcommerceFbaRegistries({ root, modules: [moduleSlug] }),
     {
       name: EcommerceFbaRegistryVerificationError.name,
-      message: 'pricing.resolve_product_price read operation must enforce require_deadline_semantics',
+      message: 'pricing.resolve_product_price read operation must enforce PortCallPolicy::read()',
     },
   );
 });
@@ -257,7 +257,7 @@ test('verifyEcommerceFbaRegistries rejects write operations without write semant
   const rootPath = fileURLToPath(root);
   writeFileSync(
     join(rootPath, 'crates/rustok-pricing/src/ports.rs'),
-    'use rustok_api::{PortContext, PortError};\ntrait PaymentCollectionPort {\n  fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PaymentCollectionPort for crate::PaymentService { fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) } }\n',
+    'use rustok_api::{PortContext, PortError};\ntrait PaymentCollectionPort {\n  fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError>;\n}\nimpl PaymentCollectionPort for crate::PaymentService { fn create_or_reuse_collection(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) } }\n',
   );
 
   assert.throws(
@@ -470,7 +470,7 @@ const createOrderFixtureRoot = ({ withImplMetadata = false, withOwnerImpl = fals
   }
 
   const implSource = withOwnerImpl
-    ? '\nimpl CheckoutCompletionPort for crate::OrderService {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError> { context.require_write_semantics()?; Ok(()) }\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) }\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError> { context.require_deadline_semantics()?; Ok(()) }\n}\n'
+    ? '\nimpl CheckoutCompletionPort for crate::OrderService {\n  fn complete_checkout(&self, context: PortContext) -> Result<(), PortError> { context.require_write_semantics()?; Ok(()) }\n  fn read_checkout_result(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) }\n  fn read_order_status(&self, context: PortContext) -> Result<(), PortError> { context.require_policy(PortCallPolicy::read())?; Ok(()) }\n}\n'
     : '';
 
   write('docs/modules/registry.md', '| `order` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-order/docs/implementation-plan.md` (`crates/rustok-order/contracts/order-fba-registry.json`) |\n| `commerce` | admin + storefront | `in_progress` | `in_progress` | `core_transport_ui` | `crates/rustok-commerce/docs/implementation-plan.md` (`crates/rustok-commerce/contracts/commerce-fba-registry.json`) |\n');

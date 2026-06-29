@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "fulfillment",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "fulfillment.shipping_selection.v1+provider_spi.v1",
   "ports": [
     {

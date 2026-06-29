@@ -16,11 +16,11 @@ manifest/doc contract path.
 ## FFA/FBA status block
 
 - FFA status: `not_started`
-- FBA status: `in_progress`
+- FBA status: `boundary_ready`
 - Structural shape: `no_ui_boundary`
 - Evidence / notes:
   - capability-only module has no module-owned UI surface, so FFA remains `not_started`;
-  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation and static evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` verified by `npm run verify:email:fba`; status remains below `boundary_ready` until the new targeted Rust tests are compiled/executed and executable runtime evidence is recorded.
+  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation and runtime-verified evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` verified by `npm run verify:email:fba` and `cargo test -p rustok-email --lib`.
 
 ## Область работ
 

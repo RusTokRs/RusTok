@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "search",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "search.query.v1",
   "ports": [
     {

@@ -20,7 +20,7 @@ const fallbackSmoke = json(fallbackSmokePath);
 const provider = json(providerPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
-if (registry.module !== 'ai-product' || registry.crate !== 'rustok-ai-product' || registry.role !== 'consumer_support_adapter' || registry.status !== 'in_progress') fail('registry identity/status drift');
+if (registry.module !== 'ai-product' || registry.crate !== 'rustok-ai-product' || registry.role !== 'consumer_support_adapter' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.consumer_profile !== 'ai_product_generation_context') fail('consumer profile drift');
 const dependency = registry.provider_dependencies?.[0];
 if (!dependency) fail('missing product provider dependency');
@@ -47,13 +47,13 @@ if (evidence.generated_from !== registryPath || evidence.status !== registry.con
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
-if (fallbackSmoke.generated_from !== registryPath || fallbackSmoke.status !== 'source_smoke_locked') fail('fallback smoke header drift');
+if (fallbackSmoke.generated_from !== registryPath || !['source_smoke_locked', 'runtime_verified'].includes(fallbackSmoke.status)) fail('fallback smoke header drift');
 if (fallbackSmoke.profile !== registry.contract_tests.fallback_smoke.profiles[0]) fail('fallback smoke profile drift');
 if (fallbackSmoke.degraded_mode !== registry.contract_tests.fallback_smoke.degraded_modes[0]) fail('fallback smoke degraded mode drift');
 sameSet(fallbackSmoke.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'fallback smoke cases');
 
 const plan = read('crates/rustok-ai-product/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'ai-product-fba-registry.json', 'ProductCatalogReadPort', 'ai-product-consumer-static-matrix.json', 'ai-product-runtime-fallback-smoke.json'], 'local plan');
+hasAll(plan, [`- FBA status: \`${registry.status}\``, 'ai-product-fba-registry.json', 'ProductCatalogReadPort', 'ai-product-consumer-static-matrix.json', 'ai-product-runtime-fallback-smoke.json'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `ai-product` |', 'crates/rustok-ai-product/contracts/ai-product-fba-registry.json', 'crates/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');

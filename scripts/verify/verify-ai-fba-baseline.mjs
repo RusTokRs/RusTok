@@ -17,12 +17,12 @@ function verifyEvidence(registry, registryPath) {
   sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), `${registry.module} evidence cases`);
   sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, `${registry.module} fallback profiles`);
   sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, `${registry.module} degraded modes`);
-  if (smoke.generated_from !== registryPath || smoke.status !== 'source_smoke_locked') fail(`${registry.module} fallback smoke header drift`);
+  if (smoke.generated_from !== registryPath || !['source_smoke_locked', 'runtime_verified'].includes(smoke.status)) fail(`${registry.module} fallback smoke header drift`);
 }
 
 function verifySupportAdapter({ module, registryPath, sourceMarkers, bindingMarkers = [], forbiddenBindingMarkers = [], planMarkers }) {
   const registry = json(registryPath);
-  if (registry.schema_version !== 1 || registry.module !== module || registry.status !== 'in_progress') fail(`${module} registry identity/status drift`);
+  if (registry.schema_version !== 1 || registry.module !== module || !['in_progress', 'boundary_ready'].includes(registry.status)) fail(`${module} registry identity/status drift`);
   if (registry.contract_tests?.source !== registryPath || registry.contract_tests?.runner !== 'scripts/verify/verify-ai-fba-baseline.mjs') fail(`${module} contract test source/runner drift`);
   verifyEvidence(registry, registryPath);
   const source = read(registry.support_adapter.source);
@@ -33,7 +33,7 @@ function verifySupportAdapter({ module, registryPath, sourceMarkers, bindingMark
     hasNone(binding, forbiddenBindingMarkers, `${module} runtime binding ownership`);
   }
   const plan = read(registry.evidence.local_plan);
-  hasAll(plan, ['- FBA status: `in_progress`', registryPath, registry.evidence.static_matrix, registry.evidence.runtime_fallback_smoke, ...planMarkers], `${module} local plan`);
+  hasAll(plan, [`- FBA status: \`${registry.status}\``, registryPath, registry.evidence.static_matrix, registry.evidence.runtime_fallback_smoke, ...planMarkers], `${module} local plan`);
   const central = read(registry.evidence.central_registry);
   hasAll(central, [`| \`${module}\` |`, registryPath, registry.evidence.runtime_fallback_smoke], `${module} central registry`);
   return registry;
@@ -78,7 +78,7 @@ if (!(orderProvider.ports?.[0]?.operations ?? []).includes('read_order_status'))
 
 const authRegistryPath = 'crates/rustok-auth/contracts/auth-fba-registry.json';
 const authRegistry = json(authRegistryPath);
-if (authRegistry.schema_version !== 1 || authRegistry.module !== 'auth' || authRegistry.role !== 'core_capability_provider' || authRegistry.status !== 'in_progress') fail('auth registry identity/status drift');
+if (authRegistry.schema_version !== 1 || authRegistry.module !== 'auth' || authRegistry.role !== 'core_capability_provider' || !['in_progress', 'boundary_ready'].includes(authRegistry.status)) fail('auth registry identity/status drift');
 if (authRegistry.contract_tests?.source !== authRegistryPath || authRegistry.contract_tests?.runner !== 'scripts/verify/verify-ai-fba-baseline.mjs') fail('auth contract test source/runner drift');
 verifyEvidence(authRegistry, authRegistryPath);
 const authSource = read('crates/rustok-auth/src/lib.rs');
@@ -86,7 +86,7 @@ hasAll(authSource, ['AUTH_USER_PERMISSIONS', 'Permission::USERS_CREATE', 'Permis
 const authAdminCore = read(authRegistry.admin_boundary.core_policy);
 hasAll(authAdminCore, ['prepare_login_request', 'prepare_register_request', 'prepare_password_reset_request', 'prepare_profile_name', 'classify_profile_update_error'], 'auth admin core');
 const authPlan = read(authRegistry.evidence.local_plan);
-hasAll(authPlan, ['- FBA status: `in_progress`', authRegistryPath, authRegistry.evidence.static_matrix, authRegistry.evidence.runtime_fallback_smoke, 'AUTH_USER_PERMISSIONS'], 'auth local plan');
+hasAll(authPlan, [`- FBA status: \`${authRegistry.status}\``, authRegistryPath, authRegistry.evidence.static_matrix, authRegistry.evidence.runtime_fallback_smoke, 'AUTH_USER_PERMISSIONS'], 'auth local plan');
 const central = read(authRegistry.evidence.central_registry);
 hasAll(central, ['| `auth` |', authRegistryPath, authRegistry.evidence.runtime_fallback_smoke], 'auth central registry');
 

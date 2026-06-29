@@ -3,7 +3,7 @@
   "module": "ai-media",
   "crate": "rustok-ai-media",
   "role": "consumer_support_adapter",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "consumer_profile": "ai_asset_descriptor",
   "provider_dependencies": [
     {
@@ -74,7 +74,8 @@
       }
     ],
     "fallback_smoke": {
-      "status": "planned",
+      "status": "runtime_verified",
+      "runner": "cargo test -p rustok-ai-media --lib",
       "profiles": [
         "embedded_native"
       ],

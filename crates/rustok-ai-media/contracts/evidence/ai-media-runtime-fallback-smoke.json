@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
   "generated_from": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
-  "status": "source_smoke_locked",
-  "scope": "no_compile_runtime_fallback_smoke",
+  "status": "runtime_verified",
+  "runner": "cargo test -p rustok-ai-media --lib",
+  "scope": "support_adapter_runtime_fallback_smoke",
   "profile": "embedded_native",
   "degraded_mode": "skip_asset_enrichment",
   "consumer_profile": "ai_asset_descriptor",
@@ -29,6 +30,6 @@
   ],
   "verification": {
     "runner": "scripts/verify/verify-ai-media-fba.mjs",
-    "compilation_required": false
+    "compilation_required": true
   }
 }

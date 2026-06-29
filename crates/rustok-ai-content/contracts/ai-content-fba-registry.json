@@ -3,7 +3,7 @@
   "module": "ai-content",
   "crate": "rustok-ai-content",
   "role": "consumer_support_adapter",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "consumer_profile": "ai_content_generation_context",
   "provider_dependencies": [],
   "support_adapter": {
@@ -65,7 +65,7 @@
       }
     ],
     "fallback_smoke": {
-      "status": "source_smoke_locked",
+      "status": "runtime_verified",
       "profiles": [
         "embedded_native"
       ],

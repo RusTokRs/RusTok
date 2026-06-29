@@ -20,6 +20,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - Версия FBA-контракта: `order.checkout_completion.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - FBA provider registry `crates/rustok-order/contracts/order-fba-registry.json` now also declares `ai-order` as an operator-context consumer of `CheckoutCompletionPort` / `order.checkout_completion.v1` `read_order_status`, with `generate_summary_without_live_status`, `require_operator_review`, and `skip_prefill_execution` degraded modes locked by `scripts/verify/verify-ai-fba-baseline.mjs`.
   - FBA maintenance slice перевёл read-only checkout result/status paths на shared `PortCallPolicy::read()`, а complete-checkout write path — на shared `PortCallPolicy::write()` без изменения temporary commerce transport handoff.
   - `src/ports.rs` теперь экспортирует `CheckoutCompletionPort` и DTO для complete/result/status операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `checkout completion/result` через `crates/rustok-order/contracts/order-fba-registry.json`; статус остаётся `in_progress` до появления contract tests/remote transport evidence, которые позволят подняться выше embedded checkout compatibility;
