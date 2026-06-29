@@ -17,6 +17,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - FFA status: `phase_b_ready`
 - FBA status: `in_progress`
+- Проверка FBA: `scripts/verify/verify-ecommerce-fba-registries.mjs`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA provider registry `crates/rustok-cart/contracts/cart-fba-registry.json`, static contract evidence `crates/rustok-cart/contracts/evidence/cart-contract-test-static-matrix.json` and neutral `CartSnapshotReadPort`/`cart.checkout_snapshot.v1` are locked for commerce checkout snapshot consumers; runtime contract execution/fallback smoke remain pending before `boundary_ready`;

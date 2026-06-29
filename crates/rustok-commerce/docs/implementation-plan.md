@@ -14,6 +14,7 @@
 
 - FFA status: `in_progress`
 - FBA status: `in_progress` (readiness hardening для уже готовых slices; remote transport/runtime profile ещё не считается включённым)
+- Версия FBA-контракта: `commerce.checkout_orchestration.fba.v1`
 - Product catalog read provider dependency is now tracked through `crates/rustok-product/contracts/product-fba-registry.json` / `ProductCatalogReadPort` with static contract-test evidence; commerce remains the orchestrator/consumer and does not own product catalog rules.
 - Customer read-projection provider dependency is now tracked through `crates/rustok-customer/contracts/customer-fba-registry.json` / `CustomerReadPort` with static contract-test evidence; cart checkout snapshot provider dependency is tracked through `crates/rustok-cart/contracts/cart-fba-registry.json` / `CartSnapshotReadPort`; commerce remains the orchestrator/consumer and does not own customer profile or cart lifecycle rules.
 - Structural shape: `core_transport_ui`

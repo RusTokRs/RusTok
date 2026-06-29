@@ -18,3 +18,13 @@
 - Добавлен domain-owned registration metadata API (`product_ai_verticals`) для `product_copy` / `product_attributes`; runtime handler registration в `rustok-ai` использует эти task/tool constants.
 - Added compile-free static verification gate `scripts/verify/verify-ai-domain-verticals.mjs` for product descriptors, runtime binding seam, and generated payload validators.
 - Last updated at (UTC): 2026-06-23T00:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - `admin/src/core.rs`, `admin/src/transport.rs`, and `admin/src/ui/leptos.rs` provide the module-owned admin FFA split.
+  - Transport exposes a native-server plus GraphQL fallback placeholder profile; concrete host rendering remains a follow-up.
+  - The global readiness board uses the canonical hyphenated module slug `ai-product`.

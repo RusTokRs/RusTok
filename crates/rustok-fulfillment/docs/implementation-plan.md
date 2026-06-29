@@ -18,6 +18,7 @@ SPI и post-order delivery changes ещё остаются в активном b
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Версия FBA-контракта: `fulfillment.shipping_selection.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA maintenance slice перевёл read-only `list_seller_shipping_options` path на shared `PortCallPolicy::read()`, а select/write path — на shared `PortCallPolicy::write()`, сохранив существующие FBA metadata без изменений runtime surface.

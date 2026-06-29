@@ -17,6 +17,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Версия FBA-контракта: `order.checkout_completion.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA maintenance slice перевёл read-only checkout result/status paths на shared `PortCallPolicy::read()`, а complete-checkout write path — на shared `PortCallPolicy::write()` без изменения temporary commerce transport handoff.

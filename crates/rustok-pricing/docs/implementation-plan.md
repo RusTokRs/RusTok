@@ -18,6 +18,7 @@ rule и scope write paths, а полный promotions engine и остально
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Версия FBA-контракта: `pricing.read_projection.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - in-process реализация `PricingReadPort for PricingService` добавлена в `src/ports.rs`: read paths требуют `PortContext::require_deadline_semantics`, price resolution вызывает owner `resolve_variant_price`, projection читает active price-list snapshot, а `CommerceError` мапится в `PortError`;

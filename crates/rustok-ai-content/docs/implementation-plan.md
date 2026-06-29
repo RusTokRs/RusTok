@@ -20,6 +20,16 @@
 - Hand-off notes for next agent: Не переносить executable runtime composition из `rustok-ai`; support crate владеет descriptors/policy/validation, host crate только consumes defaults.
 - Last updated at (UTC): 2026-06-22T00:00:00Z
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - `admin/src/core.rs`, `admin/src/transport.rs`, and `admin/src/ui/leptos.rs` provide the module-owned admin FFA split.
+  - Transport exposes a native-server plus GraphQL fallback placeholder profile; concrete host rendering remains a follow-up.
+  - The global readiness board uses the canonical hyphenated module slug `ai-content`.
+
 ## Quality backlog
 
 - [x] Domain-owned policy matrix for content moderation/blog draft approval routing.

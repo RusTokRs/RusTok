@@ -17,6 +17,7 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Версия FBA-контракта: `customer.read_projection.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - `src/ports.rs` экспортирует `CustomerReadPort` и DTO для customer read/list projection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;

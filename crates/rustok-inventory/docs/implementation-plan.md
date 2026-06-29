@@ -18,6 +18,7 @@ admin read-side service, native-only server-function read/write transport для
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Версия FBA-контракта: `inventory.reservation.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - in-process реализация `InventoryReservationPort for InventoryService` добавлена в `src/ports.rs`: availability read path требует shared `PortCallPolicy::read()` и вызывает owner `check_variant_availability`, reservation/release write paths требуют shared `PortCallPolicy::write()` и мапят `CommerceError` в `PortError`;

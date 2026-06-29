@@ -19,3 +19,13 @@
 - Last updated at (UTC): 2026-06-19T06:15:00Z
 - Added compile-free static verification gate `scripts/verify/verify-ai-domain-verticals.mjs` for order descriptors, runtime binding seam, generated payload validators, and sensitive ops-assistant metadata.
 - Last updated at (UTC): 2026-06-23T00:00:00Z
+
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+- Evidence:
+  - `admin/src/core.rs`, `admin/src/transport.rs`, and `admin/src/ui/leptos.rs` provide the module-owned admin FFA split.
+  - Transport exposes a native-server plus GraphQL fallback placeholder profile; concrete host rendering remains a follow-up.
+  - The global readiness board uses the canonical hyphenated module slug `ai-order`.

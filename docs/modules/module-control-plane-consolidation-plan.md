@@ -2,7 +2,9 @@
 id: doc://docs/modules/module-control-plane-consolidation-plan.md
 kind: implementation_plan
 language: markdown
-status: draft
+last_verified_snapshot: snap_jsonl_00000040
+source_language: markdown
+status: verified
 ---
 # План консолидации управления модулями
 

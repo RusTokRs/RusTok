@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "status": "in_progress",
   "provider": {
     "module_slug": "page_builder",
     "manifest_module": "page-builder",

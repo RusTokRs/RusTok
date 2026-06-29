@@ -16,6 +16,7 @@ provider SPI и richer payment lifecycle остаются в backlog umbrella `r
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
+- Версия FBA-контракта: `payment.checkout.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
   - FBA maintenance slice перевёл read-only `read_collection_status` path на shared `PortCallPolicy::read()`, а create/reuse write path — на shared `PortCallPolicy::write()` без изменения commerce compatibility transport.
