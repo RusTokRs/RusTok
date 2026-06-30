@@ -96,12 +96,19 @@ separated into `alloy_apply_module_scaffold` with explicit confirmation.
 - explicit review/apply boundary for generated drafts through `alloy_review_module_scaffold` and `alloy_apply_module_scaffold`
 - persisted Alloy scaffold draft control plane in `apps/server` through REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`
 - live runtime binding hooks so Alloy scaffold tools can use the persisted draft store instead of process-local memory when a server-backed `McpScaffoldDraftStore` is attached
+- owner-owned admin UI slice for persisted Alloy scaffold drafts, MCP audit events, clients,
+  policies, and safe token previews:
+  - Next package `apps/next-admin/packages/rustok-mcp`
+  - Leptos FFA package `crates/rustok-mcp/admin`
+  - host route `/dashboard/mcp` only mounts the owner package and does not own MCP GraphQL logic
+- owner-defined `McpManagementMutationPort` with an `apps/server` provider that delegates client,
+  policy, and token writes to the canonical transactional `McpManagementService`
 
 ### What is not implemented yet
 
 - MCP `resources`, `prompts`, `roots`, `sampling`, `logging`, `completions`, or subscriptions
 - server-owned remote MCP transport/session bootstrap beyond the current stdio adapter
-- admin UI for MCP clients, tokens, policies, and audit trails
+- browser-level parity verification for the Next and Leptos management workflows
 - script-to-native-module compilation pipeline and marketplace/publish flow
 - automatic generation of module-specific `Resource`/`Permission` surface in `rustok-core`
 
@@ -213,4 +220,3 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - RusToK MCP implementation plan: [`./docs/implementation-plan.md`](./docs/implementation-plan.md)
 - Central MCP reference index: [`../../docs/references/mcp/README.md`](../../docs/references/mcp/README.md)
 - Platform docs map: [`../../docs/index.md`](../../docs/index.md)
-

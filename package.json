@@ -34,6 +34,7 @@
     "verify:index:fba": "node scripts/verify/verify-index-fba.mjs && npm run verify:foundation:fba-runtime-smoke",
     "test:verify:channel:admin-boundary": "node scripts/verify/verify-channel-admin-boundary.test.mjs",
     "verify:ai:admin-boundary": "node scripts/verify/verify-ai-admin-boundary.mjs",
+    "verify:mcp:admin-boundary": "node scripts/verify/verify-mcp-admin-boundary.mjs",
     "verify:tenant:admin-boundary": "node scripts/verify/verify-tenant-admin-boundary.mjs",
     "verify:tenant:fba": "node scripts/verify/verify-tenant-fba.mjs && npm run verify:foundation:fba-runtime-smoke",
     "verify:region:admin-boundary": "node scripts/verify/verify-region-admin-boundary.mjs",

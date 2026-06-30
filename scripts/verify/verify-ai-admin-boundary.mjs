@@ -79,6 +79,15 @@ assertNotContains(ui, /(^|[^A-Za-z0-9_])api::/, `${uiPath}: Leptos adapter must 
 for (const marker of ["rustok-admin-locale", "local_storage()", "get_item(\"rustok-admin-locale\")", "browser_admin_locale"]) {
   assertNotContains(ui, marker, `${uiPath}: AI UI must consume host-provided locale without package-local browser storage fallback (${marker})`);
 }
+for (const marker of [
+  "MCP Alloy Drafts",
+  "MCP_SCAFFOLD_DRAFTS_QUERY",
+  "mcpModuleScaffoldDrafts",
+  "stageMcpModuleScaffoldDraft",
+  "applyMcpModuleScaffoldDraft",
+]) {
+  assertNotContains(ui, marker, `${uiPath}: MCP/Alloy draft review UI belongs to the MCP/Alloy owner surface, not rustok-ai (${marker})`);
+}
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]", "RwSignal", "LocalResource", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay UI/runtime free (${marker})`);

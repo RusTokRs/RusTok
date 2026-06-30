@@ -16,6 +16,7 @@
 pub mod access;
 mod alloy_scaffold;
 pub mod alloy_tools;
+pub mod management;
 pub mod runtime;
 pub mod server;
 pub mod tools;
@@ -36,6 +37,11 @@ pub use alloy_tools::{
     TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
     TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
     TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+};
+pub use management::{
+    CreateMcpClientCommand, McpClientMutationRecord, McpManagementMutationContext,
+    McpManagementMutationError, McpManagementMutationPort, McpManagementMutationRuntime,
+    McpPolicyMutationRecord, McpTokenSecretResult, RotateMcpTokenCommand, UpdateMcpPolicyCommand,
 };
 pub use runtime::{
     McpAccessResolver, McpAuditSink, McpRuntimeBinding, McpScaffoldDraftRuntimeContext,
