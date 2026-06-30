@@ -5,12 +5,12 @@ contract приведены к единому формату.
 
 ## Execution checkpoint
 
-- Current phase: runtime_hardening
-- Last checkpoint: Expanded the no-compile Alloy runtime static contract/evidence gate to source-lock REST/GraphQL script create-update validation parity: duplicate-name conflicts, cron validation, compile-before-save, cache invalidation on rename/code updates, tenant create context and validation/conflict error mapping; kept compilation skipped per operator request.
-- Next step: Run Alloy validation/test gates when compilation is allowed, then promote the static route/schema/pagination/sandbox/scheduler/hook source locks into executable router/schema/runtime integration checks where host test fixtures permit.
-- Open blockers: Compilation/test gates intentionally skipped by operator request.
-- Hand-off notes for next agent: Компиляция не запускалась по запросу; перед следующим runtime change проверить `npm run verify:alloy:runtime-contract`, `cargo xtask module validate alloy` и targeted tests. No-compile gate (`crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`, `scripts/verify/verify-alloy-runtime-contract.mjs`) теперь фиксирует REST/Loco/Axum/GraphQL execution-history routes, canonical response fields, status-filter validation, pagination bounds, in-memory/SeaORM ordering parity, sandbox profiles/timeout mapping, Rhai limit-error mapping, scheduler phase/tenant/running-flag recovery, typed hook outcomes и REST/GraphQL script create-update validation parity. `cargo fmt --check` ранее упирался в существующие parse errors вне `alloy` (`apps/server/src/services/registry_governance/mod.rs`).
-- Last updated at (UTC): 2026-06-26T00:00:00Z
+- Current phase: runtime_hardening_verified
+- Last checkpoint: Restored executable Alloy compile/test evidence by enabling `rustok-api/server` for the crate, wiring native Rhai operation/call-depth/string/array/map limits into `ScriptEngine`, and keeping compile-stage string pressure mapped to Alloy resource-limit semantics; `cargo xtask module test alloy`, `cargo test -p alloy --lib`, `npm run verify:alloy:runtime-contract`, and `npm run verify:ai-alloy:policy` passed.
+- Next step: Promote remaining static route/schema/pagination/scheduler/hook source locks into executable router/schema/runtime integration checks where host test fixtures permit, then continue MCP/Admin Alloy draft-review surface work.
+- Open blockers: None for the Alloy crate validation path.
+- Hand-off notes for next agent: Alloy compile/test gates are no longer blocked. Keep `rustok-api/server` enabled for `alloy` while HTTP/GraphQL controllers use server-gated API context types. Rhai sandbox limits are applied natively in `ScriptEngine::new`; do not remove them or the runtime hardening contract will drift from executable behavior. Static contract paths remain `crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`, and `scripts/verify/verify-alloy-runtime-contract.mjs`.
+- Last updated at (UTC): 2026-06-30T00:00:00Z
 
 ## Область работ
 

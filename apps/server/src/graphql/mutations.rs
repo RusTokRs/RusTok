@@ -64,7 +64,11 @@ use crate::services::platform_composition::{
     PlatformCompositionService,
 };
 use crate::services::rbac_service::RbacService;
-use rustok_core::{ModuleRegistry, Permission};
+use rustok_auth::{
+    AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
+    UserAdminMutationRuntime, UserMutationRecord,
+};
+use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, Permission};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -176,6 +180,69 @@ fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
             <FieldError as GraphQLError>::internal_error(&inner.to_string())
         }
         _ => <FieldError as GraphQLError>::internal_error("Failed to create user"),
+    }
+}
+
+fn user_mutation_runtime(ctx: &Context<'_>) -> Result<UserAdminMutationRuntime> {
+    ctx.data::<Arc<ModuleRuntimeExtensions>>()?
+        .get::<UserAdminMutationRuntime>()
+        .cloned()
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::internal_error(
+                "UserAdminMutationRuntime is not registered; initialize shared host runtime providers",
+            )
+            .into()
+        })
+}
+
+fn map_user_mutation_error(error: AuthAdminMutationError) -> FieldError {
+    match error {
+        AuthAdminMutationError::Unauthorized => <FieldError as GraphQLError>::unauthenticated(),
+        AuthAdminMutationError::Forbidden(message) => {
+            <FieldError as GraphQLError>::permission_denied(&message)
+        }
+        AuthAdminMutationError::Validation(message) | AuthAdminMutationError::Conflict(message) => {
+            <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        AuthAdminMutationError::CustomFieldsValidation(fields) => {
+            FieldError::new("Custom field validation failed").extend_with(|_, ext| {
+                ext.set("code", "CUSTOM_FIELD_VALIDATION_FAILED");
+                if let Ok(value) = async_graphql::Value::from_json(fields) {
+                    ext.set("fields", value);
+                }
+            })
+        }
+        AuthAdminMutationError::NotFound(message) => {
+            <FieldError as GraphQLError>::not_found(&message)
+        }
+        AuthAdminMutationError::Internal(message) => {
+            <FieldError as GraphQLError>::internal_error(&message)
+        }
+    }
+}
+
+fn user_mutation_context(
+    auth: &AuthContext,
+    tenant: &TenantContext,
+    locale: String,
+) -> AuthAdminMutationContext {
+    AuthAdminMutationContext {
+        actor_id: auth.user_id,
+        tenant_id: tenant.id,
+        request_id: None,
+        locale: Some(locale),
+    }
+}
+
+fn user_from_mutation_record(record: UserMutationRecord) -> User {
+    User {
+        id: record.id,
+        email: record.email,
+        name: record.name,
+        status: record.status,
+        created_at: record.created_at.to_rfc3339(),
+        tenant_id: record.tenant_id,
+        metadata: record.metadata,
     }
 }
 
@@ -425,81 +492,27 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-
-        let can_create_users = RbacService::has_any_permission(
-            &app_ctx.db,
-            &tenant.id,
-            &auth.user_id,
-            &[
-                rustok_core::Permission::USERS_CREATE,
-                rustok_core::Permission::USERS_MANAGE,
-            ],
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        if !can_create_users {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: users:create required",
-            ));
-        }
-
-        let requested_role = input
-            .role
-            .map(Into::into)
-            .unwrap_or(rustok_core::UserRole::Customer);
-
         let locale = effective_request_locale(ctx, tenant);
-        let prepared_custom_fields = prepare_user_custom_fields_write(
-            &app_ctx.db,
-            tenant.id,
-            locale.as_str(),
-            None,
-            None,
-            input.custom_fields,
-        )
-        .await?;
-
-        let status = input.status.map(Into::into);
-        let mut user = AuthLifecycleService::create_user(
-            app_ctx,
-            tenant.id,
-            &input.email,
-            &input.password,
-            input.name,
-            requested_role,
-            status,
-        )
-        .await
-        .map_err(map_create_user_error)?;
-
-        if let Some(metadata) = prepared_custom_fields.metadata {
-            let mut active: users::ActiveModel = user.into();
-            active.metadata = Set(metadata);
-            user = active
-                .update(&app_ctx.db)
-                .await
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        }
-
-        if let (Some(locale), Some(values)) = (
-            prepared_custom_fields.locale.as_deref(),
-            prepared_custom_fields.localized_values.as_ref(),
-        ) {
-            FlexAttachedValuesService::persist_localized_values(
-                &app_ctx.db,
-                tenant.id,
-                "user",
-                user.id,
-                locale,
-                values,
+        user_mutation_runtime(ctx)?
+            .port()
+            .create_user(
+                &user_mutation_context(auth, tenant, locale),
+                CreateUserCommand {
+                    email: input.email,
+                    password: input.password,
+                    name: input.name,
+                    role: input
+                        .role
+                        .map(|role| rustok_core::UserRole::from(role).to_string()),
+                    status: input
+                        .status
+                        .map(|status| rustok_core::UserStatus::from(status).to_string()),
+                    custom_fields: input.custom_fields,
+                },
             )
             .await
-            .map_err(map_custom_field_error)?;
-        }
-
-        Ok(User::from(&user))
+            .map(user_from_mutation_record)
+            .map_err(map_user_mutation_error)
     }
 
     #[cfg(all(
@@ -688,119 +701,28 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-
-        let can_update_users = RbacService::has_any_permission(
-            &app_ctx.db,
-            &tenant.id,
-            &auth.user_id,
-            &[
-                rustok_core::Permission::USERS_UPDATE,
-                rustok_core::Permission::USERS_MANAGE,
-            ],
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        if !can_update_users {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: users:update required",
-            ));
-        }
-
-        let user = users::Entity::find_by_id(id)
-            .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(&app_ctx.db)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
-            .ok_or_else(|| FieldError::new("User not found"))?;
-
-        if let Some(email) = &input.email {
-            let existing = users::Entity::find_by_email(&app_ctx.db, tenant.id, email)
-                .await
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-            if existing
-                .as_ref()
-                .is_some_and(|existing| existing.id != user.id)
-            {
-                return Err(FieldError::new("User with this email already exists"));
-            }
-        }
-
-        let user_id = user.id;
-        let existing_metadata = user.metadata.clone();
-        let mut model: users::ActiveModel = user.into();
-
-        if let Some(email) = input.email {
-            model.email = Set(email.to_lowercase());
-        }
-
-        if let Some(name) = input.name {
-            model.name = Set(Some(name));
-        }
-
-        let requested_role = input.role.map(rustok_core::UserRole::from);
-
-        if let Some(status) = input.status {
-            let status: rustok_core::UserStatus = status.into();
-            model.status = Set(status);
-        }
-
-        if let Some(password) = input.password {
-            let password_hash = hash_password(&password)
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-            model.password_hash = Set(password_hash);
-        }
-
         let locale = effective_request_locale(ctx, tenant);
-        let prepared_custom_fields = prepare_user_custom_fields_write(
-            &app_ctx.db,
-            tenant.id,
-            locale.as_str(),
-            Some(user_id),
-            Some(&existing_metadata),
-            input.custom_fields,
-        )
-        .await?;
-
-        if let Some(metadata) = prepared_custom_fields.metadata {
-            model.metadata = Set(metadata);
-        }
-
-        let tx = app_ctx
-            .db
-            .begin()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        let user = model
-            .update(&tx)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        if let Some(role) = requested_role {
-            RbacService::replace_user_role(&tx, &user.id, &tenant.id, role)
-                .await
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        }
-
-        if let (Some(locale), Some(values)) = (
-            prepared_custom_fields.locale.as_deref(),
-            prepared_custom_fields.localized_values.as_ref(),
-        ) {
-            FlexAttachedValuesService::persist_localized_values(
-                &tx, tenant.id, "user", user_id, locale, values,
+        user_mutation_runtime(ctx)?
+            .port()
+            .update_user(
+                &user_mutation_context(auth, tenant, locale),
+                UpdateUserCommand {
+                    id,
+                    email: input.email,
+                    password: input.password,
+                    name: input.name,
+                    role: input
+                        .role
+                        .map(|role| rustok_core::UserRole::from(role).to_string()),
+                    status: input
+                        .status
+                        .map(|status| rustok_core::UserStatus::from(status).to_string()),
+                    custom_fields: input.custom_fields,
+                },
             )
             .await
-            .map_err(map_custom_field_error)?;
-        }
-
-        tx.commit()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        Ok(User::from(&user))
+            .map(user_from_mutation_record)
+            .map_err(map_user_mutation_error)
     }
 
     async fn disable_user(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<User> {
@@ -848,50 +770,12 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-
-        let can_manage_users = RbacService::has_permission(
-            &app_ctx.db,
-            &tenant.id,
-            &auth.user_id,
-            &rustok_core::Permission::USERS_MANAGE,
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        if !can_manage_users {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: users:manage required",
-            ));
-        }
-
-        let txn = app_ctx
-            .db
-            .begin()
+        let locale = effective_request_locale(ctx, tenant);
+        user_mutation_runtime(ctx)?
+            .port()
+            .delete_user(&user_mutation_context(auth, tenant, locale), id)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        let user = users::Entity::find_by_id(id)
-            .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(&txn)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
-            .ok_or_else(|| FieldError::new("User not found"))?;
-
-        FlexAttachedValuesService::delete_localized_values(&txn, tenant.id, "user", id)
-            .await
-            .map_err(map_custom_field_error)?;
-
-        let model: users::ActiveModel = user.into();
-        model
-            .delete(&txn)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        txn.commit()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
+            .map_err(map_user_mutation_error)?;
         Ok(DeleteUserPayload { success: true })
     }
 

@@ -418,6 +418,162 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
     }
 }
 
+#[cfg(feature = "ssr")]
+fn user_from_mutation_record(record: rustok_auth::UserMutationRecord) -> GraphqlUser {
+    GraphqlUser {
+        id: record.id.to_string(),
+        email: record.email,
+        name: record.name,
+        role: record.role,
+        status: record.status,
+        created_at: record.created_at.to_rfc3339(),
+        tenant_name: record.tenant_name,
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn user_mutation_context() -> Result<
+    (
+        rustok_auth::AuthAdminMutationContext,
+        rustok_auth::UserAdminMutationRuntime,
+    ),
+    ServerFnError,
+> {
+    use leptos::prelude::expect_context;
+    use loco_rs::app::AppContext;
+    use rustok_api::AuthContext;
+    use rustok_core::ModuleRuntimeExtensions;
+    use std::sync::Arc;
+
+    let auth = leptos_axum::extract::<AuthContext>()
+        .await
+        .map_err(|error| server_error(error.to_string()))?;
+    let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .ok();
+    let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
+        .await
+        .ok();
+    let locale = request_context
+        .map(|request_context| request_context.locale)
+        .or_else(|| tenant_context.map(|tenant_context| tenant_context.default_locale));
+    let app_ctx = expect_context::<AppContext>();
+    let extensions = app_ctx
+        .shared_store
+        .get::<Arc<ModuleRuntimeExtensions>>()
+        .ok_or_else(|| server_error("ModuleRuntimeExtensions not initialized"))?;
+    let runtime = extensions
+        .get::<rustok_auth::UserAdminMutationRuntime>()
+        .cloned()
+        .ok_or_else(|| {
+            server_error(
+                "UserAdminMutationRuntime is not registered; initialize shared host runtime providers",
+            )
+        })?;
+    Ok((
+        rustok_auth::AuthAdminMutationContext {
+            actor_id: auth.user_id,
+            tenant_id: auth.tenant_id,
+            request_id: None,
+            locale,
+        },
+        runtime,
+    ))
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/create-user")]
+pub async fn create_user_native(
+    input: crate::model::CreateUserInput,
+) -> Result<Option<GraphqlUser>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (context, runtime) = user_mutation_context().await?;
+        runtime
+            .port()
+            .create_user(
+                &context,
+                rustok_auth::CreateUserCommand {
+                    email: input.email,
+                    password: input.password,
+                    name: input.name,
+                    role: input.role,
+                    status: input.status,
+                    custom_fields: None,
+                },
+            )
+            .await
+            .map(user_from_mutation_record)
+            .map(Some)
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = input;
+        Err(ServerFnError::new(
+            "admin/create-user requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/update-user")]
+pub async fn update_user_native(
+    id: String,
+    input: crate::model::UpdateUserInput,
+) -> Result<Option<GraphqlUser>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let id = Uuid::parse_str(&id).map_err(|error| server_error(error.to_string()))?;
+        let (context, runtime) = user_mutation_context().await?;
+        runtime
+            .port()
+            .update_user(
+                &context,
+                rustok_auth::UpdateUserCommand {
+                    id,
+                    email: None,
+                    password: None,
+                    name: input.name,
+                    role: Some(input.role),
+                    status: Some(input.status),
+                    custom_fields: None,
+                },
+            )
+            .await
+            .map(user_from_mutation_record)
+            .map(Some)
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (id, input);
+        Err(ServerFnError::new(
+            "admin/update-user requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "admin/delete-user")]
+pub async fn delete_user_native(id: String) -> Result<bool, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let id = Uuid::parse_str(&id).map_err(|error| server_error(error.to_string()))?;
+        let (context, runtime) = user_mutation_context().await?;
+        runtime
+            .port()
+            .delete_user(&context, id)
+            .await
+            .map(|()| true)
+            .map_err(|error| server_error(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = id;
+        Err(ServerFnError::new(
+            "admin/delete-user requires the `ssr` feature",
+        ))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SuccessPayload {
     pub success: bool,
@@ -842,6 +998,7 @@ async fn oauth_mutation_context() -> Result<
             actor_id: auth.user_id,
             tenant_id: auth.tenant_id,
             request_id: None,
+            locale: None,
         },
         runtime,
     ))

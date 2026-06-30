@@ -256,7 +256,15 @@ mod tests {
         bridge::register_utils(engine.engine_mut());
 
         let ctx = ExecutionContext::new(ExecutionPhase::Manual);
-        let result = engine.execute("test_string_limit", r#""123456789""#, &ctx);
+        let result = engine.execute(
+            "test_string_limit",
+            r#"
+                let value = "1234";
+                value += "56789";
+                value
+            "#,
+            &ctx,
+        );
 
         assert!(matches!(result, Err(ScriptError::ResourceLimit { .. })));
     }

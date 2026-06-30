@@ -20,6 +20,7 @@ pub struct AuthAdminMutationContext {
     pub actor_id: Uuid,
     pub tenant_id: Uuid,
     pub request_id: Option<String>,
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -29,14 +30,18 @@ pub struct CreateUserCommand {
     pub name: Option<String>,
     pub role: Option<String>,
     pub status: Option<String>,
+    pub custom_fields: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UpdateUserCommand {
     pub id: Uuid,
+    pub email: Option<String>,
+    pub password: Option<String>,
     pub name: Option<String>,
-    pub role: String,
-    pub status: String,
+    pub role: Option<String>,
+    pub status: Option<String>,
+    pub custom_fields: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,6 +53,8 @@ pub struct UserMutationRecord {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub tenant_name: Option<String>,
+    pub tenant_id: Uuid,
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,6 +116,8 @@ pub enum AuthAdminMutationError {
     Forbidden(String),
     #[error("invalid auth admin mutation: {0}")]
     Validation(String),
+    #[error("custom field validation failed: {0}")]
+    CustomFieldsValidation(serde_json::Value),
     #[error("auth admin resource not found: {0}")]
     NotFound(String),
     #[error("auth admin mutation conflict: {0}")]

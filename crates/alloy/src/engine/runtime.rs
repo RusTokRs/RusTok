@@ -1,5 +1,8 @@
 use parking_lot::RwLock;
-use rhai::{Dynamic, Engine, EvalAltResult, RhaiNativeFunc, Scope, AST};
+use rhai::{
+    Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc, Scope,
+    AST,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -27,17 +30,11 @@ impl ScriptEngine {
         engine.set_allow_looping(true);
         engine.set_allow_shadowing(true);
         engine.set_strict_variables(true);
-        // NOTE: set_max_operations / set_max_call_levels / set_max_string_size /
-        // set_max_array_size / set_max_map_size were removed from rhai in the
-        // current version. Execution budget is enforced via the timeout check
-        // in execute_compiled_with_timeout instead.
-        let _ = (
-            config.max_operations,
-            config.max_call_depth,
-            config.max_string_size,
-            config.max_array_size,
-            config.max_map_depth,
-        );
+        engine.set_max_operations(config.max_operations);
+        engine.set_max_call_levels(config.max_call_depth);
+        engine.set_max_string_size(config.max_string_size);
+        engine.set_max_array_size(config.max_array_size);
+        engine.set_max_map_size(config.max_map_depth);
 
         Self {
             engine,
@@ -94,7 +91,7 @@ impl ScriptEngine {
         let ast = self
             .engine
             .compile_with_scope(scope, source)
-            .map_err(|e| ScriptError::Compilation(e.to_string()))?;
+            .map_err(Self::convert_compile_error)?;
 
         let compiled = Arc::new(CompiledScript { ast, source_hash });
 
@@ -180,6 +177,15 @@ impl ScriptEngine {
                 }
             }
             other => ScriptError::Runtime(other.to_string()),
+        }
+    }
+
+    fn convert_compile_error(err: ParseError) -> ScriptError {
+        match err.err_type() {
+            ParseErrorType::BadInput(LexError::StringTooLong(_)) => ScriptError::ResourceLimit {
+                resource: "Length of string".to_string(),
+            },
+            _ => ScriptError::Compilation(err.to_string()),
         }
     }
 

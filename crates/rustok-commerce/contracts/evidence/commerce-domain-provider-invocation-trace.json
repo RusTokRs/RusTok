@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-commerce/contracts/commerce-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "purpose": "Source-locked invocation trace for the commerce-domain provider batch. It mirrors provider registries, provider runtime contract smoke packets, and consumer fallback/degraded rows without promoting beyond in_progress before live provider execution.",
+  "modules": [
+    {
+      "provider_module": "product",
+      "consumer_module": "commerce",
+      "provider_registry": "crates/rustok-product/contracts/product-fba-registry.json",
+      "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
+      "contract_version": "product.catalog_read.v1",
+      "ports": ["ProductCatalogReadPort"],
+      "operations": ["read_product_projection", "list_published_products"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+      "degraded_modes": ["use_cart_product_snapshot", "show_product_refresh_required", "skip_product_enrichment"],
+      "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+      "consumer_degraded_modes": ["use_cart_product_snapshot", "show_product_refresh_required"]
+    },
+    {
+      "provider_module": "pricing",
+      "consumer_module": "commerce",
+      "provider_registry": "crates/rustok-pricing/contracts/pricing-fba-registry.json",
+      "runtime_contract_smoke": "crates/rustok-pricing/contracts/evidence/pricing-runtime-contract-smoke.json",
+      "contract_version": "pricing.read_projection.v1",
+      "ports": ["PricingReadPort"],
+      "operations": ["resolve_product_price", "read_price_list_projection"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+      "degraded_modes": ["use_cart_price_snapshot", "show_price_refresh_required", "hide_price_badge", "show_price_unavailable"],
+      "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat"],
+      "consumer_degraded_modes": ["use_cart_price_snapshot", "show_price_refresh_required"]
+    },
+    {
+      "provider_module": "inventory",
+      "consumer_module": "commerce",
+      "provider_registry": "crates/rustok-inventory/contracts/inventory-fba-registry.json",
+      "runtime_contract_smoke": "crates/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json",
+      "contract_version": "inventory.reservation.v1",
+      "ports": ["InventoryReservationPort"],
+      "operations": ["check_availability", "reserve_inventory", "release_inventory_reservation"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "storefront_projection_compat"],
+      "degraded_modes": ["block_checkout_with_stock_refresh", "preserve_cart_inventory_snapshot", "hide_stock_badge", "show_inventory_unavailable"],
+      "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat"],
+      "consumer_degraded_modes": ["block_checkout_with_stock_refresh", "preserve_cart_inventory_snapshot"]
+    },
+    {
+      "provider_module": "customer",
+      "consumer_module": "commerce",
+      "provider_registry": "crates/rustok-customer/contracts/customer-fba-registry.json",
+      "runtime_contract_smoke": "crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json",
+      "contract_version": "customer.read_projection.v1",
+      "ports": ["CustomerReadPort"],
+      "operations": ["read_customer_projection", "list_customer_projections"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat"],
+      "degraded_modes": ["use_checkout_customer_snapshot", "show_customer_refresh_required", "use_order_customer_snapshot"],
+      "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat"],
+      "consumer_degraded_modes": ["use_checkout_customer_snapshot", "show_customer_refresh_required"]
+    },
+    {
+      "provider_module": "cart",
+      "consumer_module": "commerce",
+      "provider_registry": "crates/rustok-cart/contracts/cart-fba-registry.json",
+      "runtime_contract_smoke": "crates/rustok-cart/contracts/evidence/cart-runtime-contract-smoke.json",
+      "contract_version": "cart.checkout_snapshot.v1",
+      "ports": ["CartSnapshotReadPort"],
+      "operations": ["read_cart_checkout_snapshot"],
+      "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+      "degraded_modes": ["preserve_cart_checkout_state", "show_cart_refresh_required"],
+      "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+      "consumer_degraded_modes": ["preserve_cart_checkout_state", "show_cart_refresh_required"]
+    },
+    {
+      "provider_module": "tax",
+      "consumer_module": "cart",
+      "provider_registry": "crates/rustok-tax/contracts/tax-fba-registry.json",
+      "runtime_contract_smoke": "crates/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json",
+      "contract_version": "tax.calculation.v1",
+      "ports": ["TaxCalculationPort"],
+      "operations": ["calculate_tax"],
+      "fallback_profiles": ["embedded_native"],
+      "degraded_modes": ["block_checkout_with_tax_refresh"],
+      "consumer_fallback_profiles": ["embedded_native"],
+      "consumer_degraded_modes": ["block_checkout_with_tax_refresh"]
+    }
+  ]
+}

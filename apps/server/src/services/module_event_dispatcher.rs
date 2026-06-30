@@ -1,5 +1,5 @@
 use loco_rs::app::AppContext;
-use rustok_auth::OAuthAdminMutationRuntime;
+use rustok_auth::{OAuthAdminMutationRuntime, UserAdminMutationRuntime};
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexerRuntimeConfig;
@@ -72,9 +72,11 @@ pub fn build_shared_runtime_extensions_with_host_providers(
 ) -> Arc<ModuleRuntimeExtensions> {
     let base = build_shared_runtime_extensions(registry, settings);
     let mut extensions = base.as_ref().clone();
-    extensions.insert(OAuthAdminMutationRuntime::new(Arc::new(
-        crate::services::auth_admin_mutation_provider::ServerOAuthAdminMutationProvider::new(db),
-    )));
+    let auth_admin_provider = Arc::new(
+        crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(db),
+    );
+    extensions.insert(OAuthAdminMutationRuntime::new(auth_admin_provider.clone()));
+    extensions.insert(UserAdminMutationRuntime::new(auth_admin_provider));
     Arc::new(extensions)
 }
 
@@ -146,5 +148,6 @@ mod tests {
             build_shared_runtime_extensions_with_host_providers(&registry, &settings, db);
 
         assert!(extensions.contains::<rustok_auth::OAuthAdminMutationRuntime>());
+        assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
     }
 }

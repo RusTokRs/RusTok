@@ -44,6 +44,7 @@ fn mutation_context(auth: &AuthContext) -> AuthAdminMutationContext {
         actor_id: auth.user_id,
         tenant_id: auth.tenant_id,
         request_id: None,
+        locale: None,
     }
 }
 
@@ -55,6 +56,9 @@ fn map_mutation_error(error: AuthAdminMutationError) -> FieldError {
         }
         AuthAdminMutationError::Validation(message) | AuthAdminMutationError::Conflict(message) => {
             <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        AuthAdminMutationError::CustomFieldsValidation(fields) => {
+            <FieldError as GraphQLError>::bad_user_input(&fields.to_string())
         }
         AuthAdminMutationError::NotFound(message) => {
             <FieldError as GraphQLError>::not_found(&message)

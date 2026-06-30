@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const defaultRoot = process.env.COMMERCE_DOMAIN_FBA_ROOT || process.cwd();
 export const commerceDomainModules = ['product', 'pricing', 'inventory', 'customer', 'cart', 'tax'];
+const invocationTracePath = 'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json';
 
 export class CommerceDomainFbaRuntimeSmokeError extends Error {
   constructor(message) {
@@ -42,6 +43,45 @@ function simulatePolicy({ deadlineMs, write, idempotencyKey }) {
 export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, modules = commerceDomainModules } = {}) {
   const read = (repoPath) => fs.readFileSync(path.join(root, repoPath), 'utf8');
   const json = (repoPath) => JSON.parse(read(repoPath));
+  const trace = json(invocationTracePath);
+  const commerceRegistry = json('crates/rustok-commerce/contracts/commerce-fba-registry.json');
+  const commerceFbaSource = read('crates/rustok-commerce/src/fba.rs');
+
+  if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
+  if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
+  if (trace.runner !== 'scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs') {
+    fail('commerce-domain invocation trace runner drift');
+  }
+  if (trace.generated_from !== 'crates/rustok-commerce/contracts/commerce-fba-registry.json') {
+    fail('commerce-domain invocation trace source drift');
+  }
+  if (commerceRegistry.evidence?.runtime_invocation_trace !== invocationTracePath) {
+    fail('commerce registry runtime invocation trace evidence drift');
+  }
+  if (!commerceFbaSource.includes('COMMERCE_DOMAIN_PROVIDER_INVOCATION_TRACE_JSON')) {
+    fail('commerce fba.rs must expose the invocation trace as a typed runtime entrypoint');
+  }
+  if (!commerceFbaSource.includes('include_str!("../contracts/evidence/commerce-domain-provider-invocation-trace.json")')) {
+    fail('commerce fba.rs must embed the invocation trace artifact');
+  }
+  if (!commerceFbaSource.includes('pub fn commerce_domain_provider_invocation_trace')) {
+    fail('commerce fba.rs must publish an invocation trace parser');
+  }
+  for (const marker of [
+    'impl CommerceFbaRegistry',
+    'pub fn provider(&self, module: &str)',
+    'pub fn provider_modules(&self)',
+    'impl CommerceDomainProviderInvocationTrace',
+    'pub fn provider_entry(',
+    'pub fn consumer_entries(',
+  ]) {
+    if (!commerceFbaSource.includes(marker)) {
+      fail(`commerce fba.rs missing typed lookup helper: ${marker}`);
+    }
+  }
+  if (!sameSet(trace.modules.map((entry) => entry.provider_module), modules)) {
+    fail('commerce-domain invocation trace module set drift');
+  }
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;
@@ -49,6 +89,18 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     const registry = json(registryPath);
     const smoke = json(smokePath);
     const ports = read(`crates/rustok-${module}/src/ports.rs`);
+    const traceEntry = trace.modules.find((entry) => entry.provider_module === module);
+
+    if (!traceEntry) fail(`${module} invocation trace entry missing`);
+    if (traceEntry.provider_registry !== registryPath) fail(`${module} invocation trace provider registry drift`);
+    if (traceEntry.runtime_contract_smoke !== smokePath) fail(`${module} invocation trace smoke path drift`);
+    if (traceEntry.contract_version !== registry.contract_version) fail(`${module} invocation trace contract version drift`);
+    if (!sameSet(traceEntry.ports, registry.ports.map((entry) => entry.name))) fail(`${module} invocation trace port drift`);
+    if (!sameSet(traceEntry.operations, registry.ports.flatMap((entry) => entry.operations))) {
+      fail(`${module} invocation trace operation drift`);
+    }
+    if (!sameSet(traceEntry.fallback_profiles, smoke.fallback_profiles)) fail(`${module} invocation trace fallback profile drift`);
+    if (!sameSet(traceEntry.degraded_modes, smoke.degraded_modes)) fail(`${module} invocation trace degraded mode drift`);
 
     if (registry.status !== 'in_progress') fail(`${module} registry must remain in_progress before live runtime execution`);
     if (smoke.status !== 'executable_no_compile') fail(`${module} runtime smoke status drift`);
@@ -61,6 +113,35 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     if (registry.contract_tests.fallback_smoke.status !== 'planned') fail(`${module} fallback smoke must remain planned before live runtime execution`);
     if (!sameSet(smoke.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) fail(`${module} fallback profile drift`);
     if (!sameSet(smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail(`${module} degraded mode drift`);
+    if (!sameSet(traceEntry.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) {
+      fail(`${module} invocation trace fallback profile does not mirror planned fallback smoke`);
+    }
+    if (!sameSet(traceEntry.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) {
+      fail(`${module} invocation trace degraded mode does not mirror planned fallback smoke`);
+    }
+
+    const registryConsumer = registry.consumers.find((consumer) => consumer.module === traceEntry.consumer_module);
+    if (!registryConsumer) fail(`${module} invocation trace consumer ${traceEntry.consumer_module} missing from provider registry`);
+    if (!registryConsumer.fallback_profiles || !sameSet(traceEntry.consumer_fallback_profiles, registryConsumer.fallback_profiles)) {
+      fail(`${module} invocation trace consumer fallback profile drift`);
+    }
+    if (!registryConsumer.degraded_modes || !sameSet(traceEntry.consumer_degraded_modes, registryConsumer.degraded_modes)) {
+      fail(`${module} invocation trace consumer degraded mode drift`);
+    }
+
+    if (traceEntry.consumer_module === 'commerce') {
+      const commerceProvider = commerceRegistry.providers.find((provider) => provider.module === module);
+      if (!commerceProvider) fail(`${module} invocation trace missing from commerce consumer registry`);
+      if (commerceProvider.registry !== registryPath) fail(`${module} commerce registry provider path drift`);
+      if (commerceProvider.contract_version !== registry.contract_version) fail(`${module} commerce registry contract version drift`);
+      if (!sameSet(commerceProvider.ports, traceEntry.ports)) fail(`${module} commerce registry port drift`);
+      if (!sameSet(commerceProvider.fallback_profiles, traceEntry.consumer_fallback_profiles)) {
+        fail(`${module} commerce registry fallback profile drift`);
+      }
+      if (!sameSet(commerceProvider.degraded_modes, traceEntry.consumer_degraded_modes)) {
+        fail(`${module} commerce registry degraded mode drift`);
+      }
+    }
 
     const registryCases = registry.contract_tests.cases;
     if (!sameSet(smoke.cases.map((entry) => entry.operation), registryCases.map((entry) => entry.operation))) {

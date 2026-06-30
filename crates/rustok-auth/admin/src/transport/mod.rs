@@ -54,23 +54,11 @@ pub fn get_graphql_url() -> String {
     }
 }
 
-pub fn get_stored_locale() -> Option<String> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        use gloo_storage::Storage;
-        gloo_storage::LocalStorage::get::<String>("rustok-admin-locale").ok()
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        None
-    }
-}
-
 fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> ApiRequestContext {
     ApiRequestContext {
         token,
         tenant_slug,
-        locale: get_stored_locale(),
+        locale: None,
     }
 }
 
@@ -618,7 +606,7 @@ struct CreateUserResponse {
     create_user: Option<crate::model::GraphqlUser>,
 }
 
-pub async fn create_user(
+async fn create_user_graphql(
     token: Option<String>,
     tenant: Option<String>,
     input: crate::model::CreateUserInput,
@@ -633,6 +621,30 @@ pub async fn create_user(
     .map_err(|err| ApiError::Graphql(err.to_string()))?;
 
     Ok(response.create_user)
+}
+
+pub async fn create_user(
+    token: Option<String>,
+    tenant: Option<String>,
+    input: crate::model::CreateUserInput,
+) -> Result<Option<crate::model::GraphqlUser>, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return create_user_graphql(token, tenant, input).await;
+    }
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::create_user_native(input.clone()).await {
+        Ok(user) => Ok(user),
+        Err(native_error) => {
+            create_user_graphql(token, tenant, input)
+                .await
+                .map_err(|graphql_error| {
+                    ApiError::Graphql(format!(
+                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                    ))
+                })
+        }
+    }
 }
 
 pub const UPDATE_USER_MUTATION: &str = r#"
@@ -679,7 +691,7 @@ struct DeleteResult {
     success: bool,
 }
 
-pub async fn update_user_details(
+async fn update_user_graphql(
     token: Option<String>,
     tenant: Option<String>,
     id: String,
@@ -697,7 +709,7 @@ pub async fn update_user_details(
     Ok(response.update_user)
 }
 
-pub async fn delete_user_details(
+async fn delete_user_graphql(
     token: Option<String>,
     tenant: Option<String>,
     id: String,
@@ -712,6 +724,55 @@ pub async fn delete_user_details(
     .map_err(|err| ApiError::Graphql(err.to_string()))?;
 
     Ok(response.delete_user.map(|res| res.success).unwrap_or(false))
+}
+
+pub async fn update_user_details(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: String,
+    input: crate::model::UpdateUserInput,
+) -> Result<Option<crate::model::GraphqlUser>, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return update_user_graphql(token, tenant, id, input).await;
+    }
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::update_user_native(id.clone(), input.clone()).await {
+        Ok(user) => Ok(user),
+        Err(native_error) => {
+            update_user_graphql(token, tenant, id, input)
+                .await
+                .map_err(|graphql_error| {
+                    ApiError::Graphql(format!(
+                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                    ))
+                })
+        }
+    }
+}
+
+pub async fn delete_user_details(
+    token: Option<String>,
+    tenant: Option<String>,
+    id: String,
+) -> Result<bool, ApiError> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return delete_user_graphql(token, tenant, id).await;
+    }
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
+    match native_server_adapter::delete_user_native(id.clone()).await {
+        Ok(deleted) => Ok(deleted),
+        Err(native_error) => {
+            delete_user_graphql(token, tenant, id)
+                .await
+                .map_err(|graphql_error| {
+                    ApiError::Graphql(format!(
+                        "native path failed: {native_error}; graphql path failed: {graphql_error}"
+                    ))
+                })
+        }
+    }
 }
 
 pub const CREATE_OAUTH_APP_MUTATION: &str = r#"

@@ -242,6 +242,17 @@ pub fn prepare_profile_name(name: String) -> Option<String> {
     optional_trimmed(name)
 }
 
+pub fn initial_profile_preferred_locale(host_locale: Option<&str>) -> String {
+    match host_locale
+        .and_then(|locale| locale.split(['-', '_']).next())
+        .map(|language| language.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ru") => "ru".to_string(),
+        _ => "en".to_string(),
+    }
+}
+
 pub fn classify_auth_transport_error(error: &str) -> AuthTransportErrorKind {
     if error.contains("Unauthorized") {
         AuthTransportErrorKind::Unauthorized
@@ -526,6 +537,15 @@ mod tests {
             Some("Alice")
         );
         assert_eq!(prepare_profile_name("  ".into()), None);
+        assert_eq!(
+            initial_profile_preferred_locale(Some("ru-RU")).as_str(),
+            "ru"
+        );
+        assert_eq!(
+            initial_profile_preferred_locale(Some("en-US")).as_str(),
+            "en"
+        );
+        assert_eq!(initial_profile_preferred_locale(None).as_str(), "en");
         assert_eq!(
             classify_auth_transport_error("Unauthorized request"),
             AuthTransportErrorKind::Unauthorized

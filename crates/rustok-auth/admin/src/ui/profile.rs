@@ -5,7 +5,7 @@ use leptos_hook_form::FormState;
 use leptos_ui::{Select, SelectOption};
 use rustok_api::UiRouteContext;
 
-use crate::core::prepare_profile_name;
+use crate::core::{initial_profile_preferred_locale, prepare_profile_name};
 use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::update_profile;
 use crate::ui::components::{Button, Input, PageHeader};
@@ -17,7 +17,9 @@ where
     IV: IntoView + 'static,
 {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let locale_stored = StoredValue::new(route_context.locale);
+    let host_locale = route_context.locale;
+    let initial_preferred_locale = initial_profile_preferred_locale(host_locale.as_deref());
+    let locale_stored = StoredValue::new(host_locale);
     let t_local = move |key: &str, fallback: &str| {
         locale_stored.with_value(|l| t(l.as_deref(), key, fallback))
     };
@@ -39,7 +41,7 @@ where
     let (email, _set_email) = signal(initial_email);
     let (avatar, set_avatar) = signal(String::new());
     let (timezone, set_timezone) = signal(String::from("Europe/Moscow"));
-    let (preferred_locale, set_preferred_locale) = signal(String::from("ru"));
+    let (preferred_locale, set_preferred_locale) = signal(initial_preferred_locale);
     let (form_state, set_form_state) = signal(FormState::idle());
     let (success_message, set_success_message) = signal(Option::<String>::None);
 
