@@ -28,6 +28,7 @@
 - machine-readable correlation contract `contracts/page-builder-correlation-contract.json` фиксирует evidence chain `builder write -> pages publish -> storefront read` и source markers для no-compile gate;
 - capability handlers имеют reference-provider baseline (`ReferencePageBuilderService`) для `preview/tree/properties/publish` с contract validation, sanitize guard и deterministic typed responses;
 - persistence/rendering extension slice заведён через `PageBuilderProjectStore`, `PageBuilderRenderingAdapter`, `ReferencePageBuilderRenderingAdapter` и `AdapterBackedPageBuilderService`, поэтому host adapters могут подключать storage/rendering без изменения DTO, `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle` или GraphQL/Leptos endpoint wrappers;
+- adapter lifecycle evidence slice добавил `PageBuilderAdapterOperation`, `PageBuilderAdapterCallEvidence`, `PageBuilderAdapterTelemetry` и default `NoopPageBuilderAdapterTelemetry` для typed audit/observability маркеров `load_project`, `save_project` и `render_preview` поверх `PortContext` без изменения capability DTO или transport envelopes;
 - Control-plane dry run evidence закреплён в `contracts/page-builder-control-plane-dry-run.json`: атомарный change-set для `builder.enabled` и дочерних flags, обязательные профили `all_on/publish_off/preview_off/builder_off`, before/after snapshots, waiver policy и read-surface guarantees.
 
 
@@ -49,6 +50,7 @@
   - capability API baseline закрыт reference provider-ом без persistence side effects: `preview` рендерит deterministic wrapper, `properties` возвращает canonical node properties, `publish` возвращает typed publish result после `grapesjs_v1` validation, а forbidden preview HTML маппится в typed `sanitize` error.
   - Control-plane dry run evidence contract и runtime `BuilderControlPlaneChangeSet::dry_run` фиксируют атомарный toggle change-set, обязательные profile snapshots, rollback decision marker и waiver policy; aggregate no-compile baseline включает `verify-page-builder-control-plane-dry-run.mjs`.
   - adapter seam contract `contracts/page-builder-adapter-seams.json` и runtime traits `PageBuilderProjectStore` / `PageBuilderRenderingAdapter` фиксируют extension-point для persistence/rendering без transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership или vendor-specific required project payloads.
+  - adapter operation evidence (`PageBuilderAdapterCallEvidence` + `PageBuilderAdapterTelemetry`) фиксирует `module_slug`, `grapesjs_v1` contract, operation, tenant/page/revision ids и correlation id до вызова host persistence/rendering adapters, чтобы audit/observability слой оставался owner-side FBA contract, а не transport-local convention.
 - Last verified at (UTC): 2026-06-21T00:00:00Z
 - Owner: `rustok-page-builder` module team
 

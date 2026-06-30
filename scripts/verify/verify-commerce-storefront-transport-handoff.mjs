@@ -40,7 +40,9 @@ function assertNotContains(text, pattern, description) {
 }
 
 const requestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
+const presentationPath = "crates/rustok-commerce/storefront/src/core/presentation.rs";
 const libPath = "crates/rustok-commerce/storefront/src/lib.rs";
+const uiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const nativePath = "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs";
 const graphqlPath = "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
@@ -56,7 +58,7 @@ const fulfillmentPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [requestsPath, libPath, transportPath, nativePath, graphqlPath, rawPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
+for (const filePath of [requestsPath, presentationPath, libPath, uiPath, transportPath, nativePath, graphqlPath, rawPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected storefront transport handoff file`);
 }
 if (existsSync(repoPath(legacyApiPath))) {
@@ -64,7 +66,9 @@ if (existsSync(repoPath(legacyApiPath))) {
 }
 
 const requests = readRepo(requestsPath);
+const presentation = readRepo(presentationPath);
 const lib = readRepo(libPath);
+const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const nativeAdapter = readRepo(nativePath);
 const graphqlAdapter = readRepo(graphqlPath);
@@ -93,6 +97,35 @@ for (const marker of [
   "pub struct CheckoutCompletionCommandRequest",
 ]) {
   assertNotContains(requests, marker, `${requestsPath}: aggregate checkout must not recreate owner command DTOs (${marker})`);
+}
+for (const marker of [
+  "build_fulfillment_delivery_groups",
+  "build_fulfillment_shipping_selection_labels",
+  "build_cart_checkout_handoff_labels",
+  "build_payment_collection_action_labels",
+  "build_payment_collection_card_data",
+  "build_payment_collection_card_labels",
+  "build_order_checkout_action_labels",
+  "build_order_checkout_result_data",
+  "build_order_checkout_result_labels",
+]) {
+  assertContains(presentation, marker, `${presentationPath}: Leptos-free core must own checkout owner-fragment mapper ${marker}`);
+}
+for (const marker of [
+  "fn fulfillment_delivery_groups",
+  "fn fulfillment_shipping_selection_labels",
+  "fn cart_checkout_handoff_labels",
+  "fn payment_collection_action_labels",
+  "fn payment_collection_card_data",
+  "fn payment_collection_card_labels",
+  "fn order_checkout_action_labels",
+  "fn order_checkout_result_data",
+  "fn order_checkout_result_labels",
+]) {
+  assertNotContains(ui, marker, `${uiPath}: checkout owner-fragment presentation helpers must stay in core (${marker})`);
+}
+for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
+  assertNotContains(presentation, marker, `${presentationPath}: commerce storefront presentation core must stay UI/transport free (${marker})`);
 }
 
 for (const operation of [
@@ -135,6 +168,7 @@ assertContains(rawAdapter, "GraphqlRequest", `${rawPath}: raw adapter must keep 
 assertContains(rawAdapter, "build_shipping_selection_updates", `${rawPath}: commerce raw adapter must consume fulfillment-owned shipping selection materialization`);
 assertNotContains(rawAdapter, "build_shipping_selection_plan", `${rawPath}: commerce raw adapter must not own shipping selection planning`);
 assertNotContains(rawAdapter, "fn shipping_selection_error_message", `${rawPath}: commerce raw adapter must not own fulfillment selection error text`);
+assertNotContains(rawAdapter, "sellerScope lineItemIds", `${rawPath}: checkout read query must not request legacy sellerScope for delivery-group matching`);
 
 for (const [ownerTransport, ownerPath, fallbackFn, errorType] of [
   [paymentTransport, paymentTransportPath, "create_payment_collection_with_fallback", "PaymentCollectionTransportError"],

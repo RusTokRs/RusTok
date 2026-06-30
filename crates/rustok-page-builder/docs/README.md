@@ -31,6 +31,7 @@
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 - `contracts/page-builder-flutter-wave-handoff.json` — machine-readable Flutter Wave hand-off contract for device/runtime evidence without duplicating FBA registry thresholds or control-plane toggle semantics in mobile.
 - `contracts/page-builder-adapter-seams.json` — machine-readable persistence/rendering adapter-seam contract for `PageBuilderProjectStore`, `PageBuilderRenderingAdapter` and `AdapterBackedPageBuilderService`, preserving `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle`, GraphQL/Leptos endpoint wrappers and canonical DTO/envelope names.
+- `PageBuilderAdapterCallEvidence` и `PageBuilderAdapterTelemetry` в `src/service.rs` фиксируют transport-neutral evidence для host adapter operations `load_project`, `save_project` и `render_preview`: module slug, `grapesjs_v1` contract, tenant/page/revision identifiers и correlation id берутся из `PortContext`, не создавая transport-local DTO.
 
 ## Интеграция
 
@@ -52,6 +53,8 @@ Endpoint adapter seam теперь закреплён в `src/adapters.rs`: `Pag
 ## Reference provider baseline
 
 `ReferencePageBuilderService` закрывает минимальный capability API baseline без vendor lock-in и без persistence side effects. Provider принимает только `grapesjs_v1`, валидирует `page_id`, `revision_id`, object-shaped `project_data` / `properties`, возвращает typed `validation` errors для contract violations и typed `sanitize` errors для forbidden preview HTML (`<script`). `preview` формирует deterministic HTML wrapper `data-rustok-page-builder="grapesjs_v1"`, `properties` echo-возвращает canonical node properties, а `publish` возвращает typed `PublishPageBuilderResult` только после contract validation. Реальная persistence/rendering adapter-реализация может заменить reference provider за тем же `PageBuilderCapabilityService`, не меняя DTO, RBAC, rollout или transport bridge.
+
+`AdapterBackedPageBuilderService` теперь формирует `PageBuilderAdapterCallEvidence` перед вызовом persistence/rendering seams и передаёт его в `PageBuilderAdapterTelemetry`. Default `NoopPageBuilderAdapterTelemetry` сохраняет прежнее поведение, а host wiring может подключить recorder для audit/observability слоя вокруг `PageBuilderProjectStore` и `PageBuilderRenderingAdapter`. Evidence не публикуется как новый transport response и не меняет `PageBuilderCapabilityRequest/Response`.
 
 ## Provider health and SLO baseline
 

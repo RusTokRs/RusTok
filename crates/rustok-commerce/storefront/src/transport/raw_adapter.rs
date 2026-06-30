@@ -54,7 +54,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
+const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
 const CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION: &str = "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!) { createStorefrontPaymentCollection(input: $input) { id status currencyCode amount authorizedAmount capturedAmount orderId providerId createdAt updatedAt payments { id } } }";
 const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(input: $input) { order { id status currencyCode shippingTotal adjustmentTotal totalAmount adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
 #[allow(dead_code)]
@@ -131,8 +131,6 @@ struct GraphqlCheckoutDeliveryGroup {
     shipping_profile_slug: String,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
-    #[serde(rename = "sellerScope")]
-    seller_scope: Option<String>,
     #[serde(rename = "lineItemIds")]
     line_item_ids: Vec<String>,
     #[serde(rename = "selectedShippingOptionId")]

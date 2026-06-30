@@ -9,6 +9,7 @@ use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutEr
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
 use rustok_core::{Action, Permission, Resource};
+use serde::Serialize;
 
 #[async_trait]
 pub trait PageBuilderCapabilityService: Send + Sync {
@@ -177,6 +178,102 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageBuilderAdapterOperation {
+    LoadProject,
+    SaveProject,
+    RenderPreview,
+}
+
+impl PageBuilderAdapterOperation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LoadProject => "load_project",
+            Self::SaveProject => "save_project",
+            Self::RenderPreview => "render_preview",
+        }
+    }
+}
+
+impl std::fmt::Display for PageBuilderAdapterOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PageBuilderAdapterCallEvidence {
+    pub module_slug: &'static str,
+    pub contract: &'static str,
+    pub operation: PageBuilderAdapterOperation,
+    pub tenant_id: String,
+    pub page_id: String,
+    pub revision_id: Option<String>,
+    pub correlation_id: String,
+}
+
+impl PageBuilderAdapterCallEvidence {
+    pub fn load_project(context: &PortContext, page_id: impl Into<String>) -> Self {
+        Self::new(
+            PageBuilderAdapterOperation::LoadProject,
+            context,
+            page_id,
+            None,
+        )
+    }
+
+    pub fn save_project(
+        context: &PortContext,
+        page_id: impl Into<String>,
+        revision_id: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            PageBuilderAdapterOperation::SaveProject,
+            context,
+            page_id,
+            Some(revision_id.into()),
+        )
+    }
+
+    pub fn render_preview(context: &PortContext, page_id: impl Into<String>) -> Self {
+        Self::new(
+            PageBuilderAdapterOperation::RenderPreview,
+            context,
+            page_id,
+            None,
+        )
+    }
+
+    fn new(
+        operation: PageBuilderAdapterOperation,
+        context: &PortContext,
+        page_id: impl Into<String>,
+        revision_id: Option<String>,
+    ) -> Self {
+        Self {
+            module_slug: PageBuilderContractMetadata::BASELINE.module_slug,
+            contract: PageBuilderContractMetadata::BASELINE.contract,
+            operation,
+            tenant_id: context.tenant_id.clone(),
+            page_id: page_id.into(),
+            revision_id,
+            correlation_id: context.correlation_id.clone(),
+        }
+    }
+}
+
+pub trait PageBuilderAdapterTelemetry: Send + Sync {
+    fn record_adapter_call(&self, evidence: &PageBuilderAdapterCallEvidence);
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoopPageBuilderAdapterTelemetry;
+
+impl PageBuilderAdapterTelemetry for NoopPageBuilderAdapterTelemetry {
+    fn record_adapter_call(&self, _evidence: &PageBuilderAdapterCallEvidence) {}
+}
+
 /// Minimal persistence seam for hosts that store `grapesjs_v1` project snapshots outside
 /// the reference provider. Implementations must keep tenant isolation in the supplied
 /// [`PortContext`] and must not change the canonical DTO/envelope contract.
@@ -222,22 +319,38 @@ impl PageBuilderRenderingAdapter for ReferencePageBuilderRenderingAdapter {
     }
 }
 
-pub struct AdapterBackedPageBuilderService<S, R> {
+pub struct AdapterBackedPageBuilderService<S, R, T = NoopPageBuilderAdapterTelemetry> {
     store: S,
     renderer: R,
+    telemetry: T,
 }
 
-impl<S, R> AdapterBackedPageBuilderService<S, R> {
+impl<S, R> AdapterBackedPageBuilderService<S, R, NoopPageBuilderAdapterTelemetry> {
     pub fn new(store: S, renderer: R) -> Self {
-        Self { store, renderer }
+        Self {
+            store,
+            renderer,
+            telemetry: NoopPageBuilderAdapterTelemetry,
+        }
+    }
+}
+
+impl<S, R, T> AdapterBackedPageBuilderService<S, R, T> {
+    pub fn with_telemetry(store: S, renderer: R, telemetry: T) -> Self {
+        Self {
+            store,
+            renderer,
+            telemetry,
+        }
     }
 }
 
 #[async_trait]
-impl<S, R> PageBuilderCapabilityService for AdapterBackedPageBuilderService<S, R>
+impl<S, R, T> PageBuilderCapabilityService for AdapterBackedPageBuilderService<S, R, T>
 where
     S: PageBuilderProjectStore,
     R: PageBuilderRenderingAdapter,
+    T: PageBuilderAdapterTelemetry,
 {
     async fn preview(
         &self,
@@ -245,6 +358,8 @@ where
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
         validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+        let evidence = PageBuilderAdapterCallEvidence::render_preview(context, &input.page_id);
+        self.telemetry.record_adapter_call(&evidence);
         let html = self
             .renderer
             .render_preview(context, &input.project_data)
@@ -262,6 +377,8 @@ where
         input: BuilderTreeInput,
     ) -> PageBuilderServiceResult<BuilderTreeResult> {
         validate_non_empty("page_id", &input.page_id)?;
+        let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
+        self.telemetry.record_adapter_call(&evidence);
         let nodes = match self.store.load_project(context, &input.page_id).await? {
             Some(project_data) => extract_tree_nodes(&project_data),
             None => Vec::new(),
@@ -296,6 +413,12 @@ where
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
         validate_non_empty("revision_id", &input.revision_id)?;
         validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
+        let evidence = PageBuilderAdapterCallEvidence::save_project(
+            context,
+            &input.page_id,
+            &input.revision_id,
+        );
+        self.telemetry.record_adapter_call(&evidence);
         self.store
             .save_project(
                 context,
@@ -1026,5 +1149,19 @@ mod tests {
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn adapter_call_evidence_carries_port_context_and_contract_markers() {
+        let evidence =
+            PageBuilderAdapterCallEvidence::save_project(&write_context(), "home", "rev-1");
+
+        assert_eq!(evidence.module_slug, "page_builder");
+        assert_eq!(evidence.contract, "grapesjs_v1");
+        assert_eq!(evidence.operation.as_str(), "save_project");
+        assert_eq!(evidence.tenant_id, "tenant-a");
+        assert_eq!(evidence.page_id, "home");
+        assert_eq!(evidence.revision_id.as_deref(), Some("rev-1"));
+        assert_eq!(evidence.correlation_id, "corr-write");
     }
 }

@@ -95,6 +95,8 @@ assertNotContains(transport, "crate::api", `${files.transport}: transport facade
 assertContains(graphqlAdapter, "fetch_storefront_cart_graphql", `${files.graphqlAdapter}: GraphQL adapter must delegate to GraphQL path`);
 assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: native server adapter must keep server functions`);
 assertContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: moved adapter must keep GraphQL fallback request contract until split further`);
+assertNotContains(nativeServerAdapter, "sellerScope } adjustments", `${files.nativeServerAdapter}: cart line-item read query must not request legacy sellerScope`);
+assertNotContains(nativeServerAdapter, "sellerScope lineItemIds", `${files.nativeServerAdapter}: cart delivery-group read query must not request legacy sellerScope`);
 
 assertContains(implementationPlan, "verify-cart-storefront-boundary.mjs", `${files.implementationPlan}: local plan must mention cart storefront guardrail`);
 assertContains(registry, "verify-cart-storefront-boundary.mjs", `${files.registry}: central readiness board must mention cart storefront guardrail`);

@@ -53,7 +53,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId sellerScope } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
+const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
 const UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) { updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) { id } }";
 const REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) { removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) { id } }";
 
@@ -155,8 +155,6 @@ struct GraphqlCartLineItem {
     shipping_profile_slug: String,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
-    #[serde(rename = "sellerScope")]
-    seller_scope: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,8 +178,6 @@ struct GraphqlCartDeliveryGroup {
     shipping_profile_slug: String,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
-    #[serde(rename = "sellerScope")]
-    seller_scope: Option<String>,
     #[serde(rename = "lineItemIds")]
     line_item_ids: Vec<String>,
     #[serde(rename = "selectedShippingOptionId")]
