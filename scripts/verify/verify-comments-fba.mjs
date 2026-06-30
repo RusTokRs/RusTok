@@ -9,6 +9,7 @@ const registryPath = 'crates/rustok-comments/contracts/comments-fba-registry.jso
 const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
+const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'comments' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
@@ -51,8 +52,22 @@ const evidenceCases = evidence.cases.map(c => c.operation).sort().join('|');
 if (registryCases !== evidenceCases) fail('evidence case matrix drift');
 
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json', registry.evidence.runtime_order_smoke], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `in_progress`'], 'central registry');
+
+if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeSmoke.status !== 'executable_no_compile' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
+const fallbackProfiles = registry.contract_tests.fallback_smoke.profiles.slice().sort().join('|');
+const smokeProfiles = runtimeSmoke.fallback_profiles.slice().sort().join('|');
+if (fallbackProfiles !== smokeProfiles) fail('runtime order fallback profile drift');
+const fallbackModes = registry.contract_tests.fallback_smoke.degraded_modes.slice().sort().join('|');
+const smokeModes = runtimeSmoke.degraded_modes.slice().sort().join('|');
+if (fallbackModes !== smokeModes) fail('runtime order degraded mode drift');
+for (const c of runtimeSmoke.cases) {
+  const body = implPorts.slice(implPorts.indexOf(`async fn ${c.operation}`));
+  for (const marker of c.source_order) {
+    if (!body.includes(marker)) fail(`${c.operation} runtime order source marker missing ${marker}`);
+  }
+}
 
 console.log('[verify-comments-fba] comments FBA provider metadata, port semantics and static evidence are consistent');

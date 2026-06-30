@@ -11,15 +11,17 @@ pub use products::*;
 #[cfg(test)]
 mod tests;
 
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use loco_rs::{Error, Result, app::AppContext, controller::Routes};
 use rust_decimal::Decimal;
-use rustok_api::{loco::transactional_event_bus_from_context, RequestContext};
+use rustok_api::{
+    PortActor, PortContext, RequestContext, loco::transactional_event_bus_from_context,
+};
 use rustok_cart::CartError;
 use rustok_cart::CartService;
 use rustok_core::locale_tags_match;
 use rustok_customer::CustomerService;
 use rustok_fulfillment::FulfillmentService;
-use rustok_inventory::{check_variant_availability_for_public_channel, InventoryReservationPort};
+use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_order::OrderService;
 use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_product::entities::{
@@ -28,13 +30,14 @@ use rustok_product::entities::{
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use serde_json::{Value, json};
+use std::{collections::BTreeSet, time::Duration};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::common::PaginationParams;
 use crate::{
+    StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
         UpdateCartContextInput,
@@ -47,7 +50,6 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    StoreContextService,
 };
 
 pub const MODULE_SLUG: &str = "commerce";
@@ -768,26 +770,41 @@ pub(crate) async fn validate_store_line_item_quantity(
 }
 
 pub(crate) async fn validate_store_variant_inventory(
-    _inventory_port: &dyn InventoryReservationPort,
-    db: &sea_orm::DatabaseConnection,
+    inventory_port: &dyn InventoryReservationPort,
+    _db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
     variant: &product_variant::Model,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
-    _locale: &str,
+    locale: &str,
 ) -> Result<()> {
-    let available = check_variant_availability_for_public_channel(
-        db,
-        tenant_id,
-        variant,
-        requested_quantity,
-        public_channel_slug,
+    let mut context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("commerce.store-cart"),
+        locale,
+        format!("store-cart-inventory:{tenant_id}:{}", variant.id),
     )
-    .await
-    .map_err(|error| {
-        Error::BadRequest(format!("store-cart-inventory:{}: {}", variant.id, error))
-    })?;
-    if !available {
+    .with_deadline(Duration::from_secs(3));
+    if let Some(channel_slug) = public_channel_slug {
+        context = context.with_channel(channel_slug);
+    }
+    let snapshot = inventory_port
+        .check_availability(
+            context,
+            InventoryAvailabilityRequest {
+                variant_id: variant.id,
+                requested_quantity,
+                channel_slug: public_channel_slug.map(str::to_string),
+            },
+        )
+        .await
+        .map_err(|error| {
+            Error::BadRequest(format!(
+                "store-cart-inventory:{}:{}: {}",
+                variant.id, error.code, error.message
+            ))
+        })?;
+    if !snapshot.available {
         return Err(Error::BadRequest(format!(
             "Variant {} does not have enough available inventory for the current channel",
             variant.id

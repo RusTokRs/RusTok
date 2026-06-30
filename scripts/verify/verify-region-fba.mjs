@@ -10,6 +10,7 @@ const registryPath = 'crates/rustok-region/contracts/region-fba-registry.json';
 const evidencePath = 'crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
+const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
 const manifest = read('crates/rustok-region/rustok-module.toml');
 const plan = read('crates/rustok-region/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
@@ -34,8 +35,8 @@ for (const marker of ['trait RegionReadPort', 'impl RegionReadPort for crate::Re
 if (!ports.includes('use rustok_api::{PortCallPolicy, PortContext, PortError};')) fail('region port must import shared rustok-api primitives');
 if (ports.includes('require_write_semantics()?')) fail('region read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('region FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `region` |') || !central.includes(registryPath) || !central.includes('| `region` | admin + storefront | `in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('RegionReadPort') || !plan.includes('region-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
+if (!central.includes('| `region` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('| `region` | admin + storefront | `in_progress` | `in_progress`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'region' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-region-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
@@ -45,4 +46,13 @@ for (const op of ['read_region', 'list_regions_for_tenant']) {
   if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail(`${op} evidence case drift`);
 }
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
+if (runtimeOrderSmoke.generated_from !== registryPath || runtimeOrderSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeOrderSmoke.status !== 'executable_no_compile' || runtimeOrderSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
+if (!sameSet(runtimeOrderSmoke.fallback_profiles, registry.fallback_profiles)) fail('runtime order fallback profile drift');
+const registryModes = [...new Set(registry.consumers.flatMap((consumer) => consumer.degraded_modes ?? []))];
+if (!sameSet(runtimeOrderSmoke.degraded_modes, registryModes)) fail('runtime order degraded mode drift');
+for (const smokeCase of runtimeOrderSmoke.cases) {
+  for (const marker of smokeCase.source_order) {
+    if (!ports.includes(marker)) fail(`${smokeCase.operation} runtime order source marker missing ${marker}`);
+  }
+}
 console.log('[verify-region-fba] Region FBA provider metadata, port semantics and static evidence are consistent');

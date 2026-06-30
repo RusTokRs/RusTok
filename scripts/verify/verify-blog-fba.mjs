@@ -13,10 +13,12 @@ function sameSet(actual, expected, label) {
 const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json';
 const runtimeSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json';
+const consumerRuntimeOrderSmokePath = 'crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json';
 const providerPath = 'crates/rustok-comments/contracts/comments-fba-registry.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
+const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 const provider = json(providerPath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
@@ -41,6 +43,8 @@ sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 
 if (registry.evidence.runtime_fallback_smoke !== runtimeSmokePath) fail('runtime smoke evidence path drift');
+if (registry.evidence.consumer_runtime_order_smoke !== consumerRuntimeOrderSmokePath) fail('consumer runtime-order smoke evidence path drift');
+if (registry.evidence.consumer_runtime_order_smoke_runner !== consumerRuntimeOrderSmoke.runner) fail('consumer runtime-order smoke runner drift');
 if (registry.contract_tests.fallback_smoke.status !== 'source_verified_no_compile') fail('fallback smoke status drift');
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.status !== registry.contract_tests.fallback_smoke.status) {
   fail('runtime smoke header/status drift');
@@ -53,6 +57,20 @@ const service = read(runtimeSmoke.source_contract.consumer_service);
 const errorMapping = read(runtimeSmoke.source_contract.consumer_error_mapping);
 const providerRegistryPath = runtimeSmoke.source_contract.provider_port_registry;
 if (providerRegistryPath !== providerPath) fail('runtime smoke provider registry drift');
+if (consumerRuntimeOrderSmoke.generated_from !== registryPath || consumerRuntimeOrderSmoke.status !== 'executable_no_compile') {
+  fail('consumer runtime-order smoke header/status drift');
+}
+if (consumerRuntimeOrderSmoke.provider !== 'comments' || consumerRuntimeOrderSmoke.role !== 'consumer') fail('consumer runtime-order smoke identity drift');
+if (consumerRuntimeOrderSmoke.source_contract.consumer_service !== runtimeSmoke.source_contract.consumer_service) fail('consumer runtime-order service source drift');
+if (consumerRuntimeOrderSmoke.source_contract.consumer_error_mapping !== runtimeSmoke.source_contract.consumer_error_mapping) fail('consumer runtime-order error source drift');
+if (consumerRuntimeOrderSmoke.source_contract.provider_registry !== providerPath) fail('consumer runtime-order provider registry drift');
+sameSet(consumerRuntimeOrderSmoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'consumer runtime-order smoke profiles');
+sameSet(consumerRuntimeOrderSmoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'consumer runtime-order smoke degraded modes');
+for (const entry of consumerRuntimeOrderSmoke.runtime_order ?? []) {
+  if (!registry.contract_tests.cases.some(c => c.operation === entry.operation)) {
+    fail(`consumer runtime-order operation ${entry.operation} is not declared in registry cases`);
+  }
+}
 for (const smokeCase of runtimeSmoke.fallback_smoke.cases ?? []) {
   if (!registry.contract_tests.cases.some(c => c.operation === smokeCase.operation)) {
     fail(`runtime smoke operation ${smokeCase.operation} is not declared in registry cases`);
@@ -65,9 +83,9 @@ for (const smokeCase of runtimeSmoke.fallback_smoke.cases ?? []) {
 }
 
 const plan = read('crates/rustok-blog/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'blog-fba-registry.json', 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'blog-fba-registry.json', 'CommentsThreadPort', 'blog-comments-consumer-static-matrix.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `blog` |', 'crates/rustok-blog/contracts/blog-fba-registry.json', 'blog-comments-runtime-fallback-smoke.json', consumerRuntimeOrderSmokePath, '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`blog`', 'CommentsThreadPort', 'blog-fba-registry.json'], 'unified plan');
 

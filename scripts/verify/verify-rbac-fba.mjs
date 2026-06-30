@@ -10,6 +10,7 @@ const registryPath = 'crates/rustok-rbac/contracts/rbac-fba-registry.json';
 const evidencePath = 'crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
+const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
 const manifest = read('crates/rustok-rbac/rustok-module.toml');
 const plan = read('crates/rustok-rbac/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
@@ -33,8 +34,8 @@ for (const marker of ['trait RbacPermissionDecisionPort', 'impl RbacPermissionDe
 }
 if (ports.includes('require_write_semantics()?')) fail('RBAC decision port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('RBAC FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('RbacPermissionDecisionPort') || !plan.includes('rbac-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `rbac` |') || !central.includes(registryPath) || !central.includes('`in_progress` | `in_progress`')) fail('central readiness board drift');
+if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('RbacPermissionDecisionPort') || !plan.includes('rbac-contract-test-static-matrix.json') || !plan.includes(registry.evidence.runtime_order_smoke)) fail('local plan FBA evidence drift');
+if (!central.includes('| `rbac` |') || !central.includes(registryPath) || !central.includes(registry.evidence.runtime_order_smoke) || !central.includes('`in_progress` | `in_progress`')) fail('central readiness board drift');
 if (evidence.schema_version !== 1 || evidence.module !== 'rbac' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-rbac-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
@@ -42,4 +43,12 @@ const registryCase = registry.contract_tests.cases.find((entry) => entry.operati
 const evidenceCase = evidence.cases.find((entry) => entry.operation === 'check_permissions');
 if (!registryCase || !evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail('check_permissions evidence case drift');
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
+if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeSmoke.status !== 'executable_no_compile' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
+if (!sameSet(runtimeSmoke.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime order fallback profile drift');
+if (!sameSet(runtimeSmoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail('runtime order degraded mode drift');
+const runtimeCase = runtimeSmoke.cases.find((entry) => entry.operation === 'check_permissions');
+if (!runtimeCase) fail('runtime order case missing check_permissions');
+for (const marker of runtimeCase.source_order) {
+  if (!ports.includes(marker)) fail(`runtime order source marker missing ${marker}`);
+}
 console.log('[verify-rbac-fba] RBAC FBA provider metadata, port semantics and static evidence are consistent');

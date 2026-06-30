@@ -13,6 +13,7 @@ const runtimeSmokePath = 'crates/rustok-workflow/contracts/evidence/workflow-rea
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
+const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
 const manifest = read('crates/rustok-workflow/rustok-module.toml');
 const plan = read('crates/rustok-workflow/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
@@ -47,7 +48,7 @@ for (const c of registry.contract_tests.cases) {
   if (!e || e.execution_status !== 'static_locked_runtime_pending' || !sameSet(e.assertions, c.assertions)) fail(`evidence case drift for ${c.operation}`);
 }
 if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-if (packageJson.scripts?.['verify:workflow:fba'] !== 'node scripts/verify/verify-workflow-fba.mjs') fail('package script verify:workflow:fba drift');
+if (packageJson.scripts?.['verify:workflow:fba'] !== 'node scripts/verify/verify-workflow-fba.mjs && npm run verify:owner:fba-runtime-order') fail('package script verify:workflow:fba drift');
 if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'workflow' || runtimeSmoke.status !== 'compile_free_runtime_smoke_locked') fail('runtime smoke identity drift');
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-workflow-fba.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
 if (runtimeSmoke.promotion_allowed !== false || !sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile/promotion drift');
@@ -58,4 +59,15 @@ for (const entry of runtimeSmoke.native_entrypoints) if (!entry.operation || !en
 for (const entry of runtimeSmoke.graphql_fallback_entrypoints) if (!entry.operation || !entry.source || !entry.query_marker || !entry.projection_field) fail('runtime smoke graphql entrypoint is incomplete');
 for (const marker of ['native_first_before_graphql_fallback', 'host_token_preserved_for_graphql_fallback', 'host_tenant_slug_preserved_for_graphql_fallback', 'combined_native_and_graphql_error_visible_to_ui']) if (!runtimeSmoke.facade_assertions.includes(marker)) fail(`runtime smoke facade assertion missing ${marker}`);
 if (runtimeSmoke.fallback_smoke?.status !== 'source_locked_live_runtime_pending') fail('runtime fallback smoke must stay live-runtime-pending');
+if (runtimeOrderSmoke.generated_from !== registryPath || runtimeOrderSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeOrderSmoke.status !== 'executable_no_compile' || runtimeOrderSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
+if (!sameSet(runtimeOrderSmoke.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime order fallback profile drift');
+if (!sameSet(runtimeOrderSmoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail('runtime order degraded mode drift');
+for (const c of runtimeOrderSmoke.cases) {
+  const bodyStart = ports.indexOf(`async fn ${c.operation}`);
+  if (bodyStart === -1) fail(`runtime order operation missing ${c.operation}`);
+  const body = ports.slice(bodyStart);
+  for (const marker of c.source_order) {
+    if (!body.includes(marker)) fail(`${c.operation} runtime order source marker missing ${marker}`);
+  }
+}
 console.log('[verify-workflow-fba] workflow FBA provider metadata, port semantics, static evidence and compile-free runtime smoke are consistent');

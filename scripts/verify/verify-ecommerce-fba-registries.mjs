@@ -261,6 +261,17 @@ export function verifyEcommerceFbaRegistries({
     if (!central.includes(`| \`${module}\` |`) || !central.includes(`crates/rustok-${module}/contracts/${module}-fba-registry.json`)) {
       fail(`${module} central readiness board lacks registry evidence`);
     }
+    if (registry.evidence?.runtime_contract_smoke) {
+      if (registry.evidence.runtime_contract_smoke_runner !== 'scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs') {
+        fail(`${module} runtime contract smoke runner evidence drift`);
+      }
+      if (!plan.includes(registry.evidence.runtime_contract_smoke)) {
+        fail(`${module} local plan lacks runtime contract smoke evidence`);
+      }
+      if (!central.includes(registry.evidence.runtime_contract_smoke)) {
+        fail(`${module} central readiness board lacks runtime contract smoke evidence`);
+      }
+    }
 
     providerRegistries.set(module, registry);
   }

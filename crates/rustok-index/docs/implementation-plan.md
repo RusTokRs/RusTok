@@ -18,6 +18,7 @@
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - Foundation FBA batch update: `npm run verify:index:fba` now runs `npm run verify:foundation:fba-runtime-smoke`, so `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` is checked together with `channel`, `tenant` and `email` runtime fallback evidence instead of only as a standalone index gate.
   - Boundary readiness update: `crates/rustok-index/contracts/index-fba-registry.json`, `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json` are locked by `npm run verify:index:fba`; FBA status is `boundary_ready`, while persistence-backed Rust runtime contract execution remains the next step before `transport_verified`.
   - admin package split introduced `admin/src/core.rs` for Leptos-free view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-index` had no legacy GraphQL/REST operator contract for this overview;

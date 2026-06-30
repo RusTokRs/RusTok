@@ -41,7 +41,7 @@ pub trait EmailTemplateProvider: Send + Sync {
 
 /// Render a Tera template string, returning the rendered output.
 pub fn render_tera_string(template: &str, vars: &serde_json::Value) -> Result<String> {
-    let ctx = tera::Context::from_value(vars.clone())
+    let ctx = tera::Context::from_serialize(vars)
         .map_err(|e| EmailError::Template(format!("Failed to build Tera context: {e}")))?;
     tera::Tera::one_off(template, &ctx, /*autoescape=*/ false)
         .map_err(|e| EmailError::Template(format!("Tera render error: {e}")))

@@ -18,6 +18,7 @@ const registry = json(registryPath);
 const evidence = json(evidencePath);
 const fallbackSmoke = json(fallbackSmokePath);
 const portErrorMatrix = json(portErrorMatrixPath);
+const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'media' || registry.role !== 'provider' || registry.status !== 'in_progress') fail('registry identity/status drift');
@@ -87,8 +88,17 @@ if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `in_progress`', 'media-fba-registry.json', 'MediaAssetReadPort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `media` |', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`media`', 'MediaAssetReadPort', 'media-fba-registry.json'], 'unified plan');
+
+if (runtimeOrderSmoke.generated_from !== registryPath || runtimeOrderSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeOrderSmoke.status !== 'executable_no_compile' || runtimeOrderSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
+sameSet(runtimeOrderSmoke.fallback_profiles, registry.contract_tests.fallback_smoke.profiles, 'runtime order fallback profiles');
+sameSet(runtimeOrderSmoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'runtime order degraded modes');
+for (const smokeCase of runtimeOrderSmoke.cases) {
+  for (const marker of smokeCase.source_order) {
+    if (!implPorts.includes(marker) && !ports.includes(marker)) fail(`${smokeCase.operation} runtime order source marker missing ${marker}`);
+  }
+}
 
 console.log('[verify-media-fba] media FBA provider metadata, port semantics and static evidence are consistent');

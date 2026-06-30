@@ -24,6 +24,7 @@ post-v0 rollout policy lifecycle, runtime integration parity, no-compile executa
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - Foundation FBA batch update: `npm run verify:channel:fba` now runs `npm run verify:foundation:fba-runtime-smoke`, so `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` is checked together with `tenant`, `index` and `email` runtime fallback evidence instead of only as a standalone channel gate.
   - Boundary readiness update: `crates/rustok-channel/contracts/channel-fba-registry.json`, `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` and `crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json` are locked by `npm run verify:channel:fba`; FBA status is `boundary_ready`, while full Rust runtime contract evidence remains the next step before `transport_verified`.
   - `crates/rustok-channel/admin/src/lib.rs` теперь является composition/re-export слоем для module-owned admin surface.
   - Runtime facts parity slice: `apps/server/src/middleware/channel.rs` builds `RequestFacts.locale` from `ResolvedRequestLocale.effective_locale` and `RequestFacts.oauth_app_id` from `AuthContextExtension.client_id`; `ChannelResolutionCacheKey` includes both fields to avoid cross-locale/cross-client policy cache reuse, and source-level middleware tests now cover `LocaleEquals`/`OAuthAppEquals` policy selection from real request extensions.

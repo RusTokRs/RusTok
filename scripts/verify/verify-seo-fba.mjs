@@ -14,10 +14,12 @@ const registryPath = 'crates/rustok-seo/contracts/seo-fba-registry.json';
 const evidencePath = 'crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json';
 const providerPath = 'crates/rustok-media/contracts/media-fba-registry.json';
 const providerFallbackSmokePath = 'crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json';
+const consumerRuntimeOrderSmokePath = 'crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const provider = json(providerPath);
 const providerFallbackSmoke = json(providerFallbackSmokePath);
+const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'seo' || registry.role !== 'consumer' || registry.status !== 'in_progress') fail('registry identity/status drift');
@@ -39,12 +41,19 @@ const manifest = read('crates/rustok-seo/rustok-module.toml');
 hasAll(manifest, ['[fba.consumer]', 'registry = "contracts/seo-fba-registry.json"', 'profile = "seo_image_descriptor"', 'media.asset_read.v1'], 'manifest');
 
 if (registry.evidence?.provider_fallback_smoke !== providerFallbackSmokePath) fail('registry missing provider fallback smoke source');
+if (registry.evidence?.consumer_runtime_order_smoke !== consumerRuntimeOrderSmokePath) fail('registry consumer runtime-order smoke path drift');
+if (registry.evidence?.consumer_runtime_order_smoke_runner !== consumerRuntimeOrderSmoke.runner) fail('registry consumer runtime-order smoke runner drift');
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.fallback_smoke.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 if (registry.contract_tests.fallback_smoke.provider_source !== providerFallbackSmokePath) fail('registry fallback smoke provider source drift');
 if (evidence.fallback_smoke.provider_source !== providerFallbackSmokePath) fail('evidence fallback smoke provider source drift');
+if (consumerRuntimeOrderSmoke.generated_from !== registryPath || consumerRuntimeOrderSmoke.status !== 'executable_no_compile') fail('consumer runtime-order smoke header drift');
+if (consumerRuntimeOrderSmoke.provider !== 'media' || consumerRuntimeOrderSmoke.role !== 'consumer') fail('consumer runtime-order smoke identity drift');
+if (consumerRuntimeOrderSmoke.fallback_smoke.provider_source !== providerFallbackSmokePath) fail('consumer runtime-order smoke provider source drift');
+sameSet(consumerRuntimeOrderSmoke.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'consumer runtime-order fallback profiles');
+sameSet(consumerRuntimeOrderSmoke.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'consumer runtime-order degraded modes');
 if (providerFallbackSmoke.port !== 'MediaAssetReadPort' || providerFallbackSmoke.operation !== 'get_image_descriptor') fail('provider fallback smoke identity drift');
 sameSet(evidence.fallback_smoke.profiles, [providerFallbackSmoke.profile], 'provider/evidence fallback profiles');
 const providerFallbackSmokeModes = (providerFallbackSmoke.degraded_modes ?? []).map(mode => mode.name);
@@ -84,9 +93,9 @@ for (const row of evidence.consumer_runtime_drill_matrix) {
 }
 
 const plan = read('crates/rustok-seo/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `in_progress`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'seo-media-consumer-static-matrix.json', 'source_locked_pending_consumer_runtime'], 'local plan');
+hasAll(plan, ['- FBA status: `in_progress`', 'seo-fba-registry.json', 'MediaAssetReadPort', 'seo-media-consumer-static-matrix.json', consumerRuntimeOrderSmokePath, 'source_locked_pending_consumer_runtime'], 'local plan');
 const central = read('docs/modules/registry.md');
-hasAll(central, ['| `seo` |', 'crates/rustok-seo/contracts/seo-fba-registry.json', '`in_progress` | `in_progress`'], 'central registry');
+hasAll(central, ['| `seo` |', 'crates/rustok-seo/contracts/seo-fba-registry.json', consumerRuntimeOrderSmokePath, '`in_progress` | `in_progress`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
 hasAll(unified, ['`seo`', 'MediaAssetReadPort', 'seo-fba-registry.json', 'source_locked_pending_consumer_runtime'], 'unified plan');
 
