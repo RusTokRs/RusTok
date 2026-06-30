@@ -21,6 +21,12 @@ permission_map = [
   "properties=pages:update",
   "publish=pages:publish",
 ]
+port_call_policies = [
+  "preview=read_deadline_required",
+  "tree=read_deadline_required",
+  "properties=read_deadline_required",
+  "publish=write_deadline_and_idempotency_required",
+]
 health_profile = "ready"
 health_states = ["ready", "degraded", "unavailable"]
 degradation_reasons = ["capability_disabled", "provider_unhealthy", "sanitize_backpressure", "publish_backlog"]

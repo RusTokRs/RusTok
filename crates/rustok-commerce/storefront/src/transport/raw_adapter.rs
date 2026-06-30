@@ -255,8 +255,6 @@ struct StorefrontShippingSelectionInput {
     shipping_profile_slug: String,
     #[serde(rename = "sellerId")]
     seller_id: Option<String>,
-    #[serde(rename = "sellerScope")]
-    seller_scope: Option<String>,
     #[serde(rename = "selectedShippingOptionId")]
     selected_shipping_option_id: Option<Uuid>,
 }
@@ -505,7 +503,6 @@ fn map_graphql_delivery_group(
     StorefrontCheckoutDeliveryGroup {
         shipping_profile_slug: value.shipping_profile_slug,
         seller_id: value.seller_id,
-        seller_scope: None,
         line_item_count: value.line_item_ids.len() as u64,
         selected_shipping_option_id: value.selected_shipping_option_id,
         available_shipping_options: value
@@ -707,7 +704,6 @@ fn map_native_delivery_group(
     StorefrontCheckoutDeliveryGroup {
         shipping_profile_slug: value.shipping_profile_slug,
         seller_id: value.seller_id,
-        seller_scope: None,
         line_item_count: value.line_item_ids.len() as u64,
         selected_shipping_option_id: value
             .selected_shipping_option_id
@@ -840,7 +836,6 @@ fn build_graphql_shipping_selections(
             Ok(StorefrontShippingSelectionInput {
                 shipping_profile_slug: selection.shipping_profile_slug,
                 seller_id: selection.seller_id,
-                seller_scope: None,
                 selected_shipping_option_id: parse_optional_uuid(
                     selection.selected_shipping_option_id,
                     "selected_shipping_option_id",

@@ -81,6 +81,7 @@ for (const marker of [
 for (const marker of ["StorefrontDeliveryGroup", "StorefrontShippingOption", "Serialize", "Deserialize"]) {
   assertContains(model, marker, `${modelPath}: expected module-owned DTO marker ${marker}`);
 }
+assertNotContains(model, "seller_scope", `${modelPath}: fulfillment storefront delivery-group model must not expose legacy seller_scope`);
 
 for (const marker of [
   "SelectShippingOptionRequest",
@@ -124,6 +125,13 @@ for (const marker of [
   "impl ShippingSelectionError",
 ]) {
   assertContains(transport, marker, `${transportPath}: expected owner transport facade marker ${marker}`);
+}
+for (const marker of [
+  "pub seller_scope",
+  "seller_scope: Option<String>",
+  "normalize_optional(seller_scope)",
+]) {
+  assertNotContains(transport, marker, `${transportPath}: fulfillment selection transport seam must not expose legacy seller_scope (${marker})`);
 }
 for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[server"]) {
   assertNotContains(transport, marker, `${transportPath}: owner transport facade must stay host-transport free (${marker})`);

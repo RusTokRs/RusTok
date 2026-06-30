@@ -111,6 +111,48 @@ impl PageBuilderCapabilityPermissions {
     }
 }
 
+pub const PAGE_BUILDER_READ_POLICY_NAME: &str = "read_deadline_required";
+pub const PAGE_BUILDER_WRITE_POLICY_NAME: &str = "write_deadline_and_idempotency_required";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageBuilderCapabilityPortPolicies {
+    pub preview: PortCallPolicy,
+    pub tree: PortCallPolicy,
+    pub properties: PortCallPolicy,
+    pub publish: PortCallPolicy,
+}
+
+impl Default for PageBuilderCapabilityPortPolicies {
+    fn default() -> Self {
+        Self {
+            preview: PortCallPolicy::read(),
+            tree: PortCallPolicy::read(),
+            properties: PortCallPolicy::read(),
+            publish: PortCallPolicy::write(),
+        }
+    }
+}
+
+impl PageBuilderCapabilityPortPolicies {
+    pub fn required_for(self, capability: BuilderCapabilityKind) -> PortCallPolicy {
+        match capability {
+            BuilderCapabilityKind::Preview => self.preview,
+            BuilderCapabilityKind::Tree => self.tree,
+            BuilderCapabilityKind::Properties => self.properties,
+            BuilderCapabilityKind::Publish => self.publish,
+        }
+    }
+
+    pub const fn policy_name_for(capability: BuilderCapabilityKind) -> &'static str {
+        match capability {
+            BuilderCapabilityKind::Preview
+            | BuilderCapabilityKind::Tree
+            | BuilderCapabilityKind::Properties => PAGE_BUILDER_READ_POLICY_NAME,
+            BuilderCapabilityKind::Publish => PAGE_BUILDER_WRITE_POLICY_NAME,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageBuilderRequestAuth {
     pub permissions: Vec<Permission>,
@@ -202,15 +244,26 @@ impl std::fmt::Display for PageBuilderAdapterOperation {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageBuilderAdapterCallStatus {
+    Started,
+    Succeeded,
+    Failed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageBuilderAdapterCallEvidence {
     pub module_slug: &'static str,
     pub contract: &'static str,
     pub operation: PageBuilderAdapterOperation,
+    pub status: PageBuilderAdapterCallStatus,
     pub tenant_id: String,
     pub page_id: String,
     pub revision_id: Option<String>,
     pub correlation_id: String,
+    pub error_kind: Option<PageBuilderErrorKind>,
+    pub stable_code: Option<&'static str>,
 }
 
 impl PageBuilderAdapterCallEvidence {
@@ -255,11 +308,28 @@ impl PageBuilderAdapterCallEvidence {
             module_slug: PageBuilderContractMetadata::BASELINE.module_slug,
             contract: PageBuilderContractMetadata::BASELINE.contract,
             operation,
+            status: PageBuilderAdapterCallStatus::Started,
             tenant_id: context.tenant_id.clone(),
             page_id: page_id.into(),
             revision_id,
             correlation_id: context.correlation_id.clone(),
+            error_kind: None,
+            stable_code: None,
         }
+    }
+
+    pub fn succeeded(&self) -> Self {
+        let mut evidence = self.clone();
+        evidence.status = PageBuilderAdapterCallStatus::Succeeded;
+        evidence
+    }
+
+    pub fn failed(&self, error: &PageBuilderServiceError) -> Self {
+        let mut evidence = self.clone();
+        evidence.status = PageBuilderAdapterCallStatus::Failed;
+        evidence.error_kind = Some(error.kind());
+        evidence.stable_code = error.stable_code();
+        evidence
     }
 }
 
@@ -360,10 +430,20 @@ where
         validate_grapesjs_payload(&input.page_id, &input.schema_version, &input.project_data)?;
         let evidence = PageBuilderAdapterCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_adapter_call(&evidence);
-        let html = self
+        let html = match self
             .renderer
             .render_preview(context, &input.project_data)
-            .await?;
+            .await
+        {
+            Ok(html) => {
+                self.telemetry.record_adapter_call(&evidence.succeeded());
+                html
+            }
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
+        };
 
         Ok(PreviewPageBuilderResult {
             page_id: input.page_id,
@@ -379,10 +459,20 @@ where
         validate_non_empty("page_id", &input.page_id)?;
         let evidence = PageBuilderAdapterCallEvidence::load_project(context, &input.page_id);
         self.telemetry.record_adapter_call(&evidence);
-        let nodes = match self.store.load_project(context, &input.page_id).await? {
-            Some(project_data) => extract_tree_nodes(&project_data),
-            None => Vec::new(),
+        let project_data = match self.store.load_project(context, &input.page_id).await {
+            Ok(project_data) => {
+                self.telemetry.record_adapter_call(&evidence.succeeded());
+                project_data
+            }
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
         };
+        let nodes = project_data
+            .as_ref()
+            .map(extract_tree_nodes)
+            .unwrap_or_default();
 
         Ok(BuilderTreeResult {
             page_id: input.page_id,
@@ -419,14 +509,22 @@ where
             &input.revision_id,
         );
         self.telemetry.record_adapter_call(&evidence);
-        self.store
+        match self
+            .store
             .save_project(
                 context,
                 &input.page_id,
                 &input.revision_id,
                 input.project_data,
             )
-            .await?;
+            .await
+        {
+            Ok(()) => self.telemetry.record_adapter_call(&evidence.succeeded()),
+            Err(error) => {
+                self.telemetry.record_adapter_call(&evidence.failed(&error));
+                return Err(error);
+            }
+        }
 
         Ok(PublishPageBuilderResult {
             page_id: input.page_id,
@@ -584,11 +682,28 @@ fn contains_script_tag(value: &str) -> bool {
 pub struct CapabilityGuardedService<S> {
     inner: S,
     flags: BuilderCapabilityFlags,
+    policies: PageBuilderCapabilityPortPolicies,
 }
 
 impl<S> CapabilityGuardedService<S> {
     pub fn new(inner: S, flags: BuilderCapabilityFlags) -> Self {
-        Self { inner, flags }
+        Self {
+            inner,
+            flags,
+            policies: PageBuilderCapabilityPortPolicies::default(),
+        }
+    }
+
+    pub fn with_policies(
+        inner: S,
+        flags: BuilderCapabilityFlags,
+        policies: PageBuilderCapabilityPortPolicies,
+    ) -> Self {
+        Self {
+            inner,
+            flags,
+            policies,
+        }
     }
 }
 
@@ -603,6 +718,9 @@ where
         input: PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Preview)?;
+        context
+            .require_policy(self.policies.required_for(BuilderCapabilityKind::Preview))
+            .map_err(PageBuilderServiceError::from_port_error)?;
         self.inner.preview(context, input).await
     }
 
@@ -612,6 +730,9 @@ where
         input: BuilderTreeInput,
     ) -> PageBuilderServiceResult<BuilderTreeResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Tree)?;
+        context
+            .require_policy(self.policies.required_for(BuilderCapabilityKind::Tree))
+            .map_err(PageBuilderServiceError::from_port_error)?;
         self.inner.tree(context, input).await
     }
 
@@ -621,6 +742,12 @@ where
         input: BuilderNodePropertiesInput,
     ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Properties)?;
+        context
+            .require_policy(
+                self.policies
+                    .required_for(BuilderCapabilityKind::Properties),
+            )
+            .map_err(PageBuilderServiceError::from_port_error)?;
         self.inner.properties(context, input).await
     }
 
@@ -631,7 +758,7 @@ where
     ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
         ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;
         context
-            .require_policy(PortCallPolicy::write())
+            .require_policy(self.policies.required_for(BuilderCapabilityKind::Publish))
             .map_err(PageBuilderServiceError::from_port_error)?;
         self.inner.publish(context, input).await
     }
@@ -792,6 +919,16 @@ mod tests {
 
     fn read_context() -> PortContext {
         PortContext::new("tenant-a", PortActor::user("editor-a"), "ru", "corr-read")
+            .with_deadline(std::time::Duration::from_secs(3))
+    }
+
+    fn no_deadline_context() -> PortContext {
+        PortContext::new(
+            "tenant-a",
+            PortActor::user("editor-a"),
+            "ru",
+            "corr-no-deadline",
+        )
     }
 
     fn write_context() -> PortContext {
@@ -883,6 +1020,24 @@ mod tests {
         match err {
             PageBuilderServiceError::Validation(message) => {
                 assert!(message.contains("idempotency key"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_capabilities_require_deadline_semantics() {
+        let service =
+            CapabilityGuardedService::new(StubService, BuilderToggleProfile::AllOn.flags());
+
+        let err = service
+            .preview(&no_deadline_context(), preview_input())
+            .await
+            .expect_err("preview requires read deadline semantics");
+
+        match err {
+            PageBuilderServiceError::Runtime(message) => {
+                assert!(message.contains("deadline"));
             }
             other => panic!("unexpected error: {other:?}"),
         }
@@ -985,6 +1140,26 @@ mod tests {
         assert_eq!(
             authorizer.required_permission(BuilderCapabilityKind::Publish),
             Permission::new(Resource::Pages, Action::Publish)
+        );
+    }
+
+    #[test]
+    fn port_policy_names_match_fba_registry_contract() {
+        assert_eq!(
+            PageBuilderCapabilityPortPolicies::policy_name_for(BuilderCapabilityKind::Preview),
+            PAGE_BUILDER_READ_POLICY_NAME
+        );
+        assert_eq!(
+            PageBuilderCapabilityPortPolicies::policy_name_for(BuilderCapabilityKind::Tree),
+            PAGE_BUILDER_READ_POLICY_NAME
+        );
+        assert_eq!(
+            PageBuilderCapabilityPortPolicies::policy_name_for(BuilderCapabilityKind::Properties),
+            PAGE_BUILDER_READ_POLICY_NAME
+        );
+        assert_eq!(
+            PageBuilderCapabilityPortPolicies::policy_name_for(BuilderCapabilityKind::Publish),
+            PAGE_BUILDER_WRITE_POLICY_NAME
         );
     }
 
@@ -1159,9 +1334,16 @@ mod tests {
         assert_eq!(evidence.module_slug, "page_builder");
         assert_eq!(evidence.contract, "grapesjs_v1");
         assert_eq!(evidence.operation.as_str(), "save_project");
+        assert_eq!(evidence.status, PageBuilderAdapterCallStatus::Started);
         assert_eq!(evidence.tenant_id, "tenant-a");
         assert_eq!(evidence.page_id, "home");
         assert_eq!(evidence.revision_id.as_deref(), Some("rev-1"));
         assert_eq!(evidence.correlation_id, "corr-write");
+
+        let failed = evidence.failed(&PageBuilderServiceError::Sanitize(
+            "blocked script".to_string(),
+        ));
+        assert_eq!(failed.status, PageBuilderAdapterCallStatus::Failed);
+        assert_eq!(failed.error_kind, Some(PageBuilderErrorKind::Sanitize));
     }
 }

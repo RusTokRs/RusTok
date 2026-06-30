@@ -21,6 +21,13 @@ const providerManifestPath = path.join(
   "rustok-page-builder",
   "rustok-module.toml",
 );
+const servicePath = path.join(
+  repoRoot,
+  "crates",
+  "rustok-page-builder",
+  "src",
+  "service.rs",
+);
 
 const moduleArg = process.argv[2] ?? "pages";
 
@@ -77,11 +84,11 @@ function assertArraySame(errors, label, expected, actual) {
   }
 }
 
-function assertPermissionMap(errors, expected, actualPairs) {
+function assertCapabilityMap(errors, label, expected, actualPairs) {
   const actual = Object.fromEntries(
     actualPairs.map((pair) => {
-      const [capability, permission] = pair.split("=");
-      return [capability, permission];
+      const [capability, value] = pair.split("=");
+      return [capability, value];
     }),
   );
   const expectedKey = Object.entries(expected)
@@ -94,7 +101,7 @@ function assertPermissionMap(errors, expected, actualPairs) {
     .join(",");
 
   if (expectedKey !== actualKey) {
-    errors.push(`provider.permission_map mismatch: registry=[${expectedKey}], manifest=[${actualKey}]`);
+    errors.push(`${label} mismatch: registry=[${expectedKey}], manifest=[${actualKey}]`);
   }
 }
 
@@ -124,6 +131,7 @@ function compareVersions(left, right) {
 
 const registry = readJson(registryPath);
 const providerManifest = readFile(providerManifestPath);
+const serviceSource = readFile(servicePath);
 const provider = registry.provider;
 const errors = [];
 
@@ -161,14 +169,44 @@ assertArraySame(
   provider.capabilities,
   extractArray(providerManifest, "capabilities", "provider capabilities"),
 );
-assertPermissionMap(
+assertCapabilityMap(
   errors,
+  "provider.permission_map",
   provider.permission_map,
   extractArray(providerManifest, "permission_map", "provider permission_map"),
+);
+assertCapabilityMap(
+  errors,
+  "provider.port_call_policies",
+  provider.port_call_policies,
+  extractArray(providerManifest, "port_call_policies", "provider port_call_policies"),
 );
 for (const capability of provider.capabilities ?? []) {
   if (!(capability in (provider.permission_map ?? {}))) {
     errors.push(`provider.permission_map missing '${capability}'`);
+  }
+  if (!(capability in (provider.port_call_policies ?? {}))) {
+    errors.push(`provider.port_call_policies missing '${capability}'`);
+  }
+}
+for (const [capability, policy] of Object.entries(provider.port_call_policies ?? {})) {
+  const expectedPolicy = capability === "publish"
+    ? "write_deadline_and_idempotency_required"
+    : "read_deadline_required";
+  if (policy !== expectedPolicy) {
+    errors.push(`provider.port_call_policies.${capability} must be '${expectedPolicy}'`);
+  }
+  if (!serviceSource.includes(policy)) {
+    errors.push(`provider.port_call_policies.${capability}='${policy}' is not source-locked in service.rs`);
+  }
+}
+for (const marker of [
+  "PageBuilderCapabilityPortPolicies",
+  "PAGE_BUILDER_READ_POLICY_NAME",
+  "PAGE_BUILDER_WRITE_POLICY_NAME",
+]) {
+  if (!serviceSource.includes(marker)) {
+    errors.push(`service.rs missing port policy marker '${marker}'`);
   }
 }
 assertSame(

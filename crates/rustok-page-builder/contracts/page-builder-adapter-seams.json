@@ -44,10 +44,18 @@
         "module_slug",
         "contract",
         "operation",
+        "status",
         "tenant_id",
         "page_id",
         "revision_id",
-        "correlation_id"
+        "correlation_id",
+        "error_kind",
+        "stable_code"
+      ],
+      "operation_statuses": [
+        "started",
+        "succeeded",
+        "failed"
       ]
     }
   },

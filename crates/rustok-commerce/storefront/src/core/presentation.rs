@@ -87,7 +87,6 @@ pub fn build_fulfillment_delivery_groups(
         .map(|group| FulfillmentDeliveryGroup {
             shipping_profile_slug: group.shipping_profile_slug,
             seller_id: group.seller_id,
-            seller_scope: None,
             line_item_count: group.line_item_count,
             selected_shipping_option_id: group.selected_shipping_option_id,
             available_shipping_options: group
@@ -252,7 +251,6 @@ mod tests {
         let groups = build_fulfillment_delivery_groups(vec![StorefrontCheckoutDeliveryGroup {
             shipping_profile_slug: "default".into(),
             seller_id: Some("seller-1".into()),
-            seller_scope: Some("legacy".into()),
             line_item_count: 1,
             selected_shipping_option_id: Some("ship-1".into()),
             available_shipping_options: Vec::new(),
@@ -260,6 +258,5 @@ mod tests {
 
         assert_eq!(groups[0].shipping_profile_slug, "default");
         assert_eq!(groups[0].seller_id.as_deref(), Some("seller-1"));
-        assert_eq!(groups[0].seller_scope, None);
     }
 }

@@ -4,7 +4,6 @@ use crate::model::StorefrontDeliveryGroup;
 pub struct SelectShippingOptionRequest {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub shipping_option_id: Option<String>,
 }
 
@@ -30,7 +29,6 @@ pub fn build_select_shipping_option_request(
     SelectShippingOptionRequest {
         shipping_profile_slug: normalize_required(group.shipping_profile_slug.clone()),
         seller_id: normalize_optional(group.seller_id.clone()),
-        seller_scope: None,
         shipping_option_id: normalize_optional(shipping_option_id),
     }
 }
@@ -68,7 +66,6 @@ mod tests {
         let group = StorefrontDeliveryGroup {
             shipping_profile_slug: " default ".into(),
             seller_id: Some(" seller-1 ".into()),
-            seller_scope: Some("  ".into()),
             line_item_count: 2,
             selected_shipping_option_id: None,
             available_shipping_options: Vec::new(),
@@ -78,7 +75,6 @@ mod tests {
 
         assert_eq!(request.shipping_profile_slug, "default");
         assert_eq!(request.seller_id.as_deref(), Some("seller-1"));
-        assert_eq!(request.seller_scope, None);
         assert_eq!(request.shipping_option_id.as_deref(), Some("option-1"));
     }
 

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct ShippingSelectionDeliveryGroup {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<String>,
     pub available_shipping_option_ids: Vec<String>,
 }
@@ -15,7 +14,6 @@ pub struct SelectShippingOptionRequest {
     pub delivery_groups: Vec<ShippingSelectionDeliveryGroup>,
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub shipping_option_id: Option<String>,
 }
 
@@ -23,7 +21,6 @@ pub struct SelectShippingOptionRequest {
 pub struct ShippingSelectionUpdate {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<String>,
 }
 
@@ -59,9 +56,8 @@ impl ShippingSelectionError {
             Self::MissingDeliveryGroup {
                 shipping_profile_slug,
                 seller_id,
-                seller_scope,
             } => format!(
-                "delivery group `{shipping_profile_slug}`/{seller_id:?}/{seller_scope:?} is not present in the checkout cart"
+                "delivery group `{shipping_profile_slug}`/{seller_id:?} is not present in the checkout cart"
             ),
             Self::UnavailableShippingOption {
                 shipping_profile_slug,
@@ -96,7 +92,6 @@ pub enum ShippingSelectionError {
     MissingDeliveryGroup {
         shipping_profile_slug: String,
         seller_id: Option<String>,
-        seller_scope: Option<String>,
     },
     UnavailableShippingOption {
         shipping_profile_slug: String,
@@ -109,7 +104,6 @@ pub fn build_select_shipping_option_request(
     delivery_groups: Vec<ShippingSelectionDeliveryGroup>,
     shipping_profile_slug: String,
     seller_id: Option<String>,
-    seller_scope: Option<String>,
     shipping_option_id: Option<String>,
 ) -> SelectShippingOptionRequest {
     SelectShippingOptionRequest {
@@ -117,7 +111,6 @@ pub fn build_select_shipping_option_request(
         delivery_groups,
         shipping_profile_slug: normalize_required(shipping_profile_slug),
         seller_id: normalize_optional(seller_id),
-        seller_scope: normalize_optional(seller_scope),
         shipping_option_id: normalize_optional(shipping_option_id),
     }
 }
@@ -157,7 +150,6 @@ pub fn build_shipping_selection_plan(
         selections.push(ShippingSelectionUpdate {
             shipping_profile_slug: group.shipping_profile_slug.clone(),
             seller_id: group.seller_id.clone(),
-            seller_scope: None,
             selected_shipping_option_id,
         });
     }
@@ -166,7 +158,6 @@ pub fn build_shipping_selection_plan(
         return Err(ShippingSelectionError::MissingDeliveryGroup {
             shipping_profile_slug: request.shipping_profile_slug.clone(),
             seller_id: request.seller_id.clone(),
-            seller_scope: None,
         });
     }
 
@@ -202,14 +193,12 @@ mod tests {
             Vec::new(),
             " default ".into(),
             Some(" seller-1 ".into()),
-            Some(" ".into()),
             Some(" ship-1 ".into()),
         );
 
         assert_eq!(request.cart_id, "cart-1");
         assert_eq!(request.shipping_profile_slug, "default");
         assert_eq!(request.seller_id.as_deref(), Some("seller-1"));
-        assert_eq!(request.seller_scope, None);
         assert_eq!(request.shipping_option_id.as_deref(), Some("ship-1"));
     }
 
@@ -221,21 +210,18 @@ mod tests {
                 ShippingSelectionDeliveryGroup {
                     shipping_profile_slug: "default".into(),
                     seller_id: Some("seller-1".into()),
-                    seller_scope: None,
                     selected_shipping_option_id: Some("old".into()),
                     available_shipping_option_ids: vec!["ship-1".into()],
                 },
                 ShippingSelectionDeliveryGroup {
                     shipping_profile_slug: "digital".into(),
                     seller_id: None,
-                    seller_scope: Some("platform".into()),
                     selected_shipping_option_id: Some("keep".into()),
                     available_shipping_option_ids: vec!["keep".into()],
                 },
             ],
             "default".into(),
             Some("seller-1".into()),
-            None,
             Some("ship-1".into()),
         );
 
@@ -273,12 +259,10 @@ mod tests {
             vec![ShippingSelectionDeliveryGroup {
                 shipping_profile_slug: "default".into(),
                 seller_id: None,
-                seller_scope: None,
                 selected_shipping_option_id: None,
                 available_shipping_option_ids: vec!["ship-1".into()],
             }],
             "default".into(),
-            None,
             None,
             Some("missing".into()),
         );
@@ -290,19 +274,17 @@ mod tests {
     }
 
     #[test]
-    fn selection_plan_does_not_match_by_seller_scope() {
+    fn selection_plan_requires_canonical_seller_id() {
         let request = build_select_shipping_option_request(
             "cart-1".into(),
             vec![ShippingSelectionDeliveryGroup {
                 shipping_profile_slug: "default".into(),
                 seller_id: Some("seller-1".into()),
-                seller_scope: Some("scope-1".into()),
                 selected_shipping_option_id: Some("old".into()),
                 available_shipping_option_ids: vec!["ship-1".into()],
             }],
             "default".into(),
             None,
-            Some("scope-1".into()),
             Some("ship-1".into()),
         );
 

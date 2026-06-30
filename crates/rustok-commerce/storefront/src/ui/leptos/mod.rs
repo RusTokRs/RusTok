@@ -92,7 +92,6 @@ pub fn CommerceView() -> impl IntoView {
                             cart,
                             request.shipping_profile_slug,
                             request.seller_id,
-                            None,
                             request.shipping_option_id,
                         ),
                     )

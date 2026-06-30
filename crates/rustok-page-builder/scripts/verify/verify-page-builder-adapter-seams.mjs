@@ -28,6 +28,9 @@ for (const marker of [
   "PageBuilderRenderingAdapter",
   "ReferencePageBuilderRenderingAdapter",
   "AdapterBackedPageBuilderService",
+  "PageBuilderAdapterCallStatus",
+  "PageBuilderAdapterTelemetry",
+  "NoopPageBuilderAdapterTelemetry",
   "extract_tree_nodes",
 ]) {
   if (!service.includes(marker)) fail(`service.rs missing ${marker}`);
@@ -41,6 +44,19 @@ for (const entrypoint of contract.canonical_entrypoints ?? []) {
 for (const seam of [contract.seams?.persistence?.trait, contract.seams?.rendering?.trait, contract.seams?.adapter_backed_service?.type]) {
   if (!seam || !service.includes(seam)) fail(`adapter seam '${seam}' is not implemented in service.rs`);
   if (!readme.includes(seam) || !plan.includes(seam)) fail(`adapter seam '${seam}' is not documented in local docs`);
+}
+
+for (const field of contract.seams?.adapter_backed_service?.operation_evidence_fields ?? []) {
+  if (!service.includes(field)) fail(`adapter operation evidence field '${field}' is not implemented in service.rs`);
+}
+
+for (const status of contract.seams?.adapter_backed_service?.operation_statuses ?? []) {
+  const variant = status
+    .split("_")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join("");
+  if (!service.includes(variant)) fail(`adapter operation status '${status}' is not implemented in service.rs`);
+  if (!readme.includes(status) || !plan.includes(status)) fail(`adapter operation status '${status}' is not documented in local docs`);
 }
 
 for (const blocked of contract.blocked_patterns ?? []) {

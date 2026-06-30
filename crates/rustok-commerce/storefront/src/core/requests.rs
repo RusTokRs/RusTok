@@ -53,7 +53,6 @@ pub fn build_select_shipping_option_request(
     cart: StorefrontCheckoutCart,
     shipping_profile_slug: String,
     seller_id: Option<String>,
-    _seller_scope: Option<String>,
     shipping_option_id: Option<String>,
 ) -> SelectShippingOptionRequest {
     let shipping_profile_slug = normalize_required(shipping_profile_slug);
@@ -66,7 +65,6 @@ pub fn build_select_shipping_option_request(
             .map(|group| ShippingSelectionDeliveryGroup {
                 shipping_profile_slug: group.shipping_profile_slug.clone(),
                 seller_id: group.seller_id.clone(),
-                seller_scope: None,
                 selected_shipping_option_id: group.selected_shipping_option_id.clone(),
                 available_shipping_option_ids: group
                     .available_shipping_options
@@ -77,7 +75,6 @@ pub fn build_select_shipping_option_request(
             .collect(),
         shipping_profile_slug.clone(),
         seller_id.clone(),
-        None,
         shipping_option_id.clone(),
     );
 
