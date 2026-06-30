@@ -47,7 +47,9 @@
     "local_plan": "crates/rustok-comments/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-comments-fba.mjs",
-    "static_matrix": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json"
+    "static_matrix": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json",
+    "runtime_order_smoke": "crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
     "service": "CommentsService",

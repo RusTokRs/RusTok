@@ -41,6 +41,8 @@ function assertNotContains(text, pattern, description) {
 const libPath = "crates/rustok-payment/storefront/src/lib.rs";
 const corePath = "crates/rustok-payment/storefront/src/core.rs";
 const transportPath = "crates/rustok-payment/storefront/src/transport.rs";
+const graphqlPath = "crates/rustok-payment/storefront/src/transport/graphql_adapter.rs";
+const nativeRawPath = "crates/rustok-payment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
 const uiPath = "crates/rustok-payment/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-payment/storefront/src/i18n.rs";
 const manifestPath = "crates/rustok-payment/rustok-module.toml";
@@ -50,13 +52,15 @@ const planPath = "crates/rustok-payment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected payment storefront FFA file`);
 }
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const transport = readRepo(transportPath);
+const graphql = readRepo(graphqlPath);
+const nativeRaw = readRepo(nativeRawPath);
 const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
 const manifest = readRepo(manifestPath);
@@ -85,7 +89,11 @@ for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", 
 
 for (const marker of [
   "PaymentCollectionCreateRequest",
+  "PaymentCollection",
   "build_payment_collection_create_request",
+  "create_payment_collection",
+  "mod graphql_adapter;",
+  "mod native_server_adapter;",
   "normalize_required",
 ]) {
   assertContains(transport, marker, `${transportPath}: expected transport-owned request marker ${marker}`);
@@ -93,6 +101,13 @@ for (const marker of [
 for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
   assertNotContains(transport, marker, `${transportPath}: transport facade must stay framework/native-endpoint free (${marker})`);
 }
+for (const marker of ["CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION", "GraphqlRequest::new", "PaymentCollection"]) {
+  assertContains(graphql, marker, `${graphqlPath}: payment must own GraphQL create/reuse marker ${marker}`);
+}
+assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: payment GraphQL adapter must not depend on commerce storefront internals`);
+assertContains(nativeRaw, "#[server", `${nativeRawPath}: payment native adapter must own a server-function endpoint shell`);
+assertContains(nativeRaw, "endpoint = \"payment/create-payment-collection\"", `${nativeRawPath}: payment native adapter must expose the owner endpoint path`);
+assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: payment native adapter must call the explicit commerce checkout runtime API`);
 
 for (const marker of [
   "PaymentView",

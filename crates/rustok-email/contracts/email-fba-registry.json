@@ -34,7 +34,8 @@
   "evidence": {
     "local_plan": "crates/rustok-email/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-email-fba.mjs"
+    "verifier": "scripts/verify/verify-email-fba.mjs",
+    "runtime_fallback_smoke": "crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json"
   },
   "in_process_provider_impl": {
     "service": "EmailService",

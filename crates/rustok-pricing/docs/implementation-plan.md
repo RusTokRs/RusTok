@@ -21,6 +21,7 @@ rule и scope write paths, а полный promotions engine и остально
 - Версия FBA-контракта: `pricing.read_projection.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-pricing/contracts/evidence/pricing-runtime-contract-smoke.json`: shared read policy предшествует owner `PricingService` invocation и typed error mapping, а fallback profiles/degraded modes не расходятся с registry. Статус остаётся `in_progress` до live provider execution;
   - in-process реализация `PricingReadPort for PricingService` добавлена в `src/ports.rs`: read paths требуют `PortContext::require_deadline_semantics`, price resolution вызывает owner `resolve_variant_price`, projection читает active price-list snapshot, а `CommerceError` мапится в `PortError`;
   - umbrella facade `rustok_commerce::{services::pricing, PricingService}` and pricing DTO aliases under `rustok_commerce::services::*` are removed; consumers import `PricingService`, `PriceResolutionContext`, `ResolvedPrice` and pricing entities from `rustok-pricing` directly;
   - `src/ports.rs` теперь экспортирует `PricingReadPort` и DTO для product price resolution/price-list projection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;

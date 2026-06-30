@@ -11,8 +11,8 @@
       "operations": [
         "process_pending_once"
       ],
-      "context": "rustok_api::PortContext",
-      "error": "rustok_api::PortError",
+      "context": "rustok_core::ports::PortContext",
+      "error": "rustok_core::ports::PortError",
       "idempotency_required": true,
       "deadline_required": true
     }
@@ -33,7 +33,9 @@
   "evidence": {
     "local_plan": "crates/rustok-outbox/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-outbox-fba.mjs"
+    "verifier": "scripts/verify/verify-outbox-fba.mjs",
+    "runtime_order_smoke": "crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
     "service": "OutboxRelay",

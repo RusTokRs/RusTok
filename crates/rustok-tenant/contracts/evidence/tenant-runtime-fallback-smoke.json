@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "module": "tenant",
+  "status": "no_compile_source_locked_runtime_fallback_smoke",
+  "generated_from": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
+  "runner": "scripts/verify/verify-foundation-fba-runtime-smoke.mjs",
+  "contract_version": "tenant.read_projection.v1",
+  "profiles": [
+    "embedded_native"
+  ],
+  "degraded_modes": [
+    "hide_inactive_tenant",
+    "show_tenant_resolution_retry"
+  ],
+  "execution_note": "No Rust compilation is required for this packet; the shared foundation verifier source-locks tenant read-policy, selector validation, inactive fallback semantics, host resolver handoff, and installer read-projection handoff while existing Rust runtime evidence remains the transport-ready baseline.",
+  "smoke_cases": [
+    {
+      "profile": "embedded_native",
+      "operation": "read_tenant",
+      "execution_status": "no_compile_source_locked",
+      "source": "crates/rustok-tenant/src/ports.rs",
+      "assertions": [
+        "read_policy_required_before_lookup",
+        "selector_validation_before_lookup",
+        "id_slug_domain_selectors_supported",
+        "inactive_tenant_hidden_without_include_inactive",
+        "typed_error_mapping_preserved"
+      ]
+    },
+    {
+      "profile": "embedded_native",
+      "operation": "host_tenant_resolution",
+      "execution_status": "no_compile_source_locked",
+      "source": "apps/server/src/middleware/tenant.rs",
+      "assertions": [
+        "host_resolver_consumes_tenant_read_port",
+        "uuid_slug_domain_selectors_preserved",
+        "include_inactive_requested_for_resolution",
+        "disabled_tenant_maps_to_negative_cache",
+        "cache_coalescing_stays_host_owned"
+      ]
+    },
+    {
+      "profile": "embedded_native",
+      "operation": "installer_tenant_resolution",
+      "execution_status": "no_compile_source_locked",
+      "source": "apps/server/src/installer_cli.rs",
+      "assertions": [
+        "installer_consumes_tenant_read_port",
+        "slug_selector_preserved",
+        "installer_deadline_semantics_preserved",
+        "missing_tenant_maps_to_create_candidate"
+      ]
+    }
+  ]
+}

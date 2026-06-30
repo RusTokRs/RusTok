@@ -34,7 +34,7 @@ if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_
 if (port.deadline_required !== true || port.idempotency_required !== false) fail('read projection semantics drift');
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/workflow-fba-registry.json"') || !manifest.includes('contract_version = "workflow.read_projection.v1"')) fail('manifest FBA metadata drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait WorkflowReadPort', 'impl WorkflowReadPort for WorkflowService', 'context.require_deadline_semantics()?', 'workflow_tenant_id(&context)?', 'workflow.tenant_id_invalid', 'PortErrorKind::NotFound']) if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
+for (const marker of ['trait WorkflowReadPort', 'impl WorkflowReadPort for WorkflowService', 'context.require_policy(PortCallPolicy::read())?', 'workflow_tenant_id(&context)?', 'workflow.tenant_id_invalid', 'PortErrorKind::NotFound']) if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 if (ports.includes('require_write_semantics()?')) fail('workflow read port must not require write idempotency');
 if (!dto.includes('Serialize, Deserialize')) fail('workflow DTOs must remain serializable');
 if (!plan.includes('- FBA status: `in_progress`') || !plan.includes(registryPath) || !plan.includes('WorkflowReadPort') || !plan.includes('workflow-contract-test-static-matrix.json') || !plan.includes('workflow-read-projection-runtime-smoke.json')) fail('local plan FBA evidence drift');

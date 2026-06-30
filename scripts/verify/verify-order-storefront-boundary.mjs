@@ -41,6 +41,8 @@ function assertNotContains(text, pattern, description) {
 const libPath = "crates/rustok-order/storefront/src/lib.rs";
 const corePath = "crates/rustok-order/storefront/src/core.rs";
 const transportPath = "crates/rustok-order/storefront/src/transport.rs";
+const graphqlPath = "crates/rustok-order/storefront/src/transport/graphql_adapter.rs";
+const nativeRawPath = "crates/rustok-order/storefront/src/transport/native_server_adapter/raw_adapter.rs";
 const uiPath = "crates/rustok-order/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-order/storefront/src/i18n.rs";
 const manifestPath = "crates/rustok-order/rustok-module.toml";
@@ -50,13 +52,15 @@ const planPath = "crates/rustok-order/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, corePath, transportPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, corePath, transportPath, graphqlPath, nativeRawPath, uiPath, i18nPath, manifestPath, commerceUiPath, commerceRequestsPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected order storefront FFA file`);
 }
 
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const transport = readRepo(transportPath);
+const graphql = readRepo(graphqlPath);
+const nativeRaw = readRepo(nativeRawPath);
 const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
 const manifest = readRepo(manifestPath);
@@ -83,12 +87,20 @@ for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", 
   assertNotContains(core, marker, `${corePath}: core must stay UI/transport free (${marker})`);
 }
 
-for (const marker of ["CompleteCheckoutRequest", "build_complete_checkout_request", "normalize_required"]) {
+for (const marker of ["CompleteCheckoutRequest", "CheckoutCompletion", "build_complete_checkout_request", "complete_checkout", "mod graphql_adapter;", "normalize_required"]) {
   assertContains(transport, marker, `${transportPath}: expected transport-owned request marker ${marker}`);
 }
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: order transport facade must wire native server adapter`);
 for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
   assertNotContains(transport, marker, `${transportPath}: transport facade must stay framework/native-endpoint free (${marker})`);
 }
+for (const marker of ["COMPLETE_STOREFRONT_CHECKOUT_MUTATION", "GraphqlRequest::new", "CheckoutAdjustment"]) {
+  assertContains(graphql, marker, `${graphqlPath}: order must own GraphQL completion marker ${marker}`);
+}
+assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: order GraphQL adapter must not depend on commerce storefront internals`);
+assertContains(nativeRaw, "#[server", `${nativeRawPath}: order native adapter must own a server-function endpoint shell`);
+assertContains(nativeRaw, "endpoint = \"order/complete-checkout\"", `${nativeRawPath}: order native adapter must expose the owner endpoint path`);
+assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: order native adapter must call the explicit commerce checkout runtime API`);
 
 for (const marker of [
   "OrderView",

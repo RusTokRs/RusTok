@@ -36,14 +36,13 @@ for (const op of port.write_operations) {
   const idx = implPorts.indexOf(`async fn ${op}`);
   if (idx === -1) fail(`ports.rs missing write operation ${op}`);
   const body = implPorts.slice(idx, implPorts.indexOf('\n    async fn ', idx + 1) === -1 ? implPorts.length : implPorts.indexOf('\n    async fn ', idx + 1));
-  if (!body.includes('context.require_write_semantics()?')) fail(`${op} does not require write semantics`);
+  if (!body.includes('context.require_policy(PortCallPolicy::write())?')) fail(`${op} does not require shared write policy`);
 }
 for (const op of port.read_operations) {
   const idx = implPorts.indexOf(`async fn ${op}`);
   if (idx === -1) fail(`ports.rs missing read operation ${op}`);
   const body = implPorts.slice(idx, implPorts.indexOf('\n    async fn ', idx + 1) === -1 ? implPorts.length : implPorts.indexOf('\n    async fn ', idx + 1));
-  if (!body.includes('context.require_deadline_semantics()?')) fail(`${op} does not require deadline semantics`);
-  if (body.includes('context.require_write_semantics()?')) fail(`${op} unexpectedly requires write semantics`);
+  if (!body.includes('context.require_policy(PortCallPolicy::read())?')) fail(`${op} does not require shared read policy`);
 }
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');

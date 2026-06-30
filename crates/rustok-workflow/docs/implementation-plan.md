@@ -20,6 +20,7 @@ capability integrations без дрейфа и битой документаци
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-workflow/contracts/evidence/workflow-provider-runtime-order-smoke.json`: shared read policy → tenant scope → owner `WorkflowService` invocation → typed error mapping и fallback/degraded registry parity; статус остаётся `in_progress` до live native/GraphQL execution;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - FFA admin slice: status badge presentation, workflow table row mapping, template category styling, template-name normalization, module route toggle/legacy href policy, transport request context, transport error presentation и template create command/name policy теперь живут в framework-agnostic `admin/src/core/` с unit tests;
   - transport slice: текущий GraphQL adapter живёт в `admin/src/transport/graphql_adapter.rs`, native server-function adapter добавлен в `admin/src/transport/native_server_adapter.rs`, а `admin/src/transport/mod.rs` стал native-first facade с GraphQL fallback; Leptos UI больше не зависит от raw adapter modules напрямую;

@@ -110,6 +110,8 @@
   "evidence": {
     "local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-page-builder-fba-baseline.mjs"
+    "verifier": "scripts/verify/verify-page-builder-fba-baseline.mjs",
+    "runtime_order_smoke": "crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   }
 }

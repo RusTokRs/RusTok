@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-rbac/contracts/rbac-fba-registry.json",
+  "runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "rbac.permission_decision.v1",
+  "fallback_profiles": ["embedded_native"],
+  "degraded_modes": ["hide_restricted_actions", "show_permission_refresh_prompt"],
+  "cases": [
+    { "operation": "check_permissions", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "validate_permission_request(&request)?", "let claims = context.claims;", "Ok(RbacPermissionCheckResponse {"] }
+  ]
+}

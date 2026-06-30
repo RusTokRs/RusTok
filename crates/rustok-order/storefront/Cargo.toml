@@ -8,9 +8,24 @@ description = "Leptos storefront UI package for the rustok-order module"
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:loco-rs",
+    "dep:rustok-commerce",
+    "rustok-api/loco-adapter",
+]
 
 [dependencies]
 leptos.workspace = true
+leptos-graphql.workspace = true
+leptos_axum = { workspace = true, optional = true }
+loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-commerce = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Location", "Window"] }

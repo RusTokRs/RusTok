@@ -10155,8 +10155,14 @@ name = "rustok-fulfillment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
  "rustok-api",
+ "rustok-commerce",
  "serde",
+ "uuid",
+ "web-sys",
 ]
 
 [[package]]
@@ -10385,8 +10391,15 @@ name = "rustok-order-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
  "rustok-api",
+ "rustok-commerce",
  "serde",
+ "serde_json",
+ "uuid",
+ "web-sys",
 ]
 
 [[package]]
@@ -10533,8 +10546,16 @@ name = "rustok-payment-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
  "rustok-api",
+ "rustok-commerce",
+ "rustok-payment",
  "serde",
+ "serde_json",
+ "uuid",
+ "web-sys",
 ]
 
 [[package]]

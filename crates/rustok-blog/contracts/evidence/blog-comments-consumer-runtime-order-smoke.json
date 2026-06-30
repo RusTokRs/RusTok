@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "role": "consumer",
+  "provider": "comments",
+  "generated_from": "crates/rustok-blog/contracts/blog-fba-registry.json",
+  "runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "source_contract": {
+    "consumer_service": "crates/rustok-blog/src/services/comment.rs",
+    "consumer_error_mapping": "crates/rustok-blog/src/error.rs",
+    "provider_registry": "crates/rustok-comments/contracts/comments-fba-registry.json"
+  },
+  "fallback_smoke": {
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "hide_comment_form",
+      "show_cached_thread_snapshot"
+    ]
+  },
+  "runtime_order": [
+    {
+      "operation": "create_comment",
+      "function": "create_comment",
+      "markers": [
+        "ensure_post_exists",
+        "prepare_content_payload",
+        "create_comment_in_tx",
+        "adjust_post_reply_count_in_tx",
+        "publish_post_updated_event_in_tx",
+        "get_comment",
+        "map_comment_record"
+      ]
+    },
+    {
+      "operation": "list_comments_for_target",
+      "function": "list_for_post_with_locale_fallback",
+      "markers": [
+        "ensure_post_exists",
+        "list_comments_for_target",
+        "map_comment_list_item"
+      ]
+    },
+    {
+      "operation": "update_comment",
+      "function": "update_comment",
+      "markers": [
+        "prepare_content_payload",
+        "update_comment",
+        "map_comment_record"
+      ]
+    },
+    {
+      "operation": "delete_comment",
+      "function": "delete_comment",
+      "markers": [
+        "get_comment",
+        "ensure_blog_target",
+        "delete_comment_in_tx",
+        "adjust_post_reply_count_in_tx",
+        "publish_post_updated_event_in_tx",
+        "commit"
+      ]
+    }
+  ],
+  "source_assertions": [
+    {
+      "name": "blog target ownership",
+      "path": "crates/rustok-blog/src/services/comment.rs",
+      "markers": [
+        "const TARGET_TYPE_BLOG_POST",
+        "Self::ensure_blog_target",
+        "BlogError::comment_not_found"
+      ]
+    },
+    {
+      "name": "typed comments error mapping",
+      "path": "crates/rustok-blog/src/error.rs",
+      "markers": [
+        "rustok_comments::CommentsError::CommentThreadClosed",
+        "rustok_comments::CommentsError::Forbidden",
+        "rustok_comments::CommentsError::Validation",
+        "rustok_comments::CommentsError::Database"
+      ]
+    }
+  ]
+}

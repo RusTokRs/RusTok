@@ -1,3 +1,6 @@
+mod graphql_adapter;
+mod native_server_adapter;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +29,21 @@ pub struct PaymentCollectionCreateRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentCollection {
+    pub id: String,
+    pub status: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub authorized_amount: String,
+    pub captured_amount: String,
+    pub order_id: Option<String>,
+    pub provider_id: Option<String>,
+    pub payment_count: u64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaymentCollectionTransportError {
     Graphql(String),
     ServerFn(String),
@@ -51,20 +69,14 @@ impl PaymentCollectionTransportError {
     }
 }
 
-pub async fn create_payment_collection_with_fallback<T, N, NFut, G, GFut>(
+pub async fn create_payment_collection(
     request: PaymentCollectionCreateRequest,
-    native: N,
-    graphql: G,
-) -> Result<T, PaymentCollectionTransportError>
-where
-    N: FnOnce(PaymentCollectionCreateRequest) -> NFut,
-    NFut: std::future::Future<Output = Result<T, PaymentCollectionTransportError>>,
-    G: FnOnce(PaymentCollectionCreateRequest) -> GFut,
-    GFut: std::future::Future<Output = Result<T, PaymentCollectionTransportError>>,
-{
-    match native(request.clone()).await {
+) -> Result<PaymentCollection, PaymentCollectionTransportError> {
+    match native_server_adapter::create_payment_collection(request.clone()).await {
         Ok(collection) => Ok(collection),
-        Err(error) if error.should_fallback_to_graphql() => graphql(request).await,
+        Err(error) if error.should_fallback_to_graphql() => {
+            graphql_adapter::create_payment_collection(request).await
+        }
         Err(error) => Err(error),
     }
 }

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-product/contracts/product-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "product.catalog_read.v1",
+  "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+  "degraded_modes": ["use_cart_product_snapshot", "show_product_refresh_required", "skip_product_enrichment"],
+  "cases": [
+    { "operation": "read_product_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_product_with_locale_fallback(", ".map_err(product_error_to_port_error)"] },
+    { "operation": "list_published_products", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list_published_products_with_locale_fallback(", ".map_err(product_error_to_port_error)"] }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  "runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "fallback_profiles": [
+    "all_on",
+    "publish_off",
+    "preview_off",
+    "builder_off"
+  ],
+  "capabilities": [
+    {
+      "capability": "preview",
+      "policy": "read_deadline_required",
+      "guarded_order": [
+        "ensure_capability(&self.flags, BuilderCapabilityKind::Preview)?;",
+        ".require_policy(self.policies.required_for(BuilderCapabilityKind::Preview))",
+        "self.inner.preview(context, input).await"
+      ],
+      "authorized_order": [
+        ".authorize(auth, BuilderCapabilityKind::Preview)?;",
+        "self.service.preview(context, input).await"
+      ]
+    },
+    {
+      "capability": "tree",
+      "policy": "read_deadline_required",
+      "guarded_order": [
+        "ensure_capability(&self.flags, BuilderCapabilityKind::Tree)?;",
+        ".require_policy(self.policies.required_for(BuilderCapabilityKind::Tree))",
+        "self.inner.tree(context, input).await"
+      ],
+      "authorized_order": [
+        ".authorize(auth, BuilderCapabilityKind::Tree)?;",
+        "self.service.tree(context, input).await"
+      ]
+    },
+    {
+      "capability": "properties",
+      "policy": "read_deadline_required",
+      "guarded_order": [
+        "ensure_capability(&self.flags, BuilderCapabilityKind::Properties)?;",
+        ".required_for(BuilderCapabilityKind::Properties)",
+        "self.inner.properties(context, input).await"
+      ],
+      "authorized_order": [
+        ".authorize(auth, BuilderCapabilityKind::Properties)?;",
+        "self.service.properties(context, input).await"
+      ]
+    },
+    {
+      "capability": "publish",
+      "policy": "write_deadline_and_idempotency_required",
+      "guarded_order": [
+        "ensure_capability(&self.flags, BuilderCapabilityKind::Publish)?;",
+        ".require_policy(self.policies.required_for(BuilderCapabilityKind::Publish))",
+        "self.inner.publish(context, input).await"
+      ],
+      "authorized_order": [
+        ".authorize(auth, BuilderCapabilityKind::Publish)?;",
+        "self.service.publish(context, input).await"
+      ]
+    }
+  ],
+  "source_assertions": [
+    {
+      "name": "policy defaults",
+      "path": "crates/rustok-page-builder/src/service.rs",
+      "markers": [
+        "preview: PortCallPolicy::read()",
+        "tree: PortCallPolicy::read()",
+        "properties: PortCallPolicy::read()",
+        "publish: PortCallPolicy::write()",
+        "PageBuilderCapabilityPortPolicies"
+      ]
+    },
+    {
+      "name": "transport envelope",
+      "path": "crates/rustok-page-builder/src/transport.rs",
+      "markers": [
+        "dispatch_transport_envelope",
+        "handlers.handle(context, auth, request).await",
+        "PageBuilderTransportError::from_service_error"
+      ]
+    },
+    {
+      "name": "endpoint adapters",
+      "path": "crates/rustok-page-builder/src/adapters.rs",
+      "markers": [
+        "dispatch_graphql_envelope",
+        "dispatch_leptos_server_function_envelope",
+        "handle_page_builder_graphql_endpoint",
+        "handle_page_builder_leptos_server_function_endpoint"
+      ]
+    }
+  ]
+}

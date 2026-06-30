@@ -11,7 +11,7 @@ use crate::core::normalize_public_channel_slug;
 use crate::core::{parse_adjustment_scope, parse_cart_id, parse_line_item_id, CartCoreError};
 use crate::model::{
     StorefrontCart, StorefrontCartAdjustment, StorefrontCartData, StorefrontCartDeliveryGroup,
-    StorefrontCartLineItem,
+    StorefrontCartLineItem, StorefrontCartShippingOption,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
+const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
 const UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) { updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) { id } }";
 const REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) { removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) { id } }";
 
@@ -187,7 +187,16 @@ struct GraphqlCartDeliveryGroup {
 }
 
 #[derive(Debug, Deserialize)]
-struct GraphqlCartShippingOption {}
+struct GraphqlCartShippingOption {
+    id: String,
+    name: String,
+    #[serde(rename = "currencyCode")]
+    currency_code: String,
+    amount: String,
+    #[serde(rename = "providerId")]
+    provider_id: String,
+    active: bool,
+}
 
 fn configured_tenant_slug() -> Option<String> {
     [
@@ -416,6 +425,18 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
                 line_item_count: group.line_item_ids.len() as u64,
                 selected_shipping_option_id: group.selected_shipping_option_id,
                 available_option_count: group.available_shipping_options.len() as u64,
+                available_shipping_options: group
+                    .available_shipping_options
+                    .into_iter()
+                    .map(|option| StorefrontCartShippingOption {
+                        id: option.id,
+                        name: option.name,
+                        currency_code: option.currency_code,
+                        amount: option.amount,
+                        provider_id: option.provider_id,
+                        active: option.active,
+                    })
+                    .collect(),
             })
             .collect(),
     }
@@ -521,6 +542,18 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
                     .selected_shipping_option_id
                     .map(|value| value.to_string()),
                 available_option_count: group.available_shipping_options.len() as u64,
+                available_shipping_options: group
+                    .available_shipping_options
+                    .into_iter()
+                    .map(|option| StorefrontCartShippingOption {
+                        id: option.id.to_string(),
+                        name: option.name,
+                        currency_code: option.currency_code,
+                        amount: option.amount.normalize().to_string(),
+                        provider_id: option.provider_id,
+                        active: option.active,
+                    })
+                    .collect(),
             })
             .collect(),
     }
@@ -543,6 +576,9 @@ async fn storefront_cart_native(
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .ok();
         let Some((normalized_cart_id, cart_id)) =
             parse_cart_id(selected_cart_id).map_err(|err| ServerFnError::new(err.to_string()))?
         else {
@@ -553,10 +589,8 @@ async fn storefront_cart_native(
             });
         };
 
-        let cart = match rustok_cart::CartService::new(app_ctx.db.clone())
-            .get_cart(tenant.id, cart_id)
-            .await
-        {
+        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
+        let cart = match cart_service.get_cart(tenant.id, cart_id).await {
             Ok(cart) => cart,
             Err(rustok_cart::CartError::CartNotFound(_)) => {
                 return Ok(StorefrontCartData {
@@ -569,6 +603,14 @@ async fn storefront_cart_native(
         let storefront_customer_id =
             resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
         ensure_storefront_cart_access(&cart, storefront_customer_id)?;
+        let cart = reprice_storefront_cart_line_items(
+            &app_ctx,
+            tenant.id,
+            &cart_service,
+            cart,
+            request_context.as_ref(),
+        )
+        .await?;
 
         let _ = locale;
         Ok(StorefrontCartData {
@@ -582,6 +624,65 @@ async fn storefront_cart_native(
         Err(ServerFnError::new(
             "cart/storefront-data requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn reprice_storefront_cart_line_items(
+    app_ctx: &loco_rs::app::AppContext,
+    tenant_id: Uuid,
+    cart_service: &rustok_cart::CartService,
+    cart: rustok_cart::CartResponse,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> Result<rustok_cart::CartResponse, ServerFnError> {
+    if cart.line_items.is_empty() {
+        return Ok(cart);
+    }
+
+    let pricing_service = rustok_pricing::PricingService::new(
+        app_ctx.db.clone(),
+        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+    );
+    let channel_id = cart
+        .channel_id
+        .or_else(|| request_context.and_then(|ctx| ctx.channel_id));
+    let channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
+        request_context.and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()))
+    });
+    let mut updates = Vec::new();
+    for line_item in &cart.line_items {
+        let Some(variant_id) = line_item.variant_id else {
+            continue;
+        };
+        let pricing_context = rustok_pricing::PriceResolutionContext {
+            currency_code: cart.currency_code.to_ascii_uppercase(),
+            region_id: cart.region_id,
+            price_list_id: None,
+            channel_id,
+            channel_slug: channel_slug.clone(),
+            quantity: Some(line_item.quantity),
+        };
+        let resolved_price = pricing_service
+            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))?
+            .ok_or_else(|| {
+                ServerFnError::new("Unable to resolve storefront price for cart line item")
+            })?;
+        updates.push(storefront_cart_pricing_update(
+            line_item.id,
+            line_item.quantity,
+            &resolved_price,
+        ));
+    }
+
+    if updates.is_empty() {
+        Ok(cart)
+    } else {
+        cart_service
+            .reprice_line_items(tenant_id, cart.id, updates)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
     }
 }
 

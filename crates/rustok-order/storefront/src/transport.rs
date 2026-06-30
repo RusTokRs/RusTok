@@ -1,3 +1,6 @@
+mod graphql_adapter;
+mod native_server_adapter;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,6 +31,34 @@ pub struct CompleteCheckoutRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckoutAdjustment {
+    pub id: String,
+    pub line_item_id: Option<String>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub scope: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub metadata: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckoutCompletion {
+    pub order_id: String,
+    pub order_status: String,
+    pub currency_code: String,
+    pub shipping_total: String,
+    pub adjustment_total: String,
+    pub total_amount: String,
+    pub adjustments: Vec<CheckoutAdjustment>,
+    pub payment_collection_id: String,
+    pub payment_collection_status: String,
+    pub fulfillment_count: u64,
+    pub context_locale: String,
+    pub context_currency_code: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckoutCompletionTransportError {
     Graphql(String),
     ServerFn(String),
@@ -53,20 +84,14 @@ impl CheckoutCompletionTransportError {
     }
 }
 
-pub async fn complete_checkout_with_fallback<T, N, NFut, G, GFut>(
+pub async fn complete_checkout(
     request: CompleteCheckoutRequest,
-    native: N,
-    graphql: G,
-) -> Result<T, CheckoutCompletionTransportError>
-where
-    N: FnOnce(CompleteCheckoutRequest) -> NFut,
-    NFut: std::future::Future<Output = Result<T, CheckoutCompletionTransportError>>,
-    G: FnOnce(CompleteCheckoutRequest) -> GFut,
-    GFut: std::future::Future<Output = Result<T, CheckoutCompletionTransportError>>,
-{
-    match native(request.clone()).await {
+) -> Result<CheckoutCompletion, CheckoutCompletionTransportError> {
+    match native_server_adapter::complete_checkout(request.clone()).await {
         Ok(completion) => Ok(completion),
-        Err(error) if error.should_fallback_to_graphql() => graphql(request).await,
+        Err(error) if error.should_fallback_to_graphql() => {
+            graphql_adapter::complete_checkout(request).await
+        }
         Err(error) => Err(error),
     }
 }

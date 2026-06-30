@@ -26,6 +26,7 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   const evidencePath = 'crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json';
   const registry = readJson(root, registryPath);
   const evidence = readJson(root, evidencePath);
+  const runtimeSmoke = readJson(root, registry.evidence.runtime_contract_smoke);
   const manifest = read(root, 'crates/rustok-tax/rustok-module.toml');
   const plan = read(root, 'crates/rustok-tax/docs/implementation-plan.md');
   const central = read(root, 'docs/modules/registry.md');
@@ -63,7 +64,9 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
 
   if (!plan.includes('- FBA status: `in_progress`')) fail('tax local plan FBA status drift');
   if (!plan.includes(registryPath)) fail('tax local plan lacks registry evidence');
+  if (!plan.includes(registry.evidence.runtime_contract_smoke)) fail('tax local plan lacks runtime smoke evidence');
   if (!central.includes('| `tax` |') || !central.includes(registryPath)) fail('central readiness board lacks tax FBA evidence');
+  if (!central.includes(registry.evidence.runtime_contract_smoke)) fail('central readiness board lacks tax runtime smoke evidence');
 
   if (evidence.schema_version !== 1) fail('tax evidence schema_version must be 1');
   if (evidence.module !== 'tax') fail('tax evidence module drift');
@@ -79,6 +82,23 @@ export function verifyTaxFba({ root = defaultRoot } = {}) {
   if (!sameSet(evidenceCase.assertions, registryCase.assertions)) fail('tax evidence assertion drift');
   if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) {
     fail('tax fallback evidence profile drift');
+  }
+
+  if (runtimeSmoke.generated_from !== registryPath) fail('tax runtime smoke source drift');
+  if (runtimeSmoke.runner !== registry.evidence.runtime_contract_smoke_runner) fail('tax runtime smoke runner drift');
+  if (runtimeSmoke.status !== 'executable_no_compile') fail('tax runtime smoke status drift');
+  if (runtimeSmoke.contract_version !== registry.contract_version) fail('tax runtime smoke contract version drift');
+  if (!sameSet(runtimeSmoke.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) {
+    fail('tax runtime smoke fallback profile drift');
+  }
+  if (!sameSet(runtimeSmoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) {
+    fail('tax runtime smoke degraded mode drift');
+  }
+  const runtimeCase = runtimeSmoke.cases.find((entry) => entry.operation === 'calculate_tax');
+  if (!runtimeCase) fail('tax runtime smoke calculate_tax case missing');
+  for (const marker of ['context.require_policy(PortCallPolicy::read())?', 'self.calculate(request)', '.map_err(tax_error_to_port_error)']) {
+    if (!runtimeCase.source_order.includes(marker)) fail(`tax runtime smoke source order missing ${marker}`);
+    if (!portSource.includes(marker) && !servicesSource.includes(marker)) fail(`tax runtime source missing ${marker}`);
   }
 }
 

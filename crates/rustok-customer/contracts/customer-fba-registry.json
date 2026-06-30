@@ -46,7 +46,9 @@
     "local_plan": "crates/rustok-customer/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
-    "runtime_fallback_smoke": "crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json"
+    "runtime_fallback_smoke": "crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json",
+    "runtime_contract_smoke": "crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json",
+    "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs"
   },
   "in_process_provider_impl": {
     "service": "CustomerService",

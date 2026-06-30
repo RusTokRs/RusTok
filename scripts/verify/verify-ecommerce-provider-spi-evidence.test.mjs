@@ -218,17 +218,14 @@ const createFixtureRoot = ({ mutateEvidence, mutateRegistry, mutateLiveAdapterCo
   write('crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-evidence.json', `${JSON.stringify(liveAdapterEvidence, null, 2)}\n`);
   write(
     'crates/rustok-payment/src/providers.rs',
-    providerSource ??
-      `pub enum PaymentProviderHealth { Ready, Degraded, Unavailable }
-PaymentProviderHealth::Unavailable
-pub struct PaymentProviderDegradedMode { reason: String }
-pub struct PaymentProviderRuntimeMode { provider_id: String }
-pub struct ExternalPaymentProviderRegistration { descriptor: PaymentProviderDescriptor }
-pub struct PaymentProviderRegistry;
-impl PaymentProviderRegistry { pub fn register_external(&mut self, expected_provider_id: &str) { self.providers.contains_key(expected_provider_id); descriptor.provider_id != registration.descriptor.provider_id; } pub fn runtime_mode(&self) { can_execute: registration.health != PaymentProviderHealth::Unavailable; } }
-impl ExternalPaymentProviderRegistration { pub fn validate(&self, expected_provider_id: &str) { self.descriptor.provider_id; self.degraded_mode.is_none(); } }
-`,
+    providerSource ?? readFileSync(join(process.cwd(), 'crates/rustok-payment/src/providers.rs'), 'utf8'),
   );
+  for (const sourcePath of [
+    'crates/rustok-commerce/src/services/checkout.rs',
+    'crates/rustok-commerce/src/services/payment_orchestration.rs',
+  ]) {
+    write(sourcePath, readFileSync(join(process.cwd(), ...sourcePath.split('/')), 'utf8'));
+  }
   return pathToFileURL(`${rootPath}/`);
 };
 

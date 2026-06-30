@@ -26,7 +26,9 @@
   "evidence": {
     "local_plan": "crates/rustok-rbac/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-rbac-fba.mjs"
+    "verifier": "scripts/verify/verify-rbac-fba.mjs",
+    "runtime_order_smoke": "crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
     "service": "RbacModule",

@@ -32,7 +32,8 @@
   "evidence": {
     "local_plan": "crates/rustok-channel/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-channel-fba.mjs"
+    "verifier": "scripts/verify/verify-channel-fba.mjs",
+    "runtime_fallback_smoke": "crates/rustok-channel/contracts/evidence/channel-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",

@@ -1,24 +1,14 @@
 use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use rustok_fulfillment_storefront::transport::{
-    build_shipping_selection_updates,
-    SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest,
-};
-use rustok_order_storefront::transport::{
-    CheckoutCompletionCommandMetadata, CompleteCheckoutRequest,
-};
-use rustok_payment_storefront::transport::{
-    PaymentCollectionCommandMetadata, PaymentCollectionCreateRequest,
-};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use uuid::Uuid;
 
+#[cfg(feature = "ssr")]
+use crate::model::StorefrontCheckoutPaymentCollection;
 use crate::model::{
-    StorefrontCheckoutAdjustment, StorefrontCheckoutCart, StorefrontCheckoutCompletion,
-    StorefrontCheckoutDeliveryGroup, StorefrontCheckoutPaymentCollection,
+    StorefrontCheckoutAdjustment, StorefrontCheckoutCart, StorefrontCheckoutDeliveryGroup,
     StorefrontCheckoutShippingOption, StorefrontCheckoutWorkspace, StorefrontCommerceData,
     StorefrontOrderRefundSummary,
 };
@@ -54,245 +44,8 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
-const CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION: &str = "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!) { createStorefrontPaymentCollection(input: $input) { id status currencyCode amount authorizedAmount capturedAmount orderId providerId createdAt updatedAt payments { id } } }";
-const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(input: $input) { order { id status currencyCode shippingTotal adjustmentTotal totalAmount adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
-#[allow(dead_code)]
-const SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION: &str = "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!) { updateStorefrontCartContext(cartId: $cartId, input: $input) { cart { id } } }";
 #[allow(dead_code)]
 const STOREFRONT_REFUNDS_QUERY: &str = "query StorefrontRefundsSummary($orderId: UUID!, $filter: StorefrontRefundsFilter) { storefrontRefunds(orderId: $orderId, filter: $filter) { total items { amount status } } }";
-
-#[derive(Debug, Deserialize)]
-struct StorefrontCheckoutResponse {
-    #[serde(rename = "storefrontCart")]
-    storefront_cart: Option<GraphqlCheckoutCart>,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontCheckoutVariables {
-    id: Uuid,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutCart {
-    id: String,
-    status: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-    #[serde(rename = "subtotalAmount")]
-    subtotal_amount: String,
-    #[serde(rename = "adjustmentTotal")]
-    adjustment_total: String,
-    #[serde(rename = "shippingTotal")]
-    shipping_total: String,
-    #[serde(rename = "totalAmount")]
-    total_amount: String,
-    #[serde(rename = "channelSlug")]
-    channel_slug: Option<String>,
-    email: Option<String>,
-    #[serde(rename = "customerId")]
-    customer_id: Option<String>,
-    #[serde(rename = "regionId")]
-    region_id: Option<String>,
-    #[serde(rename = "countryCode")]
-    country_code: Option<String>,
-    #[serde(rename = "localeCode")]
-    locale_code: Option<String>,
-    #[serde(rename = "selectedShippingOptionId")]
-    selected_shipping_option_id: Option<String>,
-    #[serde(rename = "lineItems")]
-    line_items: Vec<GraphqlCheckoutLineItem>,
-    adjustments: Vec<GraphqlCheckoutAdjustment>,
-    #[serde(rename = "deliveryGroups")]
-    delivery_groups: Vec<GraphqlCheckoutDeliveryGroup>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutLineItem {}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutAdjustment {
-    id: String,
-    #[serde(rename = "lineItemId")]
-    line_item_id: Option<String>,
-    #[serde(rename = "sourceType")]
-    source_type: String,
-    #[serde(rename = "sourceId")]
-    source_id: Option<String>,
-    amount: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-    metadata: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutDeliveryGroup {
-    #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: String,
-    #[serde(rename = "sellerId")]
-    seller_id: Option<String>,
-    #[serde(rename = "lineItemIds")]
-    line_item_ids: Vec<String>,
-    #[serde(rename = "selectedShippingOptionId")]
-    selected_shipping_option_id: Option<String>,
-    #[serde(rename = "availableShippingOptions")]
-    available_shipping_options: Vec<GraphqlCheckoutShippingOption>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutShippingOption {
-    id: String,
-    name: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-    amount: String,
-    #[serde(rename = "providerId")]
-    provider_id: String,
-    active: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateStorefrontPaymentCollectionResponse {
-    #[serde(rename = "createStorefrontPaymentCollection")]
-    payment_collection: GraphqlPaymentCollection,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateStorefrontPaymentCollectionVariables {
-    input: CreateStorefrontPaymentCollectionInput,
-}
-
-#[derive(Debug, Serialize)]
-struct CreateStorefrontPaymentCollectionInput {
-    #[serde(rename = "cartId")]
-    cart_id: Uuid,
-    metadata: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlPaymentCollection {
-    id: String,
-    status: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-    amount: String,
-    #[serde(rename = "authorizedAmount")]
-    authorized_amount: String,
-    #[serde(rename = "capturedAmount")]
-    captured_amount: String,
-    #[serde(rename = "orderId")]
-    order_id: Option<String>,
-    #[serde(rename = "providerId")]
-    provider_id: Option<String>,
-    #[serde(rename = "createdAt")]
-    created_at: String,
-    #[serde(rename = "updatedAt")]
-    updated_at: String,
-    payments: Vec<GraphqlPayment>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlPayment {}
-
-#[derive(Debug, Deserialize)]
-struct CompleteStorefrontCheckoutResponse {
-    #[serde(rename = "completeStorefrontCheckout")]
-    completion: GraphqlCheckoutCompletion,
-}
-
-#[derive(Debug, Serialize)]
-struct CompleteStorefrontCheckoutVariables {
-    input: CompleteStorefrontCheckoutInput,
-}
-
-#[derive(Debug, Serialize)]
-struct CompleteStorefrontCheckoutInput {
-    #[serde(rename = "cartId")]
-    cart_id: Uuid,
-    #[serde(rename = "createFulfillment")]
-    create_fulfillment: bool,
-    metadata: Option<String>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct SelectStorefrontShippingOptionResponse {
-    #[serde(rename = "updateStorefrontCartContext")]
-    updated_cart: GraphqlStorefrontCartContextUpdate,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct GraphqlStorefrontCartContextUpdate {
-    cart: GraphqlCartMutationPayload,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct GraphqlCartMutationPayload {
-    id: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct SelectStorefrontShippingOptionVariables {
-    #[serde(rename = "cartId")]
-    cart_id: Uuid,
-    input: UpdateStorefrontCartContextInput,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct UpdateStorefrontCartContextInput {
-    #[serde(rename = "shippingSelections")]
-    shipping_selections: Vec<StorefrontShippingSelectionInput>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct StorefrontShippingSelectionInput {
-    #[serde(rename = "shippingProfileSlug")]
-    shipping_profile_slug: String,
-    #[serde(rename = "sellerId")]
-    seller_id: Option<String>,
-    #[serde(rename = "selectedShippingOptionId")]
-    selected_shipping_option_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutCompletion {
-    order: GraphqlOrderSummary,
-    #[serde(rename = "paymentCollection")]
-    payment_collection: GraphqlCheckoutCompletionPaymentCollection,
-    fulfillments: Vec<GraphqlFulfillmentSummary>,
-    context: GraphqlStoreContext,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlOrderSummary {
-    id: String,
-    status: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-    #[serde(rename = "shippingTotal")]
-    shipping_total: String,
-    #[serde(rename = "adjustmentTotal")]
-    adjustment_total: String,
-    #[serde(rename = "totalAmount")]
-    total_amount: String,
-    adjustments: Vec<GraphqlCheckoutAdjustment>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlCheckoutCompletionPaymentCollection {
-    id: String,
-    status: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlFulfillmentSummary {}
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -329,13 +82,6 @@ struct StorefrontRefundsSummaryFilter {
     page: u64,
     #[serde(rename = "perPage")]
     per_page: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct GraphqlStoreContext {
-    locale: String,
-    #[serde(rename = "currencyCode")]
-    currency_code: Option<String>,
 }
 
 fn configured_tenant_slug() -> Option<String> {
@@ -382,46 +128,17 @@ fn resolve_requested_locale(
         .unwrap_or_default()
 }
 
-#[allow(dead_code)]
-fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
-}
-
 fn normalize_cart_id(value: Option<String>) -> Option<String> {
     normalize_optional(value)
 }
 
-fn parse_adjustment_scope(metadata: &str) -> Option<String> {
-    serde_json::from_str::<Value>(metadata)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("scope")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-}
-
+#[cfg(feature = "ssr")]
 fn parse_cart_id(value: Option<String>) -> Result<Option<(String, Uuid)>, ApiError> {
     match normalize_cart_id(value) {
         Some(cart_id) => {
             let parsed = Uuid::parse_str(cart_id.as_str())
                 .map_err(|_| ApiError::Validation("cart_id must be a valid UUID".to_string()))?;
             Ok(Some((cart_id, parsed)))
-        }
-        None => Ok(None),
-    }
-}
-
-fn parse_optional_uuid(value: Option<String>, field_name: &str) -> Result<Option<Uuid>, ApiError> {
-    match normalize_optional(value) {
-        Some(value) => {
-            let parsed = Uuid::parse_str(value.as_str())
-                .map_err(|_| ApiError::Validation(format!("{field_name} must be a valid UUID")))?;
-            Ok(Some(parsed))
         }
         None => Ok(None),
     }
@@ -484,8 +201,19 @@ fn fallback_storefront_commerce(
     }
 }
 
-fn map_graphql_shipping_option(
-    value: GraphqlCheckoutShippingOption,
+fn map_cart_transport_error(
+    error: rustok_cart_storefront::transport::CartTransportError,
+) -> ApiError {
+    let message = error.to_string();
+    if message.contains("cart_id must be a valid UUID") {
+        ApiError::Validation("cart_id must be a valid UUID".to_string())
+    } else {
+        ApiError::ServerFn(message)
+    }
+}
+
+fn map_cart_shipping_option(
+    value: rustok_cart_storefront::model::StorefrontCartShippingOption,
 ) -> StorefrontCheckoutShippingOption {
     StorefrontCheckoutShippingOption {
         id: value.id,
@@ -497,23 +225,25 @@ fn map_graphql_shipping_option(
     }
 }
 
-fn map_graphql_delivery_group(
-    value: GraphqlCheckoutDeliveryGroup,
+fn map_cart_delivery_group(
+    value: rustok_cart_storefront::model::StorefrontCartDeliveryGroup,
 ) -> StorefrontCheckoutDeliveryGroup {
     StorefrontCheckoutDeliveryGroup {
         shipping_profile_slug: value.shipping_profile_slug,
         seller_id: value.seller_id,
-        line_item_count: value.line_item_ids.len() as u64,
+        line_item_count: value.line_item_count,
         selected_shipping_option_id: value.selected_shipping_option_id,
         available_shipping_options: value
             .available_shipping_options
             .into_iter()
-            .map(map_graphql_shipping_option)
+            .map(map_cart_shipping_option)
             .collect(),
     }
 }
 
-fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCart {
+fn map_cart_checkout_cart(
+    value: rustok_cart_storefront::model::StorefrontCart,
+) -> StorefrontCheckoutCart {
     let adjustments = value
         .adjustments
         .into_iter()
@@ -522,7 +252,7 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
             line_item_id: adjustment.line_item_id,
             source_type: adjustment.source_type,
             source_id: adjustment.source_id,
-            scope: parse_adjustment_scope(&adjustment.metadata),
+            scope: adjustment.scope,
             amount: adjustment.amount,
             currency_code: adjustment.currency_code,
             metadata: adjustment.metadata,
@@ -531,7 +261,7 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
     let delivery_groups = value
         .delivery_groups
         .into_iter()
-        .map(map_graphql_delivery_group)
+        .map(map_cart_delivery_group)
         .collect::<Vec<_>>();
     let delivery_group_count = delivery_groups.len() as u64;
 
@@ -549,219 +279,12 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
         region_id: value.region_id,
         country_code: value.country_code,
         locale_code: value.locale_code,
-        selected_shipping_option_id: value.selected_shipping_option_id,
+        selected_shipping_option_id: delivery_groups
+            .iter()
+            .find_map(|group| group.selected_shipping_option_id.clone()),
         line_item_count: value.line_items.len() as u64,
         adjustment_count: adjustments.len() as u64,
         delivery_group_count,
-        adjustments,
-        delivery_groups,
-    }
-}
-
-fn map_graphql_payment_collection(
-    value: GraphqlPaymentCollection,
-) -> StorefrontCheckoutPaymentCollection {
-    StorefrontCheckoutPaymentCollection {
-        id: value.id,
-        status: value.status,
-        currency_code: value.currency_code,
-        amount: value.amount,
-        authorized_amount: value.authorized_amount,
-        captured_amount: value.captured_amount,
-        order_id: value.order_id,
-        provider_id: value.provider_id,
-        payment_count: value.payments.len() as u64,
-        created_at: value.created_at,
-        updated_at: value.updated_at,
-    }
-}
-
-fn map_graphql_checkout_completion(
-    value: GraphqlCheckoutCompletion,
-) -> StorefrontCheckoutCompletion {
-    let adjustments = value
-        .order
-        .adjustments
-        .into_iter()
-        .map(|adjustment| StorefrontCheckoutAdjustment {
-            id: adjustment.id,
-            line_item_id: adjustment.line_item_id,
-            source_type: adjustment.source_type,
-            source_id: adjustment.source_id,
-            scope: parse_adjustment_scope(&adjustment.metadata),
-            amount: adjustment.amount,
-            currency_code: adjustment.currency_code,
-            metadata: adjustment.metadata,
-        })
-        .collect::<Vec<_>>();
-    StorefrontCheckoutCompletion {
-        order_id: value.order.id,
-        order_status: value.order.status,
-        currency_code: value.order.currency_code,
-        shipping_total: value.order.shipping_total,
-        adjustment_total: value.order.adjustment_total,
-        total_amount: value.order.total_amount,
-        adjustments,
-        payment_collection_id: value.payment_collection.id,
-        payment_collection_status: value.payment_collection.status,
-        fulfillment_count: value.fulfillments.len() as u64,
-        context_locale: value.context.locale,
-        context_currency_code: value
-            .context
-            .currency_code
-            .or(Some(value.payment_collection.currency_code)),
-    }
-}
-
-#[cfg(feature = "ssr")]
-async fn resolve_storefront_customer_id(
-    db: sea_orm::DatabaseConnection,
-    tenant_id: Uuid,
-    auth: Option<rustok_api::AuthContext>,
-) -> Result<Option<Uuid>, ServerFnError> {
-    let Some(auth) = auth else {
-        return Ok(None);
-    };
-
-    match rustok_customer::CustomerService::new(db)
-        .get_customer_by_user(tenant_id, auth.user_id)
-        .await
-    {
-        Ok(customer) => Ok(Some(customer.id)),
-        Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
-        Err(err) => Err(ServerFnError::new(err.to_string())),
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn ensure_storefront_cart_access(
-    cart: &rustok_cart::dto::CartResponse,
-    storefront_customer_id: Option<Uuid>,
-) -> Result<(), ServerFnError> {
-    if let Some(owner_customer_id) = cart.customer_id {
-        match storefront_customer_id {
-            Some(customer_id) if customer_id == owner_customer_id => Ok(()),
-            Some(_) => Err(ServerFnError::new(
-                "Cart does not belong to the current storefront customer",
-            )),
-            None => Err(ServerFnError::new(
-                "Authentication required to access this cart",
-            )),
-        }
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn merge_metadata(current: Value, patch: Value) -> Value {
-    match (current, patch) {
-        (Value::Object(mut current), Value::Object(patch)) => {
-            for (key, value) in patch {
-                current.insert(key, value);
-            }
-            Value::Object(current)
-        }
-        (_, patch) => patch,
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn cart_context_metadata(
-    cart: &rustok_cart::dto::CartResponse,
-    context: &rustok_commerce::dto::StoreContextResponse,
-) -> Value {
-    json!({
-        "cart_context": {
-            "region_id": cart.region_id,
-            "country_code": cart.country_code,
-            "locale": context.locale,
-            "currency_code": context.currency_code,
-            "selected_shipping_option_id": cart.selected_shipping_option_id,
-            "email": cart.email,
-        }
-    })
-}
-
-#[cfg(feature = "ssr")]
-fn map_native_shipping_option(
-    value: rustok_cart::dto::CartShippingOptionSummary,
-) -> StorefrontCheckoutShippingOption {
-    StorefrontCheckoutShippingOption {
-        id: value.id.to_string(),
-        name: value.name,
-        currency_code: value.currency_code,
-        amount: value.amount.normalize().to_string(),
-        provider_id: value.provider_id,
-        active: value.active,
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn map_native_delivery_group(
-    value: rustok_cart::dto::CartDeliveryGroupResponse,
-) -> StorefrontCheckoutDeliveryGroup {
-    StorefrontCheckoutDeliveryGroup {
-        shipping_profile_slug: value.shipping_profile_slug,
-        seller_id: value.seller_id,
-        line_item_count: value.line_item_ids.len() as u64,
-        selected_shipping_option_id: value
-            .selected_shipping_option_id
-            .map(|value| value.to_string()),
-        available_shipping_options: value
-            .available_shipping_options
-            .into_iter()
-            .map(map_native_shipping_option)
-            .collect(),
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn map_native_checkout_cart(value: rustok_cart::dto::CartResponse) -> StorefrontCheckoutCart {
-    let adjustments = value
-        .adjustments
-        .into_iter()
-        .map(|adjustment| StorefrontCheckoutAdjustment {
-            id: adjustment.id.to_string(),
-            line_item_id: adjustment.line_item_id.map(|value| value.to_string()),
-            source_type: adjustment.source_type,
-            source_id: adjustment.source_id,
-            scope: adjustment
-                .metadata
-                .get("scope")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            amount: adjustment.amount.normalize().to_string(),
-            currency_code: adjustment.currency_code,
-            metadata: adjustment.metadata.to_string(),
-        })
-        .collect::<Vec<_>>();
-    let delivery_groups = value
-        .delivery_groups
-        .into_iter()
-        .map(map_native_delivery_group)
-        .collect::<Vec<_>>();
-
-    StorefrontCheckoutCart {
-        id: value.id.to_string(),
-        status: value.status,
-        currency_code: value.currency_code,
-        subtotal_amount: value.subtotal_amount.normalize().to_string(),
-        adjustment_total: value.adjustment_total.normalize().to_string(),
-        shipping_total: value.shipping_total.normalize().to_string(),
-        total_amount: value.total_amount.normalize().to_string(),
-        channel_slug: value.channel_slug,
-        email: value.email,
-        customer_id: value.customer_id.map(|value| value.to_string()),
-        region_id: value.region_id.map(|value| value.to_string()),
-        country_code: value.country_code,
-        locale_code: value.locale_code,
-        selected_shipping_option_id: value
-            .selected_shipping_option_id
-            .map(|value| value.to_string()),
-        line_item_count: value.line_items.len() as u64,
-        adjustment_count: adjustments.len() as u64,
-        delivery_group_count: delivery_groups.len() as u64,
         adjustments,
         delivery_groups,
     }
@@ -786,88 +309,6 @@ fn map_native_payment_collection(
     }
 }
 
-#[cfg(feature = "ssr")]
-fn map_native_checkout_completion(
-    value: rustok_commerce::dto::CompleteCheckoutResponse,
-) -> StorefrontCheckoutCompletion {
-    let adjustments = value
-        .order
-        .adjustments
-        .into_iter()
-        .map(|adjustment| StorefrontCheckoutAdjustment {
-            id: adjustment.id.to_string(),
-            line_item_id: adjustment.line_item_id.map(|value| value.to_string()),
-            source_type: adjustment.source_type,
-            source_id: adjustment.source_id,
-            scope: adjustment
-                .metadata
-                .get("scope")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            amount: adjustment.amount.normalize().to_string(),
-            currency_code: adjustment.currency_code,
-            metadata: adjustment.metadata.to_string(),
-        })
-        .collect::<Vec<_>>();
-    StorefrontCheckoutCompletion {
-        order_id: value.order.id.to_string(),
-        order_status: value.order.status,
-        currency_code: value.order.currency_code,
-        shipping_total: value.order.shipping_total.normalize().to_string(),
-        adjustment_total: value.order.adjustment_total.normalize().to_string(),
-        total_amount: value.order.total_amount.normalize().to_string(),
-        adjustments,
-        payment_collection_id: value.payment_collection.id.to_string(),
-        payment_collection_status: value.payment_collection.status,
-        fulfillment_count: value.fulfillments.len() as u64,
-        context_locale: value.context.locale,
-        context_currency_code: value.context.currency_code,
-    }
-}
-
-#[allow(dead_code)]
-fn build_graphql_shipping_selections(
-    request: &FulfillmentSelectShippingOptionRequest,
-) -> Result<Vec<StorefrontShippingSelectionInput>, ApiError> {
-    build_shipping_selection_updates(request)
-        .map_err(|err| ApiError::Validation(err.message().to_string()))?
-        .into_iter()
-        .map(|selection| {
-            Ok(StorefrontShippingSelectionInput {
-                shipping_profile_slug: selection.shipping_profile_slug,
-                seller_id: selection.seller_id,
-                selected_shipping_option_id: parse_optional_uuid(
-                    selection.selected_shipping_option_id,
-                    "selected_shipping_option_id",
-                )?,
-            })
-        })
-        .collect()
-}
-
-#[cfg(feature = "ssr")]
-fn build_native_shipping_selections(
-    request: &FulfillmentSelectShippingOptionRequest,
-) -> Result<Vec<rustok_cart::dto::CartShippingSelectionInput>, ServerFnError> {
-    build_shipping_selection_updates(request)
-        .map_err(|err| ServerFnError::new(err.message().to_string()))?
-        .into_iter()
-        .map(|selection| {
-            let selected_shipping_option_id = parse_optional_uuid(
-                selection.selected_shipping_option_id,
-                "selected_shipping_option_id",
-            )
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
-            Ok(rustok_cart::dto::CartShippingSelectionInput {
-                shipping_profile_slug: selection.shipping_profile_slug,
-                seller_id: selection.seller_id,
-                seller_scope: None,
-                selected_shipping_option_id,
-            })
-        })
-        .collect()
-}
-
 pub async fn fetch_storefront_commerce_server(
     selected_cart_id: Option<String>,
     locale: Option<String>,
@@ -882,138 +323,24 @@ pub async fn fetch_storefront_commerce_graphql(
     locale: Option<String>,
 ) -> Result<StorefrontCommerceData, ApiError> {
     let mut data = fallback_storefront_commerce(selected_cart_id.clone(), locale);
-    let Some((normalized_cart_id, cart_id)) = parse_cart_id(selected_cart_id)? else {
+    if normalize_cart_id(selected_cart_id.clone()).is_none() {
         return Ok(data);
-    };
-
-    let response: StorefrontCheckoutResponse = request(
-        STOREFRONT_CHECKOUT_QUERY,
-        StorefrontCheckoutVariables { id: cart_id },
+    }
+    let cart_data = rustok_cart_storefront::transport::fetch_cart(
+        rustok_cart_storefront::core::build_cart_fetch_request(
+            selected_cart_id,
+            Some(data.effective_locale.clone()),
+        ),
     )
-    .await?;
+    .await
+    .map_err(map_cart_transport_error)?;
 
-    data.selected_cart_id = Some(normalized_cart_id);
+    data.selected_cart_id = cart_data.selected_cart_id;
     data.checkout = Some(StorefrontCheckoutWorkspace {
-        cart: response.storefront_cart.map(map_graphql_checkout_cart),
+        cart: cart_data.cart.map(map_cart_checkout_cart),
         payment_collection: None,
     });
     Ok(data)
-}
-
-#[allow(dead_code)]
-pub async fn select_storefront_shipping_option_server(
-    req: FulfillmentSelectShippingOptionRequest,
-) -> Result<(), ApiError> {
-    storefront_select_shipping_option(req)
-        .await
-        .map_err(ApiError::from)
-}
-
-#[allow(dead_code)]
-pub async fn select_storefront_shipping_option_graphql(
-    req: FulfillmentSelectShippingOptionRequest,
-) -> Result<(), ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(req.cart_id.clone()))? else {
-        return Err(ApiError::Validation(
-            "cart_id must not be empty".to_string(),
-        ));
-    };
-    let shipping_selections = build_graphql_shipping_selections(&req)?;
-
-    let response: SelectStorefrontShippingOptionResponse = request(
-        SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION,
-        SelectStorefrontShippingOptionVariables {
-            cart_id: parsed_cart_id,
-            input: UpdateStorefrontCartContextInput {
-                shipping_selections,
-            },
-        },
-    )
-    .await?;
-    let _ = response.updated_cart.cart.id;
-    Ok(())
-}
-
-pub async fn create_storefront_payment_collection_server(
-    req: PaymentCollectionCreateRequest,
-) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    storefront_create_payment_collection(req.cart_id, req.metadata)
-        .await
-        .map_err(ApiError::from)
-}
-
-pub async fn create_storefront_payment_collection_graphql(
-    req: PaymentCollectionCreateRequest,
-) -> Result<StorefrontCheckoutPaymentCollection, ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(req.cart_id.clone()))? else {
-        return Err(ApiError::Validation(
-            "cart_id must not be empty".to_string(),
-        ));
-    };
-
-    let response: CreateStorefrontPaymentCollectionResponse = request(
-        CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION,
-        CreateStorefrontPaymentCollectionVariables {
-            input: CreateStorefrontPaymentCollectionInput {
-                cart_id: parsed_cart_id,
-                metadata: Some(payment_collection_command_metadata(req.metadata).to_string()),
-            },
-        },
-    )
-    .await?;
-
-    Ok(map_graphql_payment_collection(response.payment_collection))
-}
-
-pub async fn complete_storefront_checkout_server(
-    req: CompleteCheckoutRequest,
-) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    storefront_complete_checkout(req.cart_id, req.metadata)
-        .await
-        .map_err(ApiError::from)
-}
-
-pub async fn complete_storefront_checkout_graphql(
-    req: CompleteCheckoutRequest,
-) -> Result<StorefrontCheckoutCompletion, ApiError> {
-    let Some((_, parsed_cart_id)) = parse_cart_id(Some(req.cart_id.clone()))? else {
-        return Err(ApiError::Validation(
-            "cart_id must not be empty".to_string(),
-        ));
-    };
-
-    let response: CompleteStorefrontCheckoutResponse = request(
-        COMPLETE_STOREFRONT_CHECKOUT_MUTATION,
-        CompleteStorefrontCheckoutVariables {
-            input: CompleteStorefrontCheckoutInput {
-                cart_id: parsed_cart_id,
-                create_fulfillment: req.metadata.create_fulfillment,
-                metadata: Some(checkout_completion_command_metadata(req.metadata).to_string()),
-            },
-        },
-    )
-    .await?;
-
-    Ok(map_graphql_checkout_completion(response.completion))
-}
-
-fn payment_collection_command_metadata(metadata: PaymentCollectionCommandMetadata) -> Value {
-    json!({
-        "source_module": metadata.source_module,
-        "source_surface": metadata.source_surface,
-        "command": metadata.command,
-        "owner_module": metadata.owner_module,
-    })
-}
-
-fn checkout_completion_command_metadata(metadata: CheckoutCompletionCommandMetadata) -> Value {
-    json!({
-        "source_module": metadata.source_module,
-        "source_surface": metadata.source_surface,
-        "command": metadata.command,
-        "owner_module": metadata.owner_module,
-        "create_fulfillment": metadata.create_fulfillment,
-    })
 }
 
 #[server(prefix = "/api/fn", endpoint = "commerce/storefront-data")]
@@ -1031,9 +358,6 @@ async fn storefront_commerce_native(
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let normalized_locale = resolve_requested_locale(
@@ -1059,40 +383,26 @@ async fn storefront_commerce_native(
         else {
             return Ok(data);
         };
-
-        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
-        let cart = match cart_service.get_cart(tenant.id, cart_id).await {
-            Ok(cart) => cart,
-            Err(rustok_cart::CartError::CartNotFound(_)) => {
-                data.selected_cart_id = Some(normalized_cart_id);
-                data.checkout = Some(StorefrontCheckoutWorkspace {
-                    cart: None,
-                    payment_collection: None,
-                });
-                return Ok(data);
-            }
-            Err(err) => return Err(ServerFnError::new(err.to_string())),
-        };
-
-        let storefront_customer_id =
-            resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
-        ensure_storefront_cart_access(&cart, storefront_customer_id)?;
-        let cart = reprice_storefront_cart_line_items(
-            &app_ctx,
-            tenant.id,
-            &cart_service,
-            cart,
-            Some(&request_context),
+        let cart_data = rustok_cart_storefront::transport::fetch_cart(
+            rustok_cart_storefront::core::build_cart_fetch_request(
+                Some(normalized_cart_id.clone()),
+                Some(data.effective_locale.clone()),
+            ),
         )
-        .await?;
-        let payment_collection = rustok_payment::PaymentService::new(app_ctx.db.clone())
-            .find_reusable_collection_by_cart(tenant.id, cart.id)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
+        .await
+        .map_err(|err| ServerFnError::new(err.to_string()))?;
+        let payment_collection = if cart_data.cart.is_some() {
+            rustok_payment::PaymentService::new(app_ctx.db.clone())
+                .find_reusable_collection_by_cart(tenant.id, cart_id)
+                .await
+                .map_err(|err| ServerFnError::new(err.to_string()))?
+        } else {
+            None
+        };
 
         data.selected_cart_id = Some(normalized_cart_id);
         data.checkout = Some(StorefrontCheckoutWorkspace {
-            cart: Some(map_native_checkout_cart(cart)),
+            cart: cart_data.cart.map(map_cart_checkout_cart),
             payment_collection: payment_collection.map(map_native_payment_collection),
         });
         Ok(data)
@@ -1102,395 +412,6 @@ async fn storefront_commerce_native(
         let _ = (selected_cart_id, locale);
         Err(ServerFnError::new(
             "commerce/storefront-data requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "commerce/create-payment-collection")]
-async fn storefront_create_payment_collection(
-    cart_id: String,
-    command_metadata: PaymentCollectionCommandMetadata,
-) -> Result<StorefrontCheckoutPaymentCollection, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-
-        let app_ctx = expect_context::<AppContext>();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let Some((_, parsed_cart_id)) =
-            parse_cart_id(Some(cart_id)).map_err(|err| ServerFnError::new(err.to_string()))?
-        else {
-            return Err(ServerFnError::new("cart_id must not be empty"));
-        };
-
-        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
-        let cart = cart_service
-            .get_cart(tenant.id, parsed_cart_id)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
-        let storefront_customer_id =
-            resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
-        ensure_storefront_cart_access(&cart, storefront_customer_id)?;
-        let cart = reprice_storefront_cart_line_items(
-            &app_ctx,
-            tenant.id,
-            &cart_service,
-            cart,
-            Some(&request_context),
-        )
-        .await?;
-
-        let service = rustok_payment::PaymentService::new(app_ctx.db.clone());
-        if let Some(existing) = service
-            .find_reusable_collection_by_cart(tenant.id, cart.id)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?
-        {
-            return Ok(map_native_payment_collection(existing));
-        }
-
-        let context = rustok_commerce::StoreContextService::new(
-            app_ctx.db.clone(),
-            std::sync::Arc::new(rustok_region::RegionService::new(app_ctx.db.clone())),
-        )
-        .resolve_context(
-            tenant.id,
-            rustok_commerce::dto::ResolveStoreContextInput {
-                region_id: cart.region_id,
-                country_code: cart.country_code.clone(),
-                locale: Some(resolve_requested_locale(
-                    cart.locale_code.clone(),
-                    Some(request_context.locale.as_str()),
-                    tenant.default_locale.as_str(),
-                )),
-                currency_code: Some(cart.currency_code.clone()),
-            },
-        )
-        .await
-        .map_err(|err| ServerFnError::new(err.to_string()))?;
-
-        let collection = service
-            .create_collection(
-                tenant.id,
-                rustok_payment::dto::CreatePaymentCollectionInput {
-                    cart_id: Some(cart.id),
-                    order_id: None,
-                    customer_id: cart.customer_id,
-                    currency_code: cart.currency_code.clone(),
-                    amount: cart.total_amount,
-                    metadata: merge_metadata(
-                        payment_collection_command_metadata(command_metadata),
-                        cart_context_metadata(&cart, &context),
-                    ),
-                },
-            )
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
-
-        Ok(map_native_payment_collection(collection))
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = cart_id;
-        Err(ServerFnError::new(
-            "commerce/create-payment-collection requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "commerce/select-shipping-option")]
-async fn storefront_select_shipping_option(
-    request: FulfillmentSelectShippingOptionRequest,
-) -> Result<(), ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-
-        let app_ctx = expect_context::<AppContext>();
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
-        let Some((_, parsed_cart_id)) = parse_cart_id(Some(request.cart_id.clone()))
-            .map_err(|err| ServerFnError::new(err.to_string()))?
-        else {
-            return Err(ServerFnError::new("cart_id must not be empty"));
-        };
-
-        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
-        let cart = cart_service
-            .get_cart(tenant.id, parsed_cart_id)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
-        let storefront_customer_id =
-            resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
-        ensure_storefront_cart_access(&cart, storefront_customer_id)?;
-
-        let shipping_selections = build_native_shipping_selections(&request)?;
-
-        let updated_cart = cart_service
-            .update_context(
-                tenant.id,
-                parsed_cart_id,
-                rustok_cart::dto::UpdateCartContextInput {
-                    email: cart.email.clone(),
-                    region_id: cart.region_id,
-                    country_code: cart.country_code.clone(),
-                    locale_code: cart.locale_code.clone(),
-                    selected_shipping_option_id: None,
-                    shipping_selections: Some(shipping_selections),
-                },
-            )
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
-        let _ = reprice_storefront_cart_line_items(
-            &app_ctx,
-            tenant.id,
-            &cart_service,
-            updated_cart,
-            request_context.as_ref(),
-        )
-        .await?;
-
-        Ok(())
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = request;
-        Err(ServerFnError::new(
-            "commerce/select-shipping-option requires the `ssr` feature",
-        ))
-    }
-}
-
-#[cfg(feature = "ssr")]
-async fn reprice_storefront_cart_line_items(
-    app_ctx: &loco_rs::app::AppContext,
-    tenant_id: Uuid,
-    cart_service: &rustok_cart::CartService,
-    cart: rustok_cart::CartResponse,
-    request_context: Option<&rustok_api::RequestContext>,
-) -> Result<rustok_cart::CartResponse, ServerFnError> {
-    if cart.line_items.is_empty() {
-        return Ok(cart);
-    }
-
-    let pricing_service = rustok_pricing::PricingService::new(
-        app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
-    );
-    let channel_id = cart
-        .channel_id
-        .or_else(|| request_context.and_then(|ctx| ctx.channel_id));
-    let channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
-        request_context.and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()))
-    });
-    let mut updates = Vec::new();
-    for line_item in &cart.line_items {
-        let Some(variant_id) = line_item.variant_id else {
-            continue;
-        };
-        let pricing_context = rustok_pricing::PriceResolutionContext {
-            currency_code: cart.currency_code.to_ascii_uppercase(),
-            region_id: cart.region_id,
-            price_list_id: None,
-            channel_id,
-            channel_slug: channel_slug.clone(),
-            quantity: Some(line_item.quantity),
-        };
-        let resolved_price = pricing_service
-            .resolve_variant_price(tenant_id, variant_id, pricing_context)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?
-            .ok_or_else(|| {
-                ServerFnError::new("Unable to resolve storefront price for cart line item")
-            })?;
-        updates.push(storefront_cart_pricing_update(
-            line_item.id,
-            line_item.quantity,
-            &resolved_price,
-        ));
-    }
-
-    if updates.is_empty() {
-        Ok(cart)
-    } else {
-        cart_service
-            .reprice_line_items(tenant_id, cart.id, updates)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn storefront_cart_pricing_update(
-    line_item_id: Uuid,
-    quantity: i32,
-    resolved_price: &rustok_pricing::ResolvedPrice,
-) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
-    let base_unit_price = resolved_price
-        .compare_at_amount
-        .filter(|compare_at| *compare_at > resolved_price.amount)
-        .unwrap_or(resolved_price.amount);
-    let pricing_adjustment = if base_unit_price > resolved_price.amount {
-        let mut metadata = serde_json::Map::new();
-        metadata.insert(
-            "kind".to_string(),
-            serde_json::Value::from(if resolved_price.price_list_id.is_some() {
-                "price_list"
-            } else {
-                "sale"
-            }),
-        );
-        metadata.insert(
-            "base_amount".to_string(),
-            serde_json::Value::from(base_unit_price.normalize().to_string()),
-        );
-        metadata.insert(
-            "effective_amount".to_string(),
-            serde_json::Value::from(resolved_price.amount.normalize().to_string()),
-        );
-        if let Some(compare_at_amount) = resolved_price.compare_at_amount {
-            metadata.insert(
-                "compare_at_amount".to_string(),
-                serde_json::Value::from(compare_at_amount.normalize().to_string()),
-            );
-        }
-        if let Some(discount_percent) = resolved_price.discount_percent {
-            metadata.insert(
-                "discount_percent".to_string(),
-                serde_json::Value::from(discount_percent.normalize().to_string()),
-            );
-        }
-        if let Some(price_list_id) = resolved_price.price_list_id {
-            metadata.insert(
-                "price_list_id".to_string(),
-                serde_json::Value::from(price_list_id.to_string()),
-            );
-        }
-        if let Some(channel_id) = resolved_price.channel_id {
-            metadata.insert(
-                "channel_id".to_string(),
-                serde_json::Value::from(channel_id.to_string()),
-            );
-        }
-        if let Some(channel_slug) = resolved_price.channel_slug.as_deref() {
-            metadata.insert(
-                "channel_slug".to_string(),
-                serde_json::Value::from(channel_slug),
-            );
-        }
-
-        Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
-            source_id: resolved_price.price_list_id.map(|value| value.to_string()),
-            amount: (base_unit_price - resolved_price.amount)
-                * rust_decimal::Decimal::from(quantity),
-            metadata: serde_json::Value::Object(metadata),
-        })
-    } else {
-        None
-    };
-
-    rustok_cart::services::cart::CartLineItemPricingUpdate {
-        line_item_id,
-        unit_price: base_unit_price,
-        pricing_adjustment,
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "commerce/complete-checkout")]
-async fn storefront_complete_checkout(
-    cart_id: String,
-    command_metadata: CheckoutCompletionCommandMetadata,
-) -> Result<StorefrontCheckoutCompletion, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-
-        let app_ctx = expect_context::<AppContext>();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
-            .await
-            .map_err(ServerFnError::new)?;
-        let Some((_, parsed_cart_id)) =
-            parse_cart_id(Some(cart_id)).map_err(|err| ServerFnError::new(err.to_string()))?
-        else {
-            return Err(ServerFnError::new("cart_id must not be empty"));
-        };
-
-        let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
-        let cart = cart_service
-            .get_cart(tenant.id, parsed_cart_id)
-            .await
-            .map_err(|err| ServerFnError::new(err.to_string()))?;
-        let storefront_customer_id =
-            resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0.clone()).await?;
-        ensure_storefront_cart_access(&cart, storefront_customer_id)?;
-        let _ = reprice_storefront_cart_line_items(
-            &app_ctx,
-            tenant.id,
-            &cart_service,
-            cart,
-            Some(&request_context),
-        )
-        .await?;
-        let actor_id = auth.0.map(|auth| auth.user_id).unwrap_or_else(Uuid::nil);
-
-        let event_bus = rustok_api::loco::transactional_event_bus_from_context(&app_ctx);
-        let response = rustok_commerce::CheckoutService::new(
-            app_ctx.db.clone(),
-            event_bus.clone(),
-            std::sync::Arc::new(rustok_region::RegionService::new(app_ctx.db.clone())),
-            std::sync::Arc::new(rustok_inventory::InventoryService::new(
-                app_ctx.db.clone(),
-                event_bus,
-            )),
-        )
-        .complete_checkout(
-            tenant.id,
-            actor_id,
-            rustok_commerce::dto::CompleteCheckoutInput {
-                cart_id: parsed_cart_id,
-                shipping_option_id: None,
-                shipping_selections: None,
-                region_id: None,
-                country_code: None,
-                locale: None,
-                create_fulfillment: command_metadata.create_fulfillment,
-                metadata: checkout_completion_command_metadata(command_metadata),
-            },
-        )
-        .await
-        .map_err(|err| ServerFnError::new(err.to_string()))?;
-
-        Ok(map_native_checkout_completion(response))
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = cart_id;
-        Err(ServerFnError::new(
-            "commerce/complete-checkout requires the `ssr` feature",
         ))
     }
 }

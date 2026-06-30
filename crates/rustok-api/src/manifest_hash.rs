@@ -24,7 +24,7 @@ fn canonicalize_json_value(value: &serde_json::Value) -> serde_json::Value {
     match value {
         serde_json::Value::Object(map) => {
             let mut entries = map.iter().collect::<Vec<_>>();
-            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            entries.sort_by_key(|(key, _)| *key);
             let canonical = entries
                 .into_iter()
                 .map(|(key, nested)| (key.clone(), canonicalize_json_value(nested)))

@@ -53,7 +53,8 @@
   - Control-plane dry run evidence contract и runtime `BuilderControlPlaneChangeSet::dry_run` фиксируют атомарный toggle change-set, обязательные profile snapshots, rollback decision marker и waiver policy; aggregate no-compile baseline включает `verify-page-builder-control-plane-dry-run.mjs`.
   - adapter seam contract `contracts/page-builder-adapter-seams.json` и runtime traits `PageBuilderProjectStore` / `PageBuilderRenderingAdapter` фиксируют extension-point для persistence/rendering без transport-local capability aliases, transport-local error kind aliases, pages-local visual builder ownership или vendor-specific required project payloads.
   - adapter operation evidence (`PageBuilderAdapterCallEvidence` + `PageBuilderAdapterTelemetry`) фиксирует `module_slug`, `grapesjs_v1` contract, operation, `started/succeeded/failed` status, tenant/page/revision ids, correlation id и typed failure markers вокруг host persistence/rendering adapters, чтобы audit/observability слой оставался owner-side FBA contract, а не transport-local convention.
-- Last verified at (UTC): 2026-06-21T00:00:00Z
+  - runtime-order smoke `contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json` и общий no-compile gate `scripts/verify/verify-orchestrator-fba-runtime-order.mjs` фиксируют порядок capability flag -> `PortCallPolicy` -> owner service call, authorization -> service call, fallback profiles и GraphQL/Leptos endpoint dispatch seams без запуска Cargo.
+- Last verified at (UTC): 2026-06-30T00:00:00Z
 - Owner: `rustok-page-builder` module team
 
 ## Ближайшие шаги

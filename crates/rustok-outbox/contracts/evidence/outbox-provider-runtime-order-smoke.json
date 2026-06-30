@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-outbox/contracts/outbox-fba-registry.json",
+  "runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "outbox.relay_control.v1",
+  "fallback_profiles": ["embedded_native"],
+  "degraded_modes": ["pause_relay_worker", "surface_dlq_retry_needed"],
+  "source_markers": ["fn require_outbox_relay_policy", "require_policy(PortCallPolicy::write())", "outbox.idempotency_required", "outbox.deadline_required"],
+  "cases": [
+    { "operation": "process_pending_once", "write": true, "source_order": ["require_outbox_relay_policy(&context)?", ".process_pending_once(request.max_batch_hint)", ".map_err(map_outbox_error)?", "let metrics = self.metrics()", "Ok(OutboxRelayRunOnceProjection {"] }
+  ]
+}

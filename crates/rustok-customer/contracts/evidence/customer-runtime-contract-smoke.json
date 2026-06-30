@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-customer/contracts/customer-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "customer.read_projection.v1",
+  "fallback_profiles": ["embedded_native", "graphql_checkout_compat"],
+  "degraded_modes": ["use_checkout_customer_snapshot", "show_customer_refresh_required", "use_order_customer_snapshot"],
+  "cases": [
+    { "operation": "read_customer_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_customer(", ".map_err(customer_error_to_port_error)"] },
+    { "operation": "list_customer_projections", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".list_customers(", ".map_err(customer_error_to_port_error)"] }
+  ]
+}

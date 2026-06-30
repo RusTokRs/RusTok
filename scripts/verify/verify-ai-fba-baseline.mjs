@@ -84,7 +84,7 @@ verifyEvidence(authRegistry, authRegistryPath);
 const authSource = read('crates/rustok-auth/src/lib.rs');
 hasAll(authSource, ['AUTH_USER_PERMISSIONS', 'Permission::USERS_CREATE', 'Permission::USERS_READ', 'Permission::USERS_UPDATE', 'Permission::USERS_DELETE', 'Permission::USERS_LIST', 'Permission::USERS_MANAGE', 'fn permissions(&self) -> Vec<Permission>'], 'auth source');
 const authAdminCore = read(authRegistry.admin_boundary.core_policy);
-hasAll(authAdminCore, ['prepare_login_request', 'prepare_register_request', 'prepare_password_reset_request', 'prepare_profile_name', 'classify_profile_update_error'], 'auth admin core');
+hasAll(authAdminCore, ['prepare_login_request', 'prepare_register_request', 'prepare_password_reset_request', 'prepare_profile_name', 'classify_auth_transport_error', 'AuthTransportErrorKind'], 'auth admin core');
 const authPlan = read(authRegistry.evidence.local_plan);
 hasAll(authPlan, [`- FBA status: \`${authRegistry.status}\``, authRegistryPath, authRegistry.evidence.static_matrix, authRegistry.evidence.runtime_fallback_smoke, 'AUTH_USER_PERMISSIONS'], 'auth local plan');
 const central = read(authRegistry.evidence.central_registry);

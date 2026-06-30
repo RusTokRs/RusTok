@@ -19,6 +19,7 @@
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`: read policy выполняется до owner `CatalogService`, затем применяется typed `PortError` mapping; fallback profiles/degraded modes сверяются с registry. Статус остаётся `in_progress` до live provider execution;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - FBA slice: `crates/rustok-product/src/ports.rs` declares `ProductCatalogReadPort`/`product.catalog_read.v1` for catalog read projections consumed by commerce checkout/storefront compatibility paths, pricing enrichment and `ai-product` generation context; `crates/rustok-product/contracts/product-fba-registry.json` plus `contracts/evidence/product-contract-test-static-matrix.json` lock provider metadata, fallback profiles and planned contract-test cases under `npm run verify:ecommerce:fba`; status remains below `boundary_ready` until runtime contract execution/fallback smoke lands;
   - umbrella facade `rustok_commerce::{services::catalog, CatalogService}` is removed; commerce/server/AI consumers import `CatalogService` from `rustok-product` directly, so product owner service is no longer masked by the ecommerce umbrella;

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-tax/contracts/tax-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "tax.calculation.v1",
+  "fallback_profiles": ["embedded_native"],
+  "degraded_modes": ["block_checkout_with_tax_refresh"],
+  "cases": [
+    { "operation": "calculate_tax", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.calculate(request)", ".map_err(tax_error_to_port_error)"] }
+  ]
+}

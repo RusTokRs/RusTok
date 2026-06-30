@@ -18,6 +18,7 @@
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный owner gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-media/contracts/evidence/media-provider-runtime-order-smoke.json`: shared read policy helper, tenant/list validation order, owner `MediaService` invocation, typed error mapping, descriptor materialization и parity пяти degraded modes; статус остаётся `in_progress` до live provider execution;
   - module plan синхронизирован с central FFA/FBA readiness board; media admin surface уже опубликован и ведётся в migration/backlog ритме;
   - FFA admin slice: `admin/src/core.rs` владеет Leptos-free form/presentation/state helpers (`non_empty_option`, dimensions label, pagination label, translation form state, usage stat cards, upload success state, busy-key policy, detail-line/list-card view-models и context-error message policy) с unit tests;
   - `admin/src/transport/` владеет текущим native-first + GraphQL fallback + REST upload transport facade без изменения внешних GraphQL/REST contracts; facade split зафиксирован через `graphql_adapter.rs`, `rest_adapter.rs` и `native_server_adapter.rs`;

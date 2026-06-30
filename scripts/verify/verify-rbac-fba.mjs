@@ -28,7 +28,7 @@ if (port.deadline_required !== true || port.idempotency_required !== false) fail
 if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/rbac-fba-registry.json"') || !manifest.includes('contract_version = "rbac.permission_decision.v1"')) fail('manifest metadata drift');
 if (!cargo.includes('rustok-api.workspace = true')) fail('Cargo.toml must depend on rustok-api');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait RbacPermissionDecisionPort', 'impl RbacPermissionDecisionPort for crate::RbacModule', 'context.require_deadline_semantics()?', 'RbacPermissionCheckRequest', 'RbacPermissionCheckResponse', 'rbac.permissions_empty', 'PortErrorKind::Validation']) {
+for (const marker of ['trait RbacPermissionDecisionPort', 'impl RbacPermissionDecisionPort for crate::RbacModule', 'context.require_policy(PortCallPolicy::read())?', 'RbacPermissionCheckRequest', 'RbacPermissionCheckResponse', 'rbac.permissions_empty', 'PortErrorKind::Validation']) {
   if (!ports.includes(marker)) fail(`ports source missing ${marker}`);
 }
 if (ports.includes('require_write_semantics()?')) fail('RBAC decision port must not require write idempotency');

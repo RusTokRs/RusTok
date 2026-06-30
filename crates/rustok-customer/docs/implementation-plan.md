@@ -20,6 +20,7 @@ transport и checkout orchestration остаются у umbrella `rustok-commerc
 - Версия FBA-контракта: `customer.read_projection.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-customer/contracts/evidence/customer-runtime-contract-smoke.json`: read policy → owner `CustomerService` invocation → typed error mapping и registry parity для fallback/degraded modes; существующее требование compiled runtime execution перед `boundary_ready` сохраняется;
   - `src/ports.rs` экспортирует `CustomerReadPort` и DTO для customer read/list projection операций; machine-readable registry и verifier проверяют совпадение port trait operations с FBA metadata;
   - метаданные FBA-provider открыты для `customer read projection` через `crates/rustok-customer/contracts/customer-fba-registry.json`; статус остаётся `in_progress` до contract tests/remote transport evidence;
   - static evidence packet `crates/rustok-customer/contracts/evidence/customer-contract-test-static-matrix.json` is locked by `npm run verify:ecommerce:fba` (registry + evidence gates); source-locked runtime/fallback packet `crates/rustok-customer/contracts/evidence/customer-read-projection-runtime-smoke.json` points to authored no-compile tests in `crates/rustok-customer/tests/customer_service_test.rs` for deadline enforcement, typed port errors and tenant-scoped fallback listing; статус не повышается без фактического compiled runtime execution;

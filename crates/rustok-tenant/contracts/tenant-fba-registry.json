@@ -44,7 +44,8 @@
   "evidence": {
     "local_plan": "crates/rustok-tenant/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-tenant-fba.mjs"
+    "verifier": "scripts/verify/verify-tenant-fba.mjs",
+    "runtime_fallback_smoke": "crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json"
   },
   "in_process_provider_impl": {
     "service": "TenantService",

@@ -57,5 +57,16 @@ pub struct StorefrontCartDeliveryGroup {
     pub seller_id: Option<String>,
     pub line_item_count: u64,
     pub selected_shipping_option_id: Option<String>,
+    pub available_shipping_options: Vec<StorefrontCartShippingOption>,
     pub available_option_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontCartShippingOption {
+    pub id: String,
+    pub name: String,
+    pub currency_code: String,
+    pub amount: String,
+    pub provider_id: String,
+    pub active: bool,
 }

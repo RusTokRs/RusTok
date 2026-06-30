@@ -50,7 +50,9 @@
     "central_registry": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ai-fba-baseline.mjs",
     "static_matrix": "crates/rustok-ai/contracts/evidence/ai-runtime-static-matrix.json",
-    "runtime_fallback_smoke": "crates/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json"
+    "runtime_fallback_smoke": "crates/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json",
+    "runtime_order_smoke": "crates/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",

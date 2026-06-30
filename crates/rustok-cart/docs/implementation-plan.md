@@ -6,11 +6,11 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## Execution checkpoint
 
 - Current phase: phase_b_ready
-- Last checkpoint: Cart storefront FFA handoff guardrails now also lock the no-legacy-read/model path: `CartCheckoutHandoffCard` / `CartCheckoutHandoffViewModel` remain cart-owned and consumed by `rustok-commerce-storefront`, storefront GraphQL read queries no longer request `sellerScope` for line items or delivery groups, and cart storefront model DTOs no longer expose `seller_scope`.
-- Next step: Continue only with owner-module checkout handoff slices that remove real umbrella presentation leakage, or return to parity/evidence hardening for SSR native path, GraphQL fallback, headless cart mutation contracts and DOM evidence.
+- Last checkpoint: Cart storefront read ownership now includes full shipping option summaries and storefront repricing in `cart/storefront-data`; `rustok-commerce-storefront` consumes cart workspace data through `rustok-cart-storefront::transport::fetch_cart` instead of keeping its own checkout cart GraphQL/native read mapping.
+- Next step: Continue only with owner-module checkout handoff slices that remove real umbrella presentation/read leakage, or return to parity/evidence hardening for SSR native path, GraphQL fallback, headless cart mutation contracts and DOM evidence.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-13T22:20:00Z
+- Last updated at (UTC): 2026-06-30T08:39:56Z
 
 
 ## FFA/FBA status
@@ -20,15 +20,17 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 - Проверка FBA: `scripts/verify/verify-ecommerce-fba-registries.mjs`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-cart/contracts/evidence/cart-runtime-contract-smoke.json`: shared read policy выполняется до owner `CartService`, typed error mapping и fallback/degraded registry parity защищены от drift; статус остаётся `in_progress` до live provider execution;
   - FBA provider registry `crates/rustok-cart/contracts/cart-fba-registry.json`, static contract evidence `crates/rustok-cart/contracts/evidence/cart-contract-test-static-matrix.json` and neutral `CartSnapshotReadPort`/`cart.checkout_snapshot.v1` are locked for commerce checkout snapshot consumers; runtime contract execution/fallback smoke remain pending before `boundary_ready`;
   - umbrella facade `rustok_commerce::{services::cart, CartService}` is removed; commerce REST/GraphQL/storefront/test consumers import `CartService` from `rustok-cart` directly, so cart owner service is no longer masked by the ecommerce umbrella;
   - cart delivery-group keys and shipping-selection matching no longer read `seller_scope` as a fallback identity; canonical selection is `shipping_profile_slug + seller_id`, while no-seller carts use only the shipping profile, and the storefront boundary guardrail now blocks `sellerScope`/`seller_scope` from returning to cart read queries or storefront model DTOs;
+  - `rustok-cart-storefront` now exposes cart-owned storefront DTOs/transport publicly for aggregate consumers, `StorefrontCartDeliveryGroup` includes full `StorefrontCartShippingOption` summaries (`id/name/currency/amount/provider/active`), GraphQL/native cart read mapping fills the same DTO shape, and the native `cart/storefront-data` read path preserves checkout repricing before mapping the cart DTO;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - storefront slice выделяет `core/` helpers для route/input normalization, UUID validation, adjustment metadata mapping, channel-slug normalization, decrement policy, typed fetch/decrement/remove request objects, GraphQL decrement command dispatch, stable serializable transport fallback error evidence, DOM evidence adapter, display/view-model mapping and checkout handoff summary view-model consumed by commerce orchestration;
   - `ui/leptos::CartView` теперь вызывает thin `transport` facade через core-owned request objects, получает prepared view-model values из `core/` и рендерит error evidence attributes `data-cart-transport-failed-path`, `data-cart-transport-fallback-attempted`, `data-cart-transport-native-error`, `data-cart-transport-graphql-error`; transport facade сохраняет validation errors без GraphQL retry и возвращает `CartTransportError` со stable `failed_path` (`native_server`/`graphql`), `fallback_attempted`, `native_error` и `graphql_error`, native `#[server]` + GraphQL adapter calls живут внутри `storefront/src/transport/`, legacy `storefront/src/api.rs` удалён и запрещён guardrail-ом, при этом API layer больше не пересчитывает GraphQL decrement policy;
   - Cart-owned checkout handoff decision: cart status/handoff presentation belongs to `rustok-cart/storefront`; umbrella `rustok-commerce` may pass checkout context but must consume the cart-owned component rather than owning cart presentation;
   - дальнейшее повышение до `parity_verified` выполняется только вместе с full parity evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-06-18T00:00:00Z
+- Last verified at (UTC): 2026-06-30T08:39:56Z
 - Owner: `rustok-cart` module team
 
 ## Область работ

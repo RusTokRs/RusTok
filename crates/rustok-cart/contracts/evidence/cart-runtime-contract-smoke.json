@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-cart/contracts/cart-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "cart.checkout_snapshot.v1",
+  "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+  "degraded_modes": ["preserve_cart_checkout_state", "show_cart_refresh_required"],
+  "cases": [
+    { "operation": "read_cart_checkout_snapshot", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_cart(", ".map_err(cart_error_to_port_error)"] }
+  ]
+}

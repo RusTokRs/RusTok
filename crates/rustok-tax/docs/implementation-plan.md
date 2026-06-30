@@ -18,6 +18,7 @@
 - FBA status: `in_progress`
 - Structural shape: `no_ui_boundary`
 - Evidence:
+  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-tax/contracts/evidence/tax-runtime-contract-smoke.json`: shared read policy предшествует owner `TaxService`, typed error mapping и fallback/degraded registry parity защищены от drift; статус остаётся `in_progress` до live provider execution;
   - FBA provider registry `crates/rustok-tax/contracts/tax-fba-registry.json`, static contract evidence `crates/rustok-tax/contracts/evidence/tax-contract-test-static-matrix.json` and neutral `TaxCalculationPort`/`tax.calculation.v1` are locked for cart tax calculation consumers; runtime contract execution/fallback smoke remain pending before `boundary_ready`;
   - `scripts/verify/verify-tax-fba.mjs` checks manifest metadata, local/central plan sync, typed `PortContext`/`PortError`, in-process `TaxService` implementation, serializable tax DTOs and static evidence drift.
 - Last verified at (UTC): 2026-06-18T00:00:00Z

@@ -45,13 +45,15 @@ const uiPath = "crates/rustok-fulfillment/storefront/src/ui/leptos.rs";
 const i18nPath = "crates/rustok-fulfillment/storefront/src/i18n.rs";
 const manifestPath = "crates/rustok-fulfillment/rustok-module.toml";
 const transportPath = "crates/rustok-fulfillment/storefront/src/transport.rs";
+const graphqlPath = "crates/rustok-fulfillment/storefront/src/transport/graphql_adapter.rs";
+const nativeRawPath = "crates/rustok-fulfillment/storefront/src/transport/native_server_adapter/raw_adapter.rs";
 const commerceTransportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const commerceUiPath = "crates/rustok-commerce/storefront/src/ui/leptos/mod.rs";
 const planPath = "crates/rustok-fulfillment/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [libPath, modelPath, corePath, uiPath, i18nPath, manifestPath, transportPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
+for (const filePath of [libPath, modelPath, corePath, uiPath, i18nPath, manifestPath, transportPath, graphqlPath, nativeRawPath, commerceTransportPath, commerceUiPath, planPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected fulfillment storefront FFA file`);
 }
 
@@ -62,6 +64,8 @@ const ui = readRepo(uiPath);
 const i18n = readRepo(i18nPath);
 const manifest = readRepo(manifestPath);
 const transport = readRepo(transportPath);
+const graphql = readRepo(graphqlPath);
+const nativeRaw = readRepo(nativeRawPath);
 const commerceTransport = readRepo(commerceTransportPath);
 const commerceUi = readRepo(commerceUiPath);
 const plan = readRepo(planPath);
@@ -119,10 +123,12 @@ for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[se
 
 for (const marker of [
   "ShippingSelectionTransportError",
-  "select_shipping_option_with_fallback",
+  "select_shipping_option",
   "should_fallback_to_graphql",
   "build_shipping_selection_updates",
   "impl ShippingSelectionError",
+  "mod graphql_adapter;",
+  "mod native_server_adapter;",
 ]) {
   assertContains(transport, marker, `${transportPath}: expected owner transport facade marker ${marker}`);
 }
@@ -136,7 +142,14 @@ for (const marker of [
 for (const marker of ["crate::api", "rustok_commerce::", "GraphqlRequest", "#[server"]) {
   assertNotContains(transport, marker, `${transportPath}: owner transport facade must stay host-transport free (${marker})`);
 }
-assertContains(commerceTransport, "select_shipping_option_with_fallback", `${commerceTransportPath}: commerce compatibility adapter must delegate shipping selection fallback policy to fulfillment owner facade`);
+for (const marker of ["SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION", "GraphqlRequest::new", "build_shipping_selection_updates"]) {
+  assertContains(graphql, marker, `${graphqlPath}: fulfillment must own GraphQL selection marker ${marker}`);
+}
+assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: fulfillment GraphQL adapter must not depend on commerce storefront internals`);
+assertContains(nativeRaw, "#[server", `${nativeRawPath}: fulfillment native adapter must own a server-function endpoint shell`);
+assertContains(nativeRaw, "endpoint = \"fulfillment/select-shipping-option\"", `${nativeRawPath}: fulfillment native adapter must expose the owner endpoint path`);
+assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: fulfillment native adapter must call the explicit commerce checkout runtime API`);
+assertContains(commerceTransport, "select_shipping_option(", `${commerceTransportPath}: commerce SSR adapter must delegate shipping selection fallback policy to fulfillment owner facade`);
 assertContains(commerceTransport, "ShippingSelectionTransportError", `${commerceTransportPath}: commerce compatibility adapter must map errors through owner transport DTO`);
 
 assertContains(commerceUi, "FulfillmentShippingSelectionPanel", `${commerceUiPath}: commerce host must render fulfillment-owned selection UI`);

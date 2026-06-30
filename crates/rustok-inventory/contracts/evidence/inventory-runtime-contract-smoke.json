@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-inventory/contracts/inventory-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "inventory.reservation.v1",
+  "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "storefront_projection_compat"],
+  "degraded_modes": ["block_checkout_with_stock_refresh", "preserve_cart_inventory_snapshot", "hide_stock_badge", "show_inventory_unavailable"],
+  "cases": [
+    { "operation": "check_availability", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".check_variant_availability_for_channel(", ".map_err(inventory_error_to_port_error)"] },
+    { "operation": "reserve_inventory", "source_order": ["context.require_policy(PortCallPolicy::write())?", "context.require_write_semantics()?", ".reserve(", ".map_err(inventory_error_to_port_error)"] },
+    { "operation": "release_inventory_reservation", "source_order": ["context.require_policy(PortCallPolicy::write())?", "context.require_write_semantics()?", ".release_reservation_quantity(", ".map_err(inventory_error_to_port_error)"] }
+  ]
+}

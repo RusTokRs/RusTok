@@ -72,6 +72,8 @@ const packageJson = readRepo(files.packageJson);
 
 assertNotContains(lib, "mod api;", `${files.lib}: crate root must not wire legacy api adapter`);
 assertContains(lib, "pub mod core;", `${files.lib}: crate root must expose core module`);
+assertContains(lib, "pub mod model;", `${files.lib}: crate root must expose cart-owned storefront DTOs`);
+assertContains(lib, "pub mod transport;", `${files.lib}: crate root must expose cart-owned transport facade`);
 assertContains(lib, "mod transport;", `${files.lib}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${files.lib}: crate root must wire UI adapters`);
 
@@ -99,7 +101,12 @@ assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: n
 assertContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: moved adapter must keep GraphQL fallback request contract until split further`);
 assertNotContains(nativeServerAdapter, "sellerScope } adjustments", `${files.nativeServerAdapter}: cart line-item read query must not request legacy sellerScope`);
 assertNotContains(nativeServerAdapter, "sellerScope lineItemIds", `${files.nativeServerAdapter}: cart delivery-group read query must not request legacy sellerScope`);
+assertContains(nativeServerAdapter, "availableShippingOptions { id name currencyCode amount providerId active }", `${files.nativeServerAdapter}: cart owner read query must expose full shipping option summaries`);
+assertContains(nativeServerAdapter, "StorefrontCartShippingOption", `${files.nativeServerAdapter}: cart native adapter must map full shipping option DTOs`);
+assertContains(nativeServerAdapter, "reprice_storefront_cart_line_items", `${files.nativeServerAdapter}: cart owner read path must preserve storefront repricing before cart DTO mapping`);
 assertNotContains(model, "seller_scope", `${files.model}: cart storefront model DTOs must not expose legacy seller_scope`);
+assertContains(model, "pub struct StorefrontCartShippingOption", `${files.model}: cart storefront DTOs must own shipping option summaries`);
+assertContains(model, "pub available_shipping_options: Vec<StorefrontCartShippingOption>", `${files.model}: cart delivery groups must expose full shipping option summaries`);
 
 assertContains(implementationPlan, "verify-cart-storefront-boundary.mjs", `${files.implementationPlan}: local plan must mention cart storefront guardrail`);
 assertContains(registry, "verify-cart-storefront-boundary.mjs", `${files.registry}: central readiness board must mention cart storefront guardrail`);

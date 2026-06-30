@@ -20,6 +20,7 @@
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-region/contracts/evidence/region-provider-runtime-order-smoke.json`: shared read policy, tenant/request validation, owner `RegionService` invocation, typed error mapping и объединённую parity fallback/degraded metadata из consumer rows; статус остаётся `in_progress` до live provider execution;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - FBA provider slice: `crates/rustok-region/src/ports.rs` declares `RegionReadPort` / `region.read_projection.v1` for region/country read projection consumers with shared `rustok_api::ports::PortContext`/`PortError`, tenant-scope preservation, locale fallback preservation and `PortCallPolicy::read()` deadline semantics; `crates/rustok-region/contracts/region-fba-registry.json` plus `crates/rustok-region/contracts/evidence/region-contract-test-static-matrix.json` lock planned contract cases and fallback profiles under `npm run verify:region:fba` while runtime execution/fallback smoke remains pending before `boundary_ready`;
   - commerce store-context consumer теперь вызывает только `RegionReadPort`: concrete `RegionService` dependency удалён из orchestration service, runtime provider передаётся через единственный constructor, а старого compatibility path нет;

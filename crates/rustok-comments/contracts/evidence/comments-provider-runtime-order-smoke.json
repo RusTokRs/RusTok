@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-comments/contracts/comments-fba-registry.json",
+  "runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "comments.thread.v1",
+  "fallback_profiles": ["embedded_native"],
+  "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
+  "cases": [
+    { "operation": "create_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.create_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "get_comment", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "list_comments_for_target", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list_comments_for_target(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "update_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.update_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "delete_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.delete_comment(", ".map_err(comments_error_to_port_error)"] }
+  ]
+}

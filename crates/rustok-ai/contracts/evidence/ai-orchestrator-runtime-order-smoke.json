@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-ai/contracts/ai-fba-registry.json",
+  "runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "degraded_modes": [
+    "provider_fallback",
+    "direct_task_operator_review",
+    "diagnostics_explain_unavailable_candidate"
+  ],
+  "support_adapters": [
+    {
+      "module": "ai-content",
+      "registry": "crates/rustok-ai-content/contracts/ai-content-fba-registry.json",
+      "registration_api": "register_content_ai_vertical_handlers",
+      "binding": "crates/rustok-ai/src/direct_domain_content.rs"
+    },
+    {
+      "module": "ai-order",
+      "registry": "crates/rustok-ai-order/contracts/ai-order-fba-registry.json",
+      "registration_api": "register_order_ai_vertical_handlers",
+      "binding": "crates/rustok-ai/src/direct_domain_orders.rs"
+    },
+    {
+      "module": "ai-product",
+      "registry": "crates/rustok-ai-product/contracts/ai-product-fba-registry.json",
+      "registration_api": "register_product_ai_vertical_handlers",
+      "binding": "crates/rustok-ai/src/direct_domain_commerce.rs"
+    },
+    {
+      "module": "ai-media",
+      "registry": "crates/rustok-ai-media/contracts/ai-media-fba-registry.json",
+      "registration_api": "register_media_ai_vertical_handlers",
+      "binding": "crates/rustok-ai/src/direct_domain_media.rs"
+    },
+    {
+      "module": "ai-alloy",
+      "registry": "crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json",
+      "registration_api": "register_alloy_ai_vertical_handlers",
+      "binding": "crates/rustok-ai/src/direct_domain_alloy.rs"
+    }
+  ],
+  "source_assertions": [
+    {
+      "name": "router policy",
+      "path": "crates/rustok-ai/src/router.rs",
+      "markers": [
+        "ResolvedExecutionPlan",
+        "explain_provider_candidates",
+        "provider_candidate_status",
+        "Provider candidate",
+        "fallback"
+      ]
+    },
+    {
+      "name": "direct registry",
+      "path": "crates/rustok-ai/src/direct.rs",
+      "markers": [
+        "DirectExecutionRegistry",
+        "DirectTaskHandler"
+      ]
+    },
+    {
+      "name": "admin transport facade",
+      "path": "crates/rustok-ai/admin/src/transport/mod.rs",
+      "markers": [
+        "native_server_adapter",
+        "graphql_adapter",
+        "Native server functions",
+        "GraphQL/headless operation documents"
+      ]
+    },
+    {
+      "name": "leptos adapter",
+      "path": "crates/rustok-ai/admin/src/ui/leptos.rs",
+      "markers": [
+        "crate::transport",
+        "transport::fetch_bootstrap().await",
+        "graphql_ws_url_from_location"
+      ]
+    }
+  ]
+}

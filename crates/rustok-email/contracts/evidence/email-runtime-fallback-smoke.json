@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "module": "email",
+  "status": "no_compile_source_locked_runtime_fallback_smoke",
+  "generated_from": "crates/rustok-email/contracts/email-fba-registry.json",
+  "runner": "scripts/verify/verify-foundation-fba-runtime-smoke.mjs",
+  "contract_version": "email.delivery.v1",
+  "profiles": [
+    "embedded_disabled_noop",
+    "embedded_smtp"
+  ],
+  "degraded_modes": [
+    "skip_disabled_provider",
+    "surface_delivery_retry_needed"
+  ],
+  "execution_note": "No Rust compilation is required for this packet; the shared foundation verifier source-locks delivery write-policy enforcement, typed request validation, disabled-provider noop fallback, SMTP mode exposure, and retryable delivery error mapping while existing Rust runtime evidence remains the transport-ready baseline.",
+  "smoke_cases": [
+    {
+      "profile": "embedded_disabled_noop",
+      "operation": "send_transactional_email",
+      "execution_status": "no_compile_source_locked",
+      "source": "crates/rustok-email/src/ports.rs",
+      "assertions": [
+        "write_policy_required_before_delivery",
+        "deadline_required_by_write_policy",
+        "idempotency_required_by_write_policy",
+        "request_validation_before_provider",
+        "disabled_provider_preserves_noop_receipt"
+      ]
+    },
+    {
+      "profile": "embedded_smtp",
+      "operation": "send_transactional_email",
+      "execution_status": "no_compile_source_locked",
+      "source": "crates/rustok-email/src/ports.rs",
+      "assertions": [
+        "smtp_provider_mode_exposed",
+        "template_error_maps_to_non_retryable_invariant",
+        "invalid_address_maps_to_validation",
+        "send_failure_maps_to_retryable_unavailable"
+      ]
+    }
+  ]
+}

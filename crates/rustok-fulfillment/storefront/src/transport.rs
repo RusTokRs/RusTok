@@ -1,3 +1,6 @@
+mod graphql_adapter;
+mod native_server_adapter;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,20 +72,14 @@ impl ShippingSelectionError {
     }
 }
 
-pub async fn select_shipping_option_with_fallback<N, NFut, G, GFut>(
+pub async fn select_shipping_option(
     request: SelectShippingOptionRequest,
-    native: N,
-    graphql: G,
-) -> Result<(), ShippingSelectionTransportError>
-where
-    N: FnOnce(SelectShippingOptionRequest) -> NFut,
-    NFut: std::future::Future<Output = Result<(), ShippingSelectionTransportError>>,
-    G: FnOnce(SelectShippingOptionRequest) -> GFut,
-    GFut: std::future::Future<Output = Result<(), ShippingSelectionTransportError>>,
-{
-    match native(request.clone()).await {
+) -> Result<(), ShippingSelectionTransportError> {
+    match native_server_adapter::select_shipping_option(request.clone()).await {
         Ok(()) => Ok(()),
-        Err(error) if error.should_fallback_to_graphql() => graphql(request).await,
+        Err(error) if error.should_fallback_to_graphql() => {
+            graphql_adapter::select_shipping_option(request).await
+        }
         Err(error) => Err(error),
     }
 }

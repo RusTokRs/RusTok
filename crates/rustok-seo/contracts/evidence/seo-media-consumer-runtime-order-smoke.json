@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "module": "seo",
+  "role": "consumer",
+  "provider": "media",
+  "generated_from": "crates/rustok-seo/contracts/seo-fba-registry.json",
+  "runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "fallback_smoke": {
+    "profiles": [
+      "embedded_native"
+    ],
+    "degraded_modes": [
+      "omit_image_metadata",
+      "keep_existing_seo_image",
+      "proxy_storage_relative_url"
+    ],
+    "provider_source": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
+  },
+  "runtime_order": [
+    {
+      "operation": "get_image_descriptor",
+      "path": "crates/rustok-media/src/ports.rs",
+      "function": "get_image_descriptor",
+      "markers": [
+        "require_media_read_policy(&context)?",
+        "parse_tenant_id(&context)?",
+        ".get(tenant_id, media_id)",
+        "media_error_to_port_error",
+        "MediaImageDescriptor::from_media_item(&item, alt)"
+      ]
+    },
+    {
+      "operation": "populate_image_template_fields",
+      "path": "crates/rustok-seo-targets/src/lib.rs",
+      "function": "populate_image_template_fields",
+      "markers": [
+        "images.first()",
+        "image_url",
+        "image_alt",
+        "image_width",
+        "image_height",
+        "image_has_alt",
+        "image_has_size"
+      ]
+    }
+  ],
+  "source_assertions": [
+    {
+      "name": "typed image alias",
+      "path": "crates/rustok-seo-targets/src/lib.rs",
+      "markers": [
+        "pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor",
+        "pub struct SeoTargetOpenGraphRecord",
+        "images: Vec<SeoTargetImageRecord>"
+      ]
+    },
+    {
+      "name": "media read policy",
+      "path": "crates/rustok-media/src/ports.rs",
+      "markers": [
+        "trait MediaAssetReadPort",
+        "context.require_policy(PortCallPolicy::read())",
+        "PortError::unavailable(\"media.storage\"",
+        "PortError::unavailable(\"media.database\""
+      ]
+    },
+    {
+      "name": "descriptor public URL policy",
+      "path": "crates/rustok-media/src/dto.rs",
+      "markers": [
+        "pub struct MediaImageDescriptor",
+        "pub fn requires_public_proxy",
+        "pub fn should_emit_to_public_metadata",
+        "MediaImageDescriptor::from_parts(\"   \", None, None, None, None).is_none()"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
+  "runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "media.asset_read.v1",
+  "fallback_profiles": ["embedded_native"],
+  "degraded_modes": ["omit_image_metadata", "keep_existing_seo_image", "skip_asset_enrichment", "proxy_storage_relative_url", "summarize_internal_binary"],
+  "source_markers": ["fn require_media_read_policy", "context.require_policy(PortCallPolicy::read())"],
+  "cases": [
+    { "operation": "get_asset", "write": false, "source_order": ["require_media_read_policy(&context)?", "let tenant_id = parse_tenant_id(&context)?", "self.get(tenant_id, media_id)", ".map_err(media_error_to_port_error)"] },
+    { "operation": "list_assets", "write": false, "source_order": ["require_media_read_policy(&context)?", "validate_media_list_limit(limit)?", "let tenant_id = parse_tenant_id(&context)?", "self.list(tenant_id, limit, offset)", ".map_err(media_error_to_port_error)"] },
+    { "operation": "get_image_descriptor", "write": false, "source_order": ["require_media_read_policy(&context)?", "let tenant_id = parse_tenant_id(&context)?", ".get(tenant_id, media_id)", ".map_err(media_error_to_port_error)?", "MediaImageDescriptor::from_media_item(&item, alt)"] },
+    { "operation": "get_translations", "write": false, "source_order": ["require_media_read_policy(&context)?", "let tenant_id = parse_tenant_id(&context)?", "self.get_translations(tenant_id, media_id)", ".map_err(media_error_to_port_error)"] }
+  ]
+}

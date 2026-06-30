@@ -18,6 +18,7 @@ steady-state hardening и drift-prevention режиме.
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`: read policy предшествует request validation и claims evaluation, а fallback/degraded metadata остаются синхронны registry; статус остаётся `in_progress` до live host execution;
   - admin package split introduced `admin/src/core.rs` for Leptos-free overview view-model/error formatting, `admin/src/transport/` for the native server-function bootstrap facade, and `admin/src/ui/leptos.rs` as the only render adapter;
   - current admin bootstrap is an intentional temporary native-only single-adapter state because `rustok-rbac` had no legacy GraphQL/REST operator contract for this overview;
   - central FFA/FBA readiness board is synchronized in `docs/modules/registry.md`;

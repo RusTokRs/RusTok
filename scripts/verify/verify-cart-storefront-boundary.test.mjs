@@ -20,7 +20,8 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/lib.rs", `
 ${options.legacyModApi ? "mod api;" : ""}
 pub mod core;
-mod transport;
+pub mod model;
+pub mod transport;
 mod ui;
 pub use ui::leptos::{CartCheckoutHandoffCard, CartView};
 `);
@@ -31,6 +32,23 @@ pub struct CartLineItemDecrementRequest;
 pub struct CartLineItemMutationRequest;
 pub fn parse_cart_id() {}
 pub fn parse_line_item_id() {}
+`);
+  writeFixtureFile(root, "crates/rustok-cart/storefront/src/model.rs", `
+pub struct StorefrontCartLineItem {
+  pub seller_id: Option<String>,
+}
+pub struct StorefrontCartShippingOption {
+  pub id: String,
+  pub name: String,
+  pub currency_code: String,
+  pub amount: String,
+  pub provider_id: String,
+  pub active: bool,
+}
+pub struct StorefrontCartDeliveryGroup {
+  pub seller_id: Option<String>,
+  pub available_shipping_options: Vec<StorefrontCartShippingOption>,
+}
 `);
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/ui/leptos.rs", `
 use crate::core;
@@ -52,8 +70,11 @@ ${options.rawApiTransport ? "use crate::api;" : ""}
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs", "pub async fn fetch_storefront_cart_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs", `
 use leptos_graphql::GraphqlRequest;
+use crate::model::StorefrontCartShippingOption;
+const STOREFRONT_CART_QUERY: &str = "availableShippingOptions { id name currencyCode amount providerId active }";
 #[server(prefix = "/api/fn", endpoint = "cart/storefront-data")]
 async fn storefront_cart_native() {}
+fn reprice_storefront_cart_line_items() {}
 `);
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-cart/storefront/src/api.rs", "pub async fn fetch_storefront_cart_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-cart/docs/implementation-plan.md", "verify-cart-storefront-boundary.mjs");

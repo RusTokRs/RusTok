@@ -21,6 +21,7 @@ admin read-side service, native-only server-function read/write transport для
 - Версия FBA-контракта: `inventory.reservation.v1`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-inventory/contracts/evidence/inventory-runtime-contract-smoke.json`: read/write policy order, обязательную write-idempotency до owner service invocation, typed error mapping и registry parity для fallback/degraded modes. Статус остаётся `in_progress` до live provider execution;
   - in-process реализация `InventoryReservationPort for InventoryService` добавлена в `src/ports.rs`: availability read path требует shared `PortCallPolicy::read()` и вызывает owner channel-aware `check_variant_availability_for_channel`, reservation/release write paths требуют shared `PortCallPolicy::write()` и мапят `CommerceError` в `PortError`;
   - commerce checkout consumer теперь вызывает только runtime-composed `InventoryReservationPort` для availability validation; direct inventory helper и старый constructor path удалены из `CheckoutService`, все callers переведены на целевую сигнатуру без compatibility wrapper;
   - commerce REST/GraphQL cart add/update paths также переведены на `InventoryReservationPort`; line-item helpers получают port dependency явно, формируют tenant/channel/locale/deadline context и не вызывают inventory-owned public-channel helper напрямую;

@@ -63,7 +63,8 @@
   "evidence": {
     "local_plan": "crates/rustok-index/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-index-fba.mjs"
+    "verifier": "scripts/verify/verify-index-fba.mjs",
+    "runtime_fallback_smoke": "crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json"
   },
   "contract_tests": {
     "status": "planned_cases_locked",

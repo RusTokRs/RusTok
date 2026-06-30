@@ -35,7 +35,9 @@
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-seo-fba.mjs",
     "static_matrix": "crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json",
-    "provider_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json"
+    "provider_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
+    "consumer_runtime_order_smoke": "crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json",
+    "consumer_runtime_order_smoke_runner": "scripts/verify/verify-consumer-fba-runtime-order.mjs"
   },
   "contract_tests": {
     "status": "planned_cases_locked",

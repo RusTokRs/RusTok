@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ai_router_policy_evidence_expanded
-- Last checkpoint: Expanded AI router policy evidence with explicit provider candidate statuses, selected/fallback decision trace reasons, unit-test markers and compile-free `scripts/verify/verify-ai-router-policy.mjs` guardrail while keeping executable runtime composition in `rustok-ai`.
+- Last checkpoint: Expanded AI router policy evidence with explicit provider candidate statuses, selected/fallback decision trace reasons, unit-test markers and compile-free `scripts/verify/verify-ai-router-policy.mjs` guardrail while keeping executable runtime composition in `rustok-ai`; added no-compile orchestrator runtime-order smoke for AI support-adapter registration and admin transport boundary.
 - Next step: Continue executable targeted router/runtime tests when compilation is allowed and then surface candidate explanations in persisted diagnostics UI without moving executable runtime composition out of `rustok-ai`.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-24T00:00:00Z
+- Last updated at (UTC): 2026-06-30T00:00:00Z
 
 ## Состояние на 2026-04-04
 
@@ -143,6 +143,7 @@
 - Guardrail: `scripts/verify/verify-ai-admin-boundary.mjs` проверяет core/transport slice, включая diagnostics summary helpers, GraphQL/headless adapter markers and live-stream WebSocket message builders, и не даёт перенесённым request/payload helpers или raw `api::` calls вернуться в Leptos adapter.
 - Static evidence: `scripts/verify/verify-ai-domain-verticals.mjs` locks product/content/order/media/alloy support-crate descriptors, runtime binding seams, generated payload validators, media size validation, alloy execution policy, and content moderation sensitive-tool policy merge without compiling; `scripts/verify/verify-ai-router-policy.mjs` locks router candidate status taxonomy, selected/fallback decision-trace evidence and unit-test markers for provider allow/deny/role/capability fallback policy without compiling.
 - FBA baseline evidence: `crates/rustok-ai/contracts/ai-fba-registry.json` locks `rustok-ai` as the capability orchestrator that consumes support-adapter registries from `ai-content`, `ai-order`, `ai-product`, `ai-media` and `ai-alloy`; `crates/rustok-ai/contracts/evidence/ai-runtime-static-matrix.json` and `crates/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json` source-lock direct registration, router policy and admin transport boundary fallback evidence under `scripts/verify/verify-ai-fba-baseline.mjs`.
+- Runtime-order evidence: `crates/rustok-ai/contracts/evidence/ai-orchestrator-runtime-order-smoke.json` is verified by `scripts/verify/verify-orchestrator-fba-runtime-order.mjs` and locks support-adapter registry parity, direct runtime binding registration APIs, router fallback diagnostics markers, native server-function facade and parallel GraphQL/headless admin transport markers without compilation.
 - Next step: продолжить parity/evidence hardening for domain-owned support crates, surface router candidate explanations in persisted diagnostics, and expand targeted verification evidence when compilation is allowed, без удаления существующего runtime composition в `rustok-ai`.
 
 ## Проверка

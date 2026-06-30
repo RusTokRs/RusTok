@@ -24,6 +24,7 @@ mod search;
 pub mod services;
 pub mod state_machine;
 mod storefront_channel;
+pub mod storefront_checkout_runtime;
 mod storefront_shipping;
 
 #[cfg(test)]

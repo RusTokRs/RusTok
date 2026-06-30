@@ -5,7 +5,7 @@
 ## Execution checkpoint
 
 - Current phase: FBA provider baseline for generic comment threads
-- Last checkpoint: FBA maintenance slice перевёл comment create/update/delete write paths на shared `PortCallPolicy::write()` и сохранил read paths на `PortCallPolicy::read()`; earlier checkpoint: FFA guardrail hardening добавил fixture-based regression suite для `verify-comments-admin-boundary.mjs`; проверки закрывают canonical split, legacy `api.rs`, Leptos-specific core, UI-owned route policy, raw adapter calls, package-local GraphQL fallback и misplaced `#[server]` endpoints без долгой Rust-компиляции.
+- Last checkpoint: owner FBA batch закрепил canonical shared policy: comment create/update/delete вызывают `PortCallPolicy::write()` до tenant parsing/service invocation, а policy внутри `rustok-core` уже обеспечивает deadline + idempotency; отдельный дублирующий `require_write_semantics()` не нужен. Read paths остаются на `PortCallPolicy::read()`.
 - Next step: Закрыть runtime contract execution/fallback smoke для `CommentsThreadPort` и подтвердить blog embedded/native compatibility snapshots; для FFA — не расширять native-only admin transport без нового legacy/headless contract, а поддерживать parity/evidence guardrails.
 - Open blockers: отсутствуют; native-only comments admin exception зафиксирован, потому что у модуля не было legacy GraphQL/REST admin surface.
 - Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.
@@ -17,6 +17,7 @@
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - пакетный no-compile gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`: read/write policy order, idempotency через canonical write policy, owner `CommentsService` invocation, typed error mapping и fallback/degraded parity; статус остаётся `in_progress` до live provider/consumer execution;
   - `rustok-comments-admin` теперь имеет явные `admin/src/core.rs`, `admin/src/transport/mod.rs`, `admin/src/transport/native_server_adapter.rs` и `admin/src/ui/leptos.rs`; `admin/src/lib.rs` больше не содержит render/business logic, не wires pre-FFA `api.rs` и публикует только `CommentsAdmin`;
   - covered admin UI больше не вызывает raw `api::*` напрямую из Leptos render layer, а идёт через module-owned transport facade;
   - status filter parsing, thread list/detail target/status labels, comment row identity/locale/body mapping и transport request/command DTO construction вынесены в Leptos-free core и покрыты unit tests;

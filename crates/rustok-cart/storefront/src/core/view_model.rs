@@ -226,6 +226,7 @@ mod tests {
             seller_id: Some("seller-1".to_string()),
             line_item_count: 3,
             selected_shipping_option_id: None,
+            available_shipping_options: Vec::new(),
             available_option_count: 2,
         };
 

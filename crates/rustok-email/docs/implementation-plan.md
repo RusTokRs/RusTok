@@ -7,7 +7,7 @@ manifest/doc contract path.
 
 - Current phase: fba_contract_test_scaffolding
 - Last checkpoint: Добавлены targeted Rust contract tests для shared write-policy mapping, disabled-provider noop receipt и typed request validation; static FBA evidence теперь указывает на test names, без запуска компиляции по ограничению итерации.
-- Next step: Когда компиляции снова разрешены, запустить targeted `cargo test -p rustok-email ports::tests` и зафиксировать executable evidence/fallback smoke result.
+- Next step: Когда компиляции снова разрешены, запустить targeted `cargo test -p rustok-email ports::tests`; текущий no-compile fallback smoke закреплён через `npm run verify:foundation:fba-runtime-smoke`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
 - Last updated at (UTC): 2026-06-26T00:00:00Z
@@ -20,7 +20,7 @@ manifest/doc contract path.
 - Structural shape: `no_ui_boundary`
 - Evidence / notes:
   - capability-only module has no module-owned UI surface, so FFA remains `not_started`;
-  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation and runtime-verified evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` verified by `npm run verify:email:fba` and `cargo test -p rustok-email --lib`.
+  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation, runtime-verified evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` and no-compile fallback smoke `crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json` verified by `npm run verify:email:fba` / `npm run verify:foundation:fba-runtime-smoke`; compiled runtime evidence remains `cargo test -p rustok-email --lib`.
 
 ## Область работ
 
@@ -55,6 +55,7 @@ manifest/doc contract path.
 - `cargo xtask module validate email`
 - `cargo xtask module test email`
 - `cargo test -p rustok-email ports::tests` для targeted delivery-port contract tests
+- `npm run verify:foundation:fba-runtime-smoke`
 - targeted host tests для auth/email delivery flows при изменении runtime wiring
 
 ## Правила обновления

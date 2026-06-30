@@ -19,9 +19,9 @@ if (registry.schema_version !== 1 || registry.module !== 'outbox' || registry.ro
 if (registry.contract_version !== 'outbox.relay_control.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'OutboxRelayPort' || !port.operations.includes('process_pending_once')) fail('OutboxRelayPort operation missing');
-if (port.context !== 'rustok_api::PortContext' || port.error !== 'rustok_api::PortError') fail('context/error drift');
+if (port.context !== 'rustok_core::ports::PortContext' || port.error !== 'rustok_core::ports::PortError') fail('context/error drift');
 if (port.deadline_required !== true || port.idempotency_required !== true) fail('relay control must keep deadline + write idempotency semantics');
-if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/outbox-fba-registry.json"') || !manifest.includes('contract_version = "outbox.relay_control.v1"')) fail('manifest FBA provider drift');
+if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/outbox-fba-registry.json"') || !manifest.includes('contract_version = "outbox.relay_control.v1"') || !manifest.includes('context = "rustok_core::ports::PortContext"') || !manifest.includes('error = "rustok_core::ports::PortError"')) fail('manifest FBA provider drift');
 if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib must export ports');
 for (const marker of ['trait OutboxRelayPort', 'impl OutboxRelayPort for crate::OutboxRelay', 'require_outbox_relay_policy(&context)?', 'PortCallPolicy::write()', 'OutboxRelayRunOnceProjection', 'PortErrorKind::Validation', 'outbox.idempotency_required']) {
   if (!ports.includes(marker)) fail(`ports marker missing ${marker}`);

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-workflow/contracts/workflow-fba-registry.json",
+  "runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "workflow.read_projection.v1",
+  "fallback_profiles": ["embedded_native", "graphql_compat"],
+  "degraded_modes": ["show_cached_workflow_list", "disable_workflow_detail_open"],
+  "cases": [
+    { "operation": "list_workflows", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list(tenant_id)", ".map_err(workflow_error_to_port_error)"] },
+    { "operation": "get_workflow", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get(tenant_id, workflow_id)", ".map_err(workflow_error_to_port_error)"] }
+  ]
+}

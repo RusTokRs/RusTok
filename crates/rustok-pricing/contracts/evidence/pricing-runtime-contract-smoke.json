@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "generated_from": "crates/rustok-pricing/contracts/pricing-fba-registry.json",
+  "runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+  "status": "executable_no_compile",
+  "contract_version": "pricing.read_projection.v1",
+  "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
+  "degraded_modes": ["use_cart_price_snapshot", "show_price_refresh_required", "hide_price_badge", "show_price_unavailable"],
+  "cases": [
+    { "operation": "resolve_product_price", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".resolve_variant_price(", ".map_err(pricing_error_to_port_error)"] },
+    { "operation": "read_price_list_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", ".list_active_price_lists(", ".map_err(pricing_error_to_port_error)"] }
+  ]
+}

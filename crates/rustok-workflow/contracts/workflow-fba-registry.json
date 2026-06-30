@@ -26,7 +26,9 @@
   "evidence": {
     "local_plan": "crates/rustok-workflow/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-workflow-fba.mjs"
+    "verifier": "scripts/verify/verify-workflow-fba.mjs",
+    "runtime_order_smoke": "crates/rustok-workflow/contracts/evidence/workflow-provider-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
     "service": "WorkflowService",

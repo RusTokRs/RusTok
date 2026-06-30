@@ -59,7 +59,9 @@
     "verifier": "scripts/verify/verify-media-fba.mjs",
     "static_matrix": "crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json",
     "runtime_fallback_smoke": "crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json",
-    "port_error_matrix": "crates/rustok-media/contracts/evidence/media-port-error-matrix.json"
+    "port_error_matrix": "crates/rustok-media/contracts/evidence/media-port-error-matrix.json",
+    "runtime_order_smoke": "crates/rustok-media/contracts/evidence/media-provider-runtime-order-smoke.json",
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
     "service": "MediaService",

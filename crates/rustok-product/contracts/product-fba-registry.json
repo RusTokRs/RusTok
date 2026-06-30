@@ -58,7 +58,9 @@
   "evidence": {
     "local_plan": "crates/rustok-product/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
+    "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs"
   },
   "in_process_provider_impl": {
     "service": "CatalogService",
