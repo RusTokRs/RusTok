@@ -45,6 +45,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const json = (repoPath) => JSON.parse(read(repoPath));
   const trace = json(invocationTracePath);
   const commerceRegistry = json('crates/rustok-commerce/contracts/commerce-fba-registry.json');
+  const commerceFbaSource = read('crates/rustok-commerce/src/fba.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
   if (trace.status !== 'executable_no_compile') fail('commerce-domain invocation trace status drift');
@@ -56,6 +57,27 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   }
   if (commerceRegistry.evidence?.runtime_invocation_trace !== invocationTracePath) {
     fail('commerce registry runtime invocation trace evidence drift');
+  }
+  if (!commerceFbaSource.includes('COMMERCE_DOMAIN_PROVIDER_INVOCATION_TRACE_JSON')) {
+    fail('commerce fba.rs must expose the invocation trace as a typed runtime entrypoint');
+  }
+  if (!commerceFbaSource.includes('include_str!("../contracts/evidence/commerce-domain-provider-invocation-trace.json")')) {
+    fail('commerce fba.rs must embed the invocation trace artifact');
+  }
+  if (!commerceFbaSource.includes('pub fn commerce_domain_provider_invocation_trace')) {
+    fail('commerce fba.rs must publish an invocation trace parser');
+  }
+  for (const marker of [
+    'impl CommerceFbaRegistry',
+    'pub fn provider(&self, module: &str)',
+    'pub fn provider_modules(&self)',
+    'impl CommerceDomainProviderInvocationTrace',
+    'pub fn provider_entry(',
+    'pub fn consumer_entries(',
+  ]) {
+    if (!commerceFbaSource.includes(marker)) {
+      fail(`commerce fba.rs missing typed lookup helper: ${marker}`);
+    }
   }
   if (!sameSet(trace.modules.map((entry) => entry.provider_module), modules)) {
     fail('commerce-domain invocation trace module set drift');

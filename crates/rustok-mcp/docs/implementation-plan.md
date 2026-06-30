@@ -6,12 +6,12 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 
 ## Execution checkpoint
 
-- Current phase: plan_sync
-- Last checkpoint: Initial bootstrap by registry workflow.
-- Next step: Синхронизировать план с текущим кодом и выбрать первый незавершённый пункт.
+- Current phase: runtime_contract_verified
+- Last checkpoint: Restored executable `rustok-mcp` evidence against `rmcp 2.0.0` by updating server tool responses to emit `rmcp::model::ContentBlock::text`; `cargo check -p rustok-mcp` and `cargo test -p rustok-mcp --lib` passed, including Alloy scaffold stage/review/apply and persisted draft-store binding tests.
+- Next step: Add the admin/UI surface for MCP access management and Alloy scaffold draft review, while keeping the existing server-owned remote MCP bootstrap and persisted draft-store boundary intact.
 - Open blockers: None.
-- Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-05-20T00:00:00Z
+- Hand-off notes for next agent: Keep `rustok-mcp` as the MCP protocol/tool adapter and keep persisted draft storage in `apps/server`; do not move provider orchestration or server-specific DB state into this crate. Re-run `cargo check -p rustok-mcp` and `cargo test -p rustok-mcp --lib` after tool-surface changes.
+- Last updated at (UTC): 2026-06-30T00:00:00Z
 
 ## Область работ
 
