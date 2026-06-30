@@ -1,6 +1,6 @@
 #[test]
 fn admin_graphql_queries_keep_catalog_contract_stable() {
-    let source = include_str!("../admin/src/api.rs");
+    let source = include_str!("../admin/src/transport/raw_adapter.rs");
 
     for required in [
         "query CommerceAdminBootstrap { currentTenant { id slug name } }",
@@ -35,26 +35,69 @@ fn admin_graphql_queries_keep_catalog_contract_stable() {
 }
 
 #[test]
-fn storefront_graphql_queries_keep_read_path_stable() {
-    let source = include_str!("../storefront/src/api.rs");
+fn storefront_graphql_transports_keep_owner_handoff_stable() {
+    let commerce_source = include_str!("../storefront/src/transport/raw_adapter.rs");
+    let payment_source =
+        include_str!("../../rustok-payment/storefront/src/transport/graphql_adapter.rs");
+    let order_source =
+        include_str!("../../rustok-order/storefront/src/transport/graphql_adapter.rs");
+    let fulfillment_source =
+        include_str!("../../rustok-fulfillment/storefront/src/transport/graphql_adapter.rs");
 
-    for required in [
-        "query StorefrontCheckoutWorkspace($id: UUID!)",
-        "storefrontCart(id: $id)",
-        "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!)",
-        "createStorefrontPaymentCollection(input: $input)",
-        "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!)",
-        "completeStorefrontCheckout(input: $input)",
-        "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!)",
-        "updateStorefrontCartContext(cartId: $cartId, input: $input)",
+    for (source, required) in [
+        (
+            payment_source,
+            "query StorefrontPaymentCollection($cartId: UUID!)",
+        ),
+        (
+            payment_source,
+            "storefrontPaymentCollection(cartId: $cartId)",
+        ),
+        (
+            payment_source,
+            "query StorefrontRefundsSummary($orderId: UUID!",
+        ),
+        (
+            payment_source,
+            "storefrontRefunds(orderId: $orderId",
+        ),
+        (
+            payment_source,
+            "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!)",
+        ),
+        (
+            payment_source,
+            "createStorefrontPaymentCollection(input: $input)",
+        ),
+        (
+            order_source,
+            "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!)",
+        ),
+        (
+            order_source,
+            "completeStorefrontCheckout(input: $input)",
+        ),
+        (
+            fulfillment_source,
+            "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!)",
+        ),
+        (
+            fulfillment_source,
+            "updateStorefrontCartContext(cartId: $cartId, input: $input)",
+        ),
     ] {
         assert!(
             source.contains(required),
-            "storefront GraphQL surface must keep marker `{required}`"
+            "owner storefront GraphQL transport must keep marker `{required}`"
         );
     }
 
     for forbidden in [
+        "CreateStorefrontPaymentCollection",
+        "CompleteStorefrontCheckout",
+        "SelectStorefrontShippingOption",
+        "StorefrontRefundsSummary",
+        "storefrontRefunds(",
         "storefrontProducts(",
         "storefrontProduct(",
         "createProduct(",
@@ -62,8 +105,8 @@ fn storefront_graphql_queries_keep_read_path_stable() {
         "shippingProfiles(",
     ] {
         assert!(
-            !source.contains(forbidden),
-            "storefront aggregate checkout GraphQL queries must stay isolated from marker `{forbidden}`"
+            !commerce_source.contains(forbidden),
+            "commerce aggregate read transport must stay isolated from owner marker `{forbidden}`"
         );
     }
 }
@@ -84,6 +127,7 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn product(",
         "async fn products(",
         "async fn storefront_cart(",
+        "async fn storefront_payment_collection(",
         "async fn storefront_me(",
         "async fn storefront_order(",
         "async fn storefront_refunds(",

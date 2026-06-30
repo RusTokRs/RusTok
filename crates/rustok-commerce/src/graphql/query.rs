@@ -657,6 +657,36 @@ impl CommerceQuery {
         Ok(Some(cart.into()))
     }
 
+    async fn storefront_payment_collection(
+        &self,
+        ctx: &Context<'_>,
+        cart_id: Uuid,
+    ) -> Result<Option<GqlPaymentCollection>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let customer_id =
+            resolve_optional_storefront_customer_id(db, tenant.id, ctx.data_opt::<AuthContext>())
+                .await?;
+        let cart = match rustok_cart::CartService::new(db.clone())
+            .get_cart(tenant.id, cart_id)
+            .await
+        {
+            Ok(cart) => cart,
+            Err(rustok_cart::error::CartError::CartNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+        ensure_storefront_cart_access(&cart, customer_id)?;
+
+        PaymentService::new(db.clone())
+            .find_reusable_collection_by_cart(tenant.id, cart.id)
+            .await
+            .map(|collection| collection.map(Into::into))
+            .map_err(|err| err.to_string().into())
+    }
+
     async fn order(
         &self,
         ctx: &Context<'_>,

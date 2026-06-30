@@ -12,7 +12,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::*;
+    use crate::state_machine::{Order, OrderError, Pending};
     use proptest::prelude::*;
     use rust_decimal::Decimal;
     use uuid::Uuid;

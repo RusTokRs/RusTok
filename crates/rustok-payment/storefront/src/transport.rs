@@ -1,6 +1,8 @@
 mod graphql_adapter;
 mod native_server_adapter;
 
+use std::fmt::{Display, Formatter};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +31,23 @@ pub struct PaymentCollectionCreateRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentCollectionFetchRequest {
+    pub cart_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundSummaryFetchRequest {
+    pub order_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundSummary {
+    pub total: u64,
+    pub refunded_amount: Option<String>,
+    pub latest_status: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaymentCollection {
     pub id: String,
     pub status: String,
@@ -44,13 +63,13 @@ pub struct PaymentCollection {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PaymentCollectionTransportError {
+pub enum PaymentTransportError {
     Graphql(String),
     ServerFn(String),
     Validation(String),
 }
 
-impl PaymentCollectionTransportError {
+impl PaymentTransportError {
     pub fn message(&self) -> &str {
         match self {
             Self::Graphql(message) | Self::ServerFn(message) | Self::Validation(message) => message,
@@ -69,9 +88,17 @@ impl PaymentCollectionTransportError {
     }
 }
 
+impl Display for PaymentTransportError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
+impl std::error::Error for PaymentTransportError {}
+
 pub async fn create_payment_collection(
     request: PaymentCollectionCreateRequest,
-) -> Result<PaymentCollection, PaymentCollectionTransportError> {
+) -> Result<PaymentCollection, PaymentTransportError> {
     match native_server_adapter::create_payment_collection(request.clone()).await {
         Ok(collection) => Ok(collection),
         Err(error) if error.should_fallback_to_graphql() => {
@@ -81,10 +108,46 @@ pub async fn create_payment_collection(
     }
 }
 
+pub async fn fetch_payment_collection(
+    request: PaymentCollectionFetchRequest,
+) -> Result<Option<PaymentCollection>, PaymentTransportError> {
+    match native_server_adapter::fetch_payment_collection(request.clone()).await {
+        Ok(collection) => Ok(collection),
+        Err(error) if error.should_fallback_to_graphql() => {
+            graphql_adapter::fetch_payment_collection(request).await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+pub async fn fetch_refund_summary(
+    request: RefundSummaryFetchRequest,
+) -> Result<RefundSummary, PaymentTransportError> {
+    match native_server_adapter::fetch_refund_summary(request.clone()).await {
+        Ok(summary) => Ok(summary),
+        Err(error) if error.should_fallback_to_graphql() => {
+            graphql_adapter::fetch_refund_summary(request).await
+        }
+        Err(error) => Err(error),
+    }
+}
+
 pub fn build_payment_collection_create_request(cart_id: String) -> PaymentCollectionCreateRequest {
     PaymentCollectionCreateRequest {
         cart_id: normalize_required(cart_id),
         metadata: PaymentCollectionCommandMetadata::storefront_create(),
+    }
+}
+
+pub fn build_payment_collection_fetch_request(cart_id: String) -> PaymentCollectionFetchRequest {
+    PaymentCollectionFetchRequest {
+        cart_id: normalize_required(cart_id),
+    }
+}
+
+pub fn build_refund_summary_fetch_request(order_id: String) -> RefundSummaryFetchRequest {
+    RefundSummaryFetchRequest {
+        order_id: normalize_required(order_id),
     }
 }
 
@@ -103,6 +166,18 @@ mod tests {
     }
 
     #[test]
+    fn fetch_request_trims_cart_id() {
+        let request = build_payment_collection_fetch_request(" cart-1 ".into());
+        assert_eq!(request.cart_id, "cart-1");
+    }
+
+    #[test]
+    fn refund_summary_request_trims_order_id() {
+        let request = build_refund_summary_fetch_request(" order-1 ".into());
+        assert_eq!(request.order_id, "order-1");
+    }
+
+    #[test]
     fn create_request_carries_payment_owned_command_metadata() {
         let request = build_payment_collection_create_request("cart-1".into());
         assert_eq!(request.metadata.owner_module, "rustok-payment");
@@ -115,18 +190,14 @@ mod tests {
     #[test]
     fn server_function_missing_error_can_fallback_to_graphql() {
         assert!(
-            PaymentCollectionTransportError::ServerFn("MissingServerFunction".into())
+            PaymentTransportError::ServerFn("MissingServerFunction".into())
                 .should_fallback_to_graphql()
         );
-        assert!(PaymentCollectionTransportError::ServerFn(
+        assert!(PaymentTransportError::ServerFn(
             "server function is not available on this target".into()
         )
         .should_fallback_to_graphql());
-        assert!(
-            !PaymentCollectionTransportError::Validation("bad cart".into())
-                .should_fallback_to_graphql()
-        );
-        assert!(!PaymentCollectionTransportError::Graphql("network".into())
-            .should_fallback_to_graphql());
+        assert!(!PaymentTransportError::Validation("bad cart".into()).should_fallback_to_graphql());
+        assert!(!PaymentTransportError::Graphql("network".into()).should_fallback_to_graphql());
     }
 }

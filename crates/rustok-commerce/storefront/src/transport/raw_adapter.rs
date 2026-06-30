@@ -1,16 +1,11 @@
 use leptos::prelude::*;
-use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::str::FromStr;
 use uuid::Uuid;
 
-#[cfg(feature = "ssr")]
-use crate::model::StorefrontCheckoutPaymentCollection;
 use crate::model::{
     StorefrontCheckoutAdjustment, StorefrontCheckoutCart, StorefrontCheckoutDeliveryGroup,
     StorefrontCheckoutShippingOption, StorefrontCheckoutWorkspace, StorefrontCommerceData,
-    StorefrontOrderRefundSummary,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,56 +27,10 @@ impl Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<GraphqlHttpError> for ApiError {
-    fn from(value: GraphqlHttpError) -> Self {
-        Self::Graphql(value.to_string())
-    }
-}
-
 impl From<ServerFnError> for ApiError {
     fn from(value: ServerFnError) -> Self {
         Self::ServerFn(value.to_string())
     }
-}
-
-#[allow(dead_code)]
-const STOREFRONT_REFUNDS_QUERY: &str = "query StorefrontRefundsSummary($orderId: UUID!, $filter: StorefrontRefundsFilter) { storefrontRefunds(orderId: $orderId, filter: $filter) { total items { amount status } } }";
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct StorefrontRefundsSummaryResponse {
-    #[serde(rename = "storefrontRefunds")]
-    storefront_refunds: GraphqlRefundList,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct GraphqlRefundList {
-    total: u64,
-    items: Vec<GraphqlRefundItem>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct GraphqlRefundItem {
-    amount: String,
-    status: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct StorefrontRefundsSummaryVariables {
-    #[serde(rename = "orderId")]
-    order_id: Uuid,
-    filter: StorefrontRefundsSummaryFilter,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct StorefrontRefundsSummaryFilter {
-    page: u64,
-    #[serde(rename = "perPage")]
-    per_page: u64,
 }
 
 fn configured_tenant_slug() -> Option<String> {
@@ -144,42 +93,6 @@ fn parse_cart_id(value: Option<String>) -> Result<Option<(String, Uuid)>, ApiErr
     }
 }
 
-fn graphql_url() -> String {
-    if let Ok(url) = std::env::var("RUSTOK_GRAPHQL_URL") {
-        return url;
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        let origin = web_sys::window()
-            .and_then(|window| window.location().origin().ok())
-            .unwrap_or_else(|| "http://localhost:5150".to_string());
-        format!("{origin}/api/graphql")
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let base =
-            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
-        format!("{base}/api/graphql")
-    }
-}
-
-async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
-where
-    V: Serialize,
-    T: for<'de> Deserialize<'de>,
-{
-    execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(query, Some(variables)),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(ApiError::from)
-}
-
 fn fallback_storefront_commerce(
     selected_cart_id: Option<String>,
     locale: Option<String>,
@@ -209,6 +122,22 @@ fn map_cart_transport_error(
         ApiError::Validation("cart_id must be a valid UUID".to_string())
     } else {
         ApiError::ServerFn(message)
+    }
+}
+
+fn map_payment_transport_error(
+    error: rustok_payment_storefront::transport::PaymentTransportError,
+) -> ApiError {
+    match error {
+        rustok_payment_storefront::transport::PaymentTransportError::Graphql(message) => {
+            ApiError::Graphql(message)
+        }
+        rustok_payment_storefront::transport::PaymentTransportError::ServerFn(message) => {
+            ApiError::ServerFn(message)
+        }
+        rustok_payment_storefront::transport::PaymentTransportError::Validation(message) => {
+            ApiError::Validation(message)
+        }
     }
 }
 
@@ -290,25 +219,6 @@ fn map_cart_checkout_cart(
     }
 }
 
-#[cfg(feature = "ssr")]
-fn map_native_payment_collection(
-    value: rustok_payment::dto::PaymentCollectionResponse,
-) -> StorefrontCheckoutPaymentCollection {
-    StorefrontCheckoutPaymentCollection {
-        id: value.id.to_string(),
-        status: value.status,
-        currency_code: value.currency_code,
-        amount: value.amount.normalize().to_string(),
-        authorized_amount: value.authorized_amount.normalize().to_string(),
-        captured_amount: value.captured_amount.normalize().to_string(),
-        order_id: value.order_id.map(|value| value.to_string()),
-        provider_id: value.provider_id,
-        payment_count: value.payments.len() as u64,
-        created_at: value.created_at.to_rfc3339(),
-        updated_at: value.updated_at.to_rfc3339(),
-    }
-}
-
 pub async fn fetch_storefront_commerce_server(
     selected_cart_id: Option<String>,
     locale: Option<String>,
@@ -334,11 +244,22 @@ pub async fn fetch_storefront_commerce_graphql(
     )
     .await
     .map_err(map_cart_transport_error)?;
+    let payment_collection = if cart_data.cart.is_some() {
+        rustok_payment_storefront::transport::fetch_payment_collection(
+            rustok_payment_storefront::transport::build_payment_collection_fetch_request(
+                cart_data.selected_cart_id.clone().unwrap_or_default(),
+            ),
+        )
+        .await
+        .map_err(map_payment_transport_error)?
+    } else {
+        None
+    };
 
     data.selected_cart_id = cart_data.selected_cart_id;
     data.checkout = Some(StorefrontCheckoutWorkspace {
         cart: cart_data.cart.map(map_cart_checkout_cart),
-        payment_collection: None,
+        payment_collection,
     });
     Ok(data)
 }
@@ -350,10 +271,6 @@ async fn storefront_commerce_native(
 ) -> Result<StorefrontCommerceData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-
-        let app_ctx = expect_context::<AppContext>();
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -378,7 +295,7 @@ async fn storefront_commerce_native(
             checkout: None,
         };
 
-        let Some((normalized_cart_id, cart_id)) =
+        let Some((normalized_cart_id, _)) =
             parse_cart_id(selected_cart_id).map_err(|err| ServerFnError::new(err.to_string()))?
         else {
             return Ok(data);
@@ -392,10 +309,13 @@ async fn storefront_commerce_native(
         .await
         .map_err(|err| ServerFnError::new(err.to_string()))?;
         let payment_collection = if cart_data.cart.is_some() {
-            rustok_payment::PaymentService::new(app_ctx.db.clone())
-                .find_reusable_collection_by_cart(tenant.id, cart_id)
-                .await
-                .map_err(|err| ServerFnError::new(err.to_string()))?
+            rustok_payment_storefront::transport::fetch_payment_collection(
+                rustok_payment_storefront::transport::build_payment_collection_fetch_request(
+                    normalized_cart_id.clone(),
+                ),
+            )
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))?
         } else {
             None
         };
@@ -403,7 +323,7 @@ async fn storefront_commerce_native(
         data.selected_cart_id = Some(normalized_cart_id);
         data.checkout = Some(StorefrontCheckoutWorkspace {
             cart: cart_data.cart.map(map_cart_checkout_cart),
-            payment_collection: payment_collection.map(map_native_payment_collection),
+            payment_collection,
         });
         Ok(data)
     }
@@ -413,125 +333,5 @@ async fn storefront_commerce_native(
         Err(ServerFnError::new(
             "commerce/storefront-data requires the `ssr` feature",
         ))
-    }
-}
-
-#[allow(dead_code)]
-fn summarize_storefront_refunds(
-    items: &[GraphqlRefundItem],
-    total: u64,
-) -> StorefrontOrderRefundSummary {
-    let refunded_amount = items
-        .iter()
-        .filter_map(|item| rust_decimal::Decimal::from_str(item.amount.trim()).ok())
-        .fold(rust_decimal::Decimal::ZERO, |acc, value| acc + value);
-
-    StorefrontOrderRefundSummary {
-        total,
-        refunded_amount: if total == 0 {
-            None
-        } else {
-            Some(refunded_amount.normalize().to_string())
-        },
-        latest_status: items.first().map(|item| item.status.clone()),
-    }
-}
-
-#[allow(dead_code)]
-pub async fn fetch_storefront_order_refunds_summary(
-    order_id: String,
-) -> Result<StorefrontOrderRefundSummary, ApiError> {
-    let order_id = Uuid::parse_str(order_id.trim())
-        .map_err(|_| ApiError::Validation("order_id must be a valid UUID".to_string()))?;
-
-    let response: StorefrontRefundsSummaryResponse = request(
-        STOREFRONT_REFUNDS_QUERY,
-        StorefrontRefundsSummaryVariables {
-            order_id,
-            filter: StorefrontRefundsSummaryFilter {
-                page: 1,
-                per_page: 50,
-            },
-        },
-    )
-    .await?;
-
-    Ok(summarize_storefront_refunds(
-        &response.storefront_refunds.items,
-        response.storefront_refunds.total,
-    ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn summarize_storefront_refunds_uses_decimal_safe_total() {
-        let summary = summarize_storefront_refunds(
-            &[
-                GraphqlRefundItem {
-                    amount: "0.10".to_string(),
-                    status: "pending".to_string(),
-                },
-                GraphqlRefundItem {
-                    amount: "0.20".to_string(),
-                    status: "refunded".to_string(),
-                },
-            ],
-            2,
-        );
-
-        assert_eq!(summary.total, 2);
-        assert_eq!(summary.refunded_amount.as_deref(), Some("0.3"));
-        assert_eq!(summary.latest_status.as_deref(), Some("pending"));
-    }
-
-    #[test]
-    fn summarize_storefront_refunds_ignores_invalid_rows_and_handles_empty_total() {
-        let summary = summarize_storefront_refunds(
-            &[GraphqlRefundItem {
-                amount: "invalid".to_string(),
-                status: "pending".to_string(),
-            }],
-            0,
-        );
-
-        assert_eq!(summary.total, 0);
-        assert_eq!(summary.refunded_amount, None);
-        assert_eq!(summary.latest_status.as_deref(), Some("pending"));
-    }
-
-    #[test]
-    fn summarize_storefront_refunds_non_zero_total_with_invalid_amounts_returns_zero_string() {
-        let summary = summarize_storefront_refunds(
-            &[
-                GraphqlRefundItem {
-                    amount: "invalid".to_string(),
-                    status: "pending".to_string(),
-                },
-                GraphqlRefundItem {
-                    amount: "NaN".to_string(),
-                    status: "failed".to_string(),
-                },
-            ],
-            2,
-        );
-
-        assert_eq!(summary.total, 2);
-        assert_eq!(summary.refunded_amount.as_deref(), Some("0"));
-        assert_eq!(summary.latest_status.as_deref(), Some("pending"));
-    }
-
-    #[tokio::test]
-    async fn fetch_storefront_order_refunds_summary_rejects_invalid_uuid() {
-        let result = fetch_storefront_order_refunds_summary("not-a-uuid".to_string()).await;
-
-        match result {
-            Err(ApiError::Validation(message)) => {
-                assert_eq!(message, "order_id must be a valid UUID".to_string());
-            }
-            other => panic!("expected validation error, got {:?}", other),
-        }
     }
 }

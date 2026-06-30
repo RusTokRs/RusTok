@@ -89,8 +89,15 @@ for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", 
 
 for (const marker of [
   "PaymentCollectionCreateRequest",
+  "PaymentCollectionFetchRequest",
+  "RefundSummaryFetchRequest",
+  "RefundSummary",
   "PaymentCollection",
+  "build_payment_collection_fetch_request",
   "build_payment_collection_create_request",
+  "fetch_payment_collection",
+  "build_refund_summary_fetch_request",
+  "fetch_refund_summary",
   "create_payment_collection",
   "mod graphql_adapter;",
   "mod native_server_adapter;",
@@ -101,12 +108,16 @@ for (const marker of [
 for (const marker of ["leptos::", "#[component]", "#[server", "GraphqlRequest", "web_sys::"]) {
   assertNotContains(transport, marker, `${transportPath}: transport facade must stay framework/native-endpoint free (${marker})`);
 }
-for (const marker of ["CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION", "GraphqlRequest::new", "PaymentCollection"]) {
+for (const marker of ["STOREFRONT_REFUNDS_QUERY", "STOREFRONT_PAYMENT_COLLECTION_QUERY", "CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION", "fetch_refund_summary", "fetch_payment_collection", "GraphqlRequest::new", "RefundSummary", "PaymentCollection"]) {
   assertContains(graphql, marker, `${graphqlPath}: payment must own GraphQL create/reuse marker ${marker}`);
 }
 assertNotContains(graphql, "rustok_commerce::", `${graphqlPath}: payment GraphQL adapter must not depend on commerce storefront internals`);
 assertContains(nativeRaw, "#[server", `${nativeRawPath}: payment native adapter must own a server-function endpoint shell`);
 assertContains(nativeRaw, "endpoint = \"payment/create-payment-collection\"", `${nativeRawPath}: payment native adapter must expose the owner endpoint path`);
+assertContains(nativeRaw, "endpoint = \"payment/payment-collection\"", `${nativeRawPath}: payment native adapter must expose the owner read endpoint path`);
+assertContains(nativeRaw, "endpoint = \"payment/refund-summary\"", `${nativeRawPath}: payment native adapter must expose the owner refund-summary endpoint path`);
+assertContains(nativeRaw, "read_storefront_payment_collection", `${nativeRawPath}: payment native read adapter must call the access-checked commerce runtime API`);
+assertContains(nativeRaw, "read_storefront_order_refunds", `${nativeRawPath}: payment refund adapter must call the access-checked commerce runtime API`);
 assertContains(nativeRaw, "rustok_commerce::storefront_checkout_runtime", `${nativeRawPath}: payment native adapter must call the explicit commerce checkout runtime API`);
 
 for (const marker of [

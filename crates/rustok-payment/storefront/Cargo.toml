@@ -25,6 +25,7 @@ loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-commerce = { workspace = true, optional = true }
 rustok-payment = { workspace = true, optional = true }
+rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid.workspace = true

@@ -44,6 +44,76 @@ impl StorefrontCheckoutRuntimeError {
     }
 }
 
+pub async fn read_storefront_payment_collection(
+    app_ctx: &AppContext,
+    tenant: &TenantContext,
+    auth: OptionalAuthContext,
+    cart_id: Uuid,
+) -> Result<Option<rustok_payment::dto::PaymentCollectionResponse>, StorefrontCheckoutRuntimeError>
+{
+    let cart = rustok_cart::CartService::new(app_ctx.db.clone())
+        .get_cart(tenant.id, cart_id)
+        .await
+        .map_err(runtime_error)?;
+    let storefront_customer_id =
+        resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
+    ensure_storefront_cart_access(&cart, storefront_customer_id)?;
+
+    rustok_payment::PaymentService::new(app_ctx.db.clone())
+        .find_reusable_collection_by_cart(tenant.id, cart.id)
+        .await
+        .map_err(runtime_error)
+}
+
+pub async fn read_storefront_order_refunds(
+    app_ctx: &AppContext,
+    tenant: &TenantContext,
+    request_context: &RequestContext,
+    auth: OptionalAuthContext,
+    order_id: Uuid,
+) -> Result<(Vec<rustok_payment::dto::RefundResponse>, u64), StorefrontCheckoutRuntimeError> {
+    let auth = auth.0.ok_or_else(|| {
+        StorefrontCheckoutRuntimeError::new("Authentication required to access order refunds")
+    })?;
+    let customer = rustok_customer::CustomerService::new(app_ctx.db.clone())
+        .get_customer_by_user(tenant.id, auth.user_id)
+        .await
+        .map_err(runtime_error)?;
+    let event_bus = rustok_api::loco::transactional_event_bus_from_context(app_ctx);
+    let order = match rustok_order::OrderService::new(app_ctx.db.clone(), event_bus)
+        .get_order_with_locale_fallback(
+            tenant.id,
+            order_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+    {
+        Ok(order) => order,
+        Err(rustok_order::OrderError::OrderNotFound(_)) => return Ok((Vec::new(), 0)),
+        Err(error) => return Err(runtime_error(error)),
+    };
+    if order.customer_id != Some(customer.id) {
+        return Err(StorefrontCheckoutRuntimeError::new(
+            "Order does not belong to the current storefront customer",
+        ));
+    }
+
+    rustok_payment::PaymentService::new(app_ctx.db.clone())
+        .list_refunds(
+            tenant.id,
+            rustok_payment::dto::ListRefundsInput {
+                page: 1,
+                per_page: 50,
+                payment_collection_id: None,
+                order_id: Some(order_id),
+                status: None,
+            },
+        )
+        .await
+        .map_err(runtime_error)
+}
+
 pub async fn create_storefront_payment_collection(
     app_ctx: &AppContext,
     tenant: &TenantContext,

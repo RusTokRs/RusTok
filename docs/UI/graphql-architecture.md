@@ -62,6 +62,8 @@ UI component
 
 ## Contract для GraphQL
 
+Storefront payment reads соблюдают тот же dual-path contract: module-owned `rustok-payment-storefront` публикует native endpoint-ы `payment/payment-collection` / `payment/refund-summary` и параллельные GraphQL reads `storefrontPaymentCollection(cartId)` / `storefrontRefunds(orderId, filter)`. Collection read проверяет tenant/cart customer access, refund read — tenant/order customer ownership; DTO и decimal-safe refund aggregation принадлежат payment package. Aggregate commerce UI только композирует owner transport result и не владеет отдельным payment read contract.
+
 GraphQL остаётся:
 
 - публичным backend contract;

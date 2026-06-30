@@ -3,11 +3,11 @@
 ## Execution checkpoint
 
 - Current phase: ecommerce FFA checkout handoff hardening
-- Last checkpoint: Aggregate storefront cart read moved behind the cart owner facade: `rustok-cart-storefront` now publishes full shipping option summaries and checkout repricing in `cart/storefront-data`, while `rustok-commerce-storefront` delegates cart workspace loading to `rustok_cart_storefront::transport::fetch_cart` and no longer keeps its own checkout cart GraphQL/native read DTOs or mappers.
-- Next step: Keep Next commerce pages behind the shared module guard and continue trimming the remaining aggregate commerce storefront read surface only after payment/order/fulfillment publish equivalent module-owned read surfaces for the remaining aggregate payment/order fragments.
+- Last checkpoint: Пакетный payment read cutover завершён: `rustok-payment-storefront` владеет collection и refund-summary DTO/request contracts, MissingServer-gated native/GraphQL transports и endpoint-ами `payment/payment-collection` / `payment/refund-summary`; commerce aggregate больше не содержит raw payment/refund GraphQL, payment DTO mapping или decimal aggregation.
+- Next step: Сокращать aggregate cart projection только целым owner-handoff пакетом; production provider adapter wiring вести отдельно от storefront boundary.
 - Open blockers: None.
 - Hand-off notes for next agent: After each post-order operator UI/page addition, update this checkpoint block and central registry evidence; keep the Next host route as a thin auth/options adapter only.
-- Last updated at (UTC): 2026-06-30T08:39:56Z
+- Last updated at (UTC): 2026-06-30T12:05:57Z
 
 
 ## FFA/FBA status
@@ -19,6 +19,10 @@
 - Customer read-projection provider dependency is now tracked through `crates/rustok-customer/contracts/customer-fba-registry.json` / `CustomerReadPort` with static contract-test evidence; cart checkout snapshot provider dependency is tracked through `crates/rustok-cart/contracts/cart-fba-registry.json` / `CartSnapshotReadPort`; commerce remains the orchestrator/consumer and does not own customer profile or cart lifecycle rules.
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - verification от 2026-06-30: полный `npm run verify:ffa:ui:migration`, `npm run verify:ecommerce:fba`, payment/commerce storefront unit tests и GraphQL surface regression проходят; SSR/all-features `cargo check` проходит для commerce/payment storefront boundary;
+  - payment collection storefront read parity от 2026-06-30: GraphQL `storefrontPaymentCollection(cartId)` и native `payment/payment-collection` проверяют tenant/cart customer ownership до owner-service read; commerce aggregate вызывает `rustok_payment_storefront::transport::fetch_payment_collection`, а прямые `rustok_payment::PaymentService` и локальный payment DTO mapper удалены из `rustok-commerce-storefront`;
+  - payment refund-summary handoff от 2026-06-30: payment storefront владеет `RefundSummaryFetchRequest` / `RefundSummary`, GraphQL `storefrontRefunds` projection, native `payment/refund-summary` и MissingServer-only fallback; access-checked runtime сначала подтверждает tenant/customer ownership заказа, а commerce storefront больше не содержит refund query/types/summarizer и dependency на `rust_decimal`;
+  - compiled evidence от 2026-06-30: `cargo check --workspace` прошёл; `cargo test -p rustok-commerce -p rustok-email --no-run --locked` собрал все unit/integration test targets после перевода test-only imports на явные owner/module paths и переноса GraphQL surface regression с удалённых `admin/src/api.rs` / `storefront/src/api.rs` на канонические commerce и owner transport adapters;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - `StoreContextService` больше не владеет concrete `RegionService`: единственный constructor принимает runtime-composed `Arc<dyn RegionReadPort>`, а region/country resolution проходит через `PortContext` и `RegionReadRequest`; старый concrete constructor/path удалён, все commerce/server/storefront call sites переведены атомарно;
   - `CheckoutService` принимает runtime-composed `Arc<dyn InventoryReservationPort>` для constructor compatibility с runtime composition, но public-channel availability validation переведена на inventory-owned facade `check_variant_availability_for_public_channel`; backorder policy и channel-visible stock lookup больше не дублируются в commerce orchestration;
@@ -46,7 +50,7 @@
   - provider registry evidence зафиксирован для `crates/rustok-pricing/contracts/pricing-fba-registry.json`, `crates/rustok-inventory/contracts/inventory-fba-registry.json`, `crates/rustok-order/contracts/order-fba-registry.json`, `crates/rustok-payment/contracts/payment-fba-registry.json`, `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`, `crates/rustok-product/contracts/product-fba-registry.json`, `crates/rustok-customer/contracts/customer-fba-registry.json` и `crates/rustok-cart/contracts/cart-fba-registry.json`, чтобы commerce local plan не расходился с consumer registry;
   - Phase 11 provider SPI baseline начат без vendor-specific adapters: payment-owned `src/providers.rs` фиксирует manual provider capabilities и adapter trait для authorize/capture/cancel/refund, fulfillment-owned `src/providers.rs` фиксирует manual carrier capabilities и adapter trait для quote/label/cancel, а lifecycle persistence остаётся в `PaymentService` / `FulfillmentService`;
   - provider SPI static + runtime-smoke evidence теперь закрепляет payment/fulfillment operation cases, typed webhook adapter operations, owner-side external adapter registration source contracts, owner provider registry composition seams, registration failure cases, side-effect-free runtime-mode guardrails and live external gateway/carrier execution-plan requirements и dedicated live-adapter contract packets в `crates/rustok-payment/contracts/evidence/payment-provider-spi-static-matrix.json`, `crates/rustok-payment/contracts/evidence/payment-provider-spi-runtime-smoke.json`, `crates/rustok-payment/contracts/evidence/payment-provider-spi-live-adapter-contract.json`, `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`, `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json` и `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-contract.json`; aggregate `npm run verify:ecommerce:fba` запускает `scripts/verify/verify-ecommerce-provider-spi-evidence.mjs` вместе с registry/port evidence gates, но FBA статус остаётся `in_progress` до runtime execution;
-- Last verified at (UTC): 2026-06-30T08:39:56Z
+- Last verified at (UTC): 2026-06-30T12:05:57Z
 - Owner: `rustok-commerce` module team
 
 ## Статус документа

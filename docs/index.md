@@ -59,7 +59,7 @@ status: verified
 ## UI и клиентские поверхности
 
 - [Обзор UI](./UI/README.md)
-- [GraphQL и Leptos server functions](./UI/graphql-architecture.md)
+- [GraphQL и Leptos server functions](./UI/graphql-architecture.md) — включая native/GraphQL parity для owner-owned storefront payment collection/refund reads
 - [Контракт storefront и checkout slots](./UI/storefront.md)
 - [Flutter mobile host витрины](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 - [Flutter mobile package catalog/cart](../rustok_mobile/packages/rustok_catalog_mobile/README.md)

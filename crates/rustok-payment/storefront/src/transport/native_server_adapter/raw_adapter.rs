@@ -5,15 +5,112 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::super::{
-    PaymentCollection, PaymentCollectionCreateRequest, PaymentCollectionTransportError,
+    PaymentCollection, PaymentCollectionCreateRequest, PaymentCollectionFetchRequest,
+    PaymentTransportError, RefundSummary, RefundSummaryFetchRequest,
 };
+
+pub async fn fetch_refund_summary_server(
+    request: RefundSummaryFetchRequest,
+) -> Result<RefundSummary, PaymentTransportError> {
+    storefront_refund_summary_native(request)
+        .await
+        .map_err(|error| PaymentTransportError::ServerFn(error.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "payment/refund-summary")]
+async fn storefront_refund_summary_native(
+    request: RefundSummaryFetchRequest,
+) -> Result<RefundSummary, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_commerce::storefront_checkout_runtime;
+
+        let app_ctx = expect_context::<AppContext>();
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let order_id = Uuid::parse_str(request.order_id.trim())
+            .map_err(|_| ServerFnError::new("order_id must be a valid UUID"))?;
+
+        let (items, total) = storefront_checkout_runtime::read_storefront_order_refunds(
+            &app_ctx,
+            &tenant,
+            &request_context,
+            auth,
+            order_id,
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.to_string()))?;
+
+        Ok(summarize_native_refunds(items, total))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = request;
+        Err(ServerFnError::new(
+            "payment/refund-summary requires the `ssr` feature",
+        ))
+    }
+}
+
+pub async fn fetch_payment_collection_server(
+    request: PaymentCollectionFetchRequest,
+) -> Result<Option<PaymentCollection>, PaymentTransportError> {
+    storefront_payment_collection_native(request)
+        .await
+        .map_err(|error| PaymentTransportError::ServerFn(error.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "payment/payment-collection")]
+async fn storefront_payment_collection_native(
+    request: PaymentCollectionFetchRequest,
+) -> Result<Option<PaymentCollection>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_commerce::storefront_checkout_runtime;
+
+        let app_ctx = expect_context::<AppContext>();
+        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let cart_id = Uuid::parse_str(request.cart_id.trim())
+            .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
+
+        storefront_checkout_runtime::read_storefront_payment_collection(
+            &app_ctx, &tenant, auth, cart_id,
+        )
+        .await
+        .map(|collection| collection.map(map_payment_collection))
+        .map_err(|error| ServerFnError::new(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = request;
+        Err(ServerFnError::new(
+            "payment/payment-collection requires the `ssr` feature",
+        ))
+    }
+}
 
 pub async fn create_payment_collection_server(
     request: PaymentCollectionCreateRequest,
-) -> Result<PaymentCollection, PaymentCollectionTransportError> {
+) -> Result<PaymentCollection, PaymentTransportError> {
     storefront_payment_create_collection_native(request)
         .await
-        .map_err(|error| PaymentCollectionTransportError::ServerFn(error.to_string()))
+        .map_err(|error| PaymentTransportError::ServerFn(error.to_string()))
 }
 
 #[server(prefix = "/api/fn", endpoint = "payment/create-payment-collection")]
@@ -87,5 +184,21 @@ fn map_payment_collection(
         payment_count: value.payments.len() as u64,
         created_at: value.created_at.to_rfc3339(),
         updated_at: value.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn summarize_native_refunds(
+    items: Vec<rustok_payment::dto::RefundResponse>,
+    total: u64,
+) -> RefundSummary {
+    let refunded_amount = items
+        .iter()
+        .map(|item| item.amount)
+        .fold(rust_decimal::Decimal::ZERO, |acc, value| acc + value);
+    RefundSummary {
+        total,
+        refunded_amount: (total > 0).then(|| refunded_amount.normalize().to_string()),
+        latest_status: items.first().map(|item| item.status.clone()),
     }
 }

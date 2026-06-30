@@ -14,9 +14,7 @@ use rustok_fulfillment_storefront::transport::{
     select_shipping_option, ShippingSelectionTransportError,
 };
 use rustok_order_storefront::transport::{complete_checkout, CheckoutCompletionTransportError};
-use rustok_payment_storefront::transport::{
-    create_payment_collection, PaymentCollectionTransportError,
-};
+use rustok_payment_storefront::transport::{create_payment_collection, PaymentTransportError};
 
 pub async fn fetch_storefront_commerce(
     request: FetchCommerceRequest,
@@ -63,12 +61,12 @@ fn should_fallback_to_graphql(error: &ApiError) -> bool {
     )
 }
 
-impl From<PaymentCollectionTransportError> for ApiError {
-    fn from(value: PaymentCollectionTransportError) -> Self {
+impl From<PaymentTransportError> for ApiError {
+    fn from(value: PaymentTransportError) -> Self {
         match value {
-            PaymentCollectionTransportError::Graphql(message) => Self::Graphql(message),
-            PaymentCollectionTransportError::ServerFn(message) => Self::ServerFn(message),
-            PaymentCollectionTransportError::Validation(message) => Self::Validation(message),
+            PaymentTransportError::Graphql(message) => Self::Graphql(message),
+            PaymentTransportError::ServerFn(message) => Self::ServerFn(message),
+            PaymentTransportError::Validation(message) => Self::Validation(message),
         }
     }
 }

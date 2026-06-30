@@ -111,8 +111,6 @@ impl CommerceCartMutation {
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let pricing_service = PricingService::new(db.clone(), event_bus.clone());
-        let inventory_service =
-            rustok_inventory::InventoryService::new(db.clone(), event_bus.clone());
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
         let pricing_context = build_storefront_pricing_context(
             &cart,
@@ -123,7 +121,6 @@ impl CommerceCartMutation {
         let resolved_input = resolve_storefront_line_item_input(
             db,
             tenant_id,
-            &inventory_service,
             &pricing_service,
             &pricing_context,
             &cart.currency_code,
@@ -298,21 +295,15 @@ impl CommerceCartMutation {
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let inventory_service =
-            rustok_inventory::InventoryService::new(db.clone(), event_bus.clone());
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
         if let Some(existing_line_item) = cart.line_items.iter().find(|item| item.id == line_id) {
             if let Some(variant_id) = existing_line_item.variant_id {
                 validate_storefront_line_item_quantity(
-                    &inventory_service,
                     db,
                     tenant_id,
                     variant_id,
                     input.quantity,
                     public_channel_slug.as_deref(),
-                    cart.locale_code
-                        .as_deref()
-                        .unwrap_or(request_context.locale.as_str()),
                 )
                 .await?;
             }
