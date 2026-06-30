@@ -28,6 +28,27 @@ const servicePath = path.join(
   "src",
   "service.rs",
 );
+const dtoPath = path.join(
+  repoRoot,
+  "crates",
+  "rustok-page-builder",
+  "src",
+  "dto.rs",
+);
+const healthPath = path.join(
+  repoRoot,
+  "crates",
+  "rustok-page-builder",
+  "src",
+  "health.rs",
+);
+const rolloutPath = path.join(
+  repoRoot,
+  "crates",
+  "rustok-page-builder",
+  "src",
+  "rollout.rs",
+);
 
 const moduleArg = process.argv[2] ?? "pages";
 
@@ -132,6 +153,9 @@ function compareVersions(left, right) {
 const registry = readJson(registryPath);
 const providerManifest = readFile(providerManifestPath);
 const serviceSource = readFile(servicePath);
+const dtoSource = readFile(dtoPath);
+const healthSource = readFile(healthPath);
+const rolloutSource = readFile(rolloutPath);
 const provider = registry.provider;
 const errors = [];
 
@@ -189,6 +213,11 @@ for (const capability of provider.capabilities ?? []) {
     errors.push(`provider.port_call_policies missing '${capability}'`);
   }
 }
+for (const [capability, permission] of Object.entries(provider.permission_map ?? {})) {
+  if (!serviceSource.includes(permission)) {
+    errors.push(`provider.permission_map.${capability}='${permission}' is not source-locked in service.rs`);
+  }
+}
 for (const [capability, policy] of Object.entries(provider.port_call_policies ?? {})) {
   const expectedPolicy = capability === "publish"
     ? "write_deadline_and_idempotency_required"
@@ -201,12 +230,42 @@ for (const [capability, policy] of Object.entries(provider.port_call_policies ??
   }
 }
 for (const marker of [
+  "PageBuilderCapabilityPermissionDescriptor",
+  "PAGE_BUILDER_CAPABILITY_PERMISSIONS",
+  "PAGE_BUILDER_PAGES_READ_PERMISSION",
+  "PAGE_BUILDER_PAGES_UPDATE_PERMISSION",
+  "PAGE_BUILDER_PAGES_PUBLISH_PERMISSION",
+  "PageBuilderCapabilityPortPolicyDescriptor",
   "PageBuilderCapabilityPortPolicies",
+  "PAGE_BUILDER_CAPABILITY_PORT_POLICIES",
   "PAGE_BUILDER_READ_POLICY_NAME",
   "PAGE_BUILDER_WRITE_POLICY_NAME",
 ]) {
   if (!serviceSource.includes(marker)) {
     errors.push(`service.rs missing port policy marker '${marker}'`);
+  }
+}
+for (const [key, kind] of Object.entries(provider.error_catalog ?? {})) {
+  const sourceKey = key === "feature_disabled" ? "feature_disabled" : kind;
+  if (!dtoSource.includes(`key: "${sourceKey}"`)) {
+    errors.push(`provider.error_catalog.${key}='${kind}' is not source-locked as a catalog key in dto.rs`);
+  }
+  if (!dtoSource.includes(kind)) {
+    errors.push(`provider.error_catalog.${key}='${kind}' is not source-locked as an error kind in dto.rs`);
+  }
+}
+for (const [key, code] of Object.entries(provider.error_codes ?? {})) {
+  if (!dtoSource.includes(code)) {
+    errors.push(`provider.error_codes.${key}='${code}' is not source-locked in dto.rs`);
+  }
+}
+for (const marker of [
+  "PageBuilderErrorKind",
+  "PAGE_BUILDER_ERROR_CATALOG",
+  "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
+]) {
+  if (!dtoSource.includes(marker)) {
+    errors.push(`dto.rs missing error catalog marker '${marker}'`);
   }
 }
 assertSame(
@@ -236,6 +295,16 @@ for (const state of ["ready", "degraded", "unavailable"]) {
     errors.push(`provider.health_states missing '${state}'`);
   }
 }
+for (const state of provider.health_states ?? []) {
+  if (!healthSource.includes(state)) {
+    errors.push(`provider.health_states value '${state}' is not source-locked in health.rs`);
+  }
+}
+for (const reason of provider.degradation_reasons ?? []) {
+  if (!healthSource.includes(reason)) {
+    errors.push(`provider.degradation_reasons value '${reason}' is not source-locked in health.rs`);
+  }
+}
 for (const key of [
   "preview_p95_ms",
   "publish_p95_ms",
@@ -249,6 +318,34 @@ for (const key of [
 for (const [key, value] of Object.entries(provider.slo_thresholds ?? {})) {
   if (typeof value !== "number" || value < 0) {
     errors.push(`provider.slo_thresholds.${key} must be a non-negative number`);
+  }
+  if (!healthSource.includes(`${key}: ${value}`)) {
+    errors.push(`provider.slo_thresholds.${key}=${value} is not source-locked in ProviderSloThresholds::PILOT`);
+  }
+}
+for (const marker of [
+  "ProviderHealthState",
+  "ProviderDegradationReason",
+  "ProviderSloThresholds",
+  "ProviderHealthSnapshot",
+  "ProviderHealthEvidence",
+]) {
+  if (!healthSource.includes(marker)) {
+    errors.push(`health.rs missing provider health marker '${marker}'`);
+  }
+}
+for (const profile of registry.fallback_profiles ?? []) {
+  if (!rolloutSource.includes(profile)) {
+    errors.push(`fallback_profiles value '${profile}' is not source-locked in rollout.rs`);
+  }
+}
+for (const marker of [
+  "BuilderToggleProfile",
+  "BuilderFallbackOutcome",
+  "fallback_matrix",
+]) {
+  if (!rolloutSource.includes(marker)) {
+    errors.push(`rollout.rs missing fallback profile marker '${marker}'`);
   }
 }
 

@@ -423,7 +423,6 @@ pub struct GqlCartLineItem {
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -469,7 +468,6 @@ pub struct GqlCartTaxLine {
 pub struct GqlCartDeliveryGroup {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub line_item_ids: Vec<Uuid>,
     pub selected_shipping_option_id: Option<Uuid>,
     pub available_shipping_options: Vec<GqlCartShippingOptionSummary>,
@@ -1246,7 +1244,6 @@ pub struct UpdateStorefrontCartContextInput {
 pub struct StorefrontShippingSelectionInput {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<Uuid>,
 }
 
@@ -1840,7 +1837,6 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             variant_id: value.variant_id,
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
-            seller_scope: None,
             sku: value.sku,
             title: value.title,
             quantity: value.quantity,
@@ -1895,7 +1891,6 @@ impl From<dto::CartDeliveryGroupResponse> for GqlCartDeliveryGroup {
         Self {
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
-            seller_scope: None,
             line_item_ids: value.line_item_ids,
             selected_shipping_option_id: value.selected_shipping_option_id,
             available_shipping_options: value

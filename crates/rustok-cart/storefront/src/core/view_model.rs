@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn line_item_view_model_ignores_seller_scope() {
+    fn line_item_view_model_uses_only_seller_id() {
         let fallbacks = CartDisplayFallbacks::new("not set".to_string(), "guest".to_string());
         let item = StorefrontCartLineItem {
             id: "line-1".to_string(),
@@ -197,7 +197,6 @@ mod tests {
             currency_code: "USD".to_string(),
             shipping_profile_slug: "default".to_string(),
             seller_id: None,
-            seller_scope: Some(" marketplace ".to_string()),
         };
 
         let view_model = cart_line_item_view_model(item, &fallbacks);
@@ -225,7 +224,6 @@ mod tests {
         let group = StorefrontCartDeliveryGroup {
             shipping_profile_slug: "default".to_string(),
             seller_id: Some("seller-1".to_string()),
-            seller_scope: Some("scope".to_string()),
             line_item_count: 3,
             selected_shipping_option_id: None,
             available_option_count: 2,

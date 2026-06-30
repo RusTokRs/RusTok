@@ -37,7 +37,6 @@ pub struct StorefrontCartLineItem {
     pub currency_code: String,
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -56,7 +55,6 @@ pub struct StorefrontCartAdjustment {
 pub struct StorefrontCartDeliveryGroup {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
-    pub seller_scope: Option<String>,
     pub line_item_count: u64,
     pub selected_shipping_option_id: Option<String>,
     pub available_option_count: u64,

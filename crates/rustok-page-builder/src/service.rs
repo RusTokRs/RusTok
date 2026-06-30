@@ -11,6 +11,35 @@ use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
 use rustok_core::{Action, Permission, Resource};
 use serde::Serialize;
 
+pub const PAGE_BUILDER_PAGES_READ_PERMISSION: &str = "pages:read";
+pub const PAGE_BUILDER_PAGES_UPDATE_PERMISSION: &str = "pages:update";
+pub const PAGE_BUILDER_PAGES_PUBLISH_PERMISSION: &str = "pages:publish";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PageBuilderCapabilityPermissionDescriptor {
+    pub capability: BuilderCapabilityKind,
+    pub permission: &'static str,
+}
+
+pub const PAGE_BUILDER_CAPABILITY_PERMISSIONS: [PageBuilderCapabilityPermissionDescriptor; 4] = [
+    PageBuilderCapabilityPermissionDescriptor {
+        capability: BuilderCapabilityKind::Preview,
+        permission: PAGE_BUILDER_PAGES_READ_PERMISSION,
+    },
+    PageBuilderCapabilityPermissionDescriptor {
+        capability: BuilderCapabilityKind::Tree,
+        permission: PAGE_BUILDER_PAGES_READ_PERMISSION,
+    },
+    PageBuilderCapabilityPermissionDescriptor {
+        capability: BuilderCapabilityKind::Properties,
+        permission: PAGE_BUILDER_PAGES_UPDATE_PERMISSION,
+    },
+    PageBuilderCapabilityPermissionDescriptor {
+        capability: BuilderCapabilityKind::Publish,
+        permission: PAGE_BUILDER_PAGES_PUBLISH_PERMISSION,
+    },
+];
+
 #[async_trait]
 pub trait PageBuilderCapabilityService: Send + Sync {
     async fn preview(
@@ -113,6 +142,31 @@ impl PageBuilderCapabilityPermissions {
 
 pub const PAGE_BUILDER_READ_POLICY_NAME: &str = "read_deadline_required";
 pub const PAGE_BUILDER_WRITE_POLICY_NAME: &str = "write_deadline_and_idempotency_required";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PageBuilderCapabilityPortPolicyDescriptor {
+    pub capability: BuilderCapabilityKind,
+    pub policy_name: &'static str,
+}
+
+pub const PAGE_BUILDER_CAPABILITY_PORT_POLICIES: [PageBuilderCapabilityPortPolicyDescriptor; 4] = [
+    PageBuilderCapabilityPortPolicyDescriptor {
+        capability: BuilderCapabilityKind::Preview,
+        policy_name: PAGE_BUILDER_READ_POLICY_NAME,
+    },
+    PageBuilderCapabilityPortPolicyDescriptor {
+        capability: BuilderCapabilityKind::Tree,
+        policy_name: PAGE_BUILDER_READ_POLICY_NAME,
+    },
+    PageBuilderCapabilityPortPolicyDescriptor {
+        capability: BuilderCapabilityKind::Properties,
+        policy_name: PAGE_BUILDER_READ_POLICY_NAME,
+    },
+    PageBuilderCapabilityPortPolicyDescriptor {
+        capability: BuilderCapabilityKind::Publish,
+        policy_name: PAGE_BUILDER_WRITE_POLICY_NAME,
+    },
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PageBuilderCapabilityPortPolicies {
@@ -1124,6 +1178,32 @@ mod tests {
     #[test]
     fn authorizer_maps_capabilities_to_stable_page_permissions() {
         let authorizer = PageBuilderCapabilityAuthorizer::default();
+        let descriptors: Vec<_> = PAGE_BUILDER_CAPABILITY_PERMISSIONS
+            .iter()
+            .map(|descriptor| (descriptor.capability, descriptor.permission))
+            .collect();
+
+        assert_eq!(
+            descriptors,
+            vec![
+                (
+                    BuilderCapabilityKind::Preview,
+                    PAGE_BUILDER_PAGES_READ_PERMISSION
+                ),
+                (
+                    BuilderCapabilityKind::Tree,
+                    PAGE_BUILDER_PAGES_READ_PERMISSION
+                ),
+                (
+                    BuilderCapabilityKind::Properties,
+                    PAGE_BUILDER_PAGES_UPDATE_PERMISSION
+                ),
+                (
+                    BuilderCapabilityKind::Publish,
+                    PAGE_BUILDER_PAGES_PUBLISH_PERMISSION
+                ),
+            ]
+        );
 
         assert_eq!(
             authorizer.required_permission(BuilderCapabilityKind::Preview),
@@ -1145,6 +1225,29 @@ mod tests {
 
     #[test]
     fn port_policy_names_match_fba_registry_contract() {
+        let descriptors: Vec<_> = PAGE_BUILDER_CAPABILITY_PORT_POLICIES
+            .iter()
+            .map(|descriptor| (descriptor.capability, descriptor.policy_name))
+            .collect();
+
+        assert_eq!(
+            descriptors,
+            vec![
+                (
+                    BuilderCapabilityKind::Preview,
+                    PAGE_BUILDER_READ_POLICY_NAME
+                ),
+                (BuilderCapabilityKind::Tree, PAGE_BUILDER_READ_POLICY_NAME),
+                (
+                    BuilderCapabilityKind::Properties,
+                    PAGE_BUILDER_READ_POLICY_NAME
+                ),
+                (
+                    BuilderCapabilityKind::Publish,
+                    PAGE_BUILDER_WRITE_POLICY_NAME
+                ),
+            ]
+        );
         assert_eq!(
             PageBuilderCapabilityPortPolicies::policy_name_for(BuilderCapabilityKind::Preview),
             PAGE_BUILDER_READ_POLICY_NAME

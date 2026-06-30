@@ -391,7 +391,6 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
                 currency_code: item.currency_code,
                 shipping_profile_slug: item.shipping_profile_slug,
                 seller_id: item.seller_id,
-                seller_scope: None,
             })
             .collect(),
         adjustments: value
@@ -414,7 +413,6 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
             .map(|group| StorefrontCartDeliveryGroup {
                 shipping_profile_slug: group.shipping_profile_slug,
                 seller_id: group.seller_id,
-                seller_scope: None,
                 line_item_count: group.line_item_ids.len() as u64,
                 selected_shipping_option_id: group.selected_shipping_option_id,
                 available_option_count: group.available_shipping_options.len() as u64,
@@ -492,7 +490,6 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
                 currency_code: item.currency_code,
                 shipping_profile_slug: item.shipping_profile_slug,
                 seller_id: item.seller_id,
-                seller_scope: None,
             })
             .collect(),
         adjustments: value
@@ -519,7 +516,6 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
             .map(|group| StorefrontCartDeliveryGroup {
                 shipping_profile_slug: group.shipping_profile_slug,
                 seller_id: group.seller_id,
-                seller_scope: None,
                 line_item_count: group.line_item_ids.len() as u64,
                 selected_shipping_option_id: group
                     .selected_shipping_option_id

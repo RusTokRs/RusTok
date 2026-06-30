@@ -39,6 +39,21 @@ function assertNotContains(text, pattern, description) {
   if (found) fail(description);
 }
 
+function assertStructNotContains(text, structName, pattern, description) {
+  const start = text.indexOf(`struct ${structName}`);
+  if (start === -1) {
+    fail(`${description} (struct ${structName} not found)`);
+    return;
+  }
+  const bodyStart = text.indexOf("{", start);
+  const bodyEnd = text.indexOf("\n}", bodyStart);
+  if (bodyStart === -1 || bodyEnd === -1) {
+    fail(`${description} (struct ${structName} body not found)`);
+    return;
+  }
+  assertNotContains(text.slice(bodyStart, bodyEnd), pattern, description);
+}
+
 const requestsPath = "crates/rustok-commerce/storefront/src/core/requests.rs";
 const presentationPath = "crates/rustok-commerce/storefront/src/core/presentation.rs";
 const modelPath = "crates/rustok-commerce/storefront/src/model.rs";
@@ -48,6 +63,8 @@ const transportPath = "crates/rustok-commerce/storefront/src/transport/mod.rs";
 const nativePath = "crates/rustok-commerce/storefront/src/transport/native_server_adapter.rs";
 const graphqlPath = "crates/rustok-commerce/storefront/src/transport/graphql_adapter.rs";
 const rawPath = "crates/rustok-commerce/storefront/src/transport/raw_adapter.rs";
+const storeControllerPath = "crates/rustok-commerce/src/controllers/store/mod.rs";
+const graphqlTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
 const legacyApiPath = "crates/rustok-commerce/storefront/src/api.rs";
 const paymentTransportPath = "crates/rustok-payment/storefront/src/transport.rs";
 const orderTransportPath = "crates/rustok-order/storefront/src/transport.rs";
@@ -59,7 +76,7 @@ const fulfillmentPlanPath = "crates/rustok-fulfillment/docs/implementation-plan.
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [requestsPath, presentationPath, modelPath, libPath, uiPath, transportPath, nativePath, graphqlPath, rawPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
+for (const filePath of [requestsPath, presentationPath, modelPath, libPath, uiPath, transportPath, nativePath, graphqlPath, rawPath, storeControllerPath, graphqlTypesPath, paymentTransportPath, orderTransportPath, fulfillmentTransportPath, commercePlanPath, paymentPlanPath, orderPlanPath, fulfillmentPlanPath, registryPath, packagePath]) {
   assertExists(filePath, `${filePath}: expected storefront transport handoff file`);
 }
 if (existsSync(repoPath(legacyApiPath))) {
@@ -75,6 +92,8 @@ const transport = readRepo(transportPath);
 const nativeAdapter = readRepo(nativePath);
 const graphqlAdapter = readRepo(graphqlPath);
 const rawAdapter = readRepo(rawPath);
+const storeController = readRepo(storeControllerPath);
+const graphqlTypes = readRepo(graphqlTypesPath);
 const paymentTransport = readRepo(paymentTransportPath);
 const orderTransport = readRepo(orderTransportPath);
 const fulfillmentTransport = readRepo(fulfillmentTransportPath);
@@ -174,6 +193,10 @@ assertNotContains(rawAdapter, "build_shipping_selection_plan", `${rawPath}: comm
 assertNotContains(rawAdapter, "fn shipping_selection_error_message", `${rawPath}: commerce raw adapter must not own fulfillment selection error text`);
 assertNotContains(rawAdapter, "sellerScope lineItemIds", `${rawPath}: checkout read query must not request legacy sellerScope for delivery-group matching`);
 assertNotContains(rawAdapter, "serde(rename = \"sellerScope\")", `${rawPath}: storefront GraphQL fallback selection payload must not send legacy sellerScope`);
+assertStructNotContains(storeController, "StoreCartShippingSelectionInput", "seller_scope", `${storeControllerPath}: REST storefront shipping selection input must not accept legacy seller_scope`);
+assertStructNotContains(graphqlTypes, "StorefrontShippingSelectionInput", "seller_scope", `${graphqlTypesPath}: GraphQL storefront shipping selection input must not accept legacy seller_scope`);
+assertStructNotContains(graphqlTypes, "GqlCartLineItem", "seller_scope", `${graphqlTypesPath}: GraphQL cart line item output must not expose legacy seller_scope`);
+assertStructNotContains(graphqlTypes, "GqlCartDeliveryGroup", "seller_scope", `${graphqlTypesPath}: GraphQL cart delivery group output must not expose legacy seller_scope`);
 
 for (const [ownerTransport, ownerPath, fallbackFn, errorType] of [
   [paymentTransport, paymentTransportPath, "create_payment_collection_with_fallback", "PaymentCollectionTransportError"],

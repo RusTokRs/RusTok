@@ -45,6 +45,7 @@ const files = {
   legacyApi: "crates/rustok-cart/storefront/src/api.rs",
   graphqlAdapter: "crates/rustok-cart/storefront/src/transport/graphql_adapter.rs",
   nativeServerAdapter: "crates/rustok-cart/storefront/src/transport/native_server_adapter.rs",
+  model: "crates/rustok-cart/storefront/src/model.rs",
   implementationPlan: "crates/rustok-cart/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
   packageJson: "package.json",
@@ -64,6 +65,7 @@ const ui = readRepo(files.ui);
 const transport = readRepo(files.transport);
 const graphqlAdapter = readRepo(files.graphqlAdapter);
 const nativeServerAdapter = readRepo(files.nativeServerAdapter);
+const model = readRepo(files.model);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
@@ -97,6 +99,7 @@ assertContains(nativeServerAdapter, "#[server", `${files.nativeServerAdapter}: n
 assertContains(nativeServerAdapter, "GraphqlRequest", `${files.nativeServerAdapter}: moved adapter must keep GraphQL fallback request contract until split further`);
 assertNotContains(nativeServerAdapter, "sellerScope } adjustments", `${files.nativeServerAdapter}: cart line-item read query must not request legacy sellerScope`);
 assertNotContains(nativeServerAdapter, "sellerScope lineItemIds", `${files.nativeServerAdapter}: cart delivery-group read query must not request legacy sellerScope`);
+assertNotContains(model, "seller_scope", `${files.model}: cart storefront model DTOs must not expose legacy seller_scope`);
 
 assertContains(implementationPlan, "verify-cart-storefront-boundary.mjs", `${files.implementationPlan}: local plan must mention cart storefront guardrail`);
 assertContains(registry, "verify-cart-storefront-boundary.mjs", `${files.registry}: central readiness board must mention cart storefront guardrail`);
