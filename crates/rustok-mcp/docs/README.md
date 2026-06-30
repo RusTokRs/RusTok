@@ -16,6 +16,11 @@ spec и не превращаясь в provider/model host.
 - typed tools, `McpToolResponse`, runtime binding и access policy contracts;
 - session-start access resolution, allow/deny audit и introspection surface;
 - Alloy-related MCP tools и scaffold draft review/apply boundary;
+- принадлежащий MCP-модулю admin UI для ревью Alloy drafts, чтения MCP audit и read-side
+  clients/policies/token previews: Next package
+  `apps/next-admin/packages/rustok-mcp` и Leptos FFA crate `crates/rustok-mcp/admin`;
+- typed `McpManagementMutationPort` в owner crate и DB-provider в `apps/server`, который
+  делегирует management writes каноническому транзакционному `McpManagementService`;
 - отсутствие ownership над provider-specific AI orchestration и над самим MCP spec.
 
 ## Интеграция
@@ -24,6 +29,8 @@ spec и не превращаясь в provider/model host.
 - `rustok-ai` использует `rustok-mcp` как MCP tool boundary, не расширяя его до model host;
 - `apps/server` держит persisted MCP management/control plane и runtime bridges для токенов, policy и scaffold drafts;
 - Alloy подключается как capability через runtime state, а не как отдельный MCP transport stack.
+- `rustok-ai` не владеет UI ревью MCP/Alloy drafts; межмодульный admin workflow отдельно
+  монтирует принадлежащий MCP-модулю пакет.
 
 ## Проверка
 

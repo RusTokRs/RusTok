@@ -8,6 +8,7 @@ members = [
     "crates/rustok-seo/render",
     "crates/rustok-blog/admin",
     "crates/rustok-ai/admin",
+    "crates/rustok-mcp/admin",
     "crates/rustok-ai-content/admin",
     "crates/rustok-ai-product/admin",
     "crates/rustok-ai-order/admin",

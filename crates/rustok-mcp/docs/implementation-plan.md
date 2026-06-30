@@ -6,12 +6,24 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 
 ## Execution checkpoint
 
-- Current phase: runtime_contract_verified
-- Last checkpoint: Restored executable `rustok-mcp` evidence against `rmcp 2.0.0` by updating server tool responses to emit `rmcp::model::ContentBlock::text`; `cargo check -p rustok-mcp` and `cargo test -p rustok-mcp --lib` passed, including Alloy scaffold stage/review/apply and persisted draft-store binding tests.
-- Next step: Add the admin/UI surface for MCP access management and Alloy scaffold draft review, while keeping the existing server-owned remote MCP bootstrap and persisted draft-store boundary intact.
-- Open blockers: None.
-- Hand-off notes for next agent: Keep `rustok-mcp` as the MCP protocol/tool adapter and keep persisted draft storage in `apps/server`; do not move provider orchestration or server-specific DB state into this crate. Re-run `cargo check -p rustok-mcp` and `cargo test -p rustok-mcp --lib` after tool-surface changes.
-- Last updated at (UTC): 2026-06-30T00:00:00Z
+- Текущая фаза: `mcp_admin_owner_ui_slice`.
+- Последняя контрольная точка: Next и Leptos FFA owner UI покрывают create/deactivate client, rotate/revoke token и update policy. Owner crate определяет typed `McpManagementMutationPort`; `apps/server` регистрирует provider через `ModuleRuntimeExtensions` и делегирует все writes каноническому транзакционному `McpManagementService`, поэтому token generation/hash/audit не дублируются. Native `#[server]` остаётся основным Leptos transport, GraphQL mutations сохраняются параллельно; plaintext token показывается только в mutation result.
+- Следующий шаг: усилить транзакционные границы Alloy draft stage/apply и audit writes, затем добавить browser-level parity smoke для Next и Leptos management workflows.
+- Открытые блокеры: в текущем workspace отсутствует `apps/next-admin/node_modules`, поэтому локальные `npm run typecheck` и `npm run format:check` недоступны; полный `cargo check -p rustok-server` блокируется существующим Rhai feature-unification конфликтом `alloy` и `casbin` (`unchecked`/`no_function` удаляют limit setters).
+- Передача следующему агенту: сохранять `rustok-mcp` как MCP protocol/tool adapter, persisted draft storage оставлять в `apps/server`, а UI — в owner surface MCP, не в `rustok-ai`. После изменений tool surface повторять `cargo check -p rustok-mcp-admin`, `npm run verify:mcp:admin-boundary`, `cargo check -p rustok-mcp` и `cargo test -p rustok-mcp --lib`.
+- Обновлено (UTC): 2026-06-30T19:42:20Z
+
+## FFA/FBA status
+
+- Статус FFA: `in_progress`.
+- Статус FBA: `in_progress`.
+- Подтверждения:
+  - Next owner surface `apps/next-admin/packages/rustok-mcp` владеет UI ревью MCP/Alloy scaffold drafts, audit events, clients/policies/tokens и management mutations; host route только монтирует `McpAdminPage`.
+  - Leptos FFA surface `crates/rustok-mcp/admin` содержит `model`, `transport::{native_server_adapter,graphql_adapter}` и явный `ui` adapter.
+  - Native `#[server]` functions являются основным внутренним data layer Leptos; mutations получают `McpManagementMutationRuntime` из `ModuleRuntimeExtensions`, а server provider делегирует writes `McpManagementService`. GraphQL operation documents параллельно остаются в `transport/graphql_adapter.rs`.
+  - Boundary guardrail `scripts/verify/verify-mcp-admin-boundary.mjs` проверяет owner placement и запрещает MCP draft UI внутри `rustok-ai`.
+- Последняя проверка (UTC): 2026-06-30T19:42:20Z.
+- Владелец: `rustok-mcp`.
 
 ## Область работ
 

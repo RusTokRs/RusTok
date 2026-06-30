@@ -10292,8 +10292,26 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-mcp-admin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "leptos 0.8.20",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-core",
+ "rustok-mcp",
+ "sea-orm",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

@@ -3,6 +3,7 @@ use rustok_auth::{OAuthAdminMutationRuntime, UserAdminMutationRuntime};
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexerRuntimeConfig;
+use rustok_mcp::McpManagementMutationRuntime;
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -73,10 +74,18 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     let base = build_shared_runtime_extensions(registry, settings);
     let mut extensions = base.as_ref().clone();
     let auth_admin_provider = Arc::new(
-        crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(db),
+        crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
+            db.clone(),
+        ),
     );
     extensions.insert(OAuthAdminMutationRuntime::new(auth_admin_provider.clone()));
     extensions.insert(UserAdminMutationRuntime::new(auth_admin_provider));
+    let mcp_management_provider = Arc::new(
+        crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
+            db,
+        ),
+    );
+    extensions.insert(McpManagementMutationRuntime::new(mcp_management_provider));
     Arc::new(extensions)
 }
 
@@ -137,7 +146,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn host_runtime_extensions_register_oauth_admin_mutation_provider() {
+    async fn host_runtime_extensions_register_admin_mutation_providers() {
         let registry = ModuleRegistry::new();
         let settings = RustokSettings::default();
         let db = Database::connect("sqlite::memory:")
@@ -149,5 +158,6 @@ mod tests {
 
         assert!(extensions.contains::<rustok_auth::OAuthAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
+        assert!(extensions.contains::<rustok_mcp::McpManagementMutationRuntime>());
     }
 }

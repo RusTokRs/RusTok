@@ -56,6 +56,7 @@ pub struct RouterCandidateDecision {
     pub reason: String,
 }
 
+#[derive(Debug)]
 pub struct ResolvedExecutionPlan {
     pub provider_profile_id: Uuid,
     pub task_profile_id: Option<Uuid>,
