@@ -8,6 +8,9 @@ const files = commerceDomainModules.flatMap((module) => [
   `crates/rustok-${module}/contracts/${module}-fba-registry.json`,
   `crates/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,
   `crates/rustok-${module}/src/ports.rs`,
+]).concat([
+  'crates/rustok-commerce/contracts/commerce-fba-registry.json',
+  'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json',
 ]);
 
 function fixture() {
@@ -42,6 +45,13 @@ const taxSmokePath = path.join(missingMode, 'crates/rustok-tax/contracts/evidenc
 const taxSmoke = JSON.parse(fs.readFileSync(taxSmokePath, 'utf8'));
 taxSmoke.degraded_modes = [];
 fs.writeFileSync(taxSmokePath, `${JSON.stringify(taxSmoke, null, 2)}\n`);
-expectFailure(missingMode, /tax degraded mode drift/);
+expectFailure(missingMode, /tax invocation trace degraded mode drift/);
+
+const consumerDrift = fixture();
+const tracePath = path.join(consumerDrift, 'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json');
+const trace = JSON.parse(fs.readFileSync(tracePath, 'utf8'));
+trace.modules.find((entry) => entry.provider_module === 'product').consumer_degraded_modes = ['show_product_refresh_required'];
+fs.writeFileSync(tracePath, `${JSON.stringify(trace, null, 2)}\n`);
+expectFailure(consumerDrift, /product invocation trace consumer degraded mode drift/);
 
 console.log('commerce-domain FBA runtime smoke fixture regressions passed');

@@ -173,7 +173,8 @@
   "evidence": {
     "local_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
-    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs"
+    "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+    "runtime_invocation_trace": "crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json"
   },
   "rollout": {
     "profiles": [
