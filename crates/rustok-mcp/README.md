@@ -95,6 +95,10 @@ separated into `alloy_apply_module_scaffold` with explicit confirmation.
 - staged RusToK module scaffolding through `alloy_scaffold_module`
 - explicit review/apply boundary for generated drafts through `alloy_review_module_scaffold` and `alloy_apply_module_scaffold`
 - persisted Alloy scaffold draft control plane in `apps/server` through REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`
+- transaction-claimed persisted scaffold apply flow in `apps/server`: applying a draft first
+  atomically claims `staged -> applying` and writes an `apply_started` audit row, then records either
+  the final `applied` state with success audit or restores `staged` with failure audit if the
+  workspace write fails
 - live runtime binding hooks so Alloy scaffold tools can use the persisted draft store instead of process-local memory when a server-backed `McpScaffoldDraftStore` is attached
 - owner-owned admin UI slice for persisted Alloy scaffold drafts, MCP audit events, clients,
   policies, and safe token previews:

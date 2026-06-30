@@ -52,6 +52,7 @@ use crate::services::build_service::EventBusBuildEventPublisher;
 ))]
 use crate::services::content_orchestration::content_orchestration_from_context;
 use crate::services::event_bus::event_bus_from_context;
+#[cfg(test)]
 use crate::services::flex_attached_values::{
     FlexAttachedValuesService, PreparedAttachedValuesWrite,
 };
