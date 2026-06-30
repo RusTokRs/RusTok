@@ -71,6 +71,7 @@ impl PaymentCollectionPort for crate::PaymentService {
         request: PaymentCollectionCreateOrReuseRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context)?;
 
         if let Some(cart_id) = request.cart_id {

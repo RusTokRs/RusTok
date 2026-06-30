@@ -104,7 +104,7 @@ pub fn CommerceView() -> impl IntoView {
                             cart,
                             request.shipping_profile_slug,
                             request.seller_id,
-                            request.seller_scope,
+                            None,
                             request.shipping_option_id,
                         ),
                     )
@@ -378,7 +378,7 @@ fn fulfillment_delivery_groups(
         .map(|group| FulfillmentDeliveryGroup {
             shipping_profile_slug: group.shipping_profile_slug,
             seller_id: group.seller_id,
-            seller_scope: group.seller_scope,
+            seller_scope: None,
             line_item_count: group.line_item_count,
             selected_shipping_option_id: group.selected_shipping_option_id,
             available_shipping_options: group

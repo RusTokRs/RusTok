@@ -15,7 +15,7 @@ fn order_scenario_uses_library_contract_types_not_local_shadows() {
     }
 
     for required in [
-        "use rustok_commerce::{Order, OrderError};",
+        "use rustok_commerce::state_machine::{Order, OrderError};",
         "use rustok_events::DomainEvent;",
         "Order::new_pending",
         "DomainEvent::OrderStatusChanged",

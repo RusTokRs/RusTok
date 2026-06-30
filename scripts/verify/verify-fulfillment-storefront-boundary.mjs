@@ -120,6 +120,8 @@ for (const marker of [
   "ShippingSelectionTransportError",
   "select_shipping_option_with_fallback",
   "should_fallback_to_graphql",
+  "build_shipping_selection_updates",
+  "impl ShippingSelectionError",
 ]) {
   assertContains(transport, marker, `${transportPath}: expected owner transport facade marker ${marker}`);
 }

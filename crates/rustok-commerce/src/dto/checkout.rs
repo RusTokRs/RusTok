@@ -4,7 +4,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{
+use crate::dto::{
     CartResponse, CartShippingSelectionInput, FulfillmentResponse, OrderResponse,
     PaymentCollectionResponse, StoreContextResponse,
 };

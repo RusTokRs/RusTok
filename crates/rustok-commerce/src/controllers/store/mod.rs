@@ -523,7 +523,7 @@ pub(crate) async fn validate_selected_shipping_option(
                 vec![crate::dto::CartShippingSelectionInput {
                     shipping_profile_slug: group.shipping_profile_slug.clone(),
                     seller_id: group.seller_id.clone(),
-                    seller_scope: group.seller_scope.clone(),
+                    seller_scope: None,
                     selected_shipping_option_id: Some(selected_shipping_option_id),
                 }]
             })
@@ -580,7 +580,7 @@ pub(crate) fn current_shipping_selections(
         .map(|group| crate::dto::CartShippingSelectionInput {
             shipping_profile_slug: group.shipping_profile_slug.clone(),
             seller_id: group.seller_id.clone(),
-            seller_scope: group.seller_scope.clone(),
+            seller_scope: None,
             selected_shipping_option_id: group.selected_shipping_option_id,
         })
         .collect()
@@ -774,7 +774,7 @@ pub(crate) async fn validate_store_variant_inventory(
     variant: &product_variant::Model,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
-    locale: &str,
+    _locale: &str,
 ) -> Result<()> {
     let available = check_variant_availability_for_public_channel(
         db,
@@ -830,13 +830,6 @@ pub(crate) fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-pub(crate) fn normalize_store_seller_scope(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
-}
-
 pub(crate) fn normalize_store_seller_id(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -846,14 +839,10 @@ pub(crate) fn normalize_store_seller_id(value: Option<&str>) -> Option<String> {
 
 pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
     let seller_id = normalize_store_seller_id(seller_id);
-    let seller_scope = seller_id
-        .as_deref()
-        .and_then(|value| normalize_store_seller_scope(Some(value)));
 
     json!({
         "seller": {
             "id": seller_id,
-            "scope": seller_scope,
         }
     })
 }
@@ -1019,7 +1008,7 @@ impl From<StoreCartShippingSelectionInput> for crate::dto::CartShippingSelection
         Self {
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
-            seller_scope: value.seller_scope,
+            seller_scope: None,
             selected_shipping_option_id: value.selected_shipping_option_id,
         }
     }

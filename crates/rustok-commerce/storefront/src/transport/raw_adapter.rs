@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use rustok_fulfillment_storefront::transport::{
-    build_shipping_selection_plan,
-    SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest, ShippingSelectionError,
+    build_shipping_selection_updates,
+    SelectShippingOptionRequest as FulfillmentSelectShippingOptionRequest,
 };
 use rustok_order_storefront::transport::{
     CheckoutCompletionCommandMetadata, CompleteCheckoutRequest,
@@ -507,7 +507,7 @@ fn map_graphql_delivery_group(
     StorefrontCheckoutDeliveryGroup {
         shipping_profile_slug: value.shipping_profile_slug,
         seller_id: value.seller_id,
-        seller_scope: value.seller_scope,
+        seller_scope: None,
         line_item_count: value.line_item_ids.len() as u64,
         selected_shipping_option_id: value.selected_shipping_option_id,
         available_shipping_options: value
@@ -709,7 +709,7 @@ fn map_native_delivery_group(
     StorefrontCheckoutDeliveryGroup {
         shipping_profile_slug: value.shipping_profile_slug,
         seller_id: value.seller_id,
-        seller_scope: value.seller_scope,
+        seller_scope: None,
         line_item_count: value.line_item_ids.len() as u64,
         selected_shipping_option_id: value
             .selected_shipping_option_id
@@ -831,37 +831,18 @@ fn map_native_checkout_completion(
     }
 }
 
-fn shipping_selection_error_message(error: ShippingSelectionError) -> String {
-    match error {
-        ShippingSelectionError::MissingDeliveryGroup {
-            shipping_profile_slug,
-            seller_id,
-            seller_scope,
-        } => format!(
-            "delivery group `{shipping_profile_slug}`/{:?}/{:?} is not present in the checkout cart",
-            seller_id, seller_scope
-        ),
-        ShippingSelectionError::UnavailableShippingOption {
-            shipping_profile_slug,
-            shipping_option_id,
-        } => format!(
-            "shipping option {shipping_option_id} is not available for shipping profile {shipping_profile_slug}"
-        ),
-    }
-}
-
 #[allow(dead_code)]
 fn build_graphql_shipping_selections(
     request: &FulfillmentSelectShippingOptionRequest,
 ) -> Result<Vec<StorefrontShippingSelectionInput>, ApiError> {
-    build_shipping_selection_plan(request)
-        .map_err(|err| ApiError::Validation(shipping_selection_error_message(err)))?
+    build_shipping_selection_updates(request)
+        .map_err(|err| ApiError::Validation(err.message().to_string()))?
         .into_iter()
         .map(|selection| {
             Ok(StorefrontShippingSelectionInput {
                 shipping_profile_slug: selection.shipping_profile_slug,
                 seller_id: selection.seller_id,
-                seller_scope: selection.seller_scope,
+                seller_scope: None,
                 selected_shipping_option_id: parse_optional_uuid(
                     selection.selected_shipping_option_id,
                     "selected_shipping_option_id",
@@ -875,8 +856,8 @@ fn build_graphql_shipping_selections(
 fn build_native_shipping_selections(
     request: &FulfillmentSelectShippingOptionRequest,
 ) -> Result<Vec<rustok_cart::dto::CartShippingSelectionInput>, ServerFnError> {
-    build_shipping_selection_plan(request)
-        .map_err(|err| ServerFnError::new(shipping_selection_error_message(err)))?
+    build_shipping_selection_updates(request)
+        .map_err(|err| ServerFnError::new(err.message().to_string()))?
         .into_iter()
         .map(|selection| {
             let selected_shipping_option_id = parse_optional_uuid(
@@ -887,7 +868,7 @@ fn build_native_shipping_selections(
             Ok(rustok_cart::dto::CartShippingSelectionInput {
                 shipping_profile_slug: selection.shipping_profile_slug,
                 seller_id: selection.seller_id,
-                seller_scope: selection.seller_scope,
+                seller_scope: None,
                 selected_shipping_option_id,
             })
         })

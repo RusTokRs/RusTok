@@ -11,14 +11,14 @@
 - Preserve the GraphQL surface while the Medusa-style REST transport expands.
 - Expose the Medusa-style REST transport slice under `/store/*` and `/admin/*`.
 - Resolve storefront cart line items from server-owned catalog/pricing data using `variant_id + quantity`, instead of trusting client-provided title and price.
-- Orchestrate submodules of the ecommerce family through the compatibility layer.
+- Orchestrate submodules of the ecommerce family through owner-crate services and typed ports, without masking owner APIs behind umbrella aliases.
 - Own the checkout orchestration flow across cart, payment, order, and fulfillment submodules.
 - Own store-context resolution across region, currency, and tenant locale policy.
 - Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
 - Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, with typed product/variant bindings, typed line-item snapshots, and metadata normalization kept only as a backward-compatibility layer.
 - Expose first-class `shipping_profile_slug` on product and variant create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts.
 - Expose deliverability-aware cart and checkout contracts with `delivery_groups[]`, typed `shipping_selections[]`, `fulfillments[]`, and typed `fulfillment.items[]`, while keeping the old singular shipping/fulfillment fields only as single-group compatibility shims.
-- Treat nullable `seller_id` as the canonical marketplace identity key across product, cart, order, checkout, and fulfillment contracts, while keeping `seller_scope` only as a transitional compatibility field for legacy snapshots.
+- Treat nullable `seller_id` as the canonical marketplace identity key across product, cart, order, checkout, and fulfillment contracts; `seller_scope` is not used as a runtime grouping or selection fallback.
 - Expose admin/manual post-order fulfillment creation over REST and GraphQL with typed `items[]`, seller-aware delivery-group consistency checks, and remaining-quantity validation against order line items.
 - Expose partial item-level `ship` / `deliver` adjustments over admin REST and GraphQL, with per-item shipped/delivered counters and a language-agnostic metadata-based audit trail.
 - Expose explicit admin `reopen` / `reship` fulfillment recovery operations over REST and GraphQL, so post-order delivery corrections do not rely on implicit status rewrites.
@@ -28,9 +28,8 @@
 - Resolve the effective shipping profile as `variant -> product -> default`, persist it into cart/order line-item snapshots, and use those snapshots instead of live product metadata for checkout deliverability decisions.
 - Expose admin shipping-option management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `FulfillmentService`, so delivery compatibility and lifecycle are configurable without dropping to direct service calls.
 - Expose admin shipping-profile management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `ShippingProfileService`.
-- Re-export the shared DTO/entity/error surface from `rustok-commerce-foundation`.
-- Re-export `CartService`, `CustomerService`, `CatalogService`, `PricingService`, `InventoryService`, `OrderService`, `PaymentService`, `FulfillmentService`, and `CheckoutService` from the split modules and orchestration layer.
-- Re-export `RegionService` and `StoreContextService` from the region submodule and umbrella policy layer.
+- Expose only commerce-owned checkout/context/shipping-profile DTOs and shipping-profile entities; owner DTO/entity/service contracts are imported directly from `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment`.
+- Expose commerce-owned orchestration services such as `CheckoutService`, `StoreContextService`, `ShippingProfileService`, `PaymentOrchestrationService`, and `PostOrderOrchestrationService`.
 - Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Let the module-owned Leptos admin UI package keep the typed shipping-profile registry after product CRUD moved into `rustok-product/admin`, shipping-option UI moved into `rustok-fulfillment/admin`, order operations UI moved into `rustok-order/admin`, inventory visibility moved into `rustok-inventory/admin`, and pricing visibility moved into `rustok-pricing/admin`.
@@ -74,23 +73,16 @@
 ## Entry points
 
 - `CommerceModule`
-- `CartService`
-- `CustomerService`
-- `CatalogService`
-- `PricingService`
-- `InventoryService`
-- `RegionService`
-- `OrderService`
-- `PaymentService`
-- `FulfillmentService`
 - `ShippingProfileService`
 - `CheckoutService`
 - `StoreContextService`
+- `PaymentOrchestrationService`
+- `PostOrderOrchestrationService`
 - `graphql::CommerceQuery`
 - `graphql::CommerceMutation`
 - `controllers::routes`
 - `admin::CommerceAdmin` (publishable Leptos package)
 - `storefront::CommerceView` (publishable Leptos package)
-- commerce DTO and state-machine re-exports
+- commerce-owned `dto` and `entities` modules; owner DTO/entity/service contracts are imported from owner crates directly
 
 See also `docs/README.md`.

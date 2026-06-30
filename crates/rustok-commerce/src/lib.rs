@@ -33,7 +33,6 @@ extern crate self as rustok_commerce;
 mod state_machine_proptest;
 
 pub use error::{CommerceError, CommerceResult};
-pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{
     ApplyOrderChangeResult, CheckoutError, CheckoutResult, CheckoutService,
     CreateReturnDecisionInput, ExchangeDifferenceRefundInput, PaymentOrchestrationError,
@@ -43,9 +42,6 @@ pub use services::{
     ShippingProfileService, StoreContextError, StoreContextResult, StoreContextService,
 };
 pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
-pub use state_machine::{
-    Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,
-};
 
 pub struct CommerceModule;
 

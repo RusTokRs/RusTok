@@ -26,6 +26,7 @@ use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
     CreateFulfillmentInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreateOrderTaxLineInput, CreatePaymentCollectionInput, ResolveStoreContextInput,
+    UpdateCartContextInput,
 };
 use crate::storefront_channel::{
     is_metadata_visible_for_public_channel, normalize_public_channel_slug,
@@ -33,7 +34,7 @@ use crate::storefront_channel::{
 use crate::storefront_shipping::{
     is_shipping_option_compatible_with_profiles, load_current_shipping_profile_slug_for_line_item,
 };
-use crate::{StoreContextService, UpdateCartContextInput};
+use crate::StoreContextService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_product::entities::{product, product_variant};
@@ -808,7 +809,6 @@ impl CheckoutService {
                     "delivery_group": {
                         "shipping_profile_slug": delivery_group.shipping_profile_slug,
                         "seller_id": delivery_group.seller_id,
-                        "seller_scope": delivery_group.seller_scope,
                         "line_item_ids": delivery_group.line_item_ids,
                     }
                 }),
@@ -1039,7 +1039,6 @@ fn fulfillment_items_for_delivery_group(
                 "source_cart_line_item_id": cart_line_item_id,
                 "shipping_profile_slug": delivery_group.shipping_profile_slug,
                 "seller_id": delivery_group.seller_id,
-                "seller_scope": delivery_group.seller_scope,
             }),
         });
     }

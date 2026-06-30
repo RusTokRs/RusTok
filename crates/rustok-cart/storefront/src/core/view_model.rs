@@ -120,7 +120,7 @@ pub fn cart_delivery_group_view_model(
 ) -> CartDeliveryGroupViewModel {
     CartDeliveryGroupViewModel {
         shipping_profile_slug: group.shipping_profile_slug,
-        seller_identity: optional_identity(group.seller_id, group.seller_scope),
+        seller_identity: optional_identity(group.seller_id, None),
         line_item_count: group.line_item_count.to_string(),
         selected_shipping_option: optional_display(
             group.selected_shipping_option_id,
@@ -143,7 +143,7 @@ pub fn cart_line_item_view_model(
         unit_price: money_value(&item.currency_code, &item.unit_price),
         total_price: money_value(&item.currency_code, &item.total_price),
         shipping_profile_slug: item.shipping_profile_slug,
-        seller_identity: optional_identity(item.seller_id, item.seller_scope)
+        seller_identity: optional_identity(item.seller_id, None)
             .unwrap_or_else(|| fallbacks.empty.clone()),
     }
 }
@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn line_item_view_model_prefers_seller_id_then_scope() {
+    fn line_item_view_model_ignores_seller_scope() {
         let fallbacks = CartDisplayFallbacks::new("not set".to_string(), "guest".to_string());
         let item = StorefrontCartLineItem {
             id: "line-1".to_string(),
@@ -203,7 +203,7 @@ mod tests {
         let view_model = cart_line_item_view_model(item, &fallbacks);
 
         assert_eq!(view_model.sku, "not set");
-        assert_eq!(view_model.seller_identity, "marketplace");
+        assert_eq!(view_model.seller_identity, "not set");
         assert_eq!(view_model.quantity_label, "2");
         assert_eq!(view_model.unit_price, "USD 5");
         assert_eq!(view_model.total_price, "USD 10");

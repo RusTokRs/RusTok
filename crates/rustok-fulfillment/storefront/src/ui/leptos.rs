@@ -88,7 +88,7 @@ pub fn FulfillmentShippingSelectionPanel(
             <div class="mt-5 grid gap-4">
                 <For
                     each=move || delivery_groups.clone()
-                    key=|group| format!("{}::{:?}::{:?}", group.shipping_profile_slug, group.seller_id, group.seller_scope)
+                    key=|group| format!("{}::{:?}", group.shipping_profile_slug, group.seller_id)
                     children=move |group| {
                         view! {
                             <DeliveryGroupCard

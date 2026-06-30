@@ -3,12 +3,12 @@
 // pricing, and publishing workflows.
 
 use rust_decimal::Decimal;
-use rustok_commerce::entities;
 use rustok_commerce::CommerceError;
 use rustok_core::field_schema::FieldType;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
+use rustok_product::entities;
 use rustok_product::entities::product::ProductStatus;
 use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};

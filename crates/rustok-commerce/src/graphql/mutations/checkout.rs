@@ -139,7 +139,7 @@ impl CommerceCheckoutMutation {
                         .map(|item| crate::dto::CartShippingSelectionInput {
                             shipping_profile_slug: item.shipping_profile_slug.clone(),
                             seller_id: item.seller_id.clone(),
-                            seller_scope: item.seller_scope.clone(),
+                            seller_scope: None,
                             selected_shipping_option_id: item.selected_shipping_option_id,
                         })
                         .collect::<Vec<_>>()
@@ -223,7 +223,7 @@ impl CommerceCheckoutMutation {
                         .map(|item| crate::dto::CartShippingSelectionInput {
                             shipping_profile_slug: item.shipping_profile_slug,
                             seller_id: item.seller_id,
-                            seller_scope: item.seller_scope,
+                            seller_scope: None,
                             selected_shipping_option_id: item.selected_shipping_option_id,
                         })
                         .collect()

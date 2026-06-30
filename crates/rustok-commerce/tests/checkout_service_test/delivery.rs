@@ -741,7 +741,6 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
             (
                 group.shipping_profile_slug.clone(),
                 group.seller_id.clone(),
-                group.seller_scope.clone(),
                 group.selected_shipping_option_id,
             )
         })
@@ -749,13 +748,11 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
     assert!(delivery_groups.contains(&(
         String::from("default"),
         Some(seller_a_id.to_string()),
-        Some(String::from("seller-a")),
         Some(seller_a_option.id),
     )));
     assert!(delivery_groups.contains(&(
         String::from("default"),
         Some(seller_b_id.to_string()),
-        Some(String::from("seller-b")),
         Some(seller_b_option.id),
     )));
     let fulfillment_groups = completed
@@ -771,10 +768,6 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
                     .as_str()
                     .expect("delivery group seller id should be present")
                     .to_string(),
-                item.metadata["delivery_group"]["seller_scope"]
-                    .as_str()
-                    .expect("delivery group seller scope should be present")
-                    .to_string(),
                 item.shipping_option_id,
                 item.items.len(),
             )
@@ -783,17 +776,20 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
     assert!(fulfillment_groups.contains(&(
         String::from("default"),
         seller_a_id.to_string(),
-        String::from("seller-a"),
         Some(seller_a_option.id),
         1,
     )));
     assert!(fulfillment_groups.contains(&(
         String::from("default"),
         seller_b_id.to_string(),
-        String::from("seller-b"),
         Some(seller_b_option.id),
         1,
     )));
+    assert!(completed.fulfillments.iter().all(|item| item
+        .metadata
+        .get("delivery_group")
+        .and_then(|delivery_group| delivery_group.get("seller_scope"))
+        .is_none()));
     assert!(completed.fulfillments.iter().all(|item| {
         item.metadata
             .get("delivery_group")

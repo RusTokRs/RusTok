@@ -3,7 +3,6 @@ use rust_decimal::Decimal;
 use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
 use rustok_cart::services::CartService;
 use rustok_commerce::dto::ResolveStoreContextInput;
-use rustok_commerce::entities;
 use rustok_commerce::services::StoreContextService;
 use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
 use rustok_customer::services::CustomerService;
@@ -12,6 +11,7 @@ use rustok_fulfillment::dto::{
     ShipFulfillmentInput, ShippingOptionTranslationInput,
 };
 use rustok_fulfillment::services::FulfillmentService;
+use rustok_inventory::entities;
 use rustok_inventory::InventoryService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::services::OrderService;

@@ -277,10 +277,9 @@ async fn admin_fulfillment_transport_creates_manual_fulfillment_with_typed_items
         created["metadata"]["delivery_group"]["shipping_profile_slug"],
         json!("default")
     );
-    assert_eq!(
-        created["metadata"]["delivery_group"]["seller_scope"],
-        json!("merchant-alpha")
-    );
+    assert!(created["metadata"]["delivery_group"]
+        .get("seller_scope")
+        .is_none());
     assert_eq!(created["metadata"]["post_order"]["manual"], json!(true));
 }
 

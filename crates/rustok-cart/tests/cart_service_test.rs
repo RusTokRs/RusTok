@@ -1465,10 +1465,7 @@ async fn seller_aware_delivery_groups_split_same_shipping_profile() {
                     .seller_id
                     .clone()
                     .expect("seller id should be present"),
-                group
-                    .seller_scope
-                    .clone()
-                    .expect("seller scope should be present"),
+                group.seller_scope.clone(),
                 group.selected_shipping_option_id,
             )
         })
@@ -1476,19 +1473,19 @@ async fn seller_aware_delivery_groups_split_same_shipping_profile() {
     assert!(delivery_groups.contains(&(
         String::from("default"),
         seller_a_id.to_string(),
-        String::from("seller-a"),
+        None,
         Some(seller_a_option_id),
     )));
     assert!(delivery_groups.contains(&(
         String::from("default"),
         seller_b_id.to_string(),
-        String::from("seller-b"),
+        None,
         Some(seller_b_option_id),
     )));
 }
 
 #[tokio::test]
-async fn legacy_seller_scope_still_splits_delivery_groups_without_seller_id() {
+async fn seller_scope_without_seller_id_does_not_split_delivery_groups() {
     let service = setup().await;
     let tenant_id = support::TEST_TENANT_ID;
 
@@ -1503,7 +1500,7 @@ async fn legacy_seller_scope_still_splits_delivery_groups_without_seller_id() {
             AddCartLineItemInput {
                 metadata: serde_json::json!({
                     "seller": {
-                        "scope": "legacy-seller-a"
+                        "scope": "seller-a"
                     }
                 }),
                 ..line_item_input()
@@ -1519,7 +1516,7 @@ async fn legacy_seller_scope_still_splits_delivery_groups_without_seller_id() {
                 sku: Some("SKU-CART-LEGACY-2".to_string()),
                 metadata: serde_json::json!({
                     "seller": {
-                        "scope": "legacy-seller-b"
+                        "scope": "seller-b"
                     }
                 }),
                 ..line_item_input()
@@ -1528,7 +1525,7 @@ async fn legacy_seller_scope_still_splits_delivery_groups_without_seller_id() {
         .await
         .unwrap();
 
-    assert_eq!(cart.delivery_groups.len(), 2);
+    assert_eq!(cart.delivery_groups.len(), 1);
     assert!(cart
         .delivery_groups
         .iter()
@@ -1536,9 +1533,5 @@ async fn legacy_seller_scope_still_splits_delivery_groups_without_seller_id() {
     assert!(cart
         .delivery_groups
         .iter()
-        .any(|group| { group.seller_scope.as_deref() == Some("legacy-seller-a") }));
-    assert!(cart
-        .delivery_groups
-        .iter()
-        .any(|group| { group.seller_scope.as_deref() == Some("legacy-seller-b") }));
+        .all(|group| group.seller_scope.is_none()));
 }

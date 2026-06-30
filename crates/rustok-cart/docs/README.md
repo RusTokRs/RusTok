@@ -30,7 +30,7 @@
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
 - transport и GraphQL по-прежнему публикуются через `rustok-commerce`, но storefront cart read-side, seller-aware delivery-group snapshot и безопасный line-item write-side уже вынесены в отдельный module-owned surface `rustok-cart/storefront`;
-- `seller_scope` в cart contract остаётся только transitional compatibility field для legacy snapshot'ов без `seller_id`; canonical grouping и shipping selection теперь опираются на `seller_id`.
+- cart delivery grouping and shipping selection use only canonical `seller_id` plus shipping profile; `seller_scope` is not read as a grouping or selection fallback.
 - `cart_adjustments` являются source of truth для скидочного snapshot в cart: `subtotal_amount`, `adjustment_total`
   и net `total_amount` не зависят от default locale или localized promotion label.
 - выбранные shipping options теперь materialize'ятся в first-class `shipping_total`: persisted cart total

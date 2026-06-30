@@ -53,6 +53,26 @@ impl ShippingSelectionTransportError {
     }
 }
 
+impl ShippingSelectionError {
+    pub fn message(&self) -> String {
+        match self {
+            Self::MissingDeliveryGroup {
+                shipping_profile_slug,
+                seller_id,
+                seller_scope,
+            } => format!(
+                "delivery group `{shipping_profile_slug}`/{seller_id:?}/{seller_scope:?} is not present in the checkout cart"
+            ),
+            Self::UnavailableShippingOption {
+                shipping_profile_slug,
+                shipping_option_id,
+            } => format!(
+                "shipping option {shipping_option_id} is not available for shipping profile {shipping_profile_slug}"
+            ),
+        }
+    }
+}
+
 pub async fn select_shipping_option_with_fallback<N, NFut, G, GFut>(
     request: SelectShippingOptionRequest,
     native: N,
@@ -113,7 +133,7 @@ pub fn build_shipping_selection_plan(
             && if let Some(seller_id) = request.seller_id.as_deref() {
                 group.seller_id.as_deref() == Some(seller_id)
             } else {
-                group.seller_id.is_none() && group.seller_scope == request.seller_scope
+                group.seller_id.is_none()
             };
         let selected_shipping_option_id = if group_matches {
             matched_target = true;
@@ -137,7 +157,7 @@ pub fn build_shipping_selection_plan(
         selections.push(ShippingSelectionUpdate {
             shipping_profile_slug: group.shipping_profile_slug.clone(),
             seller_id: group.seller_id.clone(),
-            seller_scope: group.seller_scope.clone(),
+            seller_scope: None,
             selected_shipping_option_id,
         });
     }
@@ -146,11 +166,18 @@ pub fn build_shipping_selection_plan(
         return Err(ShippingSelectionError::MissingDeliveryGroup {
             shipping_profile_slug: request.shipping_profile_slug.clone(),
             seller_id: request.seller_id.clone(),
-            seller_scope: request.seller_scope.clone(),
+            seller_scope: None,
         });
     }
 
     Ok(selections)
+}
+
+pub fn build_shipping_selection_updates(
+    request: &SelectShippingOptionRequest,
+) -> Result<Vec<ShippingSelectionUpdate>, ShippingSelectionTransportError> {
+    build_shipping_selection_plan(request)
+        .map_err(|error| ShippingSelectionTransportError::Validation(error.message()))
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -259,6 +286,29 @@ mod tests {
         assert!(matches!(
             build_shipping_selection_plan(&request),
             Err(ShippingSelectionError::UnavailableShippingOption { .. })
+        ));
+    }
+
+    #[test]
+    fn selection_plan_does_not_match_by_seller_scope() {
+        let request = build_select_shipping_option_request(
+            "cart-1".into(),
+            vec![ShippingSelectionDeliveryGroup {
+                shipping_profile_slug: "default".into(),
+                seller_id: Some("seller-1".into()),
+                seller_scope: Some("scope-1".into()),
+                selected_shipping_option_id: Some("old".into()),
+                available_shipping_option_ids: vec!["ship-1".into()],
+            }],
+            "default".into(),
+            None,
+            Some("scope-1".into()),
+            Some("ship-1".into()),
+        );
+
+        assert!(matches!(
+            build_shipping_selection_plan(&request),
+            Err(ShippingSelectionError::MissingDeliveryGroup { .. })
         ));
     }
 }

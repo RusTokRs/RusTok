@@ -2235,10 +2235,9 @@ async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items
         fulfillment_metadata["delivery_group"]["seller_id"],
         Value::from("merchant-alpha-id")
     );
-    assert_eq!(
-        fulfillment_metadata["delivery_group"]["seller_scope"],
-        Value::from("merchant-alpha")
-    );
+    assert!(fulfillment_metadata["delivery_group"]
+        .get("seller_scope")
+        .is_none());
     assert!(fulfillment_metadata["delivery_group"]
         .get("seller_label")
         .is_none());

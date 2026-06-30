@@ -7,22 +7,22 @@
 ## Primary public types and functions
 
 - `pub struct CommerceModule`
-- `pub struct CatalogService`, `pub struct RegionService`, `pub struct StoreContextService`, `pub struct InventoryService`, `pub struct PricingService`
-- `pub struct CommerceQuery`, `pub struct CommerceMutation`
+- `pub struct StoreContextService`, `pub struct ShippingProfileService`, `pub struct CheckoutService`
+- `pub struct PaymentOrchestrationService`, `pub struct PostOrderOrchestrationService`
+- `pub struct graphql::CommerceQuery`, `pub struct graphql::CommerceMutation`
 - `pub fn controllers::routes() -> Routes`
-- `pub struct Order<S>` with states `Pending`, `Confirmed`, `Paid`, `Shipped`, `Delivered`, `Cancelled`
 - `pub enum CommerceError`, `pub type CommerceResult<T>`
 
 ## Split boundary
 
-- `dto`, `entities`, `error`, and search helpers are re-exported from `rustok-commerce-foundation`.
-- `CatalogService` is re-exported from `rustok-product`.
-- `RegionService` is re-exported from `rustok-region`.
-- `PricingService` is re-exported from `rustok-pricing`.
-- `InventoryService` is re-exported from `rustok-inventory`.
-- `StoreContextService` remains in `rustok-commerce` as the umbrella policy layer that resolves region/currency/tenant locale context.
-- `graphql`, `controllers`, and `state_machine` remain in `rustok-commerce` as the legacy compatibility
-  and transport/orchestration facade of the ecommerce family.
+- `rustok-commerce::dto` exposes only commerce-owned checkout/context/shipping-profile DTOs.
+- `rustok-commerce::entities` exposes only commerce-owned shipping-profile entities.
+- Owner service, DTO and entity contracts are imported directly from `rustok-product`, `rustok-region`,
+  `rustok-pricing`, `rustok-inventory`, `rustok-cart`, `rustok-customer`, `rustok-order`,
+  `rustok-payment` and `rustok-fulfillment`.
+- `StoreContextService` remains in `rustok-commerce` as the umbrella policy layer that resolves
+  region/currency/tenant locale context through owner ports.
+- `graphql`, `controllers`, and `state_machine` remain in `rustok-commerce` under explicit module paths.
 - `migrations()` exposes only umbrella-owned migrations that still remain in `rustok-commerce`.
   Product, pricing, and inventory migrations stay owned by their dedicated submodules.
 - `ProductResponse` now keeps backward-compatible flat fields and also returns translation groups for

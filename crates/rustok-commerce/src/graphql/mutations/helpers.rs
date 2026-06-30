@@ -837,7 +837,7 @@ pub(crate) async fn validate_selected_shipping_option(
                 vec![crate::dto::CartShippingSelectionInput {
                     shipping_profile_slug: group.shipping_profile_slug.clone(),
                     seller_id: group.seller_id.clone(),
-                    seller_scope: group.seller_scope.clone(),
+                    seller_scope: None,
                     selected_shipping_option_id: Some(selected_shipping_option_id),
                 }]
             })
@@ -894,7 +894,7 @@ pub(crate) fn current_shipping_selections(
         .map(|group| crate::dto::CartShippingSelectionInput {
             shipping_profile_slug: group.shipping_profile_slug.clone(),
             seller_id: group.seller_id.clone(),
-            seller_scope: group.seller_scope.clone(),
+            seller_scope: None,
             selected_shipping_option_id: group.selected_shipping_option_id,
         })
         .collect()
@@ -1257,13 +1257,6 @@ pub(crate) fn storefront_cart_pricing_snapshot(
     (base_unit_price, pricing_adjustment)
 }
 
-pub(crate) fn normalize_graphql_seller_scope(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
-}
-
 pub(crate) fn normalize_graphql_seller_id(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -1273,14 +1266,10 @@ pub(crate) fn normalize_graphql_seller_id(value: Option<&str>) -> Option<String>
 
 pub(crate) fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
     let seller_id = normalize_graphql_seller_id(seller_id);
-    let seller_scope = seller_id
-        .as_deref()
-        .and_then(|value| normalize_graphql_seller_scope(Some(value)));
 
     serde_json::json!({
         "seller": {
             "id": seller_id,
-            "scope": seller_scope,
         }
     })
 }
@@ -1317,7 +1306,7 @@ pub(crate) async fn validate_storefront_variant_inventory(
     variant: &product_variant::Model,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
-    locale: &str,
+    _locale: &str,
 ) -> Result<()> {
     let available = check_variant_availability_for_public_channel(
         db,

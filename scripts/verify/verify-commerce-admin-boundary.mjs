@@ -46,6 +46,7 @@ const files = {
   promotion: "crates/rustok-commerce/admin/src/transport/promotion.rs",
   orderChange: "crates/rustok-commerce/admin/src/transport/order_change.rs",
   rawAdapter: "crates/rustok-commerce/admin/src/transport/raw_adapter.rs",
+  commerceRoot: "crates/rustok-commerce/src/lib.rs",
   legacyApi: "crates/rustok-commerce/admin/src/api.rs",
   implementationPlan: "crates/rustok-commerce/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -68,6 +69,7 @@ const shippingProfile = readRepo(files.shippingProfile);
 const promotion = readRepo(files.promotion);
 const orderChange = readRepo(files.orderChange);
 const rawAdapter = readRepo(files.rawAdapter);
+const commerceRoot = readRepo(files.commerceRoot);
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 const packageJson = readRepo(files.packageJson);
@@ -98,9 +100,20 @@ assertContains(rawAdapter, "pub enum ApiError", `${files.rawAdapter}: raw adapte
 assertContains(rawAdapter, "GraphqlRequest", `${files.rawAdapter}: raw adapter must keep GraphQL request contract until split further`);
 assertContains(rawAdapter, "#[server", `${files.rawAdapter}: raw adapter must keep native server-function endpoints`);
 
+for (const marker of [
+  "pub use graphql::{CommerceMutation, CommerceQuery}",
+  "pub use state_machine::{",
+]) {
+  assertNotContains(commerceRoot, marker, `${files.commerceRoot}: root GraphQL/state-machine aliases must stay removed (${marker})`);
+}
+assertContains(commerceRoot, "pub mod graphql;", `${files.commerceRoot}: GraphQL module path must remain explicit`);
+assertContains(commerceRoot, "pub mod state_machine;", `${files.commerceRoot}: state-machine module path must remain explicit`);
+
 assertContains(implementationPlan, "verify-commerce-admin-boundary.mjs", `${files.implementationPlan}: local plan must mention commerce admin guardrail`);
 assertContains(implementationPlan, "admin/src/transport/raw_adapter.rs", `${files.implementationPlan}: local plan must document commerce admin raw adapter location`);
+assertContains(implementationPlan, "root GraphQL and state-machine aliases", `${files.implementationPlan}: local plan must document removed root GraphQL/state-machine aliases`);
 assertContains(registry, "verify-commerce-admin-boundary.mjs", `${files.registry}: central readiness board must mention commerce admin guardrail`);
+assertContains(registry, "root GraphQL/state-machine aliases", `${files.registry}: central registry must document removed root GraphQL/state-machine aliases`);
 assertContains(packageJson, "verify:commerce:admin-boundary", `${files.packageJson}: package scripts must expose commerce admin boundary verification`);
 assertContains(packageJson, "test:verify:commerce:admin-boundary", `${files.packageJson}: package scripts must expose commerce admin fixture tests`);
 assertContains(packageJson, "npm run verify:commerce:admin-boundary", `${files.packageJson}: aggregate FFA verification must include commerce admin guardrail`);

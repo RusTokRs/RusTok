@@ -121,13 +121,9 @@ impl FulfillmentOrchestrationService {
                         .or_else(|| seller_id_from_metadata(&line_item.metadata))
                         .as_deref(),
                 );
-                let seller_scope = normalize_seller_scope(
-                    seller_scope_from_metadata(&line_item.metadata).as_deref(),
-                );
                 Ok(DeliveryGroupKey {
                     shipping_profile_slug,
                     seller_id,
-                    seller_scope,
                 })
             })
             .collect::<FulfillmentOrchestrationResult<Vec<_>>>()?;
@@ -138,8 +134,6 @@ impl FulfillmentOrchestrationService {
         if requested_group.iter().any(|group| {
             group.shipping_profile_slug != canonical_group.shipping_profile_slug
                 || group.seller_id != canonical_group.seller_id
-                || (canonical_group.seller_id.is_none()
-                    && group.seller_scope != canonical_group.seller_scope)
         }) {
             return Err(FulfillmentOrchestrationError::Validation(
                 "manual fulfillment items must belong to a single seller-aware delivery group"
@@ -199,7 +193,6 @@ impl FulfillmentOrchestrationService {
                     serde_json::json!({
                         "shipping_profile_slug": canonical_group.shipping_profile_slug,
                         "seller_id": canonical_group.seller_id,
-                        "seller_scope": canonical_group.seller_scope,
                         "post_order": {
                             "manual": true
                         }
@@ -214,7 +207,6 @@ impl FulfillmentOrchestrationService {
                 "delivery_group": {
                     "shipping_profile_slug": canonical_group.shipping_profile_slug,
                     "seller_id": canonical_group.seller_id,
-                    "seller_scope": canonical_group.seller_scope,
                     "order_line_item_ids": items
                         .iter()
                         .map(|item| item.order_line_item_id)
@@ -247,7 +239,6 @@ impl FulfillmentOrchestrationService {
 struct DeliveryGroupKey {
     shipping_profile_slug: String,
     seller_id: Option<String>,
-    seller_scope: Option<String>,
 }
 
 fn validate_shipping_option_against_order(
@@ -288,12 +279,6 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-fn normalize_seller_scope(value: Option<&str>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty())
-}
-
 fn normalize_seller_id(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -312,19 +297,5 @@ fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
                 .get("seller_id")
                 .and_then(Value::as_str)
                 .and_then(|value| normalize_seller_id(Some(value)))
-        })
-}
-
-fn seller_scope_from_metadata(metadata: &Value) -> Option<String> {
-    metadata
-        .get("seller")
-        .and_then(|seller| seller.get("scope"))
-        .and_then(Value::as_str)
-        .and_then(|value| normalize_seller_scope(Some(value)))
-        .or_else(|| {
-            metadata
-                .get("seller_scope")
-                .and_then(Value::as_str)
-                .and_then(|value| normalize_seller_scope(Some(value)))
         })
 }

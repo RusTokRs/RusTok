@@ -30,7 +30,7 @@ pub fn build_select_shipping_option_request(
     SelectShippingOptionRequest {
         shipping_profile_slug: normalize_required(group.shipping_profile_slug.clone()),
         seller_id: normalize_optional(group.seller_id.clone()),
-        seller_scope: normalize_optional(group.seller_scope.clone()),
+        seller_scope: None,
         shipping_option_id: normalize_optional(shipping_option_id),
     }
 }

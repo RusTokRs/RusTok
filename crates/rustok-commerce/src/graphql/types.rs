@@ -1840,7 +1840,7 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             variant_id: value.variant_id,
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
-            seller_scope: value.seller_scope,
+            seller_scope: None,
             sku: value.sku,
             title: value.title,
             quantity: value.quantity,
@@ -1895,7 +1895,7 @@ impl From<dto::CartDeliveryGroupResponse> for GqlCartDeliveryGroup {
         Self {
             shipping_profile_slug: value.shipping_profile_slug,
             seller_id: value.seller_id,
-            seller_scope: value.seller_scope,
+            seller_scope: None,
             line_item_ids: value.line_item_ids,
             selected_shipping_option_id: value.selected_shipping_option_id,
             available_shipping_options: value

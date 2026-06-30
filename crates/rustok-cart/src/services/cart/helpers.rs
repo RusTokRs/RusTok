@@ -77,13 +77,6 @@ pub fn normalize_shipping_profile_slug(value: Option<&str>) -> String {
         .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string())
 }
 
-pub fn normalize_seller_scope(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
-}
-
 pub fn normalize_seller_id(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -163,30 +156,17 @@ pub fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
         })
 }
 
-pub fn seller_scope_from_metadata(metadata: &Value) -> Option<String> {
-    metadata
-        .get("seller")
-        .and_then(|seller| seller.get("scope"))
-        .and_then(Value::as_str)
-        .and_then(|value| normalize_seller_scope(Some(value)))
-        .or_else(|| {
-            metadata
-                .get("seller_scope")
-                .and_then(Value::as_str)
-                .and_then(|value| normalize_seller_scope(Some(value)))
-        })
-}
-
 pub fn delivery_group_snapshot_for_line_item(
     item: &entities::cart_line_item::Model,
 ) -> DeliveryGroupSnapshot {
+    let seller_id = seller_id_from_metadata(&item.metadata);
     DeliveryGroupSnapshot {
         key: DeliveryGroupKey {
             shipping_profile_slug: normalize_shipping_profile_slug(Some(
                 item.shipping_profile_slug.as_str(),
             )),
-            seller_id: seller_id_from_metadata(&item.metadata),
-            seller_scope: seller_scope_from_metadata(&item.metadata),
+            seller_id,
+            seller_scope: None,
         },
     }
 }
@@ -224,7 +204,7 @@ pub fn matching_delivery_group_keys(
     available_groups: &BTreeSet<DeliveryGroupSnapshot>,
     shipping_profile_slug: &str,
     seller_id: Option<&str>,
-    seller_scope: Option<&str>,
+    _seller_scope: Option<&str>,
 ) -> Vec<DeliveryGroupKey> {
     available_groups
         .iter()
@@ -237,13 +217,7 @@ pub fn matching_delivery_group_keys(
                 return group.key.seller_id.as_deref() == Some(seller_id);
             }
 
-            match seller_scope {
-                Some(seller_scope) => {
-                    group.key.seller_id.is_none()
-                        && group.key.seller_scope.as_deref() == Some(seller_scope)
-                }
-                None => group.key.seller_id.is_none(),
-            }
+            group.key.seller_id.is_none()
         })
         .map(|group| group.key.clone())
         .collect()
@@ -257,35 +231,16 @@ where
     I: IntoIterator<Item = entities::cart_shipping_selection::Model>,
 {
     let mut desired = BTreeMap::new();
-    let mut legacy_records = Vec::new();
 
     for record in records {
         let seller_id = normalize_seller_id(record.seller_id.as_deref());
-        let seller_scope = normalize_seller_scope(record.seller_scope.as_deref());
-        if seller_id.is_some() || seller_scope.is_some() {
-            for key in matching_delivery_group_keys(
-                available_groups,
-                record.shipping_profile_slug.as_str(),
-                seller_id.as_deref(),
-                seller_scope.as_deref(),
-            ) {
-                desired.insert(key, record.selected_shipping_option_id);
-            }
-        } else {
-            legacy_records.push(record);
-        }
-    }
-
-    for record in legacy_records {
         for key in matching_delivery_group_keys(
             available_groups,
             record.shipping_profile_slug.as_str(),
-            None,
+            seller_id.as_deref(),
             None,
         ) {
-            desired
-                .entry(key)
-                .or_insert(record.selected_shipping_option_id);
+            desired.insert(key, record.selected_shipping_option_id);
         }
     }
 
@@ -686,7 +641,6 @@ where
             .into_iter()
             .map(|item| {
                 let seller_id = seller_id_from_metadata(&item.metadata);
-                let seller_scope = seller_scope_from_metadata(&item.metadata);
                 CartLineItemResponse {
                     id: item.id,
                     cart_id: item.cart_id,
@@ -694,7 +648,7 @@ where
                     variant_id: item.variant_id,
                     shipping_profile_slug: item.shipping_profile_slug,
                     seller_id,
-                    seller_scope,
+                    seller_scope: None,
                     sku: item.sku,
                     title: title_map.get(&item.id).cloned().unwrap_or_default(),
                     quantity: item.quantity,
@@ -967,12 +921,11 @@ where
             let normalized =
                 normalize_shipping_profile_slug(Some(selection.shipping_profile_slug.as_str()));
             let normalized_seller_id = normalize_seller_id(selection.seller_id.as_deref());
-            let normalized_seller_scope = normalize_seller_scope(selection.seller_scope.as_deref());
             let matching_keys = matching_delivery_group_keys(
                 &available_group_snapshots,
                 normalized.as_str(),
                 normalized_seller_id.as_deref(),
-                normalized_seller_scope.as_deref(),
+                None,
             );
             for key in matching_keys {
                 desired.insert(key, selection.selected_shipping_option_id);
@@ -1016,7 +969,7 @@ where
                 DeliveryGroupKey {
                     shipping_profile_slug: selection.shipping_profile_slug.clone(),
                     seller_id: normalize_seller_id(selection.seller_id.as_deref()),
-                    seller_scope: normalize_seller_scope(selection.seller_scope.as_deref()),
+                    seller_scope: None,
                 },
                 selection,
             )

@@ -132,6 +132,9 @@ assertNotContains(nativeAdapter, "crate::api", `${nativePath}: native adapter mu
 assertNotContains(graphqlAdapter, "crate::api", `${graphqlPath}: GraphQL adapter must not delegate to legacy api module`);
 assertContains(rawAdapter, "#[server", `${rawPath}: raw adapter must keep native server-function endpoints`);
 assertContains(rawAdapter, "GraphqlRequest", `${rawPath}: raw adapter must keep GraphQL fallback request contract until split further`);
+assertContains(rawAdapter, "build_shipping_selection_updates", `${rawPath}: commerce raw adapter must consume fulfillment-owned shipping selection materialization`);
+assertNotContains(rawAdapter, "build_shipping_selection_plan", `${rawPath}: commerce raw adapter must not own shipping selection planning`);
+assertNotContains(rawAdapter, "fn shipping_selection_error_message", `${rawPath}: commerce raw adapter must not own fulfillment selection error text`);
 
 for (const [ownerTransport, ownerPath, fallbackFn, errorType] of [
   [paymentTransport, paymentTransportPath, "create_payment_collection_with_fallback", "PaymentCollectionTransportError"],
@@ -143,6 +146,7 @@ for (const [ownerTransport, ownerPath, fallbackFn, errorType] of [
   assertContains(ownerTransport, "Err(error) if error.should_fallback_to_graphql()", `${ownerPath}: owner fallback facade must be MissingServer-gated`);
   assertContains(ownerTransport, "Err(error) => Err(error)", `${ownerPath}: owner fallback facade must preserve validation/domain errors`);
 }
+assertContains(fulfillmentTransport, "build_shipping_selection_updates", `${fulfillmentTransportPath}: fulfillment transport must own shipping selection materialization for compatibility cutover`);
 
 for (const [operation, requestType] of [
   ["create_storefront_payment_collection", "PaymentCollectionCommandRequest"],
