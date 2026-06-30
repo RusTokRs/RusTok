@@ -25,14 +25,20 @@ pub struct ServerAuthAdminMutationProvider {
 }
 
 fn parse_user_status(value: &str) -> Result<rustok_core::UserStatus, AuthAdminMutationError> {
-    match value {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
         "active" => Ok(rustok_core::UserStatus::Active),
         "inactive" => Ok(rustok_core::UserStatus::Inactive),
         "banned" => Ok(rustok_core::UserStatus::Banned),
-        other => Err(AuthAdminMutationError::Validation(format!(
-            "unsupported user status: {other}"
+        _ => Err(AuthAdminMutationError::Validation(format!(
+            "unsupported user status: {value}"
         ))),
     }
+}
+
+fn parse_user_role(value: &str) -> Result<rustok_core::UserRole, AuthAdminMutationError> {
+    rustok_core::UserRole::from_str(&value.trim().to_ascii_lowercase())
+        .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))
 }
 
 fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
@@ -44,9 +50,7 @@ fn map_lifecycle_error(error: AuthLifecycleError) -> AuthAdminMutationError {
     }
 }
 
-fn map_custom_field_error(
-    error: rustok_core::field_schema::FlexError,
-) -> AuthAdminMutationError {
+fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> AuthAdminMutationError {
     match error {
         rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
             AuthAdminMutationError::CustomFieldsValidation(
@@ -70,12 +74,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             "users:create or users:manage required",
         )
         .await?;
-        let role = command
-            .role
-            .as_deref()
-            .unwrap_or("customer")
-            .parse::<rustok_core::UserRole>()
-            .map_err(|error| AuthAdminMutationError::Validation(error.to_string()))?;
+        let role = parse_user_role(command.role.as_deref().unwrap_or("customer"))?;
         let status = command
             .status
             .as_deref()
@@ -94,8 +93,13 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         )
         .await
         .map_err(map_custom_field_error)?;
-        let mut user = AuthLifecycleService::create_user_db(
-            &self.db,
+        let tx = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
+        let mut user = AuthLifecycleService::create_user_in_tx(
+            &tx,
             context.tenant_id,
             &command.email,
             &command.password,
@@ -110,7 +114,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             let mut active: users::ActiveModel = user.into();
             active.metadata = Set(metadata);
             user = active
-                .update(&self.db)
+                .update(&tx)
                 .await
                 .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         }
@@ -119,7 +123,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             prepared.localized_values.as_ref(),
         ) {
             FlexAttachedValuesService::persist_localized_values(
-                &self.db,
+                &tx,
                 context.tenant_id,
                 "user",
                 user.id,
@@ -129,6 +133,9 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_custom_field_error)?;
         }
+        tx.commit()
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         self.user_record(user).await
     }
 
@@ -197,12 +204,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if let Some(metadata) = prepared.metadata {
             active.metadata = Set(metadata);
         }
-        let requested_role = command
-            .role
-            .as_deref()
-            .map(rustok_core::UserRole::from_str)
-            .transpose()
-            .map_err(map_custom_field_error)?;
+        let requested_role = command.role.as_deref().map(parse_user_role).transpose()?;
         let tx = self
             .db
             .begin()
@@ -274,6 +276,35 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{parse_user_role, parse_user_status};
+
+    #[test]
+    fn parses_admin_user_enums_case_insensitively() {
+        assert_eq!(
+            parse_user_role("MANAGER").expect("uppercase role"),
+            rustok_core::UserRole::Manager
+        );
+        assert_eq!(
+            parse_user_status("ACTIVE").expect("uppercase status"),
+            rustok_core::UserStatus::Active
+        );
+    }
+
+    #[test]
+    fn trims_admin_user_enums_at_server_boundary() {
+        assert_eq!(
+            parse_user_role(" admin ").expect("trimmed role"),
+            rustok_core::UserRole::Admin
+        );
+        assert_eq!(
+            parse_user_status(" banned ").expect("trimmed status"),
+            rustok_core::UserStatus::Banned
+        );
+    }
+}
+
 impl ServerAuthAdminMutationProvider {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
@@ -307,8 +338,7 @@ impl ServerAuthAdminMutationProvider {
         let role = RbacService::get_user_role(&self.db, &user.tenant_id, &user.id)
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
-        let tenant_name = tenants::Entity::find_by_id(user.tenant_id)
-            .one(&self.db)
+        let tenant_name = tenants::Entity::find_by_id(&self.db, user.tenant_id)
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?
             .map(|tenant| tenant.name);

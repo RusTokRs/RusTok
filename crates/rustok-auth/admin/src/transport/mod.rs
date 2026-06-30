@@ -54,23 +54,11 @@ pub fn get_graphql_url() -> String {
     }
 }
 
-pub fn get_stored_locale() -> Option<String> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        use gloo_storage::Storage;
-        gloo_storage::LocalStorage::get::<String>("rustok-admin-locale").ok()
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        None
-    }
-}
-
 fn build_request_context(token: Option<String>, tenant_slug: Option<String>) -> ApiRequestContext {
     ApiRequestContext {
         token,
         tenant_slug,
-        locale: get_stored_locale(),
+        locale: None,
     }
 }
 

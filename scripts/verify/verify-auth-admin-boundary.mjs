@@ -83,7 +83,7 @@ const plan = readRepo(planPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
 
-for (const marker of ["user_list_page", "user_list_query_params", "user_list_pagination", "user_list_previous_page", "UserListPagination", "prepare_create_user_input", "prepare_update_user_input", "CreateUserInputError", "graphql_user_view", "GraphqlUserViewModel", "UserEditFormValues", "oauth_app_type_defaults", "prepare_create_oauth_app_input", "prepare_update_oauth_app_input", "format_oauth_app_timestamp", "oauth_app_list_item_view", "OAuthAppListItemViewModel", "prepare_login_request", "prepare_register_request", "prepare_password_reset_request", "prepare_change_password_request", "ChangePasswordInputError", "prepare_profile_name", "classify_auth_transport_error", "AuthTransportErrorKind"]) {
+for (const marker of ["user_list_page", "user_list_query_params", "user_list_pagination", "user_list_previous_page", "UserListPagination", "prepare_create_user_input", "prepare_update_user_input", "CreateUserInputError", "graphql_user_view", "GraphqlUserViewModel", "UserEditFormValues", "oauth_app_type_defaults", "prepare_create_oauth_app_input", "prepare_update_oauth_app_input", "format_oauth_app_timestamp", "oauth_app_list_item_view", "OAuthAppListItemViewModel", "prepare_login_request", "prepare_register_request", "prepare_password_reset_request", "prepare_change_password_request", "ChangePasswordInputError", "prepare_profile_name", "initial_profile_preferred_locale", "classify_auth_transport_error", "AuthTransportErrorKind"]) {
   assertContains(core, marker, `${corePath}: missing core-owned helper ${marker}`);
 }
 for (const marker of ["leptos::", "#[component]", "spawn_local", "GraphqlRequest"]) {
@@ -92,9 +92,16 @@ for (const marker of ["leptos::", "#[component]", "spawn_local", "GraphqlRequest
 for (const marker of ["pub trait UserAdminMutationPort", "pub struct UserAdminMutationRuntime", "pub trait OAuthAdminMutationPort", "pub struct OAuthAdminMutationRuntime", "pub struct AuthAdminMutationContext", "async fn create_user", "async fn update_user", "async fn delete_user", "async fn create_oauth_app", "async fn update_oauth_app", "async fn rotate_oauth_app_secret", "async fn revoke_oauth_app"]) {
   assertContains(mutationPort, marker, `${mutationPortPath}: missing auth-owned mutation boundary marker ${marker}`);
 }
-for (const marker of ["impl OAuthAdminMutationPort for ServerAuthAdminMutationProvider", "impl UserAdminMutationPort for ServerAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "AuthLifecycleService::create_user_db", "RbacService::has_any_permission", "FlexAttachedValuesService::prepare_update"]) {
+for (const marker of ["impl OAuthAdminMutationPort for ServerAuthAdminMutationProvider", "impl UserAdminMutationPort for ServerAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "AuthLifecycleService::create_user_in_tx", "RbacService::has_any_permission", "FlexAttachedValuesService::prepare_update"]) {
   assertContains(authProvider, marker, `${authProviderPath}: missing shared server auth mutation provider marker ${marker}`);
 }
+for (const marker of [".begin()", ".update(&tx)", "persist_localized_values(\n                &tx", "tx.commit()"]) {
+  assertContains(authProvider, marker, `${authProviderPath}: create user custom-field lifecycle must stay atomic with the shared provider transaction (${marker})`);
+}
+for (const marker of ["fn parse_user_role", "value.trim().to_ascii_lowercase()", ".map(parse_user_role)", "parses_admin_user_enums_case_insensitively"]) {
+  assertContains(authProvider, marker, `${authProviderPath}: shared provider must normalize admin user role/status enums from native and GraphQL adapters (${marker})`);
+}
+assertNotContains(authProvider, "UserRole::from_str)\n            .transpose()\n            .map_err(map_custom_field_error)", `${authProviderPath}: user role parse errors must map to validation errors, not custom-field errors`);
 for (const marker of ["build_shared_runtime_extensions_with_host_providers", "OAuthAdminMutationRuntime::new", "UserAdminMutationRuntime::new", "ServerAuthAdminMutationProvider::new"]) {
   assertContains(runtimeExtensions, marker, `${runtimeExtensionsPath}: missing auth provider registration marker ${marker}`);
 }
@@ -115,6 +122,9 @@ for (const marker of ["create_user_native", "update_user_native", "delete_user_n
   assertContains(transport, marker, `${transportPath}: user facade must be native-first (${marker})`);
 }
 assertContains(nativeTransport, "UserAdminMutationRuntime", `${nativeTransportPath}: native user mutations must consume the shared runtime`);
+for (const marker of ["leptos_axum::extract::<rustok_api::RequestContext>()", "leptos_axum::extract::<rustok_api::TenantContext>()", "tenant_context.default_locale", "locale,"]) {
+  assertContains(nativeTransport, marker, `${nativeTransportPath}: native user mutation context must consume host-resolved locale (${marker})`);
+}
 for (const marker of ["leptos::", "sea_orm::", "loco_rs::", "apps::server"] ) {
   assertNotContains(mutationPort, marker, `${mutationPortPath}: mutation port must remain host and framework independent (${marker})`);
 }
@@ -148,6 +158,9 @@ for (const marker of ["pub struct CreateOAuthAppInput", "pub struct UpdateOAuthA
   assertNotContains(transport, marker, `${transportPath}: OAuth DTO ownership must stay in model (${marker})`);
 }
 assertContains(transport, "pub use crate::model::{CreateOAuthAppInput, UpdateOAuthAppInput};", `${transportPath}: transport must preserve OAuth DTO compatibility re-exports`);
+for (const marker of ["rustok-admin-locale", "LocalStorage::get", "get_stored_locale"]) {
+  assertNotContains(transport, marker, `${transportPath}: auth transport must not read package-local locale storage (${marker})`);
+}
 for (const [filePath, source, helper] of [
   [loginUiPath, loginUi, "prepare_login_request"],
   [registerUiPath, registerUi, "prepare_register_request"],
@@ -157,6 +170,8 @@ for (const [filePath, source, helper] of [
   assertContains(source, helper, `${filePath}: UI must consume core helper ${helper}`);
   assertNotContains(source, ".trim()", `${filePath}: request normalization must remain core-owned`);
 }
+assertContains(profileUi, "initial_profile_preferred_locale", `${profileUiPath}: profile UI must derive preference defaults through core-owned host-locale policy`);
+assertNotContains(profileUi, "String::from(\"ru\")", `${profileUiPath}: profile UI must not hardcode a package-local locale default`);
 for (const marker of ["err_str.contains(\"Unauthorized\")", "err_str.contains(\"HTTP\")", "err_str.contains(\"Network\")"]) {
   assertNotContains(profileUi, marker, `${profileUiPath}: profile transport error policy must remain core-owned (${marker})`);
   assertNotContains(securityUi, marker, `${securityUiPath}: security transport error policy must remain core-owned (${marker})`);

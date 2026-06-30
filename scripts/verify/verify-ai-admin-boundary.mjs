@@ -76,6 +76,9 @@ assertNotContains(ui, "fn parse_csv(value: String)", `${uiPath}: CSV request nor
 assertNotContains(ui, /t\(\s*locale,\s*locale,/, `${uiPath}: i18n helper calls must not pass locale twice`);
 assertContains(ui, "transport::fetch_bootstrap", `${uiPath}: Leptos adapter must call the AI transport facade`);
 assertNotContains(ui, /(^|[^A-Za-z0-9_])api::/, `${uiPath}: Leptos adapter must not call the raw pre-FFA api module`);
+for (const marker of ["rustok-admin-locale", "local_storage()", "get_item(\"rustok-admin-locale\")", "browser_admin_locale"]) {
+  assertNotContains(ui, marker, `${uiPath}: AI UI must consume host-provided locale without package-local browser storage fallback (${marker})`);
+}
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]", "RwSignal", "LocalResource", "web_sys::"]) {
   assertNotContains(core, marker, `${corePath}: core must stay UI/runtime free (${marker})`);

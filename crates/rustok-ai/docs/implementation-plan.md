@@ -6,11 +6,11 @@
 ## Execution checkpoint
 
 - Current phase: ai_router_policy_evidence_expanded
-- Last checkpoint: Expanded AI router policy evidence with explicit provider candidate statuses, selected/fallback decision trace reasons, unit-test markers and compile-free `scripts/verify/verify-ai-router-policy.mjs` guardrail while keeping executable runtime composition in `rustok-ai`; added no-compile orchestrator runtime-order smoke for AI support-adapter registration and admin transport boundary.
+- Last checkpoint: Expanded AI router policy evidence with explicit provider candidate statuses, selected/fallback decision trace reasons, unit-test markers and compile-free `scripts/verify/verify-ai-router-policy.mjs` guardrail while keeping executable runtime composition in `rustok-ai`; added no-compile orchestrator runtime-order smoke for AI support-adapter registration and admin transport boundary, and locked the Leptos adapter to host-provided locale without package-local browser storage fallback.
 - Next step: Continue executable targeted router/runtime tests when compilation is allowed and then surface candidate explanations in persisted diagnostics UI without moving executable runtime composition out of `rustok-ai`.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-30T00:00:00Z
+- Last updated at (UTC): 2026-06-30T14:19:18Z
 
 ## Состояние на 2026-04-04
 

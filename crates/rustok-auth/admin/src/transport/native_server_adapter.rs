@@ -448,6 +448,15 @@ async fn user_mutation_context() -> Result<
     let auth = leptos_axum::extract::<AuthContext>()
         .await
         .map_err(|error| server_error(error.to_string()))?;
+    let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .ok();
+    let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
+        .await
+        .ok();
+    let locale = request_context
+        .map(|request_context| request_context.locale)
+        .or_else(|| tenant_context.map(|tenant_context| tenant_context.default_locale));
     let app_ctx = expect_context::<AppContext>();
     let extensions = app_ctx
         .shared_store
@@ -466,7 +475,7 @@ async fn user_mutation_context() -> Result<
             actor_id: auth.user_id,
             tenant_id: auth.tenant_id,
             request_id: None,
-            locale: None,
+            locale,
         },
         runtime,
     ))

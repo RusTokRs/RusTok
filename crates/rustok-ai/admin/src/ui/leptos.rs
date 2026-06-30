@@ -637,7 +637,7 @@ pub fn AiAdmin() -> impl IntoView {
             let init_message = serde_json::to_string(&connection_init_message(
                 token_value,
                 tenant_value,
-                browser_admin_locale(ui_locale_value.as_deref()),
+                host_admin_locale(ui_locale_value.as_deref()),
             ))
             .unwrap_or_default();
             let subscribe_message = serde_json::to_string(&session_events_subscribe_message(
@@ -2285,16 +2285,9 @@ fn graphql_ws_url() -> String {
     graphql_ws_url_from_location(protocol.as_deref(), host.as_deref())
 }
 
-#[cfg(target_arch = "wasm32")]
-fn browser_admin_locale(preferred: Option<&str>) -> Option<String> {
-    if let Some(preferred) = preferred.map(str::trim).filter(|value| !value.is_empty()) {
-        return Some(preferred.to_string());
-    }
-    let window = web_sys::window()?;
-    let storage = window.local_storage().ok().flatten()?;
-    storage
-        .get_item("rustok-admin-locale")
-        .ok()
-        .flatten()
-        .filter(|value| !value.trim().is_empty())
+fn host_admin_locale(preferred: Option<&str>) -> Option<String> {
+    preferred
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }

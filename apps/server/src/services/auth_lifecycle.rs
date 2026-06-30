@@ -2,8 +2,8 @@ use crate::error::Error;
 use chrono::{Duration, Utc};
 use loco_rs::app::AppContext;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 
 use crate::auth::{
@@ -137,7 +137,32 @@ impl AuthLifecycleService {
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        if users::Entity::find_by_email(db, tenant_id, email)
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+
+        let user =
+            Self::create_user_in_tx(&tx, tenant_id, email, password, name, role, status).await?;
+
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+
+        Ok(user)
+    }
+
+    pub(crate) async fn create_user_in_tx<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        email: &str,
+        password: &str,
+        name: Option<String>,
+        role: rustok_core::UserRole,
+        status: Option<rustok_core::UserStatus>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
+        if users::Entity::find()
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Email.eq(email.to_lowercase()))
+            .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
             .is_some()
@@ -147,18 +172,19 @@ impl AuthLifecycleService {
 
         let password_hash = hash_password(password).map_err(AuthLifecycleError::from)?;
 
-        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-
         let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
         user.name = Set(name);
         if let Some(status) = status {
             user.status = Set(status);
         }
 
-        let user = match user.insert(&tx).await {
+        let user = match user.insert(db).await {
             Ok(user) => user,
             Err(err) => {
-                if users::Entity::find_by_email(db, tenant_id, email)
+                if users::Entity::find()
+                    .filter(users::Column::TenantId.eq(tenant_id))
+                    .filter(users::Column::Email.eq(email.to_lowercase()))
+                    .one(db)
                     .await
                     .map_err(AuthLifecycleError::from)?
                     .is_some()
@@ -170,11 +196,9 @@ impl AuthLifecycleService {
             }
         };
 
-        RbacService::replace_user_role(&tx, &user.id, &tenant_id, role)
+        RbacService::replace_user_role(db, &user.id, &tenant_id, role)
             .await
             .map_err(AuthLifecycleError::from)?;
-
-        tx.commit().await.map_err(AuthLifecycleError::from)?;
 
         Ok(user)
     }
