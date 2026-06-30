@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: iteration_2_fba_provisioning_handoff_hardening
+- Current phase: iteration_2_fba_transport_verified
 - Last checkpoint: installer provisioning/verification now consumes module-owned `TenantReadPort` for slug read projections before create-candidate decisions and final verification, while host-owned mutation/module lifecycle flows remain in `apps/server`; static FBA evidence source-locks resolver and installer handoffs and no long compilation was run in this iteration.
 - Next step: Execute authored runtime smoke when compilation is allowed and keep FFA parity/evidence hardening for the native-only overview surface instead of mechanical UI expansion.
 - Open blockers: None.
 - Hand-off notes for next agent: Не расширять scope на новый tenant feature set; в этой итерации держать фокус на lifecycle consistency и regression safety между модулем и host middleware/cache path.
-- Last updated at (UTC): 2026-06-26T00:00:00Z
+- Last updated at (UTC): 2026-06-30T20:14:10Z
 
 ## Область работ
 
@@ -58,9 +58,10 @@
 ## FFA/FBA status
 
 - FFA status: `in_progress`
-- FBA status: `boundary_ready`
+- FBA status: `transport_verified`
 - Structural shape: `core_transport_ui`
-- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement. FBA provider metadata now exposes the tenant read-projection boundary through `TenantReadPort` / `tenant.read_projection.v1`: `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json`, `crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json` and `scripts/verify/verify-tenant-fba.mjs` lock shared `rustok_api::PortContext`/`PortError` usage, `PortCallPolicy::read()` deadline semantics, inactive-tenant degraded-mode semantics, server-host/server-installer consumer metadata, the host resolver handoff in `apps/server/src/middleware/tenant.rs` and installer provisioning handoff in `apps/server/src/installer_cli.rs`. No-compile runtime fallback smoke is additionally locked by `npm run verify:foundation:fba-runtime-smoke`; runtime contract/fallback smoke cases in `crates/rustok-tenant/tests/integration.rs` remain the compiled evidence path for missing deadlines, blank slug/domain validation, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery. FBA status is `boundary_ready`.
+- FBA transport evidence: `cargo test -p rustok-tenant tenant_read_port --test integration` passed 3/3 on 2026-06-30, covering deadline enforcement, typed validation/not-found mapping, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery.
+- Evidence: admin UI split now follows the FFA shape: `admin/src/core.rs` owns Leptos-free tenant bootstrap view-model/copy/error policy, `admin/src/transport/mod.rs` owns the module transport facade, `admin/src/transport/native_server_adapter.rs` contains the native server function endpoint, and `admin/src/ui/leptos.rs` is the explicit Leptos render adapter. Fast guardrail coverage now includes `scripts/verify/verify-tenant-admin-boundary.mjs` plus `scripts/verify/verify-tenant-admin-boundary.test.mjs` fixture regressions for canonical split, removed `api.rs`, Leptos-free core, UI facade-only transport calls and server-function adapter placement. FBA provider metadata now exposes the tenant read-projection boundary through `TenantReadPort` / `tenant.read_projection.v1`: `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-contract-test-static-matrix.json`, `crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json` and `scripts/verify/verify-tenant-fba.mjs` lock shared `rustok_api::PortContext`/`PortError` usage, `PortCallPolicy::read()` deadline semantics, inactive-tenant degraded-mode semantics, server-host/server-installer consumer metadata, the host resolver handoff in `apps/server/src/middleware/tenant.rs` and installer provisioning handoff in `apps/server/src/installer_cli.rs`. No-compile runtime fallback smoke is additionally locked by `npm run verify:foundation:fba-runtime-smoke`; runtime contract/fallback smoke cases in `crates/rustok-tenant/tests/integration.rs` now have compiled runtime evidence for missing deadlines, blank slug/domain validation, id/slug/domain active projection parity, inactive hidden mode and explicit `include_inactive` recovery. FBA status is `transport_verified`.
 - Temporary parity note: the current tenant admin overview remains a native-only single-adapter state because there is no legacy GraphQL/REST tenant bootstrap UI contract to preserve for this surface; the existing server GraphQL tenant/module read paths remain unchanged outside this UI package.
 
 ## Проверка
@@ -72,7 +73,7 @@
 - `npm run verify:tenant:fba`
 - `npm run verify:foundation:fba-runtime-smoke`
 - `node --check scripts/verify/verify-tenant-fba.mjs`
-- `cargo test -p rustok-tenant tenant_read_port --test integration` (authored but intentionally not run in no-compilation iteration; includes id/slug/domain selector coverage)
+- `cargo test -p rustok-tenant tenant_read_port --test integration` (passed 3/3 on 2026-06-30; includes id/slug/domain selector coverage)
 - targeted tests для CRUD, module toggles, resolver invariants и cache integration path, включая lifecycle invalidation сценарии `slug_cache_invalidation_refreshes_deactivated_tenant_state`, `slug_negative_cache_invalidation_allows_created_tenant_to_resolve`, `host_cache_invalidation_refreshes_domain_change`, `uuid_cache_invalidation_refreshes_updated_tenant_state`
 - контрактные тесты покрывают все публичные use-case, включая tenant CRUD, module toggles и resolver-facing invariants
 

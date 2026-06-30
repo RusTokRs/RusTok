@@ -23,11 +23,7 @@ export type StepType =
 export type OnError = 'STOP' | 'SKIP' | 'RETRY';
 export type ExecutionStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT';
 export type StepExecutionStatus =
-  | 'PENDING'
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'FAILED'
-  | 'SKIPPED';
+  'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
 
 export interface WorkflowSummary {
   id: string;

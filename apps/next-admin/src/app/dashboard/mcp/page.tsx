@@ -1,13 +1,27 @@
 import { McpAdminPage } from '@rustok/mcp-admin';
-import { getServerSession } from 'next-auth';
+import { Suspense } from 'react';
 
-import { authOptions } from '@/shared/auth/options';
-import { tenantSlugFromSession } from '@/shared/auth/tenant';
+import { auth } from '@/auth';
+import { PageContainer } from '@/widgets/app-shell';
+
+export const metadata = {
+  title: 'Dashboard: MCP'
+};
 
 export default async function McpPage() {
-  const session = await getServerSession(authOptions);
-  const token = session?.accessToken ?? null;
-  const tenantSlug = tenantSlugFromSession(session);
+  const session = await auth();
+  const token = session?.user?.rustokToken ?? null;
+  const tenantSlug = session?.user?.tenantSlug ?? null;
 
-  return <McpAdminPage token={token} tenantSlug={tenantSlug} />;
+  return (
+    <PageContainer
+      scrollable
+      pageTitle='MCP'
+      pageDescription='Manage MCP clients, token policies, audit events, and Alloy scaffold drafts'
+    >
+      <Suspense fallback={<div>Loading MCP control plane...</div>}>
+        <McpAdminPage token={token} tenantSlug={tenantSlug} />
+      </Suspense>
+    </PageContainer>
+  );
 }

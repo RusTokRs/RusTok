@@ -151,7 +151,6 @@ chrono-humanize = "0.2.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 async-trait = "0.1"
-casbin = { version = "2.20.0", default-features = false, features = ["runtime-tokio"] }
 
 # OpenTelemetry
 # NOTE: tracing-opentelemetry 0.32.x is coupled with opentelemetry 0.31.x.

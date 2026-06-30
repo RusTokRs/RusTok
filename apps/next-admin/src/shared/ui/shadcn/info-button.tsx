@@ -12,12 +12,7 @@ interface InfoButtonProps extends Omit<
 > {
   content: InfobarContent;
   variant?:
-    | 'default'
-    | 'ghost'
-    | 'outline'
-    | 'secondary'
-    | 'destructive'
-    | 'link';
+    'default' | 'ghost' | 'outline' | 'secondary' | 'destructive' | 'link';
   size?: 'default' | 'sm' | 'lg' | 'icon';
 }
 

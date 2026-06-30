@@ -13,7 +13,7 @@
 ## Зона ответственности
 
 - relation-based source of truth: `roles`, `permissions`, `user_roles`, `role_permissions`;
-- `PermissionResolver`, `RuntimePermissionResolver`, policy/evaluator и Casbin-backed authorization flow;
+- `PermissionResolver`, `RuntimePermissionResolver`, policy/evaluator и tenant policy authorization flow;
 - кросс-модульные event contracts для изменений role assignments;
 - permission-aware runtime contracts и typed RBAC primitives в связке с `rustok-core`;
 - отсутствие rollout-mode и shadow-runtime логики в live surface.
@@ -22,7 +22,7 @@
 
 - `apps/server` владеет только adapter/wiring слоем: store adapters, cache integration, transport extractors и observability;
 - `rustok-core` остаётся владельцем typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
-- live authorization идёт только через Casbin-backed evaluation, без relation-only/shadow parity path;
+- live authorization идёт только через tenant policy evaluation, без relation-only/shadow parity path;
 - operator-facing admin overview живёт в `rustok-rbac-admin` и оформлен как FFA `core` + native-only `transport` + `ui/leptos` adapter;
 - новые public RBAC surfaces и event contracts требуют синхронизации module docs, server docs и verification plan.
 
@@ -35,7 +35,7 @@
 - `rustok_rbac_permission_checks_allowed`
 - `rustok_rbac_permission_checks_denied`
 - `rustok_rbac_claim_role_mismatch_total`
-- `rustok_rbac_engine_decisions_casbin_total`
+- `rustok_rbac_engine_decisions_policy_total`
 - `rustok_rbac_engine_eval_duration_ms_total`
 - `rustok_rbac_engine_eval_duration_samples`
 
@@ -50,7 +50,7 @@ Release gates для изменений в модуле:
 
 - `cargo xtask module validate rbac`
 - `cargo xtask module test rbac`
-- targeted tests для permission resolution, Casbin-backed decisions и integration events
+- targeted tests для permission resolution, tenant policy decisions и integration events
 
 ## Связанные документы
 

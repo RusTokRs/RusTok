@@ -30,7 +30,7 @@ RusToK использует Loco RS как server/runtime framework, а плат
 | `platform_settings` + `SettingsService` | Реализованы |
 | GraphQL settings API | Реализован (`platformSettings`, `allPlatformSettings`, `updatePlatformSettings`) |
 | Auth lifecycle | Централизован через `AuthLifecycleService` |
-| RBAC runtime | Живой path = `rustok-rbac` + Casbin-only |
+| RBAC runtime | Живой path = `rustok-rbac` + tenant policy runtime |
 | Mailer | Provider-based server service: `smtp | loco | none` |
 | Storage | Shared runtime через `rustok-storage`; media domain через `rustok-media` |
 | Event/outbox runtime | Реализован и остаётся source of truth |
@@ -189,7 +189,7 @@ Residual future scope:
 - “ввести storage layer” как будто shared storage ещё не существует;
 - “добавить platform settings table” как будто DB/config split ещё не оформлен;
 - “убрать hard-coded imports из `schema.rs`” как будто feature-gated composition ещё не внедрена;
-- “включить Casbin/RBAC module runtime” как будто server всё ещё держит отдельный самописный живой engine.
+- “включить отдельный RBAC runtime” как будто server всё ещё держит отдельный самописный живой engine.
 
 ---
 

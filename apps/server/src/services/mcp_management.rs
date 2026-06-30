@@ -1,8 +1,8 @@
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -11,7 +11,7 @@ use crate::error::{Error, Result};
 use crate::models::{mcp_audit_logs, mcp_clients, mcp_policies, mcp_scaffold_drafts, mcp_tokens};
 use rustok_mcp::{
     apply_staged_scaffold, generate_module_scaffold, ApplyModuleScaffoldResponse, McpAccessContext,
-    McpActorType, McpIdentity, ModuleScaffoldDraftStatus, ScaffoldModuleRequest,
+    McpActorType, McpIdentity, ScaffoldModuleRequest,
 };
 
 #[derive(Debug, Clone)]
@@ -111,6 +111,10 @@ pub struct RecordMcpAuditEventInput {
 }
 
 pub struct McpManagementService;
+
+const MCP_SCAFFOLD_STATUS_STAGED: &str = "staged";
+const MCP_SCAFFOLD_STATUS_APPLYING: &str = "applying";
+const MCP_SCAFFOLD_STATUS_APPLIED: &str = "applied";
 
 impl McpManagementService {
     pub async fn create_client(
@@ -549,7 +553,7 @@ impl McpManagementService {
             client_id: Set(input.client_id),
             slug: Set(request.slug.clone()),
             crate_name: Set(preview.crate_name.clone()),
-            status: Set("staged".to_string()),
+            status: Set(MCP_SCAFFOLD_STATUS_STAGED.to_string()),
             request_payload: Set(serde_json::to_value(&request)
                 .map_err(|error| Error::BadRequest(error.to_string()))?),
             preview_payload: Set(serde_json::to_value(&preview)
@@ -603,26 +607,37 @@ impl McpManagementService {
             ));
         }
 
-        let draft = Self::get_scaffold_draft(db, tenant_id, draft_id)
-            .await?
-            .ok_or(Error::NotFound)?;
-
-        if draft.status_value() == ModuleScaffoldDraftStatus::Applied {
-            return Err(Error::BadRequest(format!(
-                "Scaffold draft {} has already been applied",
-                draft_id
-            )));
-        }
+        let draft = Self::claim_scaffold_draft_for_apply(
+            db,
+            tenant_id,
+            draft_id,
+            input.applied_by,
+            &input.workspace_root,
+        )
+        .await?;
 
         let staged_draft = draft
             .to_staged_draft()
             .map_err(|error| Error::BadRequest(error.to_string()))?;
-        let apply_result = apply_staged_scaffold(&staged_draft, &input.workspace_root)
-            .map_err(|error| Error::BadRequest(error.to_string()))?;
+        let apply_result = match apply_staged_scaffold(&staged_draft, &input.workspace_root) {
+            Ok(response) => response,
+            Err(error) => {
+                Self::mark_scaffold_apply_failed(
+                    db,
+                    tenant_id,
+                    &draft,
+                    input.applied_by,
+                    &input.workspace_root,
+                    &error,
+                )
+                .await?;
+                return Err(Error::BadRequest(error));
+            }
+        };
 
         let txn = db.begin().await.map_err(map_db_err)?;
         let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
-        active.status = Set("applied".to_string());
+        active.status = Set(MCP_SCAFFOLD_STATUS_APPLIED.to_string());
         active.workspace_root = Set(Some(input.workspace_root.clone()));
         active.applied_at = Set(Some(Utc::now().into()));
         active.updated_at = Set(Utc::now().into());
@@ -654,6 +669,122 @@ impl McpManagementService {
 
         txn.commit().await.map_err(map_db_err)?;
         Ok((updated, apply_result))
+    }
+
+    async fn claim_scaffold_draft_for_apply(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        draft_id: Uuid,
+        applied_by: Option<Uuid>,
+        workspace_root: &str,
+    ) -> Result<mcp_scaffold_drafts::Model> {
+        let txn = db.begin().await.map_err(map_db_err)?;
+        let result = mcp_scaffold_drafts::Entity::update_many()
+            .filter(mcp_scaffold_drafts::Column::Id.eq(draft_id))
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .filter(mcp_scaffold_drafts::Column::Status.eq(MCP_SCAFFOLD_STATUS_STAGED))
+            .col_expr(
+                mcp_scaffold_drafts::Column::Status,
+                Expr::value(MCP_SCAFFOLD_STATUS_APPLYING),
+            )
+            .col_expr(
+                mcp_scaffold_drafts::Column::WorkspaceRoot,
+                Expr::value(Some(workspace_root.to_string())),
+            )
+            .col_expr(
+                mcp_scaffold_drafts::Column::UpdatedAt,
+                Expr::value(Utc::now()),
+            )
+            .exec(&txn)
+            .await
+            .map_err(map_db_err)?;
+
+        if result.rows_affected == 0 {
+            let existing = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
+                .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+                .one(&txn)
+                .await
+                .map_err(map_db_err)?
+                .ok_or(Error::NotFound)?;
+            return Err(scaffold_status_error(draft_id, &existing.status));
+        }
+
+        let claimed = mcp_scaffold_drafts::Entity::find_by_id(draft_id)
+            .filter(mcp_scaffold_drafts::Column::TenantId.eq(tenant_id))
+            .one(&txn)
+            .await
+            .map_err(map_db_err)?
+            .ok_or(Error::NotFound)?;
+
+        Self::record_audit_event_txn(
+            &txn,
+            RecordMcpAuditEventInput {
+                tenant_id,
+                client_id: claimed.client_id,
+                token_id: None,
+                actor_id: applied_by.map(|value| value.to_string()),
+                actor_type: Some("human_user".to_string()),
+                action: "scaffold_draft_apply_started".to_string(),
+                outcome: "pending".to_string(),
+                tool_name: Some("alloy_apply_module_scaffold".to_string()),
+                reason: None,
+                correlation_id: Some(claimed.id.to_string()),
+                metadata: serde_json::json!({
+                    "draft_id": claimed.id,
+                    "slug": claimed.slug,
+                    "crate_name": claimed.crate_name,
+                    "workspace_root": workspace_root,
+                }),
+                created_by: applied_by,
+            },
+        )
+        .await?;
+
+        txn.commit().await.map_err(map_db_err)?;
+        Ok(claimed)
+    }
+
+    async fn mark_scaffold_apply_failed(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        draft: &mcp_scaffold_drafts::Model,
+        applied_by: Option<Uuid>,
+        workspace_root: &str,
+        reason: &str,
+    ) -> Result<()> {
+        let txn = db.begin().await.map_err(map_db_err)?;
+        let mut active: mcp_scaffold_drafts::ActiveModel = draft.clone().into();
+        active.status = Set(MCP_SCAFFOLD_STATUS_STAGED.to_string());
+        active.workspace_root = Set(Some(workspace_root.to_string()));
+        active.updated_at = Set(Utc::now().into());
+        let updated = active.update(&txn).await.map_err(map_db_err)?;
+
+        Self::record_audit_event_txn(
+            &txn,
+            RecordMcpAuditEventInput {
+                tenant_id,
+                client_id: updated.client_id,
+                token_id: None,
+                actor_id: applied_by.map(|value| value.to_string()),
+                actor_type: Some("human_user".to_string()),
+                action: "scaffold_draft_apply_failed".to_string(),
+                outcome: "failure".to_string(),
+                tool_name: Some("alloy_apply_module_scaffold".to_string()),
+                reason: Some(reason.to_string()),
+                correlation_id: Some(updated.id.to_string()),
+                metadata: serde_json::json!({
+                    "draft_id": updated.id,
+                    "slug": updated.slug,
+                    "crate_name": updated.crate_name,
+                    "workspace_root": workspace_root,
+                }),
+                created_by: applied_by,
+            },
+        )
+        .await?;
+
+        txn.commit().await.map_err(map_db_err)?;
+        Ok(())
     }
 
     pub async fn record_audit_event(
@@ -811,6 +942,23 @@ fn validate_slug(slug: &str) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+fn scaffold_status_error(draft_id: Uuid, status: &str) -> Error {
+    match status {
+        MCP_SCAFFOLD_STATUS_APPLIED => Error::BadRequest(format!(
+            "Scaffold draft {} has already been applied",
+            draft_id
+        )),
+        MCP_SCAFFOLD_STATUS_APPLYING => Error::BadRequest(format!(
+            "Scaffold draft {} is already being applied",
+            draft_id
+        )),
+        other => Error::BadRequest(format!(
+            "Scaffold draft {} cannot be applied from status `{}`",
+            draft_id, other
+        )),
+    }
 }
 
 fn to_json_array(values: &[String]) -> Result<serde_json::Value> {

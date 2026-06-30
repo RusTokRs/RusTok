@@ -3,17 +3,10 @@ import { GraphqlError, graphqlRequest } from './graphql';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 
 export type SeoTargetCapabilityKind =
-  | 'AUTHORING'
-  | 'ROUTING'
-  | 'BULK'
-  | 'SITEMAPS';
+  'AUTHORING' | 'ROUTING' | 'BULK' | 'SITEMAPS';
 
 export type SeoBulkJobStatusValue =
-  | 'queued'
-  | 'running'
-  | 'completed'
-  | 'partial'
-  | 'failed';
+  'queued' | 'running' | 'completed' | 'partial' | 'failed';
 
 export type SeoDiagnosticSeverity = 'info' | 'warning' | 'error';
 
@@ -196,7 +189,10 @@ export function formatSeoReplayErrorMessage(error: unknown): string {
     if (error.code === 'BAD_USER_INPUT') {
       return `Invalid replay input: ${error.message}`;
     }
-    if (error.code === 'PERMISSION_DENIED' || error.code === 'UNAUTHENTICATED') {
+    if (
+      error.code === 'PERMISSION_DENIED' ||
+      error.code === 'UNAUTHENTICATED'
+    ) {
       return 'You do not have permission to run SEO replay operations.';
     }
     if (error.code === 'NOT_FOUND') {
@@ -528,7 +524,9 @@ function resolveApiBaseUrl(explicit?: string): string {
 }
 
 function toCamelKey(value: string): string {
-  return value.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+  return value.replace(/_([a-z])/g, (_, letter: string) =>
+    letter.toUpperCase()
+  );
 }
 
 function camelize<T>(value: unknown): T {
@@ -573,7 +571,9 @@ function statusCodeToGraphqlCode(status: number): string {
   return 'HTTP_ERROR';
 }
 
-function parseSeoRestErrorPayload(payload: unknown): GraphqlLikeErrorRecord | null {
+function parseSeoRestErrorPayload(
+  payload: unknown
+): GraphqlLikeErrorRecord | null {
   if (!payload || typeof payload !== 'object') {
     return null;
   }
@@ -612,7 +612,8 @@ async function buildSeoRestError(response: Response): Promise<GraphqlError> {
   }
 
   const parsed = parseSeoRestErrorPayload(payload);
-  const code = parsed?.extensions?.code ?? statusCodeToGraphqlCode(response.status);
+  const code =
+    parsed?.extensions?.code ?? statusCodeToGraphqlCode(response.status);
   const normalizedMessage = parsed?.message?.trim();
   const message =
     normalizedMessage && normalizedMessage.length > 0
@@ -686,9 +687,7 @@ function shouldFallbackToGraphql(error: unknown): boolean {
   return error.code === 'NOT_FOUND' || error.code === 'HTTP_ERROR';
 }
 
-function recalculateDiagnosticCounts(
-  issues: SeoDiagnosticIssueRecord[]
-): {
+function recalculateDiagnosticCounts(issues: SeoDiagnosticIssueRecord[]): {
   issueCountsByCode: SeoDiagnosticCountRecord[];
   issueCountsByTargetKind: SeoDiagnosticCountRecord[];
   issueCount: number;
@@ -710,7 +709,10 @@ function recalculateDiagnosticCounts(
   const toSortedList = (source: Map<string, number>) =>
     [...source.entries()]
       .map(([key, count]) => ({ key, count }))
-      .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key));
+      .sort(
+        (left, right) =>
+          right.count - left.count || left.key.localeCompare(right.key)
+      );
 
   return {
     issueCountsByCode: toSortedList(byCode),
@@ -777,7 +779,9 @@ export async function fetchSeoTargets(
       return await fetchSeoRest<SeoTargetRegistryEntry[]>(
         '/api/seo/targets',
         options,
-        options.capability ? { capability: options.capability.toLowerCase() } : undefined
+        options.capability
+          ? { capability: options.capability.toLowerCase() }
+          : undefined
       );
     } catch (error) {
       if (!shouldFallbackToGraphql(error)) {
@@ -809,13 +813,17 @@ export async function fetchSeoDiagnostics(
 ): Promise<SeoDiagnosticsSummaryRecord> {
   if (shouldPreferRest(options)) {
     try {
-      return await fetchSeoRest<SeoDiagnosticsSummaryRecord>('/api/seo/diagnostics', options, {
-        locale: options.locale,
-        severity: options.severity,
-        code: options.code,
-        target_kind: options.targetKind,
-        limit: options.limit
-      });
+      return await fetchSeoRest<SeoDiagnosticsSummaryRecord>(
+        '/api/seo/diagnostics',
+        options,
+        {
+          locale: options.locale,
+          severity: options.severity,
+          code: options.code,
+          target_kind: options.targetKind,
+          limit: options.limit
+        }
+      );
     } catch (error) {
       if (!shouldFallbackToGraphql(error)) {
         throw error;
@@ -825,13 +833,12 @@ export async function fetchSeoDiagnostics(
   }
 
   const variables = options.locale ? { locale: options.locale } : undefined;
-  const data = await graphqlRequest<SeoDiagnosticsVariables, SeoDiagnosticsResponse>(
-    SEO_DIAGNOSTICS_QUERY,
-    variables,
-    options.token,
-    options.tenantSlug,
-    { graphqlUrl: options.graphqlUrl }
-  );
+  const data = await graphqlRequest<
+    SeoDiagnosticsVariables,
+    SeoDiagnosticsResponse
+  >(SEO_DIAGNOSTICS_QUERY, variables, options.token, options.tenantSlug, {
+    graphqlUrl: options.graphqlUrl
+  });
 
   return applyDiagnosticsFilters(data.seoDiagnostics, {
     severity: options.severity,
@@ -846,7 +853,10 @@ export async function fetchSeoSitemapStatus(
 ): Promise<SeoSitemapStatusRecord> {
   if (shouldPreferRest(options)) {
     try {
-      return await fetchSeoRest<SeoSitemapStatusRecord>('/api/seo/sitemaps/status', options);
+      return await fetchSeoRest<SeoSitemapStatusRecord>(
+        '/api/seo/sitemaps/status',
+        options
+      );
     } catch (error) {
       if (!shouldFallbackToGraphql(error)) {
         throw error;
@@ -873,9 +883,13 @@ export async function fetchSeoSitemapJobs(
 
   if (shouldPreferRest(options)) {
     try {
-      return await fetchSeoRest<SeoSitemapJobRecord[]>('/api/seo/sitemaps/jobs', options, {
-        limit
-      });
+      return await fetchSeoRest<SeoSitemapJobRecord[]>(
+        '/api/seo/sitemaps/jobs',
+        options,
+        {
+          limit
+        }
+      );
     } catch (error) {
       if (!shouldFallbackToGraphql(error)) {
         throw error;
@@ -884,13 +898,12 @@ export async function fetchSeoSitemapJobs(
     }
   }
 
-  const data = await graphqlRequest<SeoSitemapJobsVariables, SeoSitemapJobsResponse>(
-    SEO_SITEMAP_JOBS_QUERY,
-    { limit },
-    options.token,
-    options.tenantSlug,
-    { graphqlUrl: options.graphqlUrl }
-  );
+  const data = await graphqlRequest<
+    SeoSitemapJobsVariables,
+    SeoSitemapJobsResponse
+  >(SEO_SITEMAP_JOBS_QUERY, { limit }, options.token, options.tenantSlug, {
+    graphqlUrl: options.graphqlUrl
+  });
 
   return data.seoSitemapJobs;
 }
@@ -913,28 +926,34 @@ export async function fetchSeoSitemapJob(
     }
   }
 
-  const data = await graphqlRequest<SeoSitemapJobVariables, SeoSitemapJobResponse>(
-    SEO_SITEMAP_JOB_QUERY,
-    { jobId },
-    options.token,
-    options.tenantSlug,
-    { graphqlUrl: options.graphqlUrl }
-  );
+  const data = await graphqlRequest<
+    SeoSitemapJobVariables,
+    SeoSitemapJobResponse
+  >(SEO_SITEMAP_JOB_QUERY, { jobId }, options.token, options.tenantSlug, {
+    graphqlUrl: options.graphqlUrl
+  });
 
   return data.seoSitemapJob;
 }
 
 export async function fetchSeoBulkJobs(
-  options: SeoApiOptions & { limit?: number; status?: SeoBulkJobStatusValue } = {}
+  options: SeoApiOptions & {
+    limit?: number;
+    status?: SeoBulkJobStatusValue;
+  } = {}
 ): Promise<SeoBulkJobRecord[]> {
   const limit = options.limit ?? 20;
 
   if (shouldPreferRest(options)) {
     try {
-      return await fetchSeoRest<SeoBulkJobRecord[]>('/api/seo/bulk/jobs', options, {
-        limit,
-        status: options.status
-      });
+      return await fetchSeoRest<SeoBulkJobRecord[]>(
+        '/api/seo/bulk/jobs',
+        options,
+        {
+          limit,
+          status: options.status
+        }
+      );
     } catch (error) {
       if (!shouldFallbackToGraphql(error)) {
         throw error;
@@ -962,7 +981,10 @@ export async function fetchSeoBulkJob(
 ): Promise<SeoBulkJobRecord | null> {
   if (shouldPreferRest(options)) {
     try {
-      return await fetchSeoRest<SeoBulkJobRecord>(`/api/seo/bulk/jobs/${jobId}`, options);
+      return await fetchSeoRest<SeoBulkJobRecord>(
+        `/api/seo/bulk/jobs/${jobId}`,
+        options
+      );
     } catch (error) {
       if (!shouldFallbackToGraphql(error)) {
         throw error;
@@ -1002,7 +1024,9 @@ export async function fetchSeoIndexDeliveryStatus(
     }
   }
 
-  const variables = options.targetType ? { targetType: options.targetType } : undefined;
+  const variables = options.targetType
+    ? { targetType: options.targetType }
+    : undefined;
   const data = await graphqlRequest<
     SeoIndexDeliveryStatusVariables,
     SeoIndexDeliveryStatusResponse

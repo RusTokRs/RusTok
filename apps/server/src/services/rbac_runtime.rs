@@ -54,7 +54,7 @@ pub struct RbacResolverMetricsSnapshot {
     pub denied_missing_permissions: u64,
     pub denied_unknown: u64,
     pub claim_role_mismatch_total: u64,
-    pub engine_decisions_casbin_total: u64,
+    pub engine_decisions_policy_total: u64,
     pub engine_eval_duration_ms_total: u64,
     pub engine_eval_duration_samples: u64,
 }
@@ -71,7 +71,7 @@ static RBAC_DENIED_NO_PERMISSIONS_RESOLVED: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_MISSING_PERMISSIONS: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_UNKNOWN: AtomicU64 = AtomicU64::new(0);
 static RBAC_CLAIM_ROLE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
-static RBAC_ENGINE_DECISIONS_CASBIN_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_ENGINE_DECISIONS_POLICY_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_SAMPLES: AtomicU64 = AtomicU64::new(0);
 
@@ -186,7 +186,7 @@ pub(crate) fn record_claim_role_mismatch() {
 }
 
 pub(crate) fn record_engine_decision() {
-    RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.fetch_add(1, Ordering::Relaxed);
+    RBAC_ENGINE_DECISIONS_POLICY_TOTAL.fetch_add(1, Ordering::Relaxed);
 }
 
 pub(crate) fn record_engine_eval_duration(latency_ms: u64) {
@@ -212,7 +212,7 @@ pub(crate) fn metrics_snapshot() -> RbacResolverMetricsSnapshot {
         denied_missing_permissions: RBAC_DENIED_MISSING_PERMISSIONS.load(Ordering::Relaxed),
         denied_unknown: RBAC_DENIED_UNKNOWN.load(Ordering::Relaxed),
         claim_role_mismatch_total: RBAC_CLAIM_ROLE_MISMATCH_TOTAL.load(Ordering::Relaxed),
-        engine_decisions_casbin_total: RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.load(Ordering::Relaxed),
+        engine_decisions_policy_total: RBAC_ENGINE_DECISIONS_POLICY_TOTAL.load(Ordering::Relaxed),
         engine_eval_duration_ms_total: RBAC_ENGINE_EVAL_DURATION_MS_TOTAL.load(Ordering::Relaxed),
         engine_eval_duration_samples: RBAC_ENGINE_EVAL_DURATION_SAMPLES.load(Ordering::Relaxed),
     }
@@ -232,7 +232,7 @@ pub(crate) fn reset_metrics_for_tests() {
     RBAC_DENIED_MISSING_PERMISSIONS.store(0, Ordering::Relaxed);
     RBAC_DENIED_UNKNOWN.store(0, Ordering::Relaxed);
     RBAC_CLAIM_ROLE_MISMATCH_TOTAL.store(0, Ordering::Relaxed);
-    RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.store(0, Ordering::Relaxed);
+    RBAC_ENGINE_DECISIONS_POLICY_TOTAL.store(0, Ordering::Relaxed);
     RBAC_ENGINE_EVAL_DURATION_MS_TOTAL.store(0, Ordering::Relaxed);
     RBAC_ENGINE_EVAL_DURATION_SAMPLES.store(0, Ordering::Relaxed);
 }

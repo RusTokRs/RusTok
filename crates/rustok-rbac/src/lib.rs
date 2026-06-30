@@ -26,11 +26,11 @@ pub use services::permission_policy::{
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
-pub use services::casbin_model::{
-    build_casbin_policy_csv, build_enforcer_for_permissions, default_casbin_model,
-    resolved_permissions_subject,
-};
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
+pub use services::policy_model::{
+    build_tenant_policy_csv, build_tenant_policy_enforcer, default_tenant_policy_model,
+    resolved_permissions_subject, TenantPolicyEnforcer,
+};
 pub use services::relation_permission_resolver::{
     invalidate_cached_permissions, resolve_permissions_from_relations,
     resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,

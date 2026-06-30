@@ -5,22 +5,23 @@ manifest/doc contract path.
 
 ## Execution checkpoint
 
-- Current phase: fba_contract_test_scaffolding
+- Current phase: fba_transport_verified
 - Last checkpoint: Добавлены targeted Rust contract tests для shared write-policy mapping, disabled-provider noop receipt и typed request validation; static FBA evidence теперь указывает на test names, без запуска компиляции по ограничению итерации.
 - Next step: Когда компиляции снова разрешены, запустить targeted `cargo test -p rustok-email ports::tests`; текущий no-compile fallback smoke закреплён через `npm run verify:foundation:fba-runtime-smoke`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-26T00:00:00Z
+- Last updated at (UTC): 2026-06-30T20:14:10Z
 
 
 ## FFA/FBA status block
 
 - FFA status: `not_started`
-- FBA status: `boundary_ready`
+- FBA status: `transport_verified`
 - Structural shape: `no_ui_boundary`
 - Evidence / notes:
   - capability-only module has no module-owned UI surface, so FFA remains `not_started`;
-  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation, runtime-verified evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` and no-compile fallback smoke `crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json` verified by `npm run verify:email:fba` / `npm run verify:foundation:fba-runtime-smoke`; compiled runtime evidence remains `cargo test -p rustok-email --lib`.
+  - compiled runtime evidence `cargo test -p rustok-email --lib` passed 8/8 on 2026-06-30, covering delivery-port write-policy mapping, typed request validation and disabled-provider noop receipt; FBA status is `transport_verified`;
+  - FBA provider slice: `crates/rustok-email/contracts/email-fba-registry.json` + `crates/rustok-email/src/ports.rs` declare `EmailDeliveryPort` / `email.delivery.v1` for transactional delivery consumers with shared `rustok_api::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics, disabled-provider noop preservation, runtime-verified evidence packet `crates/rustok-email/contracts/evidence/email-contract-test-static-matrix.json` and no-compile fallback smoke `crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json` verified by `npm run verify:email:fba` / `npm run verify:foundation:fba-runtime-smoke`.
 
 ## Область работ
 

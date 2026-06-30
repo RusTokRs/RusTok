@@ -9,10 +9,7 @@ export interface PermissionCheck {
 }
 
 export type NavGroupKey =
-  | 'overview'
-  | 'management'
-  | 'modulePlugins'
-  | 'account';
+  'overview' | 'management' | 'modulePlugins' | 'account';
 
 export interface NavItem {
   title: string;

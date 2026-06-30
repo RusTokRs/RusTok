@@ -1,9 +1,5 @@
 export type AppType =
-  | 'Embedded'
-  | 'FirstParty'
-  | 'Mobile'
-  | 'Service'
-  | 'ThirdParty';
+  'Embedded' | 'FirstParty' | 'Mobile' | 'Service' | 'ThirdParty';
 
 export interface OAuthApp {
   id: string;

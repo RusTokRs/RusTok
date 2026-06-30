@@ -220,7 +220,7 @@ grep -rn "email_service_from_ctx\|request_context.locale\|locale_from_ctx" apps/
 
 ---
 
-## 7. RBAC — единый Casbin runtime
+## 7. RBAC — единый tenant policy runtime
 
 ### 7.1 Server использует модульный `rustok-rbac` runtime
 
@@ -236,12 +236,12 @@ grep -rn "RbacService::has_permission\|RbacService::has_any_permission" apps/ser
 grep -rn "RuntimePermissionResolver\|authorize_permission\|authorize_any_permission\|authorize_all_permissions" apps/server/src/services/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** `apps/server` использует resolver/adapters из `rustok-rbac`, а decision path опирается на модульный Casbin runtime.
+**Ожидаемый результат:** `apps/server` использует resolver/adapters из `rustok-rbac`, а decision path опирается на модульный tenant policy runtime.
 
 ### 7.2 Нет legacy rollout branches и дублирующих auth middleware
 
 ```bash
-grep -rn "fn check_permission\|fn verify_role\|relation_only\|casbin_shadow\|mismatch\|RUSTOK_RBAC_AUTHZ_MODE" apps/server/src/ --include="*.rs"
+grep -rn "fn check_permission\|fn verify_role\|relation_only\|policy_shadow\|mismatch\|RUSTOK_RBAC_AUTHZ_MODE" apps/server/src/ --include="*.rs"
 ```
 
 **Ожидаемый результат:** Нет adhoc проверок мимо `RbacService` и нет возврата к старым rollout/shadow веткам в live server runtime.
@@ -413,5 +413,4 @@ curl -s http://localhost:5150/api/_metrics | head -20
 > **Правило для агентов:** Если вы собираетесь добавить новую зависимость, middleware, или
 > инфраструктурный сервис в `apps/server/` — **сначала** проверьте по этому документу,
 > не дублирует ли это уже существующее решение.
-
 

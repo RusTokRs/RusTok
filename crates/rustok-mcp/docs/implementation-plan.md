@@ -6,12 +6,12 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 
 ## Execution checkpoint
 
-- Текущая фаза: `mcp_admin_owner_ui_slice`.
-- Последняя контрольная точка: Next и Leptos FFA owner UI покрывают create/deactivate client, rotate/revoke token и update policy. Owner crate определяет typed `McpManagementMutationPort`; `apps/server` регистрирует provider через `ModuleRuntimeExtensions` и делегирует все writes каноническому транзакционному `McpManagementService`, поэтому token generation/hash/audit не дублируются. Native `#[server]` остаётся основным Leptos transport, GraphQL mutations сохраняются параллельно; plaintext token показывается только в mutation result.
-- Следующий шаг: усилить транзакционные границы Alloy draft stage/apply и audit writes, затем добавить browser-level parity smoke для Next и Leptos management workflows.
-- Открытые блокеры: в текущем workspace отсутствует `apps/next-admin/node_modules`, поэтому локальные `npm run typecheck` и `npm run format:check` недоступны; полный `cargo check -p rustok-server` блокируется существующим Rhai feature-unification конфликтом `alloy` и `casbin` (`unchecked`/`no_function` удаляют limit setters).
-- Передача следующему агенту: сохранять `rustok-mcp` как MCP protocol/tool adapter, persisted draft storage оставлять в `apps/server`, а UI — в owner surface MCP, не в `rustok-ai`. После изменений tool surface повторять `cargo check -p rustok-mcp-admin`, `npm run verify:mcp:admin-boundary`, `cargo check -p rustok-mcp` и `cargo test -p rustok-mcp --lib`.
-- Обновлено (UTC): 2026-06-30T19:42:20Z
+- Текущая фаза: `mcp_alloy_draft_apply_hardening`; предыдущий owner UI checkpoint: `mcp_admin_owner_ui_slice`.
+- Последняя контрольная точка: Alloy scaffold apply в `apps/server` теперь атомарно claim-ит draft из `staged` в `applying`, пишет `scaffold_draft_apply_started` audit в той же транзакции, после успешной записи workspace фиксирует `applied` + success audit, а при ошибке записи возвращает draft в `staged` и пишет failure audit. Next и Leptos FFA owner UI остаются разнесены по owner surface MCP; native `#[server]` остается основным Leptos transport, GraphQL mutations сохраняются параллельно.
+- Следующий шаг: добавить browser-level parity smoke для Next и Leptos management workflows поверх уже усиленного draft stage/apply boundary.
+- Открытые блокеры: нет актуальных локальных блокеров для текущего MCP slice; `cargo check -p rustok-server --offline`, `cargo test -p rustok-mcp --lib --offline`, `cargo fmt -p rustok-server --check` и `npm run verify:mcp:admin-boundary` проходят.
+- Передача следующему агенту: сохранять `rustok-mcp` как MCP protocol/tool adapter, persisted draft storage оставлять в `apps/server`, а UI - в owner surface MCP, не в `rustok-ai`. После изменений tool surface повторять `cargo check -p rustok-mcp-admin --features ssr`, `npm run verify:mcp:admin-boundary`, `cargo check -p rustok-server`, `cargo check -p rustok-mcp` и `cargo test -p rustok-mcp --lib`.
+- Обновлено (UTC): 2026-06-30T20:20:00Z
 
 ## FFA/FBA status
 
