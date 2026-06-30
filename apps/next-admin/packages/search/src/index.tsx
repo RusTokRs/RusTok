@@ -374,9 +374,7 @@ function extractRankingProfileValue(
 ): string {
   const config = parseJsonValue(configText);
   const rankingProfiles =
-    config &&
-    typeof config === 'object' &&
-    'ranking_profiles' in config
+    config && typeof config === 'object' && 'ranking_profiles' in config
       ? (config as { ranking_profiles?: Record<string, unknown> })
           .ranking_profiles
       : undefined;

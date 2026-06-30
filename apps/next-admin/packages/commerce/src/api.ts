@@ -246,7 +246,12 @@ mutation CommerceAdminCancelOrderChange($tenantId: UUID!, $id: UUID!, $input: Ca
 
 export async function listShippingProfiles(
   opts: GqlOpts,
-  filter: { page?: number; perPage?: number; active?: boolean; search?: string } = {}
+  filter: {
+    page?: number;
+    perPage?: number;
+    active?: boolean;
+    search?: string;
+  } = {}
 ): Promise<ShippingProfileList> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage shipping profiles.');
@@ -417,7 +422,13 @@ export async function applyCartPromotion(
 
 export async function listOrderChanges(
   opts: GqlOpts,
-  filter: { page?: number; perPage?: number; orderId?: string; status?: string; changeType?: string } = {}
+  filter: {
+    page?: number;
+    perPage?: number;
+    orderId?: string;
+    status?: string;
+    changeType?: string;
+  } = {}
 ): Promise<OrderChangeList> {
   if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
     throw new Error('Sign in again to manage order changes.');
@@ -468,7 +479,14 @@ export async function applyOrderChange(
   }
 
   const response = await graphqlRequest<
-    { tenantId: string; id: string; input: { metadata?: string | null; differenceRefund?: ExchangeDifferenceRefundInput | null } },
+    {
+      tenantId: string;
+      id: string;
+      input: {
+        metadata?: string | null;
+        differenceRefund?: ExchangeDifferenceRefundInput | null;
+      };
+    },
     { applyOrderChange: OrderChange }
   >(
     APPLY_ORDER_CHANGE_MUTATION,
@@ -491,7 +509,11 @@ export async function cancelOrderChange(
   }
 
   const response = await graphqlRequest<
-    { tenantId: string; id: string; input: { reason?: string | null; metadata?: string | null } },
+    {
+      tenantId: string;
+      id: string;
+      input: { reason?: string | null; metadata?: string | null };
+    },
     { cancelOrderChange: OrderChange }
   >(
     CANCEL_ORDER_CHANGE_MUTATION,

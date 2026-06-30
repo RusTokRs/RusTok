@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "tenant",
   "role": "provider",
-  "status": "boundary_ready",
+  "status": "transport_verified",
   "contract_version": "tenant.read_projection.v1",
   "ports": [
     {
@@ -53,7 +53,7 @@
     "status": "implemented"
   },
   "contract_tests": {
-    "status": "planned_cases_locked",
+    "status": "runtime_verified",
     "source": "crates/rustok-tenant/contracts/tenant-fba-registry.json",
     "runner": "scripts/verify/verify-tenant-fba.mjs",
     "profiles": [

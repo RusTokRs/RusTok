@@ -1,6 +1,6 @@
 # План реализации `rustok-rbac`
 
-Статус: переход на single-engine Casbin runtime завершён; модуль удерживается в
+Статус: переход на single-engine tenant policy runtime завершён; модуль удерживается в
 steady-state hardening и drift-prevention режиме.
 
 ## Execution checkpoint
@@ -34,7 +34,7 @@ steady-state hardening и drift-prevention режиме.
 ## Текущее состояние
 
 - relation-store остаётся source of truth для role/permission assignments;
-- live authorization выполняется только через Casbin-backed evaluator;
+- live authorization выполняется только через tenant policy evaluator;
 - `RuntimePermissionResolver` и related contracts уже живут в модуле, а `apps/server` держит только adapters и observability;
 - operator-facing admin overview уже опубликован через `rustok-rbac-admin` и разделён по FFA слоям (`core`, native-only `transport`, `ui/leptos`);
 - local docs, root `README.md` и manifest metadata входят в scoped audit path.

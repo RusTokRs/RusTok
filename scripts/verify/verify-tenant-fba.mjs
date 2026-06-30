@@ -21,7 +21,7 @@ const serverTenantMiddleware = read('apps/server/src/middleware/tenant.rs');
 const serverInstallerCli = read('apps/server/src/installer_cli.rs');
 
 if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'tenant' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
+if (registry.module !== 'tenant' || registry.role !== 'provider' || !['boundary_ready', 'transport_verified'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'tenant.read_projection.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'TenantReadPort') fail('TenantReadPort missing');
@@ -36,8 +36,9 @@ for (const marker of ['trait TenantReadPort', 'impl TenantReadPort for crate::Te
 }
 if (ports.includes('require_write_semantics()?')) fail('tenant read port must not require write idempotency');
 if (!ports.includes('Serialize, Deserialize')) fail('tenant FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('TenantReadPort') || !plan.includes('tenant-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
-if (!central.includes('| `tenant` |') || !central.includes(registryPath) || !central.includes('| `tenant` | admin | `in_progress` | `boundary_ready`')) fail('central readiness board drift');
+if (!plan.includes(`- FBA status: \`${registry.status}\``) || !plan.includes(registryPath) || !plan.includes('TenantReadPort') || !plan.includes('tenant-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
+if (!central.includes('| `tenant` |') || !central.includes(registryPath) || !central.includes(`| \`tenant\` | admin | \`in_progress\` | \`${registry.status}\``)) fail('central readiness board drift');
+if (registry.status === 'transport_verified' && evidence.status !== 'runtime_verified') fail('transport_verified tenant requires runtime_verified evidence');
 if (evidence.schema_version !== 1 || evidence.module !== 'tenant' || evidence.status !== 'runtime_verified') fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-tenant-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

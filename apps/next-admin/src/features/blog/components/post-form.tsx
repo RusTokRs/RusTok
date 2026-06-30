@@ -121,7 +121,11 @@ export default function PostForm({
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: defaultLocale,
-    bodyFormat: initialData ? (initialData.contentJson ? 'rt_json_v1' : 'markdown') : 'rt_json_v1',
+    bodyFormat: initialData
+      ? initialData.contentJson
+        ? 'rt_json_v1'
+        : 'markdown'
+      : 'rt_json_v1',
     body: initialData?.body ?? '',
     contentJson: initialData?.contentJson
       ? stringifyRtDoc(initialDoc, defaultLocale)

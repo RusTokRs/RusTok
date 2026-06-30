@@ -16,7 +16,10 @@ type SeoOperatorPanelProps = {
 
 type SeoActionKind = 'repair_only' | 'repair_replay';
 
-function emitSeoTelemetry(kind: SeoActionKind, phase: 'started' | 'success' | 'failure') {
+function emitSeoTelemetry(
+  kind: SeoActionKind,
+  phase: 'started' | 'success' | 'failure'
+) {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('seo-operator-action', {
@@ -35,7 +38,9 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
   const [limit, setLimit] = useState<number>(100);
   const [confirmRepair, setConfirmRepair] = useState(false);
   const [confirmReplay, setConfirmReplay] = useState(false);
-  const [status, setStatus] = useState<SeoIndexDeliveryStatusRecord | null>(null);
+  const [status, setStatus] = useState<SeoIndexDeliveryStatusRecord | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<SeoActionKind | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -102,24 +107,32 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         setBusyAction(null);
       }
     },
-    [confirmRepair, confirmReplay, limit, loadStatus, targetType, token, tenantSlug]
+    [
+      confirmRepair,
+      confirmReplay,
+      limit,
+      loadStatus,
+      targetType,
+      token,
+      tenantSlug
+    ]
   );
 
   return (
     <div className='space-y-4'>
-      <div className='rounded-xl border border-border bg-card p-4'>
-        <h3 className='text-base font-semibold text-card-foreground'>
+      <div className='border-border bg-card rounded-xl border p-4'>
+        <h3 className='text-card-foreground text-base font-semibold'>
           Index delivery observability
         </h3>
-        <p className='mt-1 text-sm text-muted-foreground'>
+        <p className='text-muted-foreground mt-1 text-sm'>
           Track SEO → index transitions and run repair/replay operations with
           explicit confirmation.
         </p>
       </div>
 
-      <div className='grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-[1fr_160px_auto]'>
+      <div className='border-border bg-card grid gap-3 rounded-xl border p-4 md:grid-cols-[1fr_160px_auto]'>
         <select
-          className='rounded-lg border border-border bg-background px-3 py-2 text-sm'
+          className='border-border bg-background rounded-lg border px-3 py-2 text-sm'
           value={targetType}
           onChange={(event) => setTargetType(event.target.value)}
           disabled={loading || busyAction !== null}
@@ -132,7 +145,7 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
           type='number'
           min={1}
           max={500}
-          className='rounded-lg border border-border bg-background px-3 py-2 text-sm'
+          className='border-border bg-background rounded-lg border px-3 py-2 text-sm'
           value={limit}
           onChange={(event) =>
             setLimit(Number.parseInt(event.target.value, 10) || 100)
@@ -141,7 +154,7 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         />
         <button
           type='button'
-          className='rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-60'
+          className='border-border hover:bg-accent rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-60'
           onClick={() => void loadStatus()}
           disabled={loading || busyAction !== null}
         >
@@ -149,7 +162,7 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         </button>
       </div>
 
-      <div className='grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-5'>
+      <div className='border-border bg-card grid gap-3 rounded-xl border p-4 md:grid-cols-5'>
         <MetricTile label='pending' value={status?.pendingCount ?? 0} />
         <MetricTile label='sent' value={status?.sentCount ?? 0} />
         <MetricTile label='retry' value={status?.retryCount ?? 0} />
@@ -157,9 +170,9 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         <MetricTile label='dead_letter' value={status?.deadLetterCount ?? 0} />
       </div>
 
-      <div className='grid gap-4 rounded-xl border border-border bg-card p-4 md:grid-cols-2'>
+      <div className='border-border bg-card grid gap-4 rounded-xl border p-4 md:grid-cols-2'>
         <div className='space-y-3'>
-          <label className='flex items-start gap-2 text-sm text-foreground'>
+          <label className='text-foreground flex items-start gap-2 text-sm'>
             <input
               type='checkbox'
               checked={confirmRepair}
@@ -170,7 +183,7 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
           </label>
           <button
             type='button'
-            className='w-full rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-60'
+            className='border-border hover:bg-accent w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-60'
             onClick={() => void runAction('repair_only')}
             disabled={busyAction !== null || !confirmRepair}
           >
@@ -179,7 +192,7 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         </div>
 
         <div className='space-y-3'>
-          <label className='flex items-start gap-2 text-sm text-foreground'>
+          <label className='text-foreground flex items-start gap-2 text-sm'>
             <input
               type='checkbox'
               checked={confirmReplay}
@@ -190,7 +203,7 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
           </label>
           <button
             type='button'
-            className='w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60'
+            className='bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-60'
             onClick={() => void runAction('repair_replay')}
             disabled={busyAction !== null || !confirmReplay}
           >
@@ -199,59 +212,67 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
         </div>
       </div>
 
-      <div className='rounded-xl border border-border bg-card p-4'>
-        <h4 className='text-sm font-semibold text-card-foreground'>Cursor timeline</h4>
+      <div className='border-border bg-card rounded-xl border p-4'>
+        <h4 className='text-card-foreground text-sm font-semibold'>
+          Cursor timeline
+        </h4>
         {status?.cursors?.length ? (
           <ul className='mt-3 space-y-2'>
             {status.cursors.map((cursor) => (
               <li
                 key={cursor.targetType}
-                className='rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground'
+                className='border-border bg-background text-muted-foreground rounded-lg border px-3 py-2 text-xs'
               >
-                <div className='font-medium text-foreground'>
+                <div className='text-foreground font-medium'>
                   {cursor.targetType} · {cursor.replayMode} · forward-only
                 </div>
                 <div className='mt-1'>initial: {cursor.initialCursorAt}</div>
                 <div>high-water: {cursor.highWaterMarkAt}</div>
                 <div>
-                  last repair: {cursor.lastRepairCursorAt ?? 'n/a'} · replay done:{' '}
-                  {cursor.replayCompletedAt ?? 'n/a'}
+                  last repair: {cursor.lastRepairCursorAt ?? 'n/a'} · replay
+                  done: {cursor.replayCompletedAt ?? 'n/a'}
                 </div>
               </li>
             ))}
           </ul>
         ) : (
-          <p className='mt-2 text-sm text-muted-foreground'>No cursor data yet.</p>
+          <p className='text-muted-foreground mt-2 text-sm'>
+            No cursor data yet.
+          </p>
         )}
       </div>
 
-      <div className='rounded-xl border border-border bg-card p-4'>
-        <h4 className='text-sm font-semibold text-card-foreground'>Failure drilldown</h4>
+      <div className='border-border bg-card rounded-xl border p-4'>
+        <h4 className='text-card-foreground text-sm font-semibold'>
+          Failure drilldown
+        </h4>
         {status?.failureSamples?.length ? (
           <ul className='mt-3 space-y-2'>
             {status.failureSamples.map((sample) => (
               <li
                 key={`${sample.targetType}-${sample.targetId ?? 'none'}-${sample.updatedAt}`}
-                className='rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground'
+                className='border-border bg-background text-muted-foreground rounded-lg border px-3 py-2 text-xs'
               >
-                <div className='font-medium text-foreground'>
+                <div className='text-foreground font-medium'>
                   {sample.targetType} · {sample.status}
                 </div>
                 <div className='mt-1'>attempts: {sample.attemptCount}</div>
                 <div>updated: {sample.updatedAt}</div>
-                <div className='mt-1 break-words text-destructive'>
+                <div className='text-destructive mt-1 break-words'>
                   {sample.lastError ?? 'n/a'}
                 </div>
               </li>
             ))}
           </ul>
         ) : (
-          <p className='mt-2 text-sm text-muted-foreground'>No failed/dead-letter samples.</p>
+          <p className='text-muted-foreground mt-2 text-sm'>
+            No failed/dead-letter samples.
+          </p>
         )}
       </div>
 
       {message ? (
-        <div className='rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm text-foreground'>
+        <div className='border-border bg-secondary/40 text-foreground rounded-xl border px-4 py-3 text-sm'>
           {message}
         </div>
       ) : null}
@@ -261,9 +282,11 @@ export function SeoOperatorPanel({ token, tenantSlug }: SeoOperatorPanelProps) {
 
 function MetricTile({ label, value }: { label: string; value: number }) {
   return (
-    <article className='rounded-lg border border-border bg-background px-3 py-2'>
-      <p className='text-xs uppercase tracking-wide text-muted-foreground'>{label}</p>
-      <p className='mt-1 text-lg font-semibold text-card-foreground'>{value}</p>
+    <article className='border-border bg-background rounded-lg border px-3 py-2'>
+      <p className='text-muted-foreground text-xs tracking-wide uppercase'>
+        {label}
+      </p>
+      <p className='text-card-foreground mt-1 text-lg font-semibold'>{value}</p>
     </article>
   );
 }

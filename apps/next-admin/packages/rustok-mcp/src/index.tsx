@@ -257,7 +257,9 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [feedback, setFeedback] = React.useState<string | null>(null);
-  const [plaintextToken, setPlaintextToken] = React.useState<string | null>(null);
+  const [plaintextToken, setPlaintextToken] = React.useState<string | null>(
+    null
+  );
   const [clientForm, setClientForm] = React.useState({
     slug: '',
     displayName: '',
@@ -314,15 +316,17 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
         current &&
         draftData.mcpModuleScaffoldDrafts.some((draft) => draft.id === current)
           ? current
-          : draftData.mcpModuleScaffoldDrafts[0]?.id ?? ''
+          : (draftData.mcpModuleScaffoldDrafts[0]?.id ?? '')
       );
       setSelectedClientId((current) =>
         current && clientData.mcpClients.some((client) => client.id === current)
           ? current
-          : clientData.mcpClients[0]?.id ?? ''
+          : (clientData.mcpClients[0]?.id ?? '')
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load MCP drafts');
+      setError(
+        err instanceof Error ? err.message : 'Failed to load MCP drafts'
+      );
     } finally {
       setLoading(false);
     }
@@ -440,7 +444,9 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
             label='Client id'
             placeholder='optional MCP client UUID'
             value={form.clientId}
-            onChange={(clientId) => setForm((current) => ({ ...current, clientId }))}
+            onChange={(clientId) =>
+              setForm((current) => ({ ...current, clientId }))
+            }
           />
           <Input
             label='Slug'
@@ -589,7 +595,9 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
 
       <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
         <div className='flex flex-wrap items-center justify-between gap-3'>
-          <h2 className='text-foreground text-base font-semibold'>MCP clients</h2>
+          <h2 className='text-foreground text-base font-semibold'>
+            MCP clients
+          </h2>
           <div className='flex min-w-0 items-center gap-2'>
             <select
               className='border-input bg-background min-w-0 rounded-lg border px-3 py-2 text-sm'
@@ -599,7 +607,8 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
               <option value=''>Select client</option>
               {clients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.displayName} - {client.isActive ? 'active' : 'inactive'}
+                  {client.displayName} -{' '}
+                  {client.isActive ? 'active' : 'inactive'}
                 </option>
               ))}
             </select>
@@ -656,7 +665,9 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
           <Input
             label='Slug'
             value={clientForm.slug}
-            onChange={(slug) => setClientForm((current) => ({ ...current, slug }))}
+            onChange={(slug) =>
+              setClientForm((current) => ({ ...current, slug }))
+            }
           />
           <Input
             label='Display name'
@@ -710,13 +721,17 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
           <div className='grid gap-6 lg:grid-cols-2'>
             <div className='space-y-4'>
               <div>
-                <h3 className='font-medium'>{clientDetails.client.displayName}</h3>
+                <h3 className='font-medium'>
+                  {clientDetails.client.displayName}
+                </h3>
                 <p className='text-muted-foreground text-sm'>
-                  {clientDetails.client.slug} / {clientDetails.client.actorType} /{' '}
-                  {clientDetails.client.isActive ? 'Active' : 'Inactive'}
+                  {clientDetails.client.slug} / {clientDetails.client.actorType}{' '}
+                  / {clientDetails.client.isActive ? 'Active' : 'Inactive'}
                 </p>
                 {clientDetails.client.description ? (
-                  <p className='mt-2 text-sm'>{clientDetails.client.description}</p>
+                  <p className='mt-2 text-sm'>
+                    {clientDetails.client.description}
+                  </p>
                 ) : null}
               </div>
               <div className='space-y-2'>
@@ -739,7 +754,10 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
                   label='Permissions'
                   value={policyForm.grantedPermissions}
                   onChange={(grantedPermissions) =>
-                    setPolicyForm((current) => ({ ...current, grantedPermissions }))
+                    setPolicyForm((current) => ({
+                      ...current,
+                      grantedPermissions
+                    }))
                   }
                 />
                 <Input
@@ -823,7 +841,10 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
                 Rotate token
               </button>
               {clientDetails.tokens.map((token) => (
-                <div className='border-border border-t py-2 text-sm' key={token.id}>
+                <div
+                  className='border-border border-t py-2 text-sm'
+                  key={token.id}
+                >
                   <div className='flex items-center justify-between gap-3'>
                     <span className='font-medium'>{token.tokenName}</span>
                     <span className='text-muted-foreground'>
@@ -904,7 +925,9 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
 
       <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
         <div className='flex items-center justify-between gap-3'>
-          <h2 className='text-foreground text-base font-semibold'>Audit events</h2>
+          <h2 className='text-foreground text-base font-semibold'>
+            Audit events
+          </h2>
           <button
             className='border-border rounded-lg border px-3 py-1.5 text-sm'
             disabled={loading}
@@ -928,13 +951,22 @@ export function McpAdminPage(props: McpAdminPageProps): React.JSX.Element {
             </thead>
             <tbody>
               {auditEvents.map((event) => (
-                <tr className='border-border border-b last:border-0' key={event.id}>
-                  <td className='whitespace-nowrap px-2 py-2'>{event.createdAt}</td>
+                <tr
+                  className='border-border border-b last:border-0'
+                  key={event.id}
+                >
+                  <td className='px-2 py-2 whitespace-nowrap'>
+                    {event.createdAt}
+                  </td>
                   <td className='px-2 py-2 font-medium'>{event.action}</td>
                   <td className='px-2 py-2'>{event.outcome}</td>
-                  <td className='px-2 py-2'>{event.toolName ?? 'Control plane'}</td>
+                  <td className='px-2 py-2'>
+                    {event.toolName ?? 'Control plane'}
+                  </td>
                   <td className='px-2 py-2'>{event.actorType ?? 'Unknown'}</td>
-                  <td className='max-w-64 truncate px-2 py-2'>{event.reason ?? '-'}</td>
+                  <td className='max-w-64 truncate px-2 py-2'>
+                    {event.reason ?? '-'}
+                  </td>
                 </tr>
               ))}
             </tbody>

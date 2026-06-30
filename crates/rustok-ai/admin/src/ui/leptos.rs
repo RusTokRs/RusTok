@@ -2285,6 +2285,7 @@ fn graphql_ws_url() -> String {
     graphql_ws_url_from_location(protocol.as_deref(), host.as_deref())
 }
 
+#[cfg(target_arch = "wasm32")]
 fn host_admin_locale(preferred: Option<&str>) -> Option<String> {
     preferred
         .map(str::trim)

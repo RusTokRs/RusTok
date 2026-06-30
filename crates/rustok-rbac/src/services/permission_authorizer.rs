@@ -1,7 +1,7 @@
 use crate::{denied_reason_for_denial, missing_permissions, AuthzEngine, PermissionResolver};
 use rustok_core::Permission;
 
-use super::{casbin_evaluator::evaluate_casbin_permissions, permission_check::PermissionCheck};
+use super::{permission_check::PermissionCheck, policy_evaluator::evaluate_policy_permissions};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorizationDecision {
@@ -21,8 +21,8 @@ pub async fn authorize_permission<R: PermissionResolver>(
     required_permission: &Permission,
 ) -> Result<AuthorizationDecision, R::Error> {
     let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
-    let engine = AuthzEngine::Casbin;
-    let (allowed, missing_permissions, denied_reason) = decision_from_casbin_check(
+    let engine = AuthzEngine::Policy;
+    let (allowed, missing_permissions, denied_reason) = decision_from_policy_check(
         &resolved.permissions,
         tenant_id,
         PermissionCheck::Single(required_permission),
@@ -47,8 +47,8 @@ pub async fn authorize_any_permission<R: PermissionResolver>(
     required_permissions: &[Permission],
 ) -> Result<AuthorizationDecision, R::Error> {
     let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
-    let engine = AuthzEngine::Casbin;
-    let (allowed, missing_permissions, denied_reason) = decision_from_casbin_check(
+    let engine = AuthzEngine::Policy;
+    let (allowed, missing_permissions, denied_reason) = decision_from_policy_check(
         &resolved.permissions,
         tenant_id,
         PermissionCheck::Any(required_permissions),
@@ -73,8 +73,8 @@ pub async fn authorize_all_permissions<R: PermissionResolver>(
     required_permissions: &[Permission],
 ) -> Result<AuthorizationDecision, R::Error> {
     let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
-    let engine = AuthzEngine::Casbin;
-    let (allowed, missing_permissions, denied_reason) = decision_from_casbin_check(
+    let engine = AuthzEngine::Policy;
+    let (allowed, missing_permissions, denied_reason) = decision_from_policy_check(
         &resolved.permissions,
         tenant_id,
         PermissionCheck::All(required_permissions),
@@ -92,7 +92,7 @@ pub async fn authorize_all_permissions<R: PermissionResolver>(
     })
 }
 
-async fn decision_from_casbin_check(
+async fn decision_from_policy_check(
     resolved_permissions: &[Permission],
     tenant_id: &uuid::Uuid,
     check: PermissionCheck<'_>,
@@ -102,7 +102,7 @@ async fn decision_from_casbin_check(
     Option<(crate::DeniedReasonKind, String)>,
 ) {
     let required_permissions = required_permissions_for_check(check);
-    let allowed = evaluate_casbin_permissions(tenant_id, resolved_permissions, check).await;
+    let allowed = evaluate_policy_permissions(tenant_id, resolved_permissions, check).await;
     let missing_permissions = if allowed {
         Vec::new()
     } else {
@@ -213,7 +213,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(decision.engine, AuthzEngine::Casbin);
+        assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(!decision.allowed);
         assert_eq!(decision.permissions_count, 0);
         assert!(decision.denied_reason.is_some());
@@ -238,7 +238,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(decision.engine, AuthzEngine::Casbin);
+        assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(decision.allowed);
         assert!(decision.missing_permissions.is_empty());
         assert_eq!(
@@ -265,7 +265,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(decision.engine, AuthzEngine::Casbin);
+        assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(!decision.allowed);
         assert_eq!(decision.missing_permissions, vec![Permission::USERS_UPDATE]);
         assert_eq!(decision.resolved_permissions, vec![Permission::USERS_READ]);
@@ -284,7 +284,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        assert_eq!(decision.engine, AuthzEngine::Casbin);
+        assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(decision.allowed);
         assert!(decision.missing_permissions.is_empty());
         assert!(decision.denied_reason.is_none());
@@ -313,7 +313,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorize_permission_uses_casbin_engine() {
+    async fn authorize_permission_uses_policy_engine() {
         let resolver = StubResolver {
             permissions: vec![Permission::USERS_MANAGE],
             cache_hit: false,
@@ -329,13 +329,13 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(decision.engine, AuthzEngine::Casbin);
+        assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(decision.allowed);
         assert!(decision.denied_reason.is_none());
     }
 
     #[tokio::test]
-    async fn authorize_all_permissions_reports_casbin_missing_permissions() {
+    async fn authorize_all_permissions_reports_policy_missing_permissions() {
         let resolver = StubResolver {
             permissions: vec![Permission::USERS_READ],
             cache_hit: false,
@@ -351,7 +351,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(decision.engine, AuthzEngine::Casbin);
+        assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(!decision.allowed);
         assert_eq!(decision.missing_permissions, vec![Permission::USERS_UPDATE]);
         assert_eq!(

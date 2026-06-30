@@ -33,7 +33,10 @@ function normalizeSeedText(value: string | null | undefined): string {
   return (value ?? '').trim();
 }
 
-function buildProductAttributesTaskInput(product: NonNullable<Awaited<ReturnType<typeof getProduct>>>, translation: { title: string; description: string | null; locale: string }) {
+function buildProductAttributesTaskInput(
+  product: NonNullable<Awaited<ReturnType<typeof getProduct>>>,
+  translation: { title: string; description: string | null; locale: string }
+) {
   const sourceTitle = normalizeSeedText(translation.title);
   const sourceDescription = normalizeSeedText(translation.description);
   const sourceLocale = normalizeSeedText(translation.locale);
@@ -53,7 +56,10 @@ function buildProductAttributesTaskInput(product: NonNullable<Awaited<ReturnType
   );
 }
 
-function buildProductAttributesHref(product: NonNullable<Awaited<ReturnType<typeof getProduct>>>, translation: { title: string; description: string | null; locale: string }) {
+function buildProductAttributesHref(
+  product: NonNullable<Awaited<ReturnType<typeof getProduct>>>,
+  translation: { title: string; description: string | null; locale: string }
+) {
   const sourceTitle = normalizeSeedText(translation.title);
   const sourceDescription = normalizeSeedText(translation.description);
   const sourceLocale = normalizeSeedText(translation.locale);
@@ -80,7 +86,13 @@ function buildProductAttributesHref(product: NonNullable<Awaited<ReturnType<type
   return `/dashboard/ai?${params.toString()}`;
 }
 
-function hasProductAttributesSeedData(translation: { title: string; description: string | null; locale: string } | null): boolean {
+function hasProductAttributesSeedData(
+  translation: {
+    title: string;
+    description: string | null;
+    locale: string;
+  } | null
+): boolean {
   if (!translation) return false;
   return (
     normalizeSeedText(translation.title).length > 0 ||
@@ -230,12 +242,17 @@ export default async function ProductDetailPage({ params }: PageProps) {
             <CardContent className='space-y-3'>
               <p className='text-muted-foreground text-sm'>
                 Product write-side is module-owned. Use the AI task runner with
-                <code className='mx-1 rounded bg-muted px-1 py-0.5'>product_attributes</code>
+                <code className='bg-muted mx-1 rounded px-1 py-0.5'>
+                  product_attributes
+                </code>
                 and this payload draft based on the current product translation.
               </p>
               {hasProductAttributesSeedData(primaryTranslation) ? (
-                <pre className='overflow-x-auto rounded-md border bg-muted/40 p-3 text-xs'>
-{buildProductAttributesTaskInput(product, primaryTranslation!)}
+                <pre className='bg-muted/40 overflow-x-auto rounded-md border p-3 text-xs'>
+                  {buildProductAttributesTaskInput(
+                    product,
+                    primaryTranslation!
+                  )}
                 </pre>
               ) : (
                 <p className='text-muted-foreground text-xs'>
@@ -246,7 +263,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
               {hasProductAttributesSeedData(primaryTranslation) ? (
                 <Button asChild variant='outline' size='sm'>
                   <Link
-                    href={buildProductAttributesHref(product, primaryTranslation!)}
+                    href={buildProductAttributesHref(
+                      product,
+                      primaryTranslation!
+                    )}
                   >
                     Open AI task runner
                   </Link>

@@ -1,7 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
-use crate::auth::hash_password;
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
 #[cfg(all(
@@ -38,7 +37,8 @@ use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
 use crate::models::users;
 use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManifest};
-use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
+#[cfg(test)]
+use crate::services::auth_lifecycle::AuthLifecycleError;
 use crate::services::build_event_hub::{
     build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
 };
@@ -93,6 +93,7 @@ fn toggle_err_hook_failed(reason: &str) -> String {
     format!("Module lifecycle hook failed: {reason}")
 }
 
+#[cfg(test)]
 fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldError {
     match error {
         rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
@@ -123,6 +124,7 @@ fn effective_request_locale(ctx: &Context<'_>, tenant: &TenantContext) -> String
         .unwrap_or_else(|| tenant.default_locale.clone())
 }
 
+#[cfg(test)]
 async fn prepare_user_custom_fields_write(
     db: &sea_orm::DatabaseConnection,
     tenant_id: uuid::Uuid,
@@ -171,6 +173,7 @@ async fn validate_custom_fields(
     .metadata)
 }
 
+#[cfg(test)]
 fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
     match err {
         AuthLifecycleError::EmailAlreadyExists => {

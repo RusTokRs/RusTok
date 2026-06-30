@@ -708,7 +708,7 @@ fn format_rbac_metrics(
             "rustok_rbac_permission_denied_reason_missing_permissions {denied_missing_permissions}\n",
             "rustok_rbac_permission_denied_reason_unknown {denied_unknown}\n",
             "rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n",
-            "rustok_rbac_engine_decisions_casbin_total {engine_decisions_casbin_total}\n",
+            "rustok_rbac_engine_decisions_policy_total {engine_decisions_policy_total}\n",
             "rustok_rbac_engine_eval_duration_ms_total {engine_eval_duration_ms_total}\n",
             "rustok_rbac_engine_eval_duration_samples {engine_eval_duration_samples}\n",
             "rustok_rbac_users_without_roles_total {users_without_roles_total}\n",
@@ -730,7 +730,7 @@ fn format_rbac_metrics(
         denied_missing_permissions = stats.denied_missing_permissions,
         denied_unknown = stats.denied_unknown,
         claim_role_mismatch_total = stats.claim_role_mismatch_total,
-        engine_decisions_casbin_total = stats.engine_decisions_casbin_total,
+        engine_decisions_policy_total = stats.engine_decisions_policy_total,
         engine_eval_duration_ms_total = stats.engine_eval_duration_ms_total,
         engine_eval_duration_samples = stats.engine_eval_duration_samples,
         users_without_roles_total = users_without_roles_total,
@@ -796,7 +796,7 @@ mod tests {
     #[test]
     fn rbac_metrics_include_engine_decision_and_latency_counters() {
         let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
-        assert_metric_line(&payload, "rustok_rbac_engine_decisions_casbin_total");
+        assert_metric_line(&payload, "rustok_rbac_engine_decisions_policy_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_ms_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_samples");
     }

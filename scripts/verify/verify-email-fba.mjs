@@ -17,7 +17,7 @@ const cargo = read('crates/rustok-email/Cargo.toml');
 const ports = read('crates/rustok-email/src/ports.rs');
 if (pkg.scripts?.['verify:email:fba'] !== 'node scripts/verify/verify-email-fba.mjs && npm run verify:foundation:fba-runtime-smoke') fail('package script verify:email:fba drift');
 if (pkg.scripts?.['verify:foundation:fba-runtime-smoke'] !== 'node scripts/verify/verify-foundation-fba-runtime-smoke.mjs') fail('package script verify:foundation:fba-runtime-smoke drift');
-if (registry.schema_version !== 1 || registry.module !== 'email' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
+if (registry.schema_version !== 1 || registry.module !== 'email' || registry.role !== 'provider' || !['in_progress', 'boundary_ready', 'transport_verified'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'email.delivery.v1') fail('contract version drift');
 const [port] = registry.ports ?? [];
 if (!port || port.name !== 'EmailDeliveryPort' || !port.operations.includes('send_transactional_email')) fail('EmailDeliveryPort operation missing');
@@ -34,6 +34,7 @@ for (const assertion of ['disabled_provider_noop_preserved', 'template_error_not
 if (!ports.includes('Serialize, Deserialize')) fail('FBA DTOs must be serializable');
 if (!plan.includes('## FFA/FBA status block') || !plan.includes(`- FBA status: \`${registry.status}\``) || !plan.includes(registryPath) || !plan.includes('EmailDeliveryPort') || !plan.includes('email-contract-test-static-matrix.json')) fail('local plan FBA evidence drift');
 if (!central.includes('| `email` |') || !central.includes(registryPath) || !central.includes(`| \`email\` | none | \`not_started\` | \`${registry.status}\``)) fail('central readiness board drift');
+if (registry.status === 'transport_verified' && evidence.status !== 'runtime_verified') fail('transport_verified email requires runtime_verified evidence');
 if (evidence.schema_version !== 1 || evidence.module !== 'email' || !['targeted_contract_tests_added_uncompiled', 'runtime_verified'].includes(evidence.status)) fail('evidence identity drift');
 if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-email-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
 if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');

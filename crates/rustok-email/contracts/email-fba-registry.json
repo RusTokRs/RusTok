@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "email",
   "role": "provider",
-  "status": "boundary_ready",
+  "status": "transport_verified",
   "contract_version": "email.delivery.v1",
   "ports": [
     {

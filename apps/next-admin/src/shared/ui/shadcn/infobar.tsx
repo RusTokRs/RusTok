@@ -27,6 +27,7 @@ import * as React from 'react';
 
 const INFOBAR_WIDTH = '22rem';
 const INFOBAR_WIDTH_ICON = '3rem';
+const INFOBAR_WIDTH_MOBILE = '18rem';
 const INFOBAR_KEYBOARD_SHORTCUT = 'i';
 
 export type HelpfulLink = {
