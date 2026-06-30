@@ -128,7 +128,7 @@ impl AuthLifecycleService {
         Self::create_user_db(&ctx.db, tenant_id, email, password, name, role, status).await
     }
 
-    async fn create_user_db(
+    pub(crate) async fn create_user_db(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
         email: &str,

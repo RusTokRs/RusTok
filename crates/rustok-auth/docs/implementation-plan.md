@@ -4,12 +4,12 @@
 
 ## Execution checkpoint
 
-- Current phase: auth_admin_mutation_provider_wiring
-- Last checkpoint: `ServerOAuthAdminMutationProvider` is registered in production shared runtime extensions, and OAuth GraphQL create/update/rotate/revoke resolvers consume `OAuthAdminMutationRuntime` instead of calling `OAuthAppService` directly. Stable port errors map back to canonical GraphQL error codes, and mutation response loading preserves the existing GraphQL shape. The test-only base runtime builder remains DB-independent.
-- Next step: Add native server-function adapters for OAuth create/update/rotate/revoke through the same runtime, switch the admin transport facade to native-first with GraphQL fallback, then extract the user provider from existing GraphQL lifecycle logic.
+- Current phase: phase_b_ready
+- Last checkpoint: Production runtime extensions register one `ServerAuthAdminMutationProvider` behind both `OAuthAdminMutationRuntime` and `UserAdminMutationRuntime`. OAuth and user create/update/delete GraphQL resolvers plus native `#[server]` adapters consume the same typed ports; the module-owned facade is native-first and keeps GraphQL in parallel. User custom-field validation, tenant scoping, RBAC, role replacement and localized-value lifecycle now execute inside the shared provider instead of transport resolvers.
+- Next step: Record browser/runtime parity evidence for the auth admin user and OAuth mutation flows before promoting to `parity_verified`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-29T00:00:00Z
+- Last updated at (UTC): 2026-06-30T00:00:00Z
 
 ## Область работ
 
@@ -41,11 +41,11 @@
 
 ## FFA/FBA status
 
-- FFA status: `in_progress`
+- FFA status: `phase_b_ready`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
 - FBA registry/evidence: `crates/rustok-auth/contracts/auth-fba-registry.json`, `crates/rustok-auth/contracts/evidence/auth-capability-static-matrix.json`, `crates/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json`.
-- Evidence: auth admin UI pages are fully relocated to `crates/rustok-auth/admin` with Leptos-free core, module-owned transport facade and explicit `admin/src/ui/leptos.rs`. Sixteen focused admin unit tests and `scripts/verify/verify-auth-admin-boundary.mjs` lock request normalization, pagination/error policy, user/OAuth presentation mapping and host-locale landing-page copy. Direct `leptos-auth` hook use remains only in UI adapters where it updates auth context signals/storage after sign-in, sign-up and sign-out; core stays framework-free. `rustok-auth/src/admin_mutations.rs` defines separate `UserAdminMutationPort` and `OAuthAdminMutationPort` runtimes. Production bootstrap registers `ServerOAuthAdminMutationProvider`, and OAuth GraphQL mutations consume that shared provider with canonical error mapping; native OAuth mutation adapters and the user provider remain open, so FFA stays below `phase_b_ready`. FBA metadata/evidence remains locked by `npm run verify:ai:fba-baseline`; executable boundary evidence is `cargo test -p rustok-auth --lib`, `cargo test -p rustok-auth-admin --lib` and `npm run verify:auth:admin-boundary`.
+- Evidence: auth admin UI pages are fully relocated to `crates/rustok-auth/admin` with Leptos-free core, module-owned transport facade and explicit `admin/src/ui/leptos.rs`. Sixteen focused admin unit tests and `scripts/verify/verify-auth-admin-boundary.mjs` lock request normalization, pagination/error policy, user/OAuth presentation mapping, host-locale landing-page copy, shared provider registration, native-first mutation routing and the absence of direct GraphQL lifecycle bypasses. Direct `leptos-auth` hook use remains only in UI adapters where it updates auth context signals/storage after sign-in, sign-up and sign-out; core stays framework-free. `rustok-auth/src/admin_mutations.rs` defines separate `UserAdminMutationPort` and `OAuthAdminMutationPort` runtimes. Production bootstrap registers one `ServerAuthAdminMutationProvider`; OAuth and user GraphQL/native mutation adapters consume the shared runtimes with canonical error mapping, tenant scope, RBAC and custom-field lifecycle preservation. FBA metadata/evidence remains locked by `npm run verify:ai:fba-baseline`; executable boundary evidence is `cargo test -p rustok-auth --lib`, `cargo test -p rustok-auth-admin --lib` and `npm run verify:auth:admin-boundary`.
 
 ## Проверка
 

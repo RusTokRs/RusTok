@@ -35,10 +35,12 @@ function assertNotContains(text, marker, description) {
 
 const corePath = "crates/rustok-auth/admin/src/core.rs";
 const mutationPortPath = "crates/rustok-auth/src/admin_mutations.rs";
-const oauthProviderPath = "apps/server/src/services/auth_admin_mutation_provider.rs";
+const authProviderPath = "apps/server/src/services/auth_admin_mutation_provider.rs";
 const runtimeExtensionsPath = "apps/server/src/services/module_event_dispatcher.rs";
 const oauthGraphqlPath = "apps/server/src/graphql/oauth/mutation.rs";
+const userGraphqlPath = "apps/server/src/graphql/mutations.rs";
 const transportPath = "crates/rustok-auth/admin/src/transport/mod.rs";
+const nativeTransportPath = "crates/rustok-auth/admin/src/transport/native_server_adapter.rs";
 const uiPath = "crates/rustok-auth/admin/src/ui/users.rs";
 const detailUiPath = "crates/rustok-auth/admin/src/ui/user_details.rs";
 const oauthUiPath = "crates/rustok-auth/admin/src/ui/oauth_apps.rs";
@@ -54,16 +56,18 @@ const planPath = "crates/rustok-auth/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 
-for (const filePath of [corePath, mutationPortPath, oauthProviderPath, runtimeExtensionsPath, oauthGraphqlPath, transportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
+for (const filePath of [corePath, mutationPortPath, authProviderPath, runtimeExtensionsPath, oauthGraphqlPath, userGraphqlPath, transportPath, nativeTransportPath, uiPath, detailUiPath, oauthUiPath, loginUiPath, registerUiPath, resetUiPath, profileUiPath, securityUiPath, authAdminUiPath, modelPath, i18nPath, planPath, registryPath, packagePath]) {
   assertExists(filePath);
 }
 
 const core = readRepo(corePath);
 const mutationPort = readRepo(mutationPortPath);
-const oauthProvider = readRepo(oauthProviderPath);
+const authProvider = readRepo(authProviderPath);
 const runtimeExtensions = readRepo(runtimeExtensionsPath);
 const oauthGraphql = readRepo(oauthGraphqlPath);
+const userGraphql = readRepo(userGraphqlPath);
 const transport = readRepo(transportPath);
+const nativeTransport = readRepo(nativeTransportPath);
 const ui = readRepo(uiPath);
 const detailUi = readRepo(detailUiPath);
 const oauthUi = readRepo(oauthUiPath);
@@ -88,11 +92,11 @@ for (const marker of ["leptos::", "#[component]", "spawn_local", "GraphqlRequest
 for (const marker of ["pub trait UserAdminMutationPort", "pub struct UserAdminMutationRuntime", "pub trait OAuthAdminMutationPort", "pub struct OAuthAdminMutationRuntime", "pub struct AuthAdminMutationContext", "async fn create_user", "async fn update_user", "async fn delete_user", "async fn create_oauth_app", "async fn update_oauth_app", "async fn rotate_oauth_app_secret", "async fn revoke_oauth_app"]) {
   assertContains(mutationPort, marker, `${mutationPortPath}: missing auth-owned mutation boundary marker ${marker}`);
 }
-for (const marker of ["impl OAuthAdminMutationPort for ServerOAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "RbacService::has_any_permission"]) {
-  assertContains(oauthProvider, marker, `${oauthProviderPath}: missing server OAuth mutation provider marker ${marker}`);
+for (const marker of ["impl OAuthAdminMutationPort for ServerAuthAdminMutationProvider", "impl UserAdminMutationPort for ServerAuthAdminMutationProvider", "OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app", "AuthLifecycleService::create_user_db", "RbacService::has_any_permission", "FlexAttachedValuesService::prepare_update"]) {
+  assertContains(authProvider, marker, `${authProviderPath}: missing shared server auth mutation provider marker ${marker}`);
 }
-for (const marker of ["build_shared_runtime_extensions_with_host_providers", "OAuthAdminMutationRuntime::new", "ServerOAuthAdminMutationProvider::new"]) {
-  assertContains(runtimeExtensions, marker, `${runtimeExtensionsPath}: missing OAuth provider registration marker ${marker}`);
+for (const marker of ["build_shared_runtime_extensions_with_host_providers", "OAuthAdminMutationRuntime::new", "UserAdminMutationRuntime::new", "ServerAuthAdminMutationProvider::new"]) {
+  assertContains(runtimeExtensions, marker, `${runtimeExtensionsPath}: missing auth provider registration marker ${marker}`);
 }
 for (const marker of ["OAuthAdminMutationRuntime", ".create_oauth_app(", ".update_oauth_app(", ".rotate_oauth_app_secret(", ".revoke_oauth_app("]) {
   assertContains(oauthGraphql, marker, `${oauthGraphqlPath}: GraphQL OAuth mutations must consume shared provider (${marker})`);
@@ -100,6 +104,17 @@ for (const marker of ["OAuthAdminMutationRuntime", ".create_oauth_app(", ".updat
 for (const marker of ["OAuthAppService::create_app", "OAuthAppService::update_app", "OAuthAppService::rotate_secret", "OAuthAppService::revoke_app"]) {
   assertNotContains(oauthGraphql, marker, `${oauthGraphqlPath}: GraphQL adapter must not bypass shared OAuth mutation provider (${marker})`);
 }
+for (const marker of ["UserAdminMutationRuntime", ".create_user(", ".update_user(", ".delete_user("]) {
+  assertContains(userGraphql, marker, `${userGraphqlPath}: GraphQL user mutations must consume shared provider (${marker})`);
+}
+for (const marker of ["AuthLifecycleService::create_user", "RbacService::replace_user_role", "FlexAttachedValuesService::delete_localized_values"]) {
+  assertNotContains(userGraphql, marker, `${userGraphqlPath}: GraphQL user adapter must not bypass shared provider (${marker})`);
+}
+for (const marker of ["create_user_native", "update_user_native", "delete_user_native"]) {
+  assertContains(nativeTransport, marker, `${nativeTransportPath}: missing native user mutation adapter marker ${marker}`);
+  assertContains(transport, marker, `${transportPath}: user facade must be native-first (${marker})`);
+}
+assertContains(nativeTransport, "UserAdminMutationRuntime", `${nativeTransportPath}: native user mutations must consume the shared runtime`);
 for (const marker of ["leptos::", "sea_orm::", "loco_rs::", "apps::server"] ) {
   assertNotContains(mutationPort, marker, `${mutationPortPath}: mutation port must remain host and framework independent (${marker})`);
 }
@@ -173,7 +188,8 @@ assertContains(plan, "verify-auth-admin-boundary.mjs", `${planPath}: local plan 
 assertContains(registry, "verify-auth-admin-boundary.mjs", `${registryPath}: registry must mention boundary guardrail`);
 assertContains(plan, "OAuthAdminMutationPort", `${planPath}: local plan must document the auth-owned mutation boundary`);
 assertContains(registry, "rustok-auth/src/admin_mutations.rs", `${registryPath}: registry must document the auth-owned mutation boundary`);
-assertContains(plan, "native OAuth mutation adapters and the user provider remain open", `${planPath}: local plan must document the current mutation parity gap`);
+assertContains(plan, "FFA status: `phase_b_ready`", `${planPath}: local plan must record the closed Phase B boundary`);
+assertContains(registry, "| `auth` | admin | `phase_b_ready`", `${registryPath}: registry must match the local auth FFA status`);
 assertContains(packageJson, "verify:auth:admin-boundary", `${packagePath}: missing auth boundary script`);
 assertContains(packageJson, "npm run verify:auth:admin-boundary", `${packagePath}: aggregate FFA verification must include auth boundary`);
 
