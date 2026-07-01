@@ -672,6 +672,7 @@ async fn complete_checkout_allows_backorder_variant_when_channel_inventory_hidde
         vendor: None,
         product_type: None,
         shipping_profile_slug: None,
+        primary_category_id: None,
         tags: vec![],
         publish: true,
         metadata: serde_json::json!({

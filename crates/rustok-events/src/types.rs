@@ -170,6 +170,65 @@ pub enum DomainEvent {
     ProductDeleted {
         product_id: Uuid,
     },
+    ProductAttributeCreated {
+        attribute_id: Uuid,
+    },
+    ProductAttributeUpdated {
+        attribute_id: Uuid,
+    },
+    ProductAttributeDeleted {
+        attribute_id: Uuid,
+    },
+    ProductAttributeOptionCreated {
+        option_id: Uuid,
+        attribute_id: Uuid,
+    },
+    ProductAttributeOptionUpdated {
+        option_id: Uuid,
+        attribute_id: Uuid,
+    },
+    ProductAttributeOptionDeleted {
+        option_id: Uuid,
+        attribute_id: Uuid,
+    },
+    ProductAttributeSchemaCreated {
+        schema_id: Uuid,
+    },
+    ProductAttributeSchemaUpdated {
+        schema_id: Uuid,
+    },
+    ProductAttributeSchemaDeleted {
+        schema_id: Uuid,
+    },
+    ProductAttributeSchemaBindingsChanged {
+        schema_id: Uuid,
+    },
+    CatalogCategoryCreated {
+        category_id: Uuid,
+    },
+    CatalogCategoryUpdated {
+        category_id: Uuid,
+    },
+    CatalogCategoryDeleted {
+        category_id: Uuid,
+    },
+    CatalogCategorySchemaModeChanged {
+        category_id: Uuid,
+    },
+    CatalogCategoryAttributesChanged {
+        category_id: Uuid,
+    },
+    ProductPrimaryCategoryChanged {
+        product_id: Uuid,
+        old_category_id: Option<Uuid>,
+        new_category_id: Option<Uuid>,
+    },
+    ProductCategoryAssignmentsChanged {
+        product_id: Uuid,
+    },
+    ProductAttributeValuesChanged {
+        product_id: Uuid,
+    },
     VariantCreated {
         variant_id: Uuid,
         product_id: Uuid,
@@ -542,6 +601,28 @@ impl DomainEvent {
             Self::ProductUpdated { .. } => "product.updated",
             Self::ProductPublished { .. } => "product.published",
             Self::ProductDeleted { .. } => "product.deleted",
+            Self::ProductAttributeCreated { .. } => "product.attribute.created",
+            Self::ProductAttributeUpdated { .. } => "product.attribute.updated",
+            Self::ProductAttributeDeleted { .. } => "product.attribute.deleted",
+            Self::ProductAttributeOptionCreated { .. } => "product.attribute_option.created",
+            Self::ProductAttributeOptionUpdated { .. } => "product.attribute_option.updated",
+            Self::ProductAttributeOptionDeleted { .. } => "product.attribute_option.deleted",
+            Self::ProductAttributeSchemaCreated { .. } => "product.attribute_schema.created",
+            Self::ProductAttributeSchemaUpdated { .. } => "product.attribute_schema.updated",
+            Self::ProductAttributeSchemaDeleted { .. } => "product.attribute_schema.deleted",
+            Self::ProductAttributeSchemaBindingsChanged { .. } => {
+                "product.attribute_schema.bindings_changed"
+            }
+            Self::CatalogCategoryCreated { .. } => "catalog.category.created",
+            Self::CatalogCategoryUpdated { .. } => "catalog.category.updated",
+            Self::CatalogCategoryDeleted { .. } => "catalog.category.deleted",
+            Self::CatalogCategorySchemaModeChanged { .. } => "catalog.category.schema_mode_changed",
+            Self::CatalogCategoryAttributesChanged { .. } => "catalog.category.attributes_changed",
+            Self::ProductPrimaryCategoryChanged { .. } => "product.primary_category.changed",
+            Self::ProductCategoryAssignmentsChanged { .. } => {
+                "product.category_assignments.changed"
+            }
+            Self::ProductAttributeValuesChanged { .. } => "product.attribute_values.changed",
             Self::VariantCreated { .. } => "variant.created",
             Self::VariantUpdated { .. } => "variant.updated",
             Self::VariantDeleted { .. } => "variant.deleted",
@@ -652,6 +733,24 @@ impl DomainEvent {
             Self::ProductUpdated { .. } => 1,
             Self::ProductPublished { .. } => 1,
             Self::ProductDeleted { .. } => 1,
+            Self::ProductAttributeCreated { .. } => 1,
+            Self::ProductAttributeUpdated { .. } => 1,
+            Self::ProductAttributeDeleted { .. } => 1,
+            Self::ProductAttributeOptionCreated { .. } => 1,
+            Self::ProductAttributeOptionUpdated { .. } => 1,
+            Self::ProductAttributeOptionDeleted { .. } => 1,
+            Self::ProductAttributeSchemaCreated { .. } => 1,
+            Self::ProductAttributeSchemaUpdated { .. } => 1,
+            Self::ProductAttributeSchemaDeleted { .. } => 1,
+            Self::ProductAttributeSchemaBindingsChanged { .. } => 1,
+            Self::CatalogCategoryCreated { .. } => 1,
+            Self::CatalogCategoryUpdated { .. } => 1,
+            Self::CatalogCategoryDeleted { .. } => 1,
+            Self::CatalogCategorySchemaModeChanged { .. } => 1,
+            Self::CatalogCategoryAttributesChanged { .. } => 1,
+            Self::ProductPrimaryCategoryChanged { .. } => 1,
+            Self::ProductCategoryAssignmentsChanged { .. } => 1,
+            Self::ProductAttributeValuesChanged { .. } => 1,
             Self::VariantCreated { .. } => 1,
             Self::VariantUpdated { .. } => 1,
             Self::VariantDeleted { .. } => 1,
@@ -740,6 +839,24 @@ impl DomainEvent {
                 | Self::ProductUpdated { .. }
                 | Self::ProductPublished { .. }
                 | Self::ProductDeleted { .. }
+                | Self::ProductAttributeCreated { .. }
+                | Self::ProductAttributeUpdated { .. }
+                | Self::ProductAttributeDeleted { .. }
+                | Self::ProductAttributeOptionCreated { .. }
+                | Self::ProductAttributeOptionUpdated { .. }
+                | Self::ProductAttributeOptionDeleted { .. }
+                | Self::ProductAttributeSchemaCreated { .. }
+                | Self::ProductAttributeSchemaUpdated { .. }
+                | Self::ProductAttributeSchemaDeleted { .. }
+                | Self::ProductAttributeSchemaBindingsChanged { .. }
+                | Self::CatalogCategoryCreated { .. }
+                | Self::CatalogCategoryUpdated { .. }
+                | Self::CatalogCategoryDeleted { .. }
+                | Self::CatalogCategorySchemaModeChanged { .. }
+                | Self::CatalogCategoryAttributesChanged { .. }
+                | Self::ProductPrimaryCategoryChanged { .. }
+                | Self::ProductCategoryAssignmentsChanged { .. }
+                | Self::ProductAttributeValuesChanged { .. }
                 | Self::VariantUpdated { .. }
                 | Self::InventoryUpdated { .. }
                 | Self::PriceUpdated { .. }
@@ -921,6 +1038,58 @@ impl ValidateEvent for DomainEvent {
             | Self::ProductUpdated { product_id }
             | Self::ProductPublished { product_id }
             | Self::ProductDeleted { product_id } => {
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                Ok(())
+            }
+            Self::ProductAttributeCreated { attribute_id }
+            | Self::ProductAttributeUpdated { attribute_id }
+            | Self::ProductAttributeDeleted { attribute_id } => {
+                validators::validate_not_nil_uuid("attribute_id", attribute_id)?;
+                Ok(())
+            }
+            Self::ProductAttributeOptionCreated {
+                option_id,
+                attribute_id,
+            }
+            | Self::ProductAttributeOptionUpdated {
+                option_id,
+                attribute_id,
+            }
+            | Self::ProductAttributeOptionDeleted {
+                option_id,
+                attribute_id,
+            } => {
+                validators::validate_not_nil_uuid("option_id", option_id)?;
+                validators::validate_not_nil_uuid("attribute_id", attribute_id)?;
+                Ok(())
+            }
+            Self::ProductAttributeSchemaCreated { schema_id }
+            | Self::ProductAttributeSchemaUpdated { schema_id }
+            | Self::ProductAttributeSchemaDeleted { schema_id }
+            | Self::ProductAttributeSchemaBindingsChanged { schema_id } => {
+                validators::validate_not_nil_uuid("schema_id", schema_id)?;
+                Ok(())
+            }
+            Self::CatalogCategoryCreated { category_id }
+            | Self::CatalogCategoryUpdated { category_id }
+            | Self::CatalogCategoryDeleted { category_id }
+            | Self::CatalogCategorySchemaModeChanged { category_id }
+            | Self::CatalogCategoryAttributesChanged { category_id } => {
+                validators::validate_not_nil_uuid("category_id", category_id)?;
+                Ok(())
+            }
+            Self::ProductPrimaryCategoryChanged {
+                product_id,
+                old_category_id,
+                new_category_id,
+            } => {
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                validators::validate_optional_uuid("old_category_id", old_category_id)?;
+                validators::validate_optional_uuid("new_category_id", new_category_id)?;
+                Ok(())
+            }
+            Self::ProductCategoryAssignmentsChanged { product_id }
+            | Self::ProductAttributeValuesChanged { product_id } => {
                 validators::validate_not_nil_uuid("product_id", product_id)?;
                 Ok(())
             }

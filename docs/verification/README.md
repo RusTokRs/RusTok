@@ -51,11 +51,14 @@ cargo xtask validate-manifest
 
 ## Reference artifacts pipeline (DOC-09 / B11)
 
-Для phase 1 по DOC-09 используем единый локальный скрипт экспорта reference-артефактов:
+Для phase 1 по DOC-09 используем единый cross-platform Node.js exporter reference-артефактов:
 
 ```bash
-scripts/verify/export-reference-artifacts.sh artifacts/reference
+node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 ```
+
+В CI и Unix-средах `scripts/verify/export-reference-artifacts.sh` остаётся тонкой
+обёрткой над тем же exporter; отдельной реализации на Bash нет.
 
 Что делает скрипт:
 
@@ -74,7 +77,7 @@ scripts/verify/export-reference-artifacts.sh artifacts/reference
 
 ```bash
 cargo xtask --help
-scripts/verify/export-reference-artifacts.sh artifacts/reference
+node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 rg -n "openapi/|graphql/|manifest.json" artifacts/reference -S
 ```

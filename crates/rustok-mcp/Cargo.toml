@@ -19,8 +19,14 @@ thiserror.workspace = true
 rustok-core.workspace = true
 uuid.workspace = true
 tracing.workspace = true
+chrono.workspace = true
+async-graphql = { workspace = true, optional = true }
 alloy = { path = "../alloy" }
 rhai.workspace = true
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]
 
 [dev-dependencies]
 sea-orm-migration.workspace = true

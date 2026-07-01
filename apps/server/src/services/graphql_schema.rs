@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use loco_rs::app::AppContext;
 
+use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
+use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
 use crate::graphql::{build_schema, AppSchema, SharedGraphqlSchema};
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
@@ -21,6 +23,8 @@ pub fn init_graphql_schema(ctx: &AppContext) -> Arc<AppSchema> {
         build_event_hub_from_context(ctx),
         field_definition_cache_from_context(ctx, event_bus),
         module_runtime_extensions_from_ctx(ctx),
+        rbac_graphql_role_writer_from_context(ctx),
+        search_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-media")]
         storage_from_ctx(ctx),
     ));

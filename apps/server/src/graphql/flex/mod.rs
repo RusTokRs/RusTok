@@ -6,7 +6,7 @@ use rustok_api::Permission;
 use rustok_core::field_schema::is_valid_field_key;
 
 use crate::context::AuthContext;
-use crate::graphql::errors::GraphQLError;
+use rustok_api::graphql::GraphQLError;
 
 mod mutation;
 mod query;

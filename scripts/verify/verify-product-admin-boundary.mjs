@@ -44,6 +44,10 @@ const uiPath = "crates/rustok-product/admin/src/ui/leptos.rs";
 const transportPath = "crates/rustok-product/admin/src/transport.rs";
 const legacyApiPath = "crates/rustok-product/admin/src/api.rs";
 const graphqlAdapterPath = "crates/rustok-product/admin/src/transport/graphql_adapter.rs";
+const nativeAdapterPath = "crates/rustok-product/admin/src/transport/native_server_adapter.rs";
+const commerceQueryPath = "crates/rustok-commerce/src/graphql/query.rs";
+const commerceCatalogMutationPath = "crates/rustok-commerce/src/graphql/mutations/catalog.rs";
+const commerceTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
 const implementationPlanPath = "crates/rustok-product/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
@@ -54,6 +58,10 @@ for (const filePath of [
   uiPath,
   transportPath,
   graphqlAdapterPath,
+  nativeAdapterPath,
+  commerceQueryPath,
+  commerceCatalogMutationPath,
+  commerceTypesPath,
   implementationPlanPath,
   registryPath,
   packagePath,
@@ -69,6 +77,10 @@ const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
+const nativeAdapter = readRepo(nativeAdapterPath);
+const commerceQuery = readRepo(commerceQueryPath);
+const commerceCatalogMutation = readRepo(commerceCatalogMutationPath);
+const commerceTypes = readRepo(commerceTypesPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 const packageJson = readRepo(packagePath);
@@ -98,6 +110,7 @@ for (const marker of [
   "ProductAdminProductsLoadViewModel",
   "product_admin_products_load_view_from_result",
   "ProductAdminShippingProfilesLoadViewModel",
+  "ProductAttributeEditorState",
   "product_admin_shipping_profiles_load_view_from_result",
   "show_shipping_profile",
 ]) {
@@ -129,6 +142,8 @@ for (const marker of ["list.items.is_empty()", "list.items.into_iter().map"] ) {
   assertNotContains(ui, marker, `${uiPath}: products load-result normalization must stay in core (${marker})`);
 }
 assertNotContains(ui, "match shipping_profiles.get()", `${uiPath}: shipping-profile consumers must share core-owned load-result normalization`);
+assertContains(ui, "TypedProductAttributeField", `${uiPath}: effective product form must render typed attribute editors`);
+assertContains(ui, "save_product_attribute_values", `${uiPath}: product submit flow must persist typed attribute patches`);
 
 for (const marker of [
   "fetch_bootstrap",
@@ -136,7 +151,23 @@ for (const marker of [
   "fetch_product",
   "fetch_product_pricing",
   "fetch_shipping_profiles",
+  "fetch_product_attributes",
+  "fetch_catalog_categories",
+  "fetch_attribute_schemas",
+  "fetch_effective_product_form",
+  "fetch_product_attribute_values",
   "create_product",
+  "create_product_attribute",
+  "create_product_attribute_option",
+  "create_catalog_category",
+  "create_attribute_schema",
+  "create_product_attribute_schema_group",
+  "create_category_attribute_group",
+  "set_category_schema_mode",
+  "bind_schema_attribute",
+  "bind_category_attribute",
+  "save_product_attribute_values",
+  "clear_detached_product_attribute_values",
   "update_product",
   "change_product_status",
   "delete_product",
@@ -144,13 +175,132 @@ for (const marker of [
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
+assertContains(transport, "mod native_server_adapter;", `${transportPath}: transport facade must wire native server adapter`);
 assertContains(transport, "graphql_adapter::fetch_products", `${transportPath}: transport facade must delegate through GraphQL adapter`);
+assertContains(transport, "graphql_adapter::fetch_effective_product_form", `${transportPath}: catalog schema operations must delegate through GraphQL adapter`);
+assertContains(transport, "native_server_adapter::fetch_effective_product_form", `${transportPath}: catalog schema operations must try native server adapter first`);
+assertContains(transport, "native_server_adapter::save_product_attribute_values", `${transportPath}: typed attribute writes must try native server adapter first`);
 assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the product admin transport facade`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: product admin GraphQL adapter must keep the GraphQL transport contract`);
+for (const marker of [
+  "#[server",
+  "ProductCatalogSchemaService",
+  "product_admin_attributes_native",
+  "product_admin_categories_native",
+  "product_admin_attribute_schemas_native",
+  "product_admin_effective_form_native",
+  "product_admin_attribute_values_native",
+  "product_admin_save_attribute_values_native",
+  "product_admin_clear_detached_attribute_values_native",
+  "product_admin_create_attribute_native",
+  "product_admin_create_attribute_option_native",
+  "product_admin_create_category_native",
+  "product_admin_create_schema_native",
+  "product_admin_create_schema_group_native",
+  "product_admin_create_category_group_native",
+  "product_admin_set_category_schema_mode_native",
+  "product_admin_bind_schema_attribute_native",
+  "product_admin_bind_category_attribute_native",
+  "locale: String",
+  "leptos_axum::extract::<rustok_api::AuthContext>",
+  "leptos_axum::extract::<rustok_api::TenantContext>",
+]) {
+  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native server adapter must expose category-bound server function contract (${marker})`);
+}
+for (const marker of [/locale: Option<String>/, /unwrap_or_else\(\|\| "en"/, /PLATFORM_FALLBACK_LOCALE/]) {
+  assertNotContains(nativeAdapter, marker, `${nativeAdapterPath}: native category-bound adapter must not invent optional/fallback locale`);
+}
+for (const marker of [
+  "ProductAdminAttributes($tenantId: UUID!, $locale: String!)",
+  "ProductAdminCatalogCategories($tenantId: UUID!, $locale: String!)",
+  "ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!)",
+  "ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!)",
+  "ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!)",
+  "ProductAdminSaveAttributeValues($tenantId: UUID!, $userId: UUID!, $productId: UUID!, $locale: String!",
+  "ProductAdminClearDetachedAttributeValues($tenantId: UUID!, $userId: UUID!, $productId: UUID!, $locale: String!",
+  "ProductAdminCreateAttribute($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "ProductAdminCreateAttributeOption($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "ProductAdminCreateCatalogCategory($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "ProductAdminCreateAttributeSchema($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "ProductAdminCreateSchemaGroup($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "ProductAdminCreateCategoryGroup($tenantId: UUID!, $userId: UUID!, $locale: String!",
+  "options { id code label position } groupCode groupLabel",
+  "struct LocaleVariables",
+  "struct LocaleMutationVariables",
+]) {
+  assertContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute contract must use explicit host-provided locale (${marker})`);
+}
+for (const marker of [
+  /fn fetch_product_attributes\([^)]*locale: Option<String>/,
+  /fn fetch_catalog_categories\([^)]*locale: Option<String>/,
+  /fn fetch_attribute_schemas\([^)]*locale: Option<String>/,
+  /fn fetch_effective_product_form\([^)]*locale: Option<String>/,
+  /fn fetch_product_attribute_values\([^)]*locale: Option<String>/,
+  /fn save_product_attribute_values\([^)]*locale: Option<String>/,
+  /fn create_product_attribute\([^)]*locale: Option<String>/,
+  /fn create_catalog_category\([^)]*locale: Option<String>/,
+  /fn create_attribute_schema\([^)]*locale: Option<String>/,
+  /unwrap_or_else\(\|\| "en"/,
+  /PLATFORM_FALLBACK_LOCALE/,
+]) {
+  assertNotContains(transport, marker, `${transportPath}: new catalog attribute facade must not invent optional/fallback locale`);
+  assertNotContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute GraphQL adapter must not invent optional/fallback locale`);
+}
+for (const marker of [
+  "ProductCatalogSchemaService",
+  "async fn product_attributes(",
+  "async fn catalog_categories(",
+  "async fn product_attribute_schemas(",
+  "async fn product_effective_form(",
+  "async fn product_attribute_values(",
+  "locale: String",
+]) {
+  assertContains(commerceQuery, marker, `${commerceQueryPath}: server GraphQL query surface must expose category-bound catalog schema reads (${marker})`);
+}
+for (const marker of [
+  "ProductCatalogSchemaService",
+  "async fn create_product_attribute(",
+  "async fn create_product_attribute_option(",
+  "async fn create_catalog_category(",
+  "async fn create_product_attribute_schema(",
+  "async fn create_product_attribute_schema_group(",
+  "async fn create_catalog_category_attribute_group(",
+  "async fn set_catalog_category_schema_mode(",
+  "async fn bind_product_attribute_schema_attribute(",
+  "async fn bind_catalog_category_attribute(",
+  "async fn save_product_attribute_values(",
+  "async fn clear_detached_product_attribute_values(",
+  "locale: String",
+]) {
+  assertContains(commerceCatalogMutation, marker, `${commerceCatalogMutationPath}: server GraphQL mutation surface must expose category-bound catalog schema writes (${marker})`);
+}
+for (const marker of [
+  "GqlProductAttributeList",
+  "GqlCatalogCategoryList",
+  "GqlProductAttributeSchemaList",
+  "GqlProductEffectiveForm",
+  "GqlProductAttributeOption",
+  "group_label",
+  "GqlProductAttributeValue",
+  "ProductAttributeValuePatchInput",
+  "CreateProductAttributeInput",
+  "CreateProductAttributeOptionInput",
+  "CreateCatalogCategoryInput",
+  "CreateProductAttributeSchemaInput",
+  "CreateProductAttributeSchemaGroupInput",
+  "CreateCategoryAttributeGroupInput",
+  "SetCategorySchemaModeInput",
+  "BindSchemaAttributeInput",
+  "BindCategoryAttributeInput",
+]) {
+  assertContains(commerceTypes, marker, `${commerceTypesPath}: server GraphQL type surface must include category-bound catalog schema DTO/input ${marker}`);
+}
 
 assertContains(implementationPlan, "verify-product-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the product fast boundary guardrail`);
+assertContains(implementationPlan, "category-bound admin transport", `${implementationPlanPath}: local plan must record category-bound admin transport evidence`);
 assertContains(registry, "verify-product-admin-boundary.mjs", `${registryPath}: central readiness board must mention the product fast boundary guardrail`);
+assertContains(registry, "category-bound admin transport", `${registryPath}: central readiness board must record category-bound admin transport evidence`);
 assertContains(packageJson, "verify:product:admin-boundary", `${packagePath}: package scripts must expose product admin boundary verification`);
 assertContains(packageJson, "test:verify:product:admin-boundary", `${packagePath}: package scripts must expose product admin boundary fixture tests`);
 assertContains(packageJson, "npm run test:verify:product:admin-boundary", `${packagePath}: aggregate FFA fixture coverage must include product admin boundary tests`);

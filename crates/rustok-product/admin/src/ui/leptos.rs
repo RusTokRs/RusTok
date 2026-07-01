@@ -16,6 +16,7 @@ use crate::core::{
     build_product_admin_save_command, build_product_admin_seo_panel_copy,
     build_product_admin_shell_view_model, build_product_admin_status_mutation_command,
     build_product_admin_status_mutation_result_view_model, build_product_admin_summary_panel_copy,
+    build_product_attribute_form_copy, build_product_detached_attribute_value_view_models,
     build_selected_product_summary_view_model, empty_product_admin_editor_form_state,
     parse_product_admin_inventory_quantity_input, product_admin_clear_product_query_intent,
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
@@ -26,9 +27,12 @@ use crate::core::{
     ProductAdminDraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
     ProductAdminOpenProductViewModel, ProductAdminProductsLoadViewModel,
     ProductAdminRouteQueryIntent, ProductAdminSaveMode, ProductAdminSelectedProductQueryState,
-    ProductAdminStatusMutationOutcome, ProductAdminStatusTarget, SelectedProductSummaryViewModel,
+    ProductAdminStatusMutationOutcome, ProductAdminStatusTarget, ProductAttributeEditorState,
+    SelectedProductSummaryViewModel,
 };
-use crate::model::{ProductAdminBootstrap, ProductDetail, ProductPricingDetail};
+use crate::model::{
+    ProductAdminBootstrap, ProductDetail, ProductEffectiveFormAttribute, ProductPricingDetail,
+};
 use crate::transport;
 
 fn local_resource<S, Fut, T>(
@@ -41,6 +45,113 @@ where
     T: 'static,
 {
     LocalResource::new(move || fetcher(source()))
+}
+
+#[component]
+fn TypedProductAttributeField(
+    attribute: ProductEffectiveFormAttribute,
+    editor_state: RwSignal<ProductAttributeEditorState>,
+    required_label: String,
+    empty_option_label: String,
+    boolean_true_label: String,
+    boolean_false_label: String,
+) -> impl IntoView {
+    let attribute_id = attribute.attribute_id.clone();
+    let value_type = attribute.value_type.clone();
+    let input = match value_type.as_str() {
+        "text" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <input class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().text(&read_id) on:input=move |event| editor_state.update(|state| state.set_text(write_id.clone(), event_target_value(&event))) />
+            }.into_any()
+        }
+        "textarea" | "richtext" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <textarea class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().text(&read_id) on:input=move |event| editor_state.update(|state| state.set_text(write_id.clone(), event_target_value(&event))) />
+            }.into_any()
+        }
+        "integer" | "decimal" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <input type="number" step=if value_type == "integer" { "1" } else { "any" } class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().text(&read_id) on:input=move |event| editor_state.update(|state| state.set_text(write_id.clone(), event_target_value(&event))) />
+            }.into_any()
+        }
+        "boolean" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().boolean_value(&read_id) on:change=move |event| editor_state.update(|state| state.set_boolean(write_id.clone(), event_target_value(&event)))>
+                    <option value="">{empty_option_label.clone()}</option>
+                    <option value="true">{boolean_true_label}</option>
+                    <option value="false">{boolean_false_label}</option>
+                </select>
+            }.into_any()
+        }
+        "date" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <input type="date" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().text(&read_id) on:input=move |event| editor_state.update(|state| state.set_text(write_id.clone(), event_target_value(&event))) />
+            }.into_any()
+        }
+        "datetime" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <input type="text" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().text(&read_id) on:input=move |event| editor_state.update(|state| state.set_text(write_id.clone(), event_target_value(&event))) />
+            }.into_any()
+        }
+        "select" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().selected_option(&read_id) on:change=move |event| editor_state.update(|state| state.set_select(write_id.clone(), event_target_value(&event)))>
+                    <option value="">{empty_option_label}</option>
+                    {attribute.options.into_iter().map(|option| view! { <option value=option.id>{option.label}</option> }).collect_view()}
+                </select>
+            }.into_any()
+        }
+        "multiselect" => view! {
+            <div class="grid gap-2">
+                {attribute.options.into_iter().map(|option| {
+                    let read_id = attribute_id.clone();
+                    let write_id = attribute_id.clone();
+                    let read_option_id = option.id.clone();
+                    let write_option_id = option.id.clone();
+                    view! {
+                        <label class="flex items-center gap-2 text-sm text-foreground">
+                            <input type="checkbox" prop:checked=move || editor_state.get().option_selected(&read_id, &read_option_id) on:change=move |event| editor_state.update(|state| state.set_multiselect_option(write_id.clone(), write_option_id.clone(), event_target_checked(&event))) />
+                            <span>{option.label}</span>
+                        </label>
+                    }
+                }).collect_view()}
+            </div>
+        }.into_any(),
+        "json" => {
+            let read_id = attribute_id.clone();
+            let write_id = attribute_id.clone();
+            view! {
+                <textarea class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none focus:border-primary" prop:value=move || editor_state.get().json(&read_id) on:input=move |event| editor_state.update(|state| state.set_json(write_id.clone(), event_target_value(&event))) />
+            }.into_any()
+        }
+        _ => view! { <></> }.into_any(),
+    };
+
+    view! {
+        <label class="grid gap-2 text-sm text-foreground">
+            <span class="flex items-center gap-2 font-medium">
+                {attribute.label}
+                <Show when=move || attribute.is_required>
+                    <span class="text-xs font-normal text-destructive">{required_label}</span>
+                </Show>
+            </span>
+            {input}
+        </label>
+    }
 }
 
 fn apply_product_admin_route_query_intent(
@@ -62,6 +173,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let ui_locale = route_context.locale.clone();
     let effective_locale = ui_locale.clone();
     let editor_copy = build_product_admin_editor_copy(effective_locale.as_deref());
+    let attribute_form_copy = build_product_attribute_form_copy(effective_locale.as_deref());
     let selected_product_query = use_route_query_value(AdminQueryKey::ProductId.as_str());
     let query_writer = use_route_query_writer();
     let token = use_token();
@@ -77,6 +189,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let (vendor, set_vendor) = signal(String::new());
     let (product_type, set_product_type) = signal(String::new());
     let (shipping_profile_slug, set_shipping_profile_slug) = signal(String::new());
+    let (primary_category_id, set_primary_category_id) = signal(String::new());
     let (sku, set_sku) = signal(String::new());
     let (barcode, set_barcode) = signal(String::new());
     let (currency_code, set_currency_code) = signal("USD".to_string());
@@ -88,7 +201,11 @@ pub fn ProductAdmin() -> impl IntoView {
     let (status_filter, set_status_filter) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let attribute_editor_state = RwSignal::new(ProductAttributeEditorState::default());
     let effective_locale_for_products = effective_locale.clone();
+    let effective_locale_for_categories = effective_locale.clone();
+    let effective_locale_for_effective_form = effective_locale.clone();
+    let effective_locale_for_attribute_values = effective_locale.clone();
     let effective_locale_for_selected_pricing = effective_locale.clone();
     let effective_locale_for_initial_open = effective_locale.clone();
 
@@ -138,6 +255,99 @@ pub fn ProductAdmin() -> impl IntoView {
             .await
         },
     );
+    let catalog_categories = local_resource(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                refresh_nonce.get(),
+                effective_locale_for_categories.clone(),
+            )
+        },
+        move |(token_value, tenant_value, _, locale_value)| async move {
+            let bootstrap =
+                transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
+            let locale = locale_value.unwrap_or_default();
+            transport::fetch_catalog_categories(
+                token_value,
+                tenant_value,
+                bootstrap.current_tenant.id,
+                locale,
+            )
+            .await
+        },
+    );
+    let effective_form = local_resource(
+        move || {
+            let category_id = text_or_none(primary_category_id.get());
+            let selected_product = selected.get();
+            let product_id = selected_product
+                .as_ref()
+                .filter(|product| product.primary_category_id.as_deref() == category_id.as_deref())
+                .map(|product| product.id.clone());
+            (
+                token.get(),
+                tenant.get(),
+                refresh_nonce.get(),
+                effective_locale_for_effective_form.clone(),
+                product_id,
+                category_id,
+            )
+        },
+        move |(token_value, tenant_value, _, locale_value, product_id, category_id)| async move {
+            if product_id.is_none() && category_id.is_none() {
+                return Ok(None);
+            }
+            let bootstrap =
+                transport::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
+            transport::fetch_effective_product_form(
+                token_value,
+                tenant_value,
+                bootstrap.current_tenant.id,
+                product_id,
+                category_id,
+                locale_value.unwrap_or_default(),
+            )
+            .await
+        },
+    );
+    let attribute_values = local_resource(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                refresh_nonce.get(),
+                effective_locale_for_attribute_values.clone(),
+                selected.get().map(|product| product.id),
+            )
+        },
+        move |(token_value, tenant_value, _, locale_value, product_id)| async move {
+            let Some(product_id) = product_id else {
+                return Ok(Vec::new());
+            };
+            let bootstrap = transport::fetch_bootstrap(token_value.clone(), tenant_value.clone())
+                .await
+                .map_err(|error| error.to_string())?;
+            transport::fetch_product_attribute_values(
+                token_value,
+                tenant_value,
+                bootstrap.current_tenant.id,
+                product_id,
+                locale_value.unwrap_or_default(),
+            )
+            .await
+            .map_err(|error| error.to_string())
+        },
+    );
+    Effect::new(move |_| {
+        let _selected_product_id = selected.get().map(|product| product.id);
+        attribute_editor_state.set(ProductAttributeEditorState::default());
+    });
+    Effect::new(move |_| {
+        if let Some(Ok(values)) = attribute_values.get() {
+            attribute_editor_state.set(ProductAttributeEditorState::from_values(values));
+        }
+    });
     let selected_pricing = local_resource(
         move || {
             (
@@ -196,6 +406,7 @@ pub fn ProductAdmin() -> impl IntoView {
                     set_vendor,
                     set_product_type,
                     set_shipping_profile_slug,
+                    set_primary_category_id,
                     set_sku,
                     set_barcode,
                     set_currency_code,
@@ -215,6 +426,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 set_vendor,
                 set_product_type,
                 set_shipping_profile_slug,
+                set_primary_category_id,
                 set_sku,
                 set_barcode,
                 set_currency_code,
@@ -237,6 +449,7 @@ pub fn ProductAdmin() -> impl IntoView {
             set_vendor,
             set_product_type,
             set_shipping_profile_slug,
+            set_primary_category_id,
             set_sku,
             set_barcode,
             set_currency_code,
@@ -245,6 +458,7 @@ pub fn ProductAdmin() -> impl IntoView {
             set_inventory_quantity,
             set_publish_now,
         );
+        attribute_editor_state.set(ProductAttributeEditorState::default());
         set_error.set(None);
     };
 
@@ -265,6 +479,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 vendor: vendor.get_untracked(),
                 product_type: product_type.get_untracked(),
                 shipping_profile_slug: shipping_profile_slug.get_untracked(),
+                primary_category_id: primary_category_id.get_untracked(),
                 sku: sku.get_untracked(),
                 barcode: barcode.get_untracked(),
                 currency_code: currency_code.get_untracked(),
@@ -284,12 +499,35 @@ pub fn ProductAdmin() -> impl IntoView {
                 return;
             }
         };
+        let attribute_types = effective_form
+            .get_untracked()
+            .and_then(Result::ok)
+            .flatten()
+            .map(|form| {
+                form.attributes
+                    .into_iter()
+                    .map(|attribute| (attribute.attribute_id, attribute.value_type))
+                    .collect::<std::collections::HashMap<_, _>>()
+            })
+            .unwrap_or_default();
+        let attribute_patches = match attribute_editor_state
+            .get_untracked()
+            .patches(submit_ui_locale.as_deref(), &attribute_types)
+        {
+            Ok(patches) => patches,
+            Err(message) => {
+                set_error.set(Some(message));
+                return;
+            }
+        };
 
         set_busy.set(true);
         set_error.set(None);
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let attribute_tenant_id = command.tenant_id.clone();
+        let attribute_actor_id = command.actor_id.clone();
 
         let error_copy_for_submit = error_copy_for_submit_base.clone();
         spawn_local(async move {
@@ -297,8 +535,8 @@ pub fn ProductAdmin() -> impl IntoView {
             let result = match command.mode {
                 ProductAdminSaveMode::Update { product_id } => {
                     transport::update_product(
-                        token_value,
-                        tenant_value,
+                        token_value.clone(),
+                        tenant_value.clone(),
                         command.tenant_id,
                         command.actor_id,
                         product_id,
@@ -308,8 +546,8 @@ pub fn ProductAdmin() -> impl IntoView {
                 }
                 ProductAdminSaveMode::Create => {
                     transport::create_product(
-                        token_value,
-                        tenant_value,
+                        token_value.clone(),
+                        tenant_value.clone(),
                         command.tenant_id,
                         command.actor_id,
                         command.draft,
@@ -321,6 +559,21 @@ pub fn ProductAdmin() -> impl IntoView {
             match result {
                 Ok(product) => {
                     let product_id = product.id.clone();
+                    let attribute_result = if attribute_patches.is_empty() {
+                        Ok(Vec::new())
+                    } else {
+                        transport::save_product_attribute_values(
+                            token_value,
+                            tenant_value,
+                            attribute_tenant_id,
+                            attribute_actor_id,
+                            product_id.clone(),
+                            submit_locale.clone(),
+                            attribute_patches,
+                        )
+                        .await
+                        .map_err(|error| error.to_string())
+                    };
                     apply_product(
                         &product,
                         Some(submit_locale.as_str()),
@@ -333,6 +586,7 @@ pub fn ProductAdmin() -> impl IntoView {
                         set_vendor,
                         set_product_type,
                         set_shipping_profile_slug,
+                        set_primary_category_id,
                         set_sku,
                         set_barcode,
                         set_currency_code,
@@ -341,6 +595,14 @@ pub fn ProductAdmin() -> impl IntoView {
                         set_inventory_quantity,
                         set_publish_now,
                     );
+                    match attribute_result {
+                        Ok(values) if !values.is_empty() => attribute_editor_state
+                            .set(ProductAttributeEditorState::from_values(values)),
+                        Ok(_) => {}
+                        Err(detail) => {
+                            set_error.set(Some(error_copy_for_submit.save_product_failure(detail)))
+                        }
+                    }
                     set_refresh_nonce.update(|value| *value += 1);
                     apply_product_admin_route_query_intent(
                         &submit_query_writer,
@@ -350,6 +612,44 @@ pub fn ProductAdmin() -> impl IntoView {
                 Err(err) => set_error.set(Some(error_copy_for_submit.save_product_failure(err))),
             }
 
+            set_busy.set(false);
+        });
+    };
+
+    let clear_detached_ui_locale = ui_locale.clone();
+    let error_copy_for_detached = error_copy.clone();
+    let clear_detached_values = move |attribute_ids: Vec<String>| {
+        let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
+            set_error.set(Some(error_copy_for_detached.bootstrap_loading.clone()));
+            return;
+        };
+        let Some(product_id) = selected.get_untracked().map(|product| product.id) else {
+            return;
+        };
+        set_busy.set(true);
+        set_error.set(None);
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let locale = clear_detached_ui_locale.clone().unwrap_or_default();
+        let error_copy = error_copy_for_detached.clone();
+        spawn_local(async move {
+            match transport::clear_detached_product_attribute_values(
+                token_value,
+                tenant_value,
+                bootstrap.current_tenant.id,
+                bootstrap.me.id,
+                product_id,
+                locale,
+                attribute_ids,
+            )
+            .await
+            {
+                Ok(values) => {
+                    attribute_editor_state.set(ProductAttributeEditorState::from_values(values));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(error_copy.save_product_failure(err))),
+            }
             set_busy.set(false);
         });
     };
@@ -572,6 +872,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             set_vendor,
                                                             set_product_type,
                                                             set_shipping_profile_slug,
+                                                            set_primary_category_id,
                                                             set_sku,
                                                             set_barcode,
                                                             set_currency_code,
@@ -642,6 +943,135 @@ pub fn ProductAdmin() -> impl IntoView {
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_copy.product_type_placeholder.clone() prop:value=move || product_type.get() on:input=move |ev| set_product_type.set(event_target_value(&ev)) />
+                                <select class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || primary_category_id.get() on:change=move |ev| set_primary_category_id.set(event_target_value(&ev))>
+                                    <option value="">{editor_copy.primary_category_placeholder.clone()}</option>
+                                    {move || catalog_categories
+                                        .get()
+                                        .and_then(Result::ok)
+                                        .map(|list| {
+                                            list.items
+                                                .into_iter()
+                                                .filter(|category| category.kind == "structural")
+                                                .map(|category| {
+                                                    let label = if category.path.trim().is_empty() {
+                                                        category.name
+                                                    } else {
+                                                        format!("{} / {}", category.path, category.name)
+                                                    };
+                                                    view! { <option value=category.id>{label}</option> }
+                                                })
+                                                .collect_view()
+                                        })
+                                        .unwrap_or_else(|| view! { <></> }.into_view())
+                                    }
+                                </select>
+                            </div>
+                            <div class="border-y border-border py-4">
+                                {move || match effective_form.get() {
+                                    None => view! {
+                                        <p class="text-xs text-muted-foreground">{attribute_form_copy.loading.clone()}</p>
+                                    }.into_any(),
+                                    Some(Err(err)) => view! {
+                                        <p class="text-xs text-destructive">{attribute_form_copy.load_failure(err)}</p>
+                                    }.into_any(),
+                                    Some(Ok(None)) => view! {
+                                        <p class="text-xs text-muted-foreground">{attribute_form_copy.select_category.clone()}</p>
+                                    }.into_any(),
+                                    Some(Ok(Some(form))) if form.attributes.is_empty() => view! {
+                                        <p class="text-xs text-muted-foreground">{attribute_form_copy.no_attributes.clone()}</p>
+                                    }.into_any(),
+                                    Some(Ok(Some(form))) => {
+                                        let detached_count = form.detached_attribute_ids.len();
+                                        let mut groups: Vec<(String, Vec<ProductEffectiveFormAttribute>)> = Vec::new();
+                                        for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled) {
+                                            let group = attribute
+                                                .group_label
+                                                .clone()
+                                                .or_else(|| attribute.group_code.clone())
+                                                .unwrap_or_else(|| attribute_form_copy.ungrouped_label.clone());
+                                            if let Some((_, attributes)) = groups.iter_mut().find(|(code, _)| code == &group) {
+                                                attributes.push(attribute);
+                                            } else {
+                                                groups.push((group, vec![attribute]));
+                                            }
+                                        }
+                                        view! {
+                                            <div class="space-y-6">
+                                                {groups.into_iter().map(|(group, attributes)| view! {
+                                                    <section class="space-y-3">
+                                                        <h4 class="text-sm font-semibold text-foreground">{group}</h4>
+                                                        <div class="grid gap-4 md:grid-cols-2">
+                                                            {attributes.into_iter().map(|attribute| view! {
+                                                                <TypedProductAttributeField
+                                                                    attribute=attribute
+                                                                    editor_state=attribute_editor_state
+                                                                    required_label=attribute_form_copy.required_label.clone()
+                                                                    empty_option_label=attribute_form_copy.empty_option_label.clone()
+                                                                    boolean_true_label=attribute_form_copy.boolean_true_label.clone()
+                                                                    boolean_false_label=attribute_form_copy.boolean_false_label.clone()
+                                                                />
+                                                            }).collect_view()}
+                                                        </div>
+                                                    </section>
+                                                }).collect_view()}
+                                                <Show when=move || detached_count > 0>
+                                                    <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
+                                                        <div class="flex flex-wrap items-center justify-between gap-3">
+                                                            <div>
+                                                                <h4 class="text-sm font-semibold text-foreground">{attribute_form_copy.detached_title.clone()}</h4>
+                                                                <p class="text-xs text-muted-foreground">{attribute_form_copy.detached_values(detached_count)}</p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                                disabled=move || busy.get()
+                                                                on:click={
+                                                                    let clear_detached_values = clear_detached_values.clone();
+                                                                    move |_| {
+                                                                        let ids = attribute_values
+                                                                            .get()
+                                                                            .and_then(Result::ok)
+                                                                            .unwrap_or_default()
+                                                                            .into_iter()
+                                                                            .filter(|value| value.detached)
+                                                                            .map(|value| value.attribute_id)
+                                                                            .collect::<Vec<_>>();
+                                                                        clear_detached_values(ids);
+                                                                    }
+                                                                }
+                                                            >
+                                                                {attribute_form_copy.clear_detached_label.clone()}
+                                                            </button>
+                                                        </div>
+                                                        <div class="mt-3 grid gap-2">
+                                                            {move || {
+                                                                let values = attribute_values
+                                                                    .get()
+                                                                    .and_then(Result::ok)
+                                                                    .map(|values| build_product_detached_attribute_value_view_models(ui_locale.as_deref(), &values))
+                                                                    .unwrap_or_default();
+                                                                if values.is_empty() {
+                                                                    view! { <p class="text-xs text-muted-foreground">{attribute_form_copy.detached_empty_label.clone()}</p> }.into_any()
+                                                                } else {
+                                                                    view! {
+                                                                        <div class="grid gap-2">
+                                                                            {values.into_iter().map(|value| view! {
+                                                                                <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs">
+                                                                                    <p class="font-medium text-foreground">{value.label}</p>
+                                                                                    <p class="mt-1 break-all text-muted-foreground">{value.value}</p>
+                                                                                </div>
+                                                                            }).collect_view()}
+                                                                        </div>
+                                                                    }.into_any()
+                                                                }
+                                                            }}
+                                                        </div>
+                                                    </div>
+                                                </Show>
+                                            </div>
+                                        }.into_any()
+                                    }
+                                }}
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=editor_copy.primary_sku_placeholder.clone() prop:value=move || sku.get() on:input=move |ev| set_sku.set(event_target_value(&ev)) />
@@ -749,6 +1179,7 @@ fn open_product_for_edit(
     set_vendor: WriteSignal<String>,
     set_product_type: WriteSignal<String>,
     set_shipping_profile_slug: WriteSignal<String>,
+    set_primary_category_id: WriteSignal<String>,
     set_sku: WriteSignal<String>,
     set_barcode: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
@@ -789,6 +1220,7 @@ fn open_product_for_edit(
                     set_vendor,
                     set_product_type,
                     set_shipping_profile_slug,
+                    set_primary_category_id,
                     set_sku,
                     set_barcode,
                     set_currency_code,
@@ -813,6 +1245,7 @@ fn open_product_for_edit(
                     set_vendor,
                     set_product_type,
                     set_shipping_profile_slug,
+                    set_primary_category_id,
                     set_sku,
                     set_barcode,
                     set_currency_code,
@@ -838,6 +1271,7 @@ fn clear_product_form(
     set_vendor: WriteSignal<String>,
     set_product_type: WriteSignal<String>,
     set_shipping_profile_slug: WriteSignal<String>,
+    set_primary_category_id: WriteSignal<String>,
     set_sku: WriteSignal<String>,
     set_barcode: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
@@ -857,6 +1291,7 @@ fn clear_product_form(
         set_vendor,
         set_product_type,
         set_shipping_profile_slug,
+        set_primary_category_id,
         set_sku,
         set_barcode,
         set_currency_code,
@@ -879,6 +1314,7 @@ fn apply_product(
     set_vendor: WriteSignal<String>,
     set_product_type: WriteSignal<String>,
     set_shipping_profile_slug: WriteSignal<String>,
+    set_primary_category_id: WriteSignal<String>,
     set_sku: WriteSignal<String>,
     set_barcode: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
@@ -898,6 +1334,7 @@ fn apply_product(
         set_vendor,
         set_product_type,
         set_shipping_profile_slug,
+        set_primary_category_id,
         set_sku,
         set_barcode,
         set_currency_code,
@@ -918,6 +1355,7 @@ fn apply_product_editor_form_state(
     set_vendor: WriteSignal<String>,
     set_product_type: WriteSignal<String>,
     set_shipping_profile_slug: WriteSignal<String>,
+    set_primary_category_id: WriteSignal<String>,
     set_sku: WriteSignal<String>,
     set_barcode: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
@@ -934,6 +1372,7 @@ fn apply_product_editor_form_state(
     set_vendor.set(state.vendor);
     set_product_type.set(state.product_type);
     set_shipping_profile_slug.set(state.shipping_profile_slug);
+    set_primary_category_id.set(state.primary_category_id);
     set_sku.set(state.sku);
     set_barcode.set(state.barcode);
     set_currency_code.set(state.currency_code);

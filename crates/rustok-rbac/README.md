@@ -16,6 +16,8 @@
 - Depends on `rustok-core` for permission vocabulary and module contracts.
 - Used by `apps/server` through `RbacService`, RBAC extractors, and permission-aware
   `SecurityContext` creation.
+- Owns its GraphQL role query/mutation/types under `rustok_rbac::graphql`; `apps/server`
+  only composes those roots and provides a role-writer adapter to the runtime persistence layer.
 - Exposes a module-owned Leptos admin overview through `rustok-rbac-admin`.
 - Other runtime modules do not need a direct dependency on `rustok-rbac`; they publish typed
   permissions via `rustok-core`, and server transport layers enforce them through this module.
@@ -30,6 +32,7 @@
 - `authorize_any_permission`
 - `authorize_all_permissions`
 - `has_effective_permission_in_set`
+- `graphql::RbacQuery` / `graphql::RbacMutation` (feature `graphql`)
 
 ## Docs
 

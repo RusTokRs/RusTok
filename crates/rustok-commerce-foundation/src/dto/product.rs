@@ -28,6 +28,7 @@ pub struct CreateProductInput {
         message = "Shipping profile slug must be 1-64 characters"
     ))]
     pub shipping_profile_slug: Option<String>,
+    pub primary_category_id: Option<Uuid>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
@@ -78,6 +79,7 @@ pub struct UpdateProductInput {
         message = "Shipping profile slug must be 1-64 characters"
     ))]
     pub shipping_profile_slug: Option<String>,
+    pub primary_category_id: Option<Uuid>,
     pub tags: Option<Vec<String>>,
     pub metadata: Option<serde_json::Value>,
     pub status: Option<ProductStatus>,
@@ -92,6 +94,7 @@ pub struct ProductResponse {
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
+    pub primary_category_id: Option<Uuid>,
     pub tags: Vec<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,

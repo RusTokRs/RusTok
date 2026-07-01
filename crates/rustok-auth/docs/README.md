@@ -4,6 +4,11 @@
 credential hashing, refresh/reset/invite/email-verification token flows и
 runtime RBAC surface `users:*`.
 
+Auth lifecycle GraphQL (`AuthQuery`, `AuthMutation`) and OAuth GraphQL (`OAuthQuery`,
+`OAuthMutation`) are owner-owned by `rustok-auth` behind the `graphql` feature. `apps/server`
+only implements `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` providers over
+the persisted lifecycle/OAuth/email services and registers the corresponding runtimes.
+
 ## Назначение
 
 - держать auth domain logic вне `apps/server`;
@@ -17,14 +22,15 @@ runtime RBAC surface `users:*`.
 - password hashing, verify и refresh-token helpers;
 - auth-owned migrations;
 - публикация permission surface `users:*` через `AUTH_USER_PERMISSIONS` и `RusToKModule::permissions()`.
-- typed application boundaries `UserAdminMutationPort` и `OAuthAdminMutationPort` для admin mutations без зависимости module crate от host transport.
+- typed application boundaries `UserAdminMutationPort` и `OAuthAdminPort` для admin-команд, OAuth reads и consent lifecycle без зависимости module crate от host transport;
+- owner-owned OAuth GraphQL query/mutation/types за feature `graphql`; `apps/server` только реализует runtime port поверх БД и подключает roots в общую schema.
 
 ## Интеграция
 
 - зависит только от `rustok-core` и общих библиотек, без зависимости на `rustok-rbac`;
 - используется `apps/server` для REST, GraphQL, session lifecycle и user-management flow;
 - `apps/server` сверяет registry wiring и GraphQL security hints с `AUTH_USER_PERMISSIONS`, чтобы host-слой не расходился с auth-owned permission surface;
-- `apps/server` реализует mutation ports поверх существующих auth lifecycle/OAuth services и регистрирует providers в shared runtime extensions; GraphQL и native `#[server]` adapters должны потреблять один provider для каждого boundary;
+- `apps/server` реализует ports поверх существующих auth lifecycle/OAuth services и регистрирует providers в shared runtime extensions; GraphQL и native `#[server]` adapters должны потреблять один provider для каждого boundary;
 - публикует собственный UI через подпакет `crates/rustok-auth/admin` с `ui_classification = "admin_only"`;
 - email delivery и transport wiring остаются responsibility host-слоя и соседних модулей.
 

@@ -64,6 +64,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
         vendor: Some("Acme".to_string()),
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
+        primary_category_id: None,
         tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
         metadata: serde_json::json!({
             "featured": true,
@@ -204,6 +205,7 @@ async fn update_product_tags_resyncs_product_tag_relations_without_metadata_mirr
                 vendor: None,
                 product_type: None,
                 shipping_profile_slug: None,
+                primary_category_id: None,
                 tags: Some(vec![
                     "featured".to_string(),
                     "sale".to_string(),
@@ -282,6 +284,7 @@ async fn update_product_tags_only_preserves_existing_non_tag_metadata() {
                 vendor: None,
                 product_type: None,
                 shipping_profile_slug: None,
+                primary_category_id: None,
                 tags: Some(vec!["featured".to_string()]),
                 metadata: None,
                 status: None,

@@ -94,7 +94,7 @@ API-слой RusToK должен оставаться согласованным
 
 ### 4.2 Reference artifacts export (DOC-09 / B11)
 
-- [ ] Выполнен экспорт `scripts/verify/export-reference-artifacts.sh artifacts/reference`.
+- [ ] Выполнен экспорт `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` (или эквивалентная CI/Unix-обёртка `.sh`).
 - [ ] В output присутствуют `openapi/openapi.json`, `openapi/openapi.yaml`, `graphql/introspection.json`, `graphql/schema.graphql`, `manifest.json`.
 - [ ] Экспорт прошёл `node scripts/verify/verify-reference-artifacts.mjs artifacts/reference`.
 - [ ] Для API-контрактных PR приложен Verification Evidence с датой, командами и статусами.

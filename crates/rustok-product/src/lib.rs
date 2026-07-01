@@ -24,7 +24,9 @@ mod seo_targets;
 pub mod services;
 
 pub use ports::*;
-pub use services::{CatalogService, StorefrontProductList, StorefrontProductListItem};
+pub use services::{
+    CatalogService, ProductCatalogSchemaService, StorefrontProductList, StorefrontProductListItem,
+};
 
 pub struct ProductModule;
 

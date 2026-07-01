@@ -21,6 +21,7 @@
 ## Интеграция
 
 - `apps/server` владеет только adapter/wiring слоем: store adapters, cache integration, transport extractors и observability;
+- GraphQL role query/mutation/types живут в `rustok-rbac`; `apps/server` только композирует roots и передаёт adapter записи ролей в runtime persistence;
 - `rustok-core` остаётся владельцем typed primitives (`Permission`, `Resource`, `Action`, `SecurityContext`);
 - live authorization идёт только через tenant policy evaluation, без relation-only/shadow parity path;
 - operator-facing admin overview живёт в `rustok-rbac-admin` и оформлен как FFA `core` + native-only `transport` + `ui/leptos` adapter;

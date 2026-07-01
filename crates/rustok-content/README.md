@@ -17,7 +17,9 @@
 
 - Depends on `rustok-core` for permissions, events, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request and GraphQL helper contracts.
-- No longer exposes product GraphQL, REST, admin, or storefront entry points.
+- Exposes only its shared canonical-route GraphQL query and content-owned
+  GraphQL dataloaders; product CRUD GraphQL, REST, admin, and storefront entry
+  points remain domain-owned.
 - Used as a shared helper dependency by `rustok-blog`, `rustok-forum`,
   `rustok-comments`, and `rustok-pages`.
 - Declares permissions via `rustok-core::Permission`.
@@ -25,9 +27,9 @@
   `AuthContext.permissions`, persists idempotency/audit state, and publishes
   orchestration events. Runtime adapters for domain conversions live outside the
   shared helper layer and implement `ContentOrchestrationBridge`.
-- `apps/server` is the current runtime host for the bridge implementation and
-  exposes the live GraphQL mutations for `topic ↔ post`, `split_topic`, and
-  `merge_topics`.
+- `rustok-content-orchestration` owns the runtime bridge implementation and its
+  live GraphQL mutations for `topic ↔ post`, `split_topic`, and `merge_topics`.
+- `apps/server` only composes the owner-provided GraphQL roots.
 
 - Conversion flows persist typed redirect/canonical state in
   `content_canonical_urls` and `content_url_aliases` and publish
@@ -38,6 +40,8 @@
 - `ContentModule`
 - `ContentOrchestrationService`
 - `ContentOrchestrationBridge`
+- `graphql::ContentQuery` (feature `graphql`)
+- `graphql::{NodeLoader, NodeTranslationLoader, NodeBodyLoader}` (feature `graphql`)
 - `CategoryService`
 - content DTO and entity re-exports
 

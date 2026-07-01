@@ -16,6 +16,8 @@ use sea_orm_migration::MigrationTrait;
 pub mod dto;
 pub mod entities;
 pub mod error;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod services;

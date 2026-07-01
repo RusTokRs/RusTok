@@ -20,6 +20,8 @@
 - Depends on `rustok-api` for shared tenant/auth and GraphQL helper contracts.
 - Exposes its own GraphQL and REST adapters; `apps/server` now acts only as a composition root
   and re-export shim for media transport entry points.
+- Exposes `load_media_usage_snapshot` for host system statistics so `apps/server`
+  does not import media entities directly.
 - REST adapters require authenticated `AuthContext`; GraphQL resolvers keep the existing
   module-enabled guard and tenant-explicit contract.
 - `rustok-seo` and owner SEO providers consume `MediaImageDescriptor` to build OG/Twitter/schema
@@ -31,6 +33,7 @@
 ## Entry points
 
 - `MediaService`
+- `load_media_usage_snapshot`
 - `graphql::MediaQuery`
 - `graphql::MediaMutation`
 - `controllers::routes`

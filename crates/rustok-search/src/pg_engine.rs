@@ -119,6 +119,73 @@ fn build_filter_clause(query: &SearchQuery, starting_param: usize) -> FilterClau
             bind_list(&query.statuses, &mut values, &mut next_param)
         ));
     }
+    if !query.category_ids.is_empty() {
+        clauses.push(format!(
+            "entity_type = 'product' AND EXISTS (
+                SELECT 1
+                FROM index_product_categories ipc
+                WHERE ipc.tenant_id = $1
+                  AND ipc.product_id = id
+                  AND ($2 = '' OR ipc.locale = $2)
+                  AND ipc.category_id IN ({})
+            )",
+            bind_uuid_list(&query.category_ids, &mut values, &mut next_param)
+        ));
+    }
+    for filter in &query.attribute_filters {
+        let attribute_param = next_param;
+        values.push(filter.attribute_code.clone().into());
+        next_param += 1;
+
+        let mut attribute_clauses = vec![
+            "iav.tenant_id = $1".to_string(),
+            "iav.product_id = id".to_string(),
+            "($2 = '' OR iav.locale = $2)".to_string(),
+            format!("iav.attribute_code = ${attribute_param}"),
+            "iav.is_detached = FALSE".to_string(),
+            channel_scope_clause("iav", query, &mut values, &mut next_param),
+        ];
+
+        if !filter.values.is_empty() {
+            attribute_clauses.push(format!(
+                "iav.facet_bucket_key IN ({})",
+                bind_list(&filter.values, &mut values, &mut next_param)
+            ));
+        }
+        if let Some(min) = filter.min.as_ref() {
+            let min_param = next_param;
+            values.push(min.clone().into());
+            next_param += 1;
+            attribute_clauses.push(format!(
+                "CASE
+                    WHEN iav.value_number IS NOT NULL AND ${min_param} ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                    THEN iav.value_number >= ${min_param}::numeric
+                    ELSE iav.sort_value >= ${min_param}
+                END"
+            ));
+        }
+        if let Some(max) = filter.max.as_ref() {
+            let max_param = next_param;
+            values.push(max.clone().into());
+            next_param += 1;
+            attribute_clauses.push(format!(
+                "CASE
+                    WHEN iav.value_number IS NOT NULL AND ${max_param} ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                    THEN iav.value_number <= ${max_param}::numeric
+                    ELSE iav.sort_value <= ${max_param}
+                END"
+            ));
+        }
+
+        clauses.push(format!(
+            "entity_type = 'product' AND EXISTS (
+                SELECT 1
+                FROM index_product_attribute_values iav
+                WHERE {}
+            )",
+            attribute_clauses.join(" AND ")
+        ));
+    }
 
     let clause = if clauses.is_empty() {
         "TRUE".to_string()
@@ -146,6 +213,7 @@ async fn run_fts_search(
         &cte,
         build_base_values(tenant_id, locale, trimmed_query, &filters.values),
         &filters,
+        query,
         query.ranking_profile,
         offset,
         limit,
@@ -175,6 +243,7 @@ async fn run_typo_tolerant_search(
             &filters.values,
         ),
         &filters,
+        query,
         query.ranking_profile,
         offset,
         limit,
@@ -187,6 +256,7 @@ async fn finalize_ranked_search(
     cte: &str,
     base_values: Vec<Value>,
     filters: &FilterClause,
+    query: &SearchQuery,
     ranking_profile: SearchRankingProfile,
     offset: i64,
     limit: i64,
@@ -209,6 +279,16 @@ async fn finalize_ranked_search(
 
     let offset_param = 4 + filters.values.len();
     let limit_param = offset_param + 1;
+    let sort_attribute_param = limit_param + 1;
+    let sort_channel_param = sort_attribute_param + 1;
+    let order_by = build_order_by_clause(query, sort_attribute_param, sort_channel_param);
+    let mut paged_values = build_paged_values_from_base(base_values.clone(), offset, limit);
+    if let Some(attribute_code) = normalized_sort_attribute_code(query) {
+        paged_values.push(attribute_code.into());
+        if let Some(channel_id) = query.channel_id {
+            paged_values.push(channel_id.into());
+        }
+    }
     let items_statement = Statement::from_sql_and_values(
         DbBackend::Postgres,
         format!(
@@ -216,12 +296,12 @@ async fn finalize_ranked_search(
              SELECT id, entity_type, source_module, locale, title, snippet, score, payload
              FROM ranked
              WHERE {}
-             ORDER BY score DESC, updated_at DESC
+             {order_by}
              OFFSET ${offset_param}
              LIMIT ${limit_param}",
             filters.clause
         ),
-        build_paged_values_from_base(base_values.clone(), offset, limit),
+        paged_values,
     );
     let items = db
         .query_all(items_statement)
@@ -256,13 +336,50 @@ async fn finalize_ranked_search(
              ORDER BY facet_name, facet_count DESC, facet_value ASC",
             filters.clause, filters.clause, filters.clause
         ),
-        base_values,
+        base_values.clone(),
     );
-    let facets = build_facets(
+    let mut facets = build_facets(
         db.query_all(facets_statement)
             .await
             .map_err(Error::Database)?,
     )?;
+
+    let mut attribute_facet_values = base_values;
+    let mut next_param = 4 + filters.values.len();
+    let attribute_facet_scope =
+        channel_scope_clause("iav", query, &mut attribute_facet_values, &mut next_param);
+    let attribute_facets_statement = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        format!(
+            "{cte}
+             SELECT
+                ('attr:' || iav.attribute_code)::text AS facet_name,
+                COALESCE(iav.facet_bucket_key, iav.value_key)::text AS facet_value,
+                NULLIF(iav.value_label, '')::text AS facet_label,
+                COUNT(DISTINCT ranked.id)::bigint AS facet_count
+             FROM ranked
+             INNER JOIN index_product_attribute_values iav
+                ON iav.tenant_id = $1
+               AND iav.product_id = ranked.id
+               AND ($2 = '' OR iav.locale = $2)
+               AND {attribute_facet_scope}
+               AND iav.is_filterable = TRUE
+               AND iav.is_detached = FALSE
+               AND iav.facet_bucket_key IS NOT NULL
+               AND iav.facet_bucket_key <> ''
+             WHERE {}
+               AND ranked.entity_type = 'product'
+             GROUP BY iav.attribute_code, COALESCE(iav.facet_bucket_key, iav.value_key), NULLIF(iav.value_label, '')
+             ORDER BY facet_name, facet_count DESC, facet_value ASC",
+            filters.clause
+        ),
+        attribute_facet_values,
+    );
+    facets.extend(build_dynamic_facets(
+        db.query_all(attribute_facets_statement)
+            .await
+            .map_err(Error::Database)?,
+    )?);
 
     Ok(SearchResult {
         items,
@@ -370,6 +487,83 @@ fn bind_list(values: &[String], bound_values: &mut Vec<Value>, next_param: &mut 
         .join(", ")
 }
 
+fn bind_uuid_list(
+    values: &[uuid::Uuid],
+    bound_values: &mut Vec<Value>,
+    next_param: &mut usize,
+) -> String {
+    values
+        .iter()
+        .map(|value| {
+            let placeholder = format!("${}", *next_param);
+            bound_values.push((*value).into());
+            *next_param += 1;
+            placeholder
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn channel_scope_clause(
+    alias: &str,
+    query: &SearchQuery,
+    bound_values: &mut Vec<Value>,
+    next_param: &mut usize,
+) -> String {
+    match query.channel_id {
+        Some(channel_id) => {
+            let placeholder = format!("${}", *next_param);
+            bound_values.push(channel_id.into());
+            *next_param += 1;
+            format!("{alias}.channel_id = {placeholder}")
+        }
+        None => format!("{alias}.channel_id IS NULL"),
+    }
+}
+
+fn normalized_sort_attribute_code(query: &SearchQuery) -> Option<String> {
+    query
+        .sort_attribute_code
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn build_order_by_clause(
+    query: &SearchQuery,
+    sort_attribute_param: usize,
+    sort_channel_param: usize,
+) -> String {
+    if normalized_sort_attribute_code(query).is_none() {
+        return "ORDER BY score DESC, updated_at DESC".to_string();
+    }
+
+    let direction = if query.sort_desc { "DESC" } else { "ASC" };
+    let null_direction = "NULLS LAST";
+    let channel_scope = if query.channel_id.is_some() {
+        format!("iav.channel_id = ${sort_channel_param}")
+    } else {
+        "iav.channel_id IS NULL".to_string()
+    };
+
+    format!(
+        "ORDER BY (
+            SELECT iav.sort_value
+            FROM index_product_attribute_values iav
+            WHERE iav.tenant_id = $1
+              AND iav.product_id = ranked.id
+              AND ($2 = '' OR iav.locale = $2)
+              AND iav.attribute_code = ${sort_attribute_param}
+              AND {channel_scope}
+              AND iav.is_sortable = TRUE
+              AND iav.is_detached = FALSE
+            ORDER BY iav.sort_value {direction}
+            LIMIT 1
+        ) {direction} {null_direction}, score DESC, updated_at DESC"
+    )
+}
+
 fn build_base_values(
     tenant_id: uuid::Uuid,
     locale: &str,
@@ -449,6 +643,7 @@ fn build_facets(rows: Vec<QueryResult>) -> Result<Vec<SearchFacetGroup>> {
             value: row
                 .try_get::<String>("", "facet_value")
                 .map_err(Error::Database)?,
+            label: None,
             count: row
                 .try_get::<i64>("", "facet_count")
                 .map_err(Error::Database)?
@@ -479,6 +674,34 @@ fn build_facets(rows: Vec<QueryResult>) -> Result<Vec<SearchFacetGroup>> {
     ])
 }
 
+fn build_dynamic_facets(rows: Vec<QueryResult>) -> Result<Vec<SearchFacetGroup>> {
+    let mut groups = std::collections::BTreeMap::<String, Vec<SearchFacetBucket>>::new();
+
+    for row in rows {
+        let facet_name = row
+            .try_get::<String>("", "facet_name")
+            .map_err(Error::Database)?;
+        let bucket = SearchFacetBucket {
+            value: row
+                .try_get::<String>("", "facet_value")
+                .map_err(Error::Database)?,
+            label: row
+                .try_get::<Option<String>>("", "facet_label")
+                .map_err(Error::Database)?,
+            count: row
+                .try_get::<i64>("", "facet_count")
+                .map_err(Error::Database)?
+                .max(0) as u64,
+        };
+        groups.entry(facet_name).or_default().push(bucket);
+    }
+
+    Ok(groups
+        .into_iter()
+        .map(|(name, buckets)| SearchFacetGroup { name, buckets })
+        .collect())
+}
+
 fn empty_facets() -> Vec<SearchFacetGroup> {
     vec![
         SearchFacetGroup {
@@ -507,6 +730,7 @@ mod tests {
             &SearchQuery {
                 tenant_id: None,
                 locale: None,
+                channel_id: None,
                 original_query: "phone".to_string(),
                 query: "phone".to_string(),
                 ranking_profile: SearchRankingProfile::Balanced,
@@ -517,6 +741,10 @@ mod tests {
                 entity_types: vec!["product".to_string()],
                 source_modules: vec!["commerce".to_string()],
                 statuses: vec!["active".to_string()],
+                category_ids: Vec::new(),
+                attribute_filters: Vec::new(),
+                sort_attribute_code: None,
+                sort_desc: false,
             },
             4,
         );

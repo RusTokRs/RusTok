@@ -115,6 +115,7 @@ pub(crate) fn convert_create_product_input(
         vendor: input.vendor,
         product_type: input.product_type,
         shipping_profile_slug: input.shipping_profile_slug,
+        primary_category_id: input.primary_category_id,
         tags: input.tags.unwrap_or_default(),
         metadata: serde_json::Value::Object(Default::default()),
         publish: input.publish.unwrap_or(false),

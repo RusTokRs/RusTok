@@ -1,5 +1,5 @@
 use rustok_api::{Action, Resource};
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::{EventBus, PermissionScope, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ async fn test_rbac_event_flow() -> TestResult<()> {
     let security = SecurityContext::system();
     assert!(matches!(
         security.get_scope(Resource::Users, Action::Read),
-        rustok_api::PermissionScope::All
+        PermissionScope::All
     ));
 
     let bus = ctx.bus.clone();

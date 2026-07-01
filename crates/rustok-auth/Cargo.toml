@@ -21,8 +21,14 @@ sha2.workspace = true
 hex.workspace = true
 rand.workspace = true
 thiserror.workspace = true
+async-graphql = { workspace = true, optional = true }
+rustok-telemetry = { workspace = true, optional = true }
 
 sea-orm-migration = { workspace = true }
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "dep:rustok-telemetry", "rustok-api/server"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

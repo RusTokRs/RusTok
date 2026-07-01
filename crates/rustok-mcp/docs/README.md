@@ -19,8 +19,9 @@ spec и не превращаясь в provider/model host.
 - принадлежащий MCP-модулю admin UI для ревью Alloy drafts, чтения MCP audit и read-side
   clients/policies/token previews: Next package
   `apps/next-admin/packages/rustok-mcp` и Leptos FFA crate `crates/rustok-mcp/admin`;
-- typed `McpManagementMutationPort` в owner crate и DB-provider в `apps/server`, который
-  делегирует management writes каноническому транзакционному `McpManagementService`;
+- typed `McpManagementPort` в owner crate и DB-provider в `apps/server`, который
+  делегирует management reads/writes каноническому транзакционному `McpManagementService`;
+- owner-owned GraphQL query/mutation/types за feature `graphql`; server только подключает roots и реализует DB-provider;
 - отсутствие ownership над provider-specific AI orchestration и над самим MCP spec.
 
 ## Интеграция

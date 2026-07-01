@@ -14,3 +14,14 @@ extend-exclude = [
   # Vendored upstream patch set; keep spellings and identifiers aligned with upstream.
   "third_party/patches/parcel_css/**",
 ]
+
+[default]
+# Preserve generated diagnostic identifiers and intentional fixture/diagram tokens.
+extend-ignore-re = [
+  "diag_(?:env|script|deployment)_[0-9a-f]+",
+  "\\bnl -ba\\b",
+  "\\bful_1\\b",
+  "\\bReFuNdEd\\b",
+  "\\b[Pp]rodukt\\b",
+  "\\bOT\\b",
+]

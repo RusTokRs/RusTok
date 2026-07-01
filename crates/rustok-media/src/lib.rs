@@ -19,7 +19,10 @@ pub use entities::*;
 pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};
 pub use ports::*;
-pub use service::{MediaService, MediaStorageCleanupDecision, MediaStorageCleanupReport};
+pub use service::{
+    load_media_usage_snapshot, MediaService, MediaStorageCleanupDecision,
+    MediaStorageCleanupReport, MediaUsageSnapshot,
+};
 
 pub struct MediaModule;
 

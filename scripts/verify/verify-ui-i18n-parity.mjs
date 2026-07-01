@@ -9,7 +9,6 @@ const excludedPathFragments = [
   `${path.sep}crates${path.sep}rustok-commerce-foundation`,
   `${path.sep}crates${path.sep}rustok-cart`,
   `${path.sep}crates${path.sep}rustok-customer`,
-  `${path.sep}crates${path.sep}rustok-product`,
   `${path.sep}crates${path.sep}rustok-region`,
   `${path.sep}crates${path.sep}rustok-pricing`,
   `${path.sep}crates${path.sep}rustok-inventory`,

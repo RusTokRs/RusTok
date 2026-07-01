@@ -1,0 +1,55 @@
+use async_graphql::{Context, FieldError, InputObject, Object, Result};
+use rustok_api::{
+    graphql::GraphQLError, has_effective_permission, AuthContext, Permission, TenantContext,
+};
+use uuid::Uuid;
+
+use super::types::{AssignUserRolePayload, RbacGraphqlUserRole};
+use super::RbacGraphqlRoleWriterHandle;
+
+#[derive(InputObject)]
+pub struct AssignUserRoleInput {
+    pub user_id: Uuid,
+    pub role: RbacGraphqlUserRole,
+}
+
+#[derive(Default)]
+pub struct RbacMutation;
+
+#[Object]
+impl RbacMutation {
+    /// Assign a role to a user (replaces the current role).
+    /// Requires `users:manage` permission.
+    async fn assign_user_role(
+        &self,
+        ctx: &Context<'_>,
+        input: AssignUserRoleInput,
+    ) -> Result<AssignUserRolePayload> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::USERS_MANAGE) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "users:manage required to assign roles",
+            ));
+        }
+
+        let user_role = input.role.into();
+        let role = user_role.to_string();
+        let writer = ctx.data::<RbacGraphqlRoleWriterHandle>()?;
+
+        writer
+            .0
+            .replace_user_role(&tenant.id, &input.user_id, user_role)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err))?;
+
+        Ok(AssignUserRolePayload {
+            success: true,
+            user_id: input.user_id.to_string(),
+            role,
+        })
+    }
+}

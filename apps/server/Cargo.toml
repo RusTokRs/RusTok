@@ -57,7 +57,7 @@ mod-order     = ["dep:rustok-order"]
 mod-payment   = ["dep:rustok-payment"]
 mod-fulfillment = ["dep:rustok-fulfillment"]
 mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment"]
-mod-content   = ["dep:rustok-content", "rustok-content-orchestration/mod-content"]
+mod-content   = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
 mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments"]
@@ -73,7 +73,7 @@ mod-workflow  = ["dep:rustok-workflow"]
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
 rustok-api = { workspace = true, features = ["server"] }
-rustok-auth.workspace = true
+rustok-auth = { workspace = true, features = ["graphql"] }
 rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-channel.workspace = true
 rustok-email.workspace = true
@@ -104,10 +104,10 @@ rustok-storage   = { workspace = true, features = ["s3"] }
 rustok-media     = { workspace = true, optional = true }
 rustok-seo       = { workspace = true, optional = true }
 rustok-index.workspace = true
-rustok-search.workspace = true
+rustok-search = { workspace = true, features = ["graphql"] }
 rustok-tenant.workspace = true
-rustok-rbac.workspace = true
-rustok-mcp.workspace = true
+rustok-rbac = { workspace = true, features = ["graphql"] }
+rustok-mcp = { workspace = true, features = ["graphql"] }
 rustok-ai = { workspace = true, features = ["server"] }
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true

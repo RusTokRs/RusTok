@@ -94,12 +94,24 @@ pub struct OAuthAppMutationRecord {
     pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    pub granted_permissions: Vec<String>,
     pub manifest_ref: Option<String>,
     pub auto_created: bool,
+    pub managed_by_manifest: bool,
     pub is_active: bool,
+    pub can_edit: bool,
+    pub can_rotate_secret: bool,
+    pub can_revoke: bool,
     pub active_token_count: i64,
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuthorizedOAuthAppRecord {
+    pub app: OAuthAppMutationRecord,
+    pub scopes: Vec<String>,
+    pub granted_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,7 +160,26 @@ pub trait UserAdminMutationPort: Send + Sync {
 }
 
 #[async_trait]
-pub trait OAuthAdminMutationPort: Send + Sync {
+pub trait OAuthAdminPort: Send + Sync {
+    async fn list_oauth_apps(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_type: Option<String>,
+        limit: u64,
+    ) -> Result<Vec<OAuthAppMutationRecord>, AuthAdminMutationError>;
+
+    async fn get_oauth_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+    ) -> Result<Option<OAuthAppMutationRecord>, AuthAdminMutationError>;
+
+    async fn list_authorized_oauth_apps(
+        &self,
+        context: &AuthAdminMutationContext,
+        limit: u64,
+    ) -> Result<Vec<AuthorizedOAuthAppRecord>, AuthAdminMutationError>;
+
     async fn create_oauth_app(
         &self,
         context: &AuthAdminMutationContext,
@@ -172,6 +203,19 @@ pub trait OAuthAdminMutationPort: Send + Sync {
         context: &AuthAdminMutationContext,
         app_id: Uuid,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError>;
+
+    async fn grant_oauth_app_consent(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+        scopes: Vec<String>,
+    ) -> Result<(), AuthAdminMutationError>;
+
+    async fn revoke_oauth_app_consent(
+        &self,
+        context: &AuthAdminMutationContext,
+        app_id: Uuid,
+    ) -> Result<(), AuthAdminMutationError>;
 }
 
 #[derive(Clone)]
@@ -190,16 +234,16 @@ impl UserAdminMutationRuntime {
 }
 
 #[derive(Clone)]
-pub struct OAuthAdminMutationRuntime {
-    port: Arc<dyn OAuthAdminMutationPort>,
+pub struct OAuthAdminRuntime {
+    port: Arc<dyn OAuthAdminPort>,
 }
 
-impl OAuthAdminMutationRuntime {
-    pub fn new(port: Arc<dyn OAuthAdminMutationPort>) -> Self {
+impl OAuthAdminRuntime {
+    pub fn new(port: Arc<dyn OAuthAdminPort>) -> Self {
         Self { port }
     }
 
-    pub fn port(&self) -> &dyn OAuthAdminMutationPort {
+    pub fn port(&self) -> &dyn OAuthAdminPort {
         self.port.as_ref()
     }
 }

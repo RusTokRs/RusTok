@@ -3,10 +3,10 @@ use loco_rs::app::AppContext;
 use rustok_events::DomainEvent;
 
 use crate::context::{AuthContext, TenantContext};
-use crate::graphql::errors::GraphQLError;
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::rbac_service::RbacService;
 use crate::services::settings_service::{SettingsService, ValidatorRegistry};
+use rustok_api::graphql::GraphQLError;
 
 use super::types::{UpdatePlatformSettingsInput, UpdatePlatformSettingsPayload};
 

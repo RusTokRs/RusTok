@@ -12,6 +12,10 @@
 - Own search settings persistence and future connector-facing runtime contracts.
 - Own module-local `search_documents` storage and execute PostgreSQL FTS with `tsvector`,
   `websearch_to_tsquery`, `ts_rank_cd`, highlights, and facet aggregation.
+- Consume product-owned highload projections from `rustok-index` for catalog search:
+  category/virtual-category assignments from `index_product_categories` and
+  channel-scoped normalized attribute facet/search/sort rows from
+  `index_product_attribute_values`.
 - Serve as the home for storefront/admin/global-search capabilities, separate from `rustok-index`.
 
 ## Interactions
@@ -21,6 +25,8 @@
 - Content-document tag keywords/payload are now derived from `nodes.metadata.tags` during
   projection, not from legacy `taggables` joins.
 - Is used by `apps/server` as a core platform capability.
+- Owns its GraphQL query/mutation/types under `rustok_search::graphql`; `apps/server`
+  only composes those roots and provides host runtime data such as the rate-limit adapter.
 - Publishes module-owned admin and storefront UI packages for host composition.
 - Keeps external engine integrations behind dedicated connector crates, rather than forcing domain modules to talk to provider SDKs directly.
 
@@ -33,6 +39,7 @@
 - `PgSearchEngine`
 - `SearchQueryPort`
 - `SearchSuggestionPort`
+- `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot` (feature `graphql`)
 
 ## Capability matrix
 
@@ -74,6 +81,11 @@
 - Admin GraphQL and both admin packages now ship a real settings editor for
   `active_engine`, `fallback_engine`, and tenant-local JSON config persistence.
 - Storefront GraphQL exposes public `storefrontSearch`, limited to published content/products.
+- Storefront/admin GraphQL search inputs now accept optional `channelId`, `categoryIds`,
+  `attributeFilters`, `sortAttributeCode`, and `sortDesc`. PostgreSQL search applies
+  these filters against normalized product projections, so materialized virtual categories
+  participate in category filters and effective filterable attributes produce `attr:<code>`
+  facet groups. Facet buckets keep stable `value` keys and may include localized `label`.
 - Search queries are read-only and no longer trigger bootstrap rebuilds on the request path.
 - PostgreSQL search reads from `search_documents`, not from `rustok-index` tables.
 - Search GraphQL now also exposes `searchDictionarySnapshot` plus admin mutations

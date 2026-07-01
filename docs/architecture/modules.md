@@ -111,6 +111,11 @@ module-category.
 Host application не должен становиться canonical owner module-owned domain-логики
 или UI-поверхности.
 
+То же правило применяется к transport-типам: host может объединять owner-provided
+GraphQL roots через `MergedObject`, но concrete connection-типы, resolver-ы и DTO
+остаются в owner/support crate. Cross-module integration surface принадлежит отдельному
+support crate, а не `apps/server`.
+
 ## Политика UI-композиции
 
 Если модуль поставляет UI, этот UI остаётся module-owned:

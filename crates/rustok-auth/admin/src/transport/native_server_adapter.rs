@@ -965,7 +965,7 @@ fn oauth_app_from_mutation_record(record: rustok_auth::OAuthAppMutationRecord) -
 async fn oauth_mutation_context() -> Result<
     (
         rustok_auth::AuthAdminMutationContext,
-        rustok_auth::OAuthAdminMutationRuntime,
+        rustok_auth::OAuthAdminRuntime,
     ),
     ServerFnError,
 > {
@@ -984,11 +984,11 @@ async fn oauth_mutation_context() -> Result<
         .get::<Arc<ModuleRuntimeExtensions>>()
         .ok_or_else(|| server_error("ModuleRuntimeExtensions not initialized"))?;
     let runtime = extensions
-        .get::<rustok_auth::OAuthAdminMutationRuntime>()
+        .get::<rustok_auth::OAuthAdminRuntime>()
         .cloned()
         .ok_or_else(|| {
             server_error(
-                "OAuthAdminMutationRuntime is not registered; initialize shared host runtime providers",
+                "OAuthAdminRuntime is not registered; initialize shared host runtime providers",
             )
         })?;
 

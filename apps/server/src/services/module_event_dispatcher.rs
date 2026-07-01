@@ -1,9 +1,9 @@
 use loco_rs::app::AppContext;
-use rustok_auth::{OAuthAdminMutationRuntime, UserAdminMutationRuntime};
+use rustok_auth::{AuthLifecycleRuntime, OAuthAdminRuntime, UserAdminMutationRuntime};
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexerRuntimeConfig;
-use rustok_mcp::McpManagementMutationRuntime;
+use rustok_mcp::McpManagementRuntime;
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -69,23 +69,27 @@ pub fn build_shared_runtime_extensions(
 pub fn build_shared_runtime_extensions_with_host_providers(
     registry: &ModuleRegistry,
     settings: &RustokSettings,
-    db: DatabaseConnection,
+    ctx: AppContext,
 ) -> Arc<ModuleRuntimeExtensions> {
     let base = build_shared_runtime_extensions(registry, settings);
     let mut extensions = base.as_ref().clone();
+    let db = ctx.db.clone();
     let auth_admin_provider = Arc::new(
         crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
             db.clone(),
         ),
     );
-    extensions.insert(OAuthAdminMutationRuntime::new(auth_admin_provider.clone()));
+    extensions.insert(OAuthAdminRuntime::new(auth_admin_provider.clone()));
     extensions.insert(UserAdminMutationRuntime::new(auth_admin_provider));
+    let auth_lifecycle_provider =
+        Arc::new(crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(ctx));
+    extensions.insert(AuthLifecycleRuntime::new(auth_lifecycle_provider));
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
             db,
         ),
     );
-    extensions.insert(McpManagementMutationRuntime::new(mcp_management_provider));
+    extensions.insert(McpManagementRuntime::new(mcp_management_provider));
     Arc::new(extensions)
 }
 
@@ -120,10 +124,31 @@ mod tests {
         build_shared_runtime_extensions_with_host_providers,
     };
     use crate::common::settings::RustokSettings;
+    use loco_rs::{
+        app::{AppContext, SharedStore},
+        cache,
+        environment::Environment,
+        storage::{self, Storage},
+        tests_cfg::config::test_config,
+    };
     use rustok_core::{EventBus, ModuleRegistry};
     use rustok_index::IndexModule;
     use rustok_search::SearchModule;
-    use sea_orm::Database;
+    use sea_orm::{Database, DatabaseConnection};
+    use std::sync::Arc;
+
+    fn test_app_context(db: DatabaseConnection) -> AppContext {
+        AppContext {
+            environment: Environment::Test,
+            db,
+            queue_provider: None,
+            config: test_config(),
+            mailer: None,
+            storage: Storage::single(storage::drivers::mem::new()).into(),
+            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
+            shared_store: Arc::new(SharedStore::default()),
+        }
+    }
 
     #[tokio::test]
     async fn build_module_event_dispatcher_collects_registry_owned_handlers() {
@@ -153,11 +178,15 @@ mod tests {
             .await
             .expect("in-memory sqlite should connect");
 
-        let extensions =
-            build_shared_runtime_extensions_with_host_providers(&registry, &settings, db);
+        let extensions = build_shared_runtime_extensions_with_host_providers(
+            &registry,
+            &settings,
+            test_app_context(db),
+        );
 
-        assert!(extensions.contains::<rustok_auth::OAuthAdminMutationRuntime>());
+        assert!(extensions.contains::<rustok_auth::AuthLifecycleRuntime>());
+        assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
-        assert!(extensions.contains::<rustok_mcp::McpManagementMutationRuntime>());
+        assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
     }
 }

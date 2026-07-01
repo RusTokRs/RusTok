@@ -98,7 +98,7 @@ pub async fn bootstrap_app_runtime(
 
     let registry = modules::build_registry();
     let runtime_extensions =
-        build_shared_runtime_extensions_with_host_providers(&registry, settings, ctx.db.clone());
+        build_shared_runtime_extensions_with_host_providers(&registry, settings, ctx.clone());
     ctx.shared_store.insert(runtime_extensions.clone());
     ctx.shared_store
         .insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));

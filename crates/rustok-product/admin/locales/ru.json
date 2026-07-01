@@ -75,5 +75,27 @@
   "product.seo.title": "SEO товара",
   "product.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранного товара.",
   "product.seo.empty": "Сначала создайте или откройте товар. SEO-панель остаётся частью редактора товара.",
-  "product.field.sellerId": "ID продавца"
+  "product.field.sellerId": "ID продавца",
+  "product.attributes.loading": "Загрузка формы товара...",
+  "product.attributes.selectCategory": "Выберите структурную категорию, чтобы загрузить атрибуты товара.",
+  "product.attributes.empty": "Для этой категории атрибуты пока не настроены.",
+  "product.attributes.loadFailure": "Не удалось загрузить форму товара",
+  "product.attributes.detachedValues": "отсоединённых значений сохранены вне текущей схемы.",
+  "product.attributes.general": "Основное",
+  "product.attributes.required": "Обязательное поле",
+  "product.attributes.emptyOption": "Не выбрано",
+  "product.attributes.outsideForm": "Атрибут отсутствует в текущей форме",
+  "product.attributes.integerRequired": "Атрибут требует целое число",
+  "product.attributes.decimalRequired": "Атрибут требует десятичное число",
+  "product.attributes.dateRequired": "Атрибут требует дату в формате ISO",
+  "product.attributes.datetimeRequired": "Атрибут требует дату и время в формате RFC3339",
+  "product.attributes.jsonRequired": "Атрибут требует корректный JSON",
+  "product.attributes.unsupportedType": "Тип атрибута не поддерживается",
+  "product.attributes.booleanTrue": "Да",
+  "product.attributes.booleanFalse": "Нет"
+,
+  "product.attributes.detachedTitle": "Отсоединённые значения",
+  "product.attributes.clearDetached": "Удалить отсоединённые значения",
+  "product.attributes.detachedEmpty": "Отсоединённых значений нет.",
+  "product.attributes.detachedAttribute": "Атрибут"
 }

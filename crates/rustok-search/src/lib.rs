@@ -9,6 +9,8 @@ pub mod analytics;
 pub mod diagnostics;
 pub mod dictionaries;
 pub mod engine;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod ingestion;
 pub mod migrations;
 pub mod models;
@@ -33,7 +35,9 @@ pub use dictionaries::{
     SearchDictionaryService, SearchDictionarySnapshot, SearchQueryRuleRecord, SearchQueryTransform,
     SearchStopWordRecord, SearchSynonymRecord,
 };
-pub use engine::{SearchConnectorDescriptor, SearchEngine, SearchEngineKind, SearchQuery};
+pub use engine::{
+    SearchAttributeFilter, SearchConnectorDescriptor, SearchEngine, SearchEngineKind, SearchQuery,
+};
 pub use engine::{SearchResult, SearchResultItem};
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;

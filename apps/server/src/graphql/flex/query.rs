@@ -5,10 +5,10 @@ use rustok_api::Permission;
 use uuid::Uuid;
 
 use crate::context::TenantContext;
-use crate::graphql::common::PaginationInput;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::{FieldDefRegistry, FieldDefinitionView};
+use rustok_api::graphql::PaginationInput;
 
 use super::{
     map_flex_error, require_permission, resolve_entity_type,
@@ -159,8 +159,8 @@ fn paginate_rows(
 #[cfg(test)]
 mod tests {
     use super::paginate_rows;
-    use crate::graphql::common::PaginationInput;
     use flex::FieldDefinitionView;
+    use rustok_api::graphql::PaginationInput;
     use serde_json::json;
     use uuid::Uuid;
 

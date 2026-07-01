@@ -11,6 +11,10 @@ recommended_admin_surfaces = ["leptos-admin"]
 [crate]
 entry_type = "AuthModule"
 
+[provides.graphql]
+query = "graphql::OAuthQuery"
+mutation = "graphql::OAuthMutation"
+
 [provides.admin_ui]
 leptos_crate = "rustok-auth-admin"
 route_segment = "auth"

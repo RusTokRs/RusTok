@@ -164,9 +164,12 @@ observability evidence.
 Канонический локальный экспорт выполняется через:
 
 ```bash
-scripts/verify/export-reference-artifacts.sh artifacts/reference
+node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 ```
+
+Unix/CI wrapper `scripts/verify/export-reference-artifacts.sh` делегирует тому же
+Node.js exporter, поэтому Windows и CI формируют идентичный layout.
 
 Правило: при изменении GraphQL/REST/`#[server]` contract в PR должен быть
 Verification Evidence по экспорту артефактов и ссылке на diff.

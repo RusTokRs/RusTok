@@ -1702,6 +1702,7 @@ mod tests {
                     vendor: Some("Pricing Vendor".to_string()),
                     product_type: Some("Physical".to_string()),
                     shipping_profile_slug: None,
+                    primary_category_id: None,
                     tags: vec![],
                     publish: false,
                     metadata: json!({}),

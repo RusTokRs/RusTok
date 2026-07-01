@@ -25,6 +25,12 @@
 - доменная конверсия выносится в `ContentOrchestrationBridge`;
 - runtime-адаптеры, которые знают о `blog/forum/comments` persistence, должны жить вне
   shared helper слоя и реализовывать `ContentOrchestrationBridge`;
+- runtime-адаптер и conversion GraphQL mutation surface живут в
+  `rustok-content-orchestration`; canonical-route query остаётся в `rustok-content`;
+- content GraphQL entity dataloaders для `nodes`, `node_translations` и `bodies`
+  также живут в `rustok-content`; `apps/server` может регистрировать их, но не владеть ими;
+- `apps/server` только подключает эти GraphQL roots и не владеет resolver-ами, DTO или
+  concrete connection-типами модулей;
 - `rustok-content` больше не имеет права напрямую переносить shared `node` children между
   родителями и не должен считать `nodes` каноническим источником истины для conversion flows.
 
@@ -39,6 +45,8 @@
 Минусы:
 
 - для реальных runtime conversion flows нужен отдельный adapter layer;
+- host schema composition зависит от feature-gated owner/support GraphQL entrypoints
+  и owner-owned dataloader types;
 - mapping rules `blog comments ↔ forum replies` теперь должны быть описаны явно и реализованы
   в integration-адаптере, а не “магически” через shared topology.
 
@@ -48,3 +56,5 @@
 - привязывать новую orchestration-логику к `nodes`/`node_translations` как к источнику истины;
 - добавлять прямые зависимости `rustok-content -> rustok-blog/rustok-forum/rustok-comments`,
   если это замыкает цикл зависимостей.
+- возвращать conversion GraphQL resolver/DTO, content entity dataloaders или module-specific concrete connection-типы
+  в `apps/server`.

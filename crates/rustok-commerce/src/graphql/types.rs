@@ -1,4 +1,4 @@
-use async_graphql::{Enum, InputObject, MaybeUndefined, SimpleObject};
+use async_graphql::{Enum, InputObject, Json, MaybeUndefined, SimpleObject};
 use rustok_product::entities::product::ProductStatus;
 use uuid::Uuid;
 
@@ -43,6 +43,7 @@ pub struct GqlProduct {
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
+    pub primary_category_id: Option<Uuid>,
     pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -125,6 +126,102 @@ pub struct GqlProductListItem {
     pub tags: Vec<String>,
     pub created_at: String,
     pub published_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductAttributeList {
+    pub items: Vec<GqlProductAttributeSummary>,
+    pub total: u64,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductAttributeSummary {
+    pub id: Uuid,
+    pub code: String,
+    pub value_type: String,
+    pub is_localized: bool,
+    pub is_filterable: bool,
+    pub is_searchable: bool,
+    pub is_sortable: bool,
+    pub show_on_storefront: bool,
+    pub label: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCatalogCategoryList {
+    pub items: Vec<GqlCatalogCategorySummary>,
+    pub total: u64,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCatalogCategorySummary {
+    pub id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub code: String,
+    pub slug: String,
+    pub path: String,
+    pub kind: String,
+    pub name: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductAttributeSchemaList {
+    pub items: Vec<GqlProductAttributeSchemaSummary>,
+    pub total: u64,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductAttributeSchemaSummary {
+    pub id: Uuid,
+    pub code: String,
+    pub name: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductEffectiveForm {
+    pub category_id: Uuid,
+    pub attributes: Vec<GqlProductEffectiveFormAttribute>,
+    pub detached_attribute_ids: Vec<Uuid>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductEffectiveFormAttribute {
+    pub attribute_id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub value_type: String,
+    pub is_localized: bool,
+    pub options: Vec<GqlProductAttributeOption>,
+    pub group_code: Option<String>,
+    pub group_label: Option<String>,
+    pub is_required: bool,
+    pub is_disabled: bool,
+    pub position: i32,
+    pub source: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductAttributeOption {
+    pub id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub position: i32,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductAttributeValue {
+    pub attribute_id: Uuid,
+    pub kind: String,
+    pub text: Option<String>,
+    pub integer: Option<i64>,
+    pub decimal: Option<String>,
+    pub boolean: Option<bool>,
+    pub date: Option<String>,
+    pub datetime: Option<String>,
+    pub option_id: Option<Uuid>,
+    pub option_ids: Option<Vec<Uuid>>,
+    pub json: Option<Json<serde_json::Value>>,
+    pub detached: bool,
 }
 
 #[derive(SimpleObject)]
@@ -798,6 +895,7 @@ pub struct CreateProductInput {
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
+    pub primary_category_id: Option<Uuid>,
     pub tags: Option<Vec<String>>,
     pub publish: Option<bool>,
 }
@@ -810,6 +908,118 @@ pub struct ProductTranslationInput {
     pub description: Option<String>,
     pub meta_title: Option<String>,
     pub meta_description: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateProductAttributeInput {
+    pub code: String,
+    pub value_type: String,
+    pub label: String,
+    pub help_text: Option<String>,
+    pub is_localized: bool,
+    pub is_filterable: bool,
+    pub is_searchable: bool,
+    pub is_sortable: bool,
+    pub show_on_storefront: bool,
+}
+
+#[derive(InputObject)]
+pub struct CreateProductAttributeOptionInput {
+    pub attribute_id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub position: i32,
+}
+
+#[derive(InputObject)]
+pub struct CreateCatalogCategoryInput {
+    pub parent_id: Option<Uuid>,
+    pub code: String,
+    pub slug: String,
+    pub kind: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateProductAttributeSchemaInput {
+    pub code: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct CreateProductAttributeSchemaGroupInput {
+    pub schema_id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub position: i32,
+}
+
+#[derive(InputObject)]
+pub struct CreateCategoryAttributeGroupInput {
+    pub category_id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub position: i32,
+}
+
+#[derive(InputObject)]
+pub struct SetCategorySchemaModeInput {
+    pub category_id: Uuid,
+    pub mode: String,
+    pub schema_id: Option<Uuid>,
+    pub clone_from_category_id: Option<Uuid>,
+}
+
+#[derive(InputObject)]
+pub struct BindSchemaAttributeInput {
+    pub schema_id: Uuid,
+    pub attribute_id: Uuid,
+    pub group_code: Option<String>,
+    pub is_required: bool,
+    pub is_disabled: bool,
+    pub position: i32,
+}
+
+#[derive(InputObject)]
+pub struct BindCategoryAttributeInput {
+    pub category_id: Uuid,
+    pub attribute_id: Uuid,
+    pub group_code: Option<String>,
+    pub binding_kind: String,
+    pub is_required: Option<bool>,
+    pub is_disabled: bool,
+    pub position: Option<i32>,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum ProductAttributeValueInputKind {
+    Clear,
+    Text,
+    Integer,
+    Decimal,
+    Boolean,
+    Date,
+    Datetime,
+    Select,
+    Multiselect,
+    Json,
+}
+
+#[derive(InputObject)]
+pub struct ProductAttributeValuePatchInput {
+    pub attribute_id: Uuid,
+    pub kind: ProductAttributeValueInputKind,
+    pub text: Option<String>,
+    pub integer: Option<i64>,
+    pub decimal: Option<String>,
+    pub boolean: Option<bool>,
+    pub date: Option<String>,
+    pub datetime: Option<String>,
+    pub option_id: Option<Uuid>,
+    pub option_ids: Option<Vec<Uuid>>,
+    pub json: Option<Json<serde_json::Value>>,
 }
 
 #[derive(InputObject)]
@@ -853,6 +1063,7 @@ pub struct UpdateProductInput {
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
+    pub primary_category_id: Option<Uuid>,
     pub tags: Option<Vec<String>>,
     pub status: Option<GqlProductStatus>,
 }
@@ -1376,6 +1587,7 @@ impl From<dto::ProductResponse> for GqlProduct {
             vendor: product.vendor,
             product_type: product.product_type,
             shipping_profile_slug: product.shipping_profile_slug,
+            primary_category_id: product.primary_category_id,
             tags: product.tags,
             created_at: product.created_at.to_rfc3339(),
             updated_at: product.updated_at.to_rfc3339(),
@@ -1415,6 +1627,109 @@ impl From<dto::ProductOptionResponse> for GqlProductOption {
             name: option.name,
             values: option.values,
             position: option.position,
+        }
+    }
+}
+
+impl From<rustok_product::services::ProductAttributeListRecord> for GqlProductAttributeSummary {
+    fn from(value: rustok_product::services::ProductAttributeListRecord) -> Self {
+        Self {
+            id: value.id,
+            code: value.code,
+            value_type: value.value_type.as_str().to_string(),
+            is_localized: value.is_localized,
+            is_filterable: value.is_filterable,
+            is_searchable: value.is_searchable,
+            is_sortable: value.is_sortable,
+            show_on_storefront: value.show_on_storefront,
+            label: value.label,
+        }
+    }
+}
+
+impl From<rustok_product::services::ProductAttributeValueRecord> for GqlProductAttributeValue {
+    fn from(record: rustok_product::services::ProductAttributeValueRecord) -> Self {
+        use rustok_product::services::ProductAttributeValue;
+
+        let mut output = Self {
+            attribute_id: record.attribute_id,
+            kind: "unset".to_string(),
+            text: None,
+            integer: None,
+            decimal: None,
+            boolean: None,
+            date: None,
+            datetime: None,
+            option_id: None,
+            option_ids: None,
+            json: None,
+            detached: record.detached,
+        };
+        match record.value {
+            None => output.kind = "unset".to_string(),
+            Some(ProductAttributeValue::Text(value)) => {
+                output.kind = "text".to_string();
+                output.text = Some(value);
+            }
+            Some(ProductAttributeValue::Integer(value)) => {
+                output.kind = "integer".to_string();
+                output.integer = Some(value);
+            }
+            Some(ProductAttributeValue::Decimal(value)) => {
+                output.kind = "decimal".to_string();
+                output.decimal = Some(value.to_string());
+            }
+            Some(ProductAttributeValue::Boolean(value)) => {
+                output.kind = "boolean".to_string();
+                output.boolean = Some(value);
+            }
+            Some(ProductAttributeValue::Date(value)) => {
+                output.kind = "date".to_string();
+                output.date = Some(value.to_string());
+            }
+            Some(ProductAttributeValue::Datetime(value)) => {
+                output.kind = "datetime".to_string();
+                output.datetime = Some(value.to_rfc3339());
+            }
+            Some(ProductAttributeValue::Select(value)) => {
+                output.kind = "select".to_string();
+                output.option_id = Some(value);
+            }
+            Some(ProductAttributeValue::Multiselect(value)) => {
+                output.kind = "multiselect".to_string();
+                output.option_ids = Some(value);
+            }
+            Some(ProductAttributeValue::Json(value)) => {
+                output.kind = "json".to_string();
+                output.json = Some(Json(value));
+            }
+        }
+        output
+    }
+}
+
+impl From<rustok_product::services::CatalogCategoryListRecord> for GqlCatalogCategorySummary {
+    fn from(value: rustok_product::services::CatalogCategoryListRecord) -> Self {
+        Self {
+            id: value.id,
+            parent_id: value.parent_id,
+            code: value.code,
+            slug: value.slug,
+            path: value.path,
+            kind: value.kind.as_str().to_string(),
+            name: value.name,
+        }
+    }
+}
+
+impl From<rustok_product::services::ProductAttributeSchemaListRecord>
+    for GqlProductAttributeSchemaSummary
+{
+    fn from(value: rustok_product::services::ProductAttributeSchemaListRecord) -> Self {
+        Self {
+            id: value.id,
+            code: value.code,
+            name: value.name,
         }
     }
 }

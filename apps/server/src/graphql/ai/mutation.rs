@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::common::RequestContext;
 use crate::context::AuthContext;
-use crate::graphql::errors::GraphQLError;
 use crate::models::_entities::{roles, user_roles};
+use rustok_api::graphql::GraphQLError;
 
 use super::{
     ensure_ai_approval_resolve, ensure_ai_provider_manage, ensure_ai_run_cancel,

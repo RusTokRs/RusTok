@@ -9,7 +9,7 @@ use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
 use rustok_api::Permission;
 
 use crate::context::AuthContext;
-use crate::graphql::errors::GraphQLError;
+use rustok_api::graphql::GraphQLError;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum SensitiveGraphqlField {

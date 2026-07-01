@@ -93,6 +93,7 @@ pub(crate) fn create_product_input() -> CreateProductInput {
         vendor: Some("Checkout Vendor".to_string()),
         product_type: Some("physical".to_string()),
         shipping_profile_slug: None,
+        primary_category_id: None,
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),

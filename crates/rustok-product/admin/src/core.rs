@@ -1,9 +1,11 @@
 use rustok_api::{locale_tags_match, AdminQueryKey};
+use std::collections::HashMap;
 
 use crate::i18n::t;
 use crate::model::{
-    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductListItem,
-    ProductPricingDetail, ProductTranslation, ShippingProfile, ShippingProfileList,
+    ProductAdminBootstrap, ProductAttributeValueItem, ProductAttributeValuePatchDraft,
+    ProductDetail, ProductDraft, ProductList, ProductListItem, ProductPricingDetail,
+    ProductTranslation, ShippingProfile, ShippingProfileList,
 };
 
 pub(crate) fn translation_for_locale(
@@ -378,6 +380,7 @@ pub(crate) struct ProductAdminEditorCopy {
     pub seller_id_placeholder: String,
     pub vendor_placeholder: String,
     pub product_type_placeholder: String,
+    pub primary_category_placeholder: String,
     pub primary_sku_placeholder: String,
     pub barcode_placeholder: String,
     pub currency_placeholder: String,
@@ -397,6 +400,11 @@ pub(crate) fn build_product_admin_editor_copy(locale: Option<&str>) -> ProductAd
         seller_id_placeholder: t(locale, "product.field.sellerId", "Seller ID"),
         vendor_placeholder: t(locale, "product.field.vendor", "Vendor"),
         product_type_placeholder: t(locale, "product.field.productType", "Product type"),
+        primary_category_placeholder: t(
+            locale,
+            "product.field.primaryCategory",
+            "Primary category",
+        ),
         primary_sku_placeholder: t(locale, "product.field.primarySku", "Primary SKU"),
         barcode_placeholder: t(locale, "product.field.barcode", "Barcode"),
         currency_placeholder: t(locale, "product.field.currency", "Currency"),
@@ -417,6 +425,408 @@ pub(crate) fn build_product_admin_editor_copy(locale: Option<&str>) -> ProductAd
             "product.field.keepPublished",
             "Keep published after save",
         ),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductAttributeFormCopy {
+    pub loading: String,
+    pub select_category: String,
+    pub no_attributes: String,
+    pub load_failure_label: String,
+    pub detached_values_label: String,
+    pub ungrouped_label: String,
+    pub required_label: String,
+    pub empty_option_label: String,
+    pub boolean_true_label: String,
+    pub boolean_false_label: String,
+    pub detached_title: String,
+    pub clear_detached_label: String,
+    pub detached_empty_label: String,
+}
+
+impl ProductAttributeFormCopy {
+    pub(crate) fn load_failure(&self, detail: impl std::fmt::Display) -> String {
+        format!("{}: {detail}", self.load_failure_label)
+    }
+
+    pub(crate) fn detached_values(&self, count: usize) -> String {
+        format!("{count} {}", self.detached_values_label)
+    }
+}
+
+pub(crate) fn build_product_attribute_form_copy(locale: Option<&str>) -> ProductAttributeFormCopy {
+    ProductAttributeFormCopy {
+        loading: t(
+            locale,
+            "product.attributes.loading",
+            "Loading product form...",
+        ),
+        select_category: t(
+            locale,
+            "product.attributes.selectCategory",
+            "Select a structural category to load typed product attributes.",
+        ),
+        no_attributes: t(
+            locale,
+            "product.attributes.empty",
+            "This category has no typed attributes yet.",
+        ),
+        load_failure_label: t(
+            locale,
+            "product.attributes.loadFailure",
+            "Failed to load product form",
+        ),
+        detached_values_label: t(
+            locale,
+            "product.attributes.detachedValues",
+            "detached attribute values are kept outside the current effective schema.",
+        ),
+        ungrouped_label: t(locale, "product.attributes.general", "General"),
+        required_label: t(locale, "product.attributes.required", "Required"),
+        empty_option_label: t(locale, "product.attributes.emptyOption", "Not selected"),
+        boolean_true_label: t(locale, "product.attributes.booleanTrue", "Yes"),
+        boolean_false_label: t(locale, "product.attributes.booleanFalse", "No"),
+        detached_title: t(
+            locale,
+            "product.attributes.detachedTitle",
+            "Detached values",
+        ),
+        clear_detached_label: t(
+            locale,
+            "product.attributes.clearDetached",
+            "Clear detached values",
+        ),
+        detached_empty_label: t(
+            locale,
+            "product.attributes.detachedEmpty",
+            "No detached values.",
+        ),
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct ProductAttributeEditorState {
+    entries: HashMap<String, ProductAttributeEditorEntry>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct ProductAttributeEditorEntry {
+    text: String,
+    boolean: Option<bool>,
+    option_ids: Vec<String>,
+    json: String,
+    dirty: bool,
+}
+
+impl ProductAttributeEditorState {
+    pub(crate) fn from_values(values: Vec<ProductAttributeValueItem>) -> Self {
+        let entries = values
+            .into_iter()
+            .filter_map(|value| {
+                let entry = match value.kind.as_str() {
+                    "text" => ProductAttributeEditorEntry {
+                        text: value.text.unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "integer" => ProductAttributeEditorEntry {
+                        text: value
+                            .integer
+                            .map(|item| item.to_string())
+                            .unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "decimal" => ProductAttributeEditorEntry {
+                        text: value.decimal.unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "boolean" => ProductAttributeEditorEntry {
+                        boolean: value.boolean,
+                        ..Default::default()
+                    },
+                    "date" => ProductAttributeEditorEntry {
+                        text: value.date.unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "datetime" => ProductAttributeEditorEntry {
+                        text: value.datetime.unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "select" => ProductAttributeEditorEntry {
+                        option_ids: value.option_id.into_iter().collect(),
+                        ..Default::default()
+                    },
+                    "multiselect" => ProductAttributeEditorEntry {
+                        option_ids: value.option_ids.unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "json" => ProductAttributeEditorEntry {
+                        json: value.json.map(|item| item.to_string()).unwrap_or_default(),
+                        ..Default::default()
+                    },
+                    "unset" => ProductAttributeEditorEntry::default(),
+                    _ => return None,
+                };
+                Some((value.attribute_id, entry))
+            })
+            .collect();
+        Self { entries }
+    }
+
+    pub(crate) fn text(&self, attribute_id: &str) -> String {
+        self.entries
+            .get(attribute_id)
+            .map(|entry| entry.text.clone())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn json(&self, attribute_id: &str) -> String {
+        self.entries
+            .get(attribute_id)
+            .map(|entry| entry.json.clone())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn boolean_value(&self, attribute_id: &str) -> String {
+        self.entries
+            .get(attribute_id)
+            .and_then(|entry| entry.boolean)
+            .map(|value| value.to_string())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn option_selected(&self, attribute_id: &str, option_id: &str) -> bool {
+        self.entries
+            .get(attribute_id)
+            .map(|entry| entry.option_ids.iter().any(|item| item == option_id))
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn selected_option(&self, attribute_id: &str) -> String {
+        self.entries
+            .get(attribute_id)
+            .and_then(|entry| entry.option_ids.first())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn set_text(&mut self, attribute_id: String, value: String) {
+        let entry = self.entries.entry(attribute_id).or_default();
+        entry.text = value;
+        entry.dirty = true;
+    }
+
+    pub(crate) fn set_json(&mut self, attribute_id: String, value: String) {
+        let entry = self.entries.entry(attribute_id).or_default();
+        entry.json = value;
+        entry.dirty = true;
+    }
+
+    pub(crate) fn set_boolean(&mut self, attribute_id: String, value: String) {
+        let entry = self.entries.entry(attribute_id).or_default();
+        entry.boolean = match value.as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        };
+        entry.dirty = true;
+    }
+
+    pub(crate) fn set_select(&mut self, attribute_id: String, option_id: String) {
+        let entry = self.entries.entry(attribute_id).or_default();
+        entry.option_ids = if option_id.is_empty() {
+            Vec::new()
+        } else {
+            vec![option_id]
+        };
+        entry.dirty = true;
+    }
+
+    pub(crate) fn set_multiselect_option(
+        &mut self,
+        attribute_id: String,
+        option_id: String,
+        selected: bool,
+    ) {
+        let entry = self.entries.entry(attribute_id).or_default();
+        entry.option_ids.retain(|item| item != &option_id);
+        if selected {
+            entry.option_ids.push(option_id);
+            entry.option_ids.sort();
+        }
+        entry.dirty = true;
+    }
+
+    pub(crate) fn patches(
+        &self,
+        locale: Option<&str>,
+        attribute_types: &HashMap<String, String>,
+    ) -> Result<Vec<ProductAttributeValuePatchDraft>, String> {
+        self.entries
+            .iter()
+            .filter(|(_, entry)| entry.dirty)
+            .map(|(attribute_id, entry)| {
+                let validation_message = |key: &str, fallback: &str| {
+                    format!("{} ({attribute_id})", t(locale, key, fallback))
+                };
+                let value_type = attribute_types.get(attribute_id).ok_or_else(|| {
+                    validation_message(
+                        "product.attributes.outsideForm",
+                        "Attribute is outside the effective form",
+                    )
+                })?;
+                let mut patch = ProductAttributeValuePatchDraft {
+                    attribute_id: attribute_id.clone(),
+                    kind: value_type.clone(),
+                    text: None,
+                    integer: None,
+                    decimal: None,
+                    boolean: None,
+                    date: None,
+                    datetime: None,
+                    option_id: None,
+                    option_ids: None,
+                    json: None,
+                };
+                match value_type.as_str() {
+                    "text" | "textarea" | "richtext" if entry.text.is_empty() => {
+                        patch.kind = "clear".to_string();
+                    }
+                    "text" | "textarea" | "richtext" => patch.text = Some(entry.text.clone()),
+                    "integer" if entry.text.trim().is_empty() => patch.kind = "clear".to_string(),
+                    "integer" => {
+                        patch.integer = Some(entry.text.trim().parse().map_err(|_| {
+                            validation_message(
+                                "product.attributes.integerRequired",
+                                "Attribute requires an integer",
+                            )
+                        })?)
+                    }
+                    "decimal" if entry.text.trim().is_empty() => patch.kind = "clear".to_string(),
+                    "decimal" => {
+                        entry
+                            .text
+                            .trim()
+                            .parse::<rust_decimal::Decimal>()
+                            .map_err(|_| {
+                                validation_message(
+                                    "product.attributes.decimalRequired",
+                                    "Attribute requires a decimal",
+                                )
+                            })?;
+                        patch.decimal = Some(entry.text.trim().to_string());
+                    }
+                    "boolean" => match entry.boolean {
+                        Some(value) => patch.boolean = Some(value),
+                        None => patch.kind = "clear".to_string(),
+                    },
+                    "date" if entry.text.trim().is_empty() => patch.kind = "clear".to_string(),
+                    "date" => {
+                        entry
+                            .text
+                            .trim()
+                            .parse::<chrono::NaiveDate>()
+                            .map_err(|_| {
+                                validation_message(
+                                    "product.attributes.dateRequired",
+                                    "Attribute requires an ISO date",
+                                )
+                            })?;
+                        patch.date = Some(entry.text.trim().to_string());
+                    }
+                    "datetime" if entry.text.trim().is_empty() => patch.kind = "clear".to_string(),
+                    "datetime" => {
+                        chrono::DateTime::parse_from_rfc3339(entry.text.trim()).map_err(|_| {
+                            validation_message(
+                                "product.attributes.datetimeRequired",
+                                "Attribute requires an RFC3339 datetime",
+                            )
+                        })?;
+                        patch.datetime = Some(entry.text.trim().to_string());
+                    }
+                    "select" if entry.option_ids.is_empty() => patch.kind = "clear".to_string(),
+                    "select" => patch.option_id = entry.option_ids.first().cloned(),
+                    "multiselect" => patch.option_ids = Some(entry.option_ids.clone()),
+                    "json" if entry.json.trim().is_empty() => patch.kind = "clear".to_string(),
+                    "json" => {
+                        patch.json =
+                            Some(serde_json::from_str(entry.json.trim()).map_err(|_| {
+                                validation_message(
+                                    "product.attributes.jsonRequired",
+                                    "Attribute requires valid JSON",
+                                )
+                            })?)
+                    }
+                    _ => {
+                        return Err(validation_message(
+                            "product.attributes.unsupportedType",
+                            "Unsupported attribute type",
+                        ))
+                    }
+                }
+                Ok(patch)
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProductDetachedAttributeValueViewModel {
+    pub attribute_id: String,
+    pub label: String,
+    pub value: String,
+}
+
+pub(crate) fn build_product_detached_attribute_value_view_models(
+    locale: Option<&str>,
+    values: &[ProductAttributeValueItem],
+) -> Vec<ProductDetachedAttributeValueViewModel> {
+    values
+        .iter()
+        .filter(|value| value.detached)
+        .map(|value| ProductDetachedAttributeValueViewModel {
+            attribute_id: value.attribute_id.clone(),
+            label: format!(
+                "{} {}",
+                t(locale, "product.attributes.detachedAttribute", "Attribute"),
+                value.attribute_id
+            ),
+            value: detached_attribute_value_label(locale, value),
+        })
+        .collect()
+}
+
+fn detached_attribute_value_label(
+    locale: Option<&str>,
+    value: &ProductAttributeValueItem,
+) -> String {
+    match value.kind.as_str() {
+        "text" => value.text.clone().unwrap_or_default(),
+        "integer" => value
+            .integer
+            .map(|item| item.to_string())
+            .unwrap_or_default(),
+        "decimal" => value.decimal.clone().unwrap_or_default(),
+        "boolean" => value
+            .boolean
+            .map(|item| {
+                if item {
+                    t(locale, "product.attributes.booleanTrue", "Yes")
+                } else {
+                    t(locale, "product.attributes.booleanFalse", "No")
+                }
+            })
+            .unwrap_or_default(),
+        "date" => value.date.clone().unwrap_or_default(),
+        "datetime" => value.datetime.clone().unwrap_or_default(),
+        "select" => value.option_id.clone().unwrap_or_default(),
+        "multiselect" => value.option_ids.clone().unwrap_or_default().join(", "),
+        "json" => value
+            .json
+            .as_ref()
+            .map(|item| item.to_string())
+            .unwrap_or_default(),
+        _ => t(locale, "product.common.noneYet", "none yet"),
     }
 }
 
@@ -477,6 +887,7 @@ pub(crate) struct ProductAdminDraftForm {
     pub vendor: String,
     pub product_type: String,
     pub shipping_profile_slug: String,
+    pub primary_category_id: String,
     pub sku: String,
     pub barcode: String,
     pub currency_code: String,
@@ -535,6 +946,7 @@ pub(crate) struct ProductAdminEditorFormState {
     pub vendor: String,
     pub product_type: String,
     pub shipping_profile_slug: String,
+    pub primary_category_id: String,
     pub sku: String,
     pub barcode: String,
     pub currency_code: String,
@@ -554,6 +966,7 @@ pub(crate) fn empty_product_admin_editor_form_state() -> ProductAdminEditorFormS
         vendor: String::new(),
         product_type: String::new(),
         shipping_profile_slug: String::new(),
+        primary_category_id: String::new(),
         sku: String::new(),
         barcode: String::new(),
         currency_code: "USD".to_string(),
@@ -624,6 +1037,7 @@ pub(crate) fn build_product_admin_editor_form_state(
         vendor: product.vendor.clone().unwrap_or_default(),
         product_type: product.product_type.clone().unwrap_or_default(),
         shipping_profile_slug: product.shipping_profile_slug.clone().unwrap_or_default(),
+        primary_category_id: product.primary_category_id.clone().unwrap_or_default(),
         sku: variant
             .as_ref()
             .and_then(|item| item.sku.clone())
@@ -857,6 +1271,7 @@ pub(crate) fn build_product_admin_save_command(
             vendor: form.vendor,
             product_type: form.product_type,
             shipping_profile_slug: text_or_none(form.shipping_profile_slug),
+            primary_category_id: text_or_none(form.primary_category_id),
             sku: form.sku,
             barcode: form.barcode,
             currency_code: form.currency_code,
@@ -1396,6 +1811,7 @@ mod tests {
             vendor: "Acme".to_string(),
             product_type: "coat".to_string(),
             shipping_profile_slug: " standard ".to_string(),
+            primary_category_id: "category-1".to_string(),
             sku: "COAT-1".to_string(),
             barcode: "123".to_string(),
             currency_code: "USD".to_string(),
@@ -1428,6 +1844,7 @@ mod tests {
             vendor: Some("Acme".to_string()),
             product_type: Some("coat".to_string()),
             shipping_profile_slug: Some("standard".to_string()),
+            primary_category_id: Some("category-1".to_string()),
             tags: Vec::new(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1460,6 +1877,7 @@ mod tests {
                 inventory_policy: "DENY".to_string(),
                 in_stock: true,
             }],
+            effective_form: None,
         }
     }
 
@@ -1778,6 +2196,7 @@ mod tests {
             vendor: Some("Acme".to_string()),
             product_type: Some("coat".to_string()),
             shipping_profile_slug: Some("standard".to_string()),
+            primary_category_id: Some("category-1".to_string()),
             tags: Vec::new(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1810,6 +2229,7 @@ mod tests {
                 inventory_policy: "DENY".to_string(),
                 in_stock: true,
             }],
+            effective_form: None,
         };
 
         let state = build_product_admin_editor_form_state(&product, Some("en"));
@@ -2202,6 +2622,7 @@ mod tests {
             vendor: Some("Acme".to_string()),
             product_type: Some("coat".to_string()),
             shipping_profile_slug: Some("standard".to_string()),
+            primary_category_id: None,
             tags: Vec::new(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: "2026-01-01T00:00:00Z".to_string(),
@@ -2234,6 +2655,7 @@ mod tests {
                 inventory_policy: "DENY".to_string(),
                 in_stock: true,
             }],
+            effective_form: None,
         };
 
         match build_selected_product_summary_view_model(
@@ -2268,5 +2690,49 @@ mod tests {
             }
             SelectedProductSummaryViewModel::Empty { .. } => panic!("expected ready summary"),
         }
+    }
+
+    #[test]
+    fn attribute_editor_emits_only_dirty_typed_patches() {
+        let mut state = ProductAttributeEditorState::from_values(vec![ProductAttributeValueItem {
+            attribute_id: "material".to_string(),
+            kind: "text".to_string(),
+            text: Some("Leather".to_string()),
+            integer: None,
+            decimal: None,
+            boolean: None,
+            date: None,
+            datetime: None,
+            option_id: None,
+            option_ids: None,
+            json: None,
+            detached: false,
+        }]);
+        let types = HashMap::from([
+            ("material".to_string(), "text".to_string()),
+            ("size".to_string(), "integer".to_string()),
+        ]);
+
+        assert!(state.patches(Some("en"), &types).unwrap().is_empty());
+        state.set_text("size".to_string(), "42".to_string());
+        let patches = state.patches(Some("en"), &types).unwrap();
+        assert_eq!(patches.len(), 1);
+        assert_eq!(patches[0].attribute_id, "size");
+        assert_eq!(patches[0].integer, Some(42));
+    }
+
+    #[test]
+    fn attribute_editor_uses_explicit_clear_for_empty_text() {
+        let mut state = ProductAttributeEditorState::default();
+        state.set_text("material".to_string(), String::new());
+        let patches = state
+            .patches(
+                Some("en"),
+                &HashMap::from([("material".to_string(), "text".to_string())]),
+            )
+            .unwrap();
+
+        assert_eq!(patches[0].kind, "clear");
+        assert!(patches[0].text.is_none());
     }
 }

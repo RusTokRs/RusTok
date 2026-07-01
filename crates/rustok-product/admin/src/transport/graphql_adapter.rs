@@ -4,8 +4,12 @@ use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlReques
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductPricingDetail,
-    ShippingProfileList,
+    BindCategoryAttributeDraft, BindSchemaAttributeDraft, CatalogCategoryDraft,
+    CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeDraft,
+    ProductAttributeList, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
+    ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList, ProductAttributeValueItem,
+    ProductAttributeValuePatchDraft, ProductDetail, ProductDraft, ProductEffectiveForm,
+    ProductList, ProductPricingDetail, SetCategorySchemaModeDraft, ShippingProfileList,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -13,12 +17,28 @@ pub type ApiError = GraphqlHttpError;
 const BOOTSTRAP_QUERY: &str =
     "query ProductAdminBootstrap { currentTenant { id slug name } me { id email name } }";
 const PRODUCTS_QUERY: &str = "query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
-const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
 const PRODUCT_PRICING_QUERY: &str = "query ProductAdminPricingProduct($tenantId: UUID!, $id: UUID!, $locale: String, $currencyCode: String, $quantity: Int) { adminPricingProduct(tenantId: $tenantId, id: $id, locale: $locale, currencyCode: $currencyCode, quantity: $quantity) { variants { id prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const SHIPPING_PROFILES_QUERY: &str = "query ProductAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active metadata createdAt updatedAt } } }";
-const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status sellerId vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
-const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const PRODUCT_ATTRIBUTES_QUERY: &str = "query ProductAdminAttributes($tenantId: UUID!, $locale: String!) { productAttributes(tenantId: $tenantId, locale: $locale) { total items { id code valueType isLocalized isFilterable isSearchable isSortable showOnStorefront label } } }";
+const CATALOG_CATEGORIES_QUERY: &str = "query ProductAdminCatalogCategories($tenantId: UUID!, $locale: String!) { catalogCategories(tenantId: $tenantId, locale: $locale) { total items { id parentId code slug path kind name } } }";
+const ATTRIBUTE_SCHEMAS_QUERY: &str = "query ProductAdminAttributeSchemas($tenantId: UUID!, $locale: String!) { productAttributeSchemas(tenantId: $tenantId, locale: $locale) { total items { id code name } } }";
+const EFFECTIVE_FORM_QUERY: &str = "query ProductAdminEffectiveForm($tenantId: UUID!, $productId: UUID, $categoryId: UUID, $locale: String!) { productEffectiveForm(tenantId: $tenantId, productId: $productId, categoryId: $categoryId, locale: $locale) { categoryId detachedAttributeIds attributes { attributeId code label valueType isLocalized options { id code label position } groupCode groupLabel isRequired isDisabled position source } } }";
+const ATTRIBUTE_VALUES_QUERY: &str = "query ProductAdminAttributeValues($tenantId: UUID!, $productId: UUID!, $locale: String!) { productAttributeValues(tenantId: $tenantId, productId: $productId, locale: $locale) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
+const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
 const DELETE_PRODUCT_MUTATION: &str = "mutation ProductAdminDeleteProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!) { deleteProduct(tenantId: $tenantId, userId: $userId, id: $id) }";
+const CREATE_PRODUCT_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminCreateAttribute($tenantId: UUID!, $userId: UUID!, $locale: String!, $input: CreateProductAttributeInput!) { createProductAttribute(tenantId: $tenantId, userId: $userId, locale: $locale, input: $input) }";
+const CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION: &str = "mutation ProductAdminCreateAttributeOption($tenantId: UUID!, $userId: UUID!, $locale: String!, $input: CreateProductAttributeOptionInput!) { createProductAttributeOption(tenantId: $tenantId, userId: $userId, locale: $locale, input: $input) }";
+const CREATE_CATALOG_CATEGORY_MUTATION: &str = "mutation ProductAdminCreateCatalogCategory($tenantId: UUID!, $userId: UUID!, $locale: String!, $input: CreateCatalogCategoryInput!) { createCatalogCategory(tenantId: $tenantId, userId: $userId, locale: $locale, input: $input) }";
+const CREATE_ATTRIBUTE_SCHEMA_MUTATION: &str = "mutation ProductAdminCreateAttributeSchema($tenantId: UUID!, $userId: UUID!, $locale: String!, $input: CreateProductAttributeSchemaInput!) { createProductAttributeSchema(tenantId: $tenantId, userId: $userId, locale: $locale, input: $input) }";
+const CREATE_SCHEMA_GROUP_MUTATION: &str = "mutation ProductAdminCreateSchemaGroup($tenantId: UUID!, $userId: UUID!, $locale: String!, $input: CreateProductAttributeSchemaGroupInput!) { createProductAttributeSchemaGroup(tenantId: $tenantId, userId: $userId, locale: $locale, input: $input) }";
+const CREATE_CATEGORY_GROUP_MUTATION: &str = "mutation ProductAdminCreateCategoryGroup($tenantId: UUID!, $userId: UUID!, $locale: String!, $input: CreateCategoryAttributeGroupInput!) { createCatalogCategoryAttributeGroup(tenantId: $tenantId, userId: $userId, locale: $locale, input: $input) }";
+const SET_CATEGORY_SCHEMA_MODE_MUTATION: &str = "mutation ProductAdminSetCategorySchemaMode($tenantId: UUID!, $userId: UUID!, $input: SetCategorySchemaModeInput!) { setCatalogCategorySchemaMode(tenantId: $tenantId, userId: $userId, input: $input) }";
+const BIND_SCHEMA_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindSchemaAttribute($tenantId: UUID!, $userId: UUID!, $input: BindSchemaAttributeInput!) { bindProductAttributeSchemaAttribute(tenantId: $tenantId, userId: $userId, input: $input) }";
+const BIND_CATEGORY_ATTRIBUTE_MUTATION: &str = "mutation ProductAdminBindCategoryAttribute($tenantId: UUID!, $userId: UUID!, $input: BindCategoryAttributeInput!) { bindCatalogCategoryAttribute(tenantId: $tenantId, userId: $userId, input: $input) }";
+const SAVE_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminSaveAttributeValues($tenantId: UUID!, $userId: UUID!, $productId: UUID!, $locale: String!, $patches: [ProductAttributeValuePatchInput!]!) { saveProductAttributeValues(tenantId: $tenantId, userId: $userId, productId: $productId, locale: $locale, patches: $patches) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
+const CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION: &str = "mutation ProductAdminClearDetachedAttributeValues($tenantId: UUID!, $userId: UUID!, $productId: UUID!, $locale: String!, $attributeIds: [UUID!]!) { clearDetachedProductAttributeValues(tenantId: $tenantId, userId: $userId, productId: $productId, locale: $locale, attributeIds: $attributeIds) { attributeId kind text integer decimal boolean date datetime optionId optionIds json detached } }";
 
 #[derive(Debug, Deserialize)]
 struct BootstrapResponse {
@@ -50,6 +70,48 @@ struct ShippingProfilesResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct ProductAttributesResponse {
+    #[serde(rename = "productAttributes")]
+    product_attributes: ProductAttributeList,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogCategoriesResponse {
+    #[serde(rename = "catalogCategories")]
+    catalog_categories: CatalogCategoryList,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProductAttributeSchemasResponse {
+    #[serde(rename = "productAttributeSchemas")]
+    product_attribute_schemas: ProductAttributeSchemaList,
+}
+
+#[derive(Debug, Deserialize)]
+struct EffectiveFormResponse {
+    #[serde(rename = "productEffectiveForm")]
+    product_effective_form: Option<ProductEffectiveForm>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AttributeValuesResponse {
+    #[serde(rename = "productAttributeValues")]
+    product_attribute_values: Vec<ProductAttributeValueItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SaveAttributeValuesResponse {
+    #[serde(rename = "saveProductAttributeValues")]
+    save_product_attribute_values: Vec<ProductAttributeValueItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClearDetachedAttributeValuesResponse {
+    #[serde(rename = "clearDetachedProductAttributeValues")]
+    clear_detached_product_attribute_values: Vec<ProductAttributeValueItem>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CreateProductResponse {
     #[serde(rename = "createProduct")]
     create_product: ProductDetail,
@@ -65,6 +127,28 @@ struct UpdateProductResponse {
 struct DeleteProductResponse {
     #[serde(rename = "deleteProduct")]
     delete_product: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct BoolMutationResponse {
+    #[serde(rename = "createProductAttribute")]
+    create_product_attribute: Option<bool>,
+    #[serde(rename = "createProductAttributeOption")]
+    create_product_attribute_option: Option<bool>,
+    #[serde(rename = "createCatalogCategory")]
+    create_catalog_category: Option<bool>,
+    #[serde(rename = "createProductAttributeSchema")]
+    create_product_attribute_schema: Option<bool>,
+    #[serde(rename = "createProductAttributeSchemaGroup")]
+    create_product_attribute_schema_group: Option<bool>,
+    #[serde(rename = "createCatalogCategoryAttributeGroup")]
+    create_catalog_category_attribute_group: Option<bool>,
+    #[serde(rename = "setCatalogCategorySchemaMode")]
+    set_catalog_category_schema_mode: Option<bool>,
+    #[serde(rename = "bindProductAttributeSchemaAttribute")]
+    bind_product_attribute_schema_attribute: Option<bool>,
+    #[serde(rename = "bindCatalogCategoryAttribute")]
+    bind_catalog_category_attribute: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,6 +196,44 @@ struct ShippingProfilesVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct LocaleVariables {
+    locale: String,
+}
+
+#[derive(Debug, Serialize)]
+struct EffectiveFormVariables {
+    #[serde(rename = "productId")]
+    product_id: Option<String>,
+    #[serde(rename = "categoryId")]
+    category_id: Option<String>,
+    locale: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AttributeValuesVariables {
+    #[serde(rename = "productId")]
+    product_id: String,
+    locale: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SaveAttributeValuesVariables {
+    #[serde(rename = "productId")]
+    product_id: String,
+    locale: String,
+    patches: Vec<ProductAttributeValuePatchDraft>,
+}
+
+#[derive(Serialize)]
+struct ClearDetachedAttributeValuesVariables {
+    #[serde(rename = "productId")]
+    product_id: String,
+    locale: String,
+    #[serde(rename = "attributeIds")]
+    attribute_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct ProductIdVariables {
     id: String,
 }
@@ -119,6 +241,17 @@ struct ProductIdVariables {
 #[derive(Debug, Serialize)]
 struct CreateProductVariables {
     input: CreateProductInput,
+}
+
+#[derive(Debug, Serialize)]
+struct LocaleMutationVariables<T> {
+    locale: String,
+    input: T,
+}
+
+#[derive(Debug, Serialize)]
+struct InputVariables<T> {
+    input: T,
 }
 
 #[derive(Debug, Serialize)]
@@ -158,6 +291,8 @@ struct CreateProductInput {
     product_type: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     shipping_profile_slug: Option<String>,
+    #[serde(rename = "primaryCategoryId")]
+    primary_category_id: Option<String>,
     publish: Option<bool>,
 }
 
@@ -171,6 +306,8 @@ struct UpdateProductInput {
     product_type: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     shipping_profile_slug: Option<String>,
+    #[serde(rename = "primaryCategoryId")]
+    primary_category_id: Option<String>,
     status: Option<String>,
 }
 
@@ -377,6 +514,108 @@ pub async fn fetch_shipping_profiles(
     Ok(response.shipping_profiles)
 }
 
+pub async fn fetch_product_attributes(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: String,
+) -> Result<ProductAttributeList, ApiError> {
+    let response: ProductAttributesResponse = request(
+        PRODUCT_ATTRIBUTES_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: LocaleVariables { locale },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.product_attributes)
+}
+
+pub async fn fetch_catalog_categories(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: String,
+) -> Result<CatalogCategoryList, ApiError> {
+    let response: CatalogCategoriesResponse = request(
+        CATALOG_CATEGORIES_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: LocaleVariables { locale },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.catalog_categories)
+}
+
+pub async fn fetch_attribute_schemas(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    locale: String,
+) -> Result<ProductAttributeSchemaList, ApiError> {
+    let response: ProductAttributeSchemasResponse = request(
+        ATTRIBUTE_SCHEMAS_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: LocaleVariables { locale },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.product_attribute_schemas)
+}
+
+pub async fn fetch_effective_product_form(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    product_id: Option<String>,
+    category_id: Option<String>,
+    locale: String,
+) -> Result<Option<ProductEffectiveForm>, ApiError> {
+    let response: EffectiveFormResponse = request(
+        EFFECTIVE_FORM_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: EffectiveFormVariables {
+                product_id,
+                category_id,
+                locale,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.product_effective_form)
+}
+
+pub async fn fetch_product_attribute_values(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    product_id: String,
+    locale: String,
+) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
+    let response: AttributeValuesResponse = request(
+        ATTRIBUTE_VALUES_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: AttributeValuesVariables { product_id, locale },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.product_attribute_values)
+}
+
 pub async fn create_product(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -400,6 +639,282 @@ pub async fn create_product(
     Ok(response.create_product)
 }
 
+pub async fn create_product_attribute(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: ProductAttributeDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        CREATE_PRODUCT_ATTRIBUTE_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: LocaleMutationVariables {
+                locale,
+                input: draft,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_product_attribute.unwrap_or(false))
+}
+
+pub async fn create_product_attribute_option(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: ProductAttributeOptionDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        CREATE_PRODUCT_ATTRIBUTE_OPTION_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: LocaleMutationVariables {
+                locale,
+                input: draft,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_product_attribute_option.unwrap_or(false))
+}
+
+pub async fn create_catalog_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: CatalogCategoryDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        CREATE_CATALOG_CATEGORY_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: LocaleMutationVariables {
+                locale,
+                input: draft,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_catalog_category.unwrap_or(false))
+}
+
+pub async fn create_attribute_schema(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: ProductAttributeSchemaDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        CREATE_ATTRIBUTE_SCHEMA_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: LocaleMutationVariables {
+                locale,
+                input: draft,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_product_attribute_schema.unwrap_or(false))
+}
+
+pub async fn create_product_attribute_schema_group(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: ProductAttributeSchemaGroupDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        CREATE_SCHEMA_GROUP_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: LocaleMutationVariables {
+                locale,
+                input: draft,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response
+        .create_product_attribute_schema_group
+        .unwrap_or(false))
+}
+
+pub async fn create_category_attribute_group(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    locale: String,
+    draft: CategoryAttributeGroupDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        CREATE_CATEGORY_GROUP_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: LocaleMutationVariables {
+                locale,
+                input: draft,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response
+        .create_catalog_category_attribute_group
+        .unwrap_or(false))
+}
+
+pub async fn set_category_schema_mode(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    draft: SetCategorySchemaModeDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        SET_CATEGORY_SCHEMA_MODE_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: InputVariables { input: draft },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.set_catalog_category_schema_mode.unwrap_or(false))
+}
+
+pub async fn bind_schema_attribute(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    draft: BindSchemaAttributeDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        BIND_SCHEMA_ATTRIBUTE_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: InputVariables { input: draft },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response
+        .bind_product_attribute_schema_attribute
+        .unwrap_or(false))
+}
+
+pub async fn bind_category_attribute(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    draft: BindCategoryAttributeDraft,
+) -> Result<bool, ApiError> {
+    let response: BoolMutationResponse = request(
+        BIND_CATEGORY_ATTRIBUTE_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: InputVariables { input: draft },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.bind_catalog_category_attribute.unwrap_or(false))
+}
+
+pub async fn save_product_attribute_values(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    product_id: String,
+    locale: String,
+    mut patches: Vec<ProductAttributeValuePatchDraft>,
+) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
+    for patch in &mut patches {
+        patch.kind = patch.kind.trim().to_ascii_uppercase();
+    }
+    let response: SaveAttributeValuesResponse = request(
+        SAVE_ATTRIBUTE_VALUES_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: SaveAttributeValuesVariables {
+                product_id,
+                locale,
+                patches,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.save_product_attribute_values)
+}
+
+pub async fn clear_detached_product_attribute_values(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    user_id: String,
+    product_id: String,
+    locale: String,
+    attribute_ids: Vec<String>,
+) -> Result<Vec<ProductAttributeValueItem>, ApiError> {
+    let response: ClearDetachedAttributeValuesResponse = request(
+        CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION,
+        Some(TenantUserScopedVariables {
+            tenant_id,
+            user_id,
+            extra: ClearDetachedAttributeValuesVariables {
+                product_id,
+                locale,
+                attribute_ids,
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.clear_detached_product_attribute_values)
+}
+
 pub async fn update_product(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -421,6 +936,7 @@ pub async fn update_product(
                     vendor: optional_text(draft.vendor.as_str()),
                     product_type: optional_text(draft.product_type.as_str()),
                     shipping_profile_slug: draft.shipping_profile_slug.clone(),
+                    primary_category_id: draft.primary_category_id.clone(),
                     status: None,
                 },
             },
@@ -453,6 +969,7 @@ pub async fn change_product_status(
                     vendor: None,
                     product_type: None,
                     shipping_profile_slug: None,
+                    primary_category_id: None,
                     status: Some(status.to_string()),
                 },
             },
@@ -516,6 +1033,7 @@ fn build_create_product_input(draft: ProductDraft) -> CreateProductInput {
         vendor: optional_text(draft.vendor.as_str()),
         product_type: optional_text(draft.product_type.as_str()),
         shipping_profile_slug: draft.shipping_profile_slug,
+        primary_category_id: draft.primary_category_id,
         publish: Some(draft.publish_now),
     }
 }

@@ -15,10 +15,6 @@ use uuid::Uuid;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::graphql::common::{encode_cursor, PageInfo, PaginationInput};
-use crate::graphql::errors::GraphQLError;
-#[cfg(feature = "mod-content")]
-use crate::graphql::types::ResolvedCanonicalRoute;
 use crate::graphql::types::{
     ActivityItem, ActivityUser, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
     MarketplaceModuleVersion, ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField,
@@ -41,8 +37,8 @@ use crate::services::rbac_service::RbacService;
 use crate::services::registry_governance::{
     RegistryGovernanceService, RegistryModuleLifecycleSnapshot,
 };
-#[cfg(feature = "mod-content")]
-use rustok_content::CanonicalUrlService;
+use rustok_api::graphql::GraphQLError;
+use rustok_api::graphql::{encode_cursor, PageInfo, PaginationInput};
 
 fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {
@@ -62,30 +58,6 @@ fn clamp_collection_limit(limit: Option<i32>) -> usize {
 
 fn requested_collection_limit(limit: Option<i32>) -> Option<u64> {
     limit.map(|value| value.max(0) as u64)
-}
-
-#[cfg(feature = "mod-content")]
-fn map_content_error(err: rustok_content::ContentError) -> FieldError {
-    match err {
-        rustok_content::ContentError::Validation(message)
-        | rustok_content::ContentError::Forbidden(message) => FieldError::new(message),
-        rustok_content::ContentError::NodeNotFound(_)
-        | rustok_content::ContentError::CategoryNotFound(_)
-        | rustok_content::ContentError::TranslationNotFound { .. }
-        | rustok_content::ContentError::DuplicateSlug { .. }
-        | rustok_content::ContentError::ConcurrentModification { .. } => {
-            FieldError::new(err.to_string())
-        }
-        rustok_content::ContentError::Database(inner) => {
-            <FieldError as GraphQLError>::internal_error(&inner.to_string())
-        }
-        rustok_content::ContentError::Core(inner) => {
-            <FieldError as GraphQLError>::internal_error(&inner.to_string())
-        }
-        rustok_content::ContentError::Rich(inner) => {
-            <FieldError as GraphQLError>::internal_error(&inner.to_string())
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -811,33 +783,6 @@ impl RootQuery {
             name: tenant.name.clone(),
             slug: tenant.slug.clone(),
         })
-    }
-
-    #[cfg(feature = "mod-content")]
-    async fn resolve_canonical_route(
-        &self,
-        ctx: &Context<'_>,
-        route: String,
-        locale: String,
-    ) -> Result<Option<ResolvedCanonicalRoute>> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let lookup_started_at = Instant::now();
-        let service = CanonicalUrlService::new(app_ctx.db.clone());
-        let resolved = service
-            .resolve_route(tenant.id, locale.as_str(), route.as_str())
-            .await
-            .map_err(map_content_error)?;
-
-        metrics::record_read_path_query(
-            "graphql",
-            "root.resolve_canonical_route",
-            "canonical_lookup",
-            lookup_started_at.elapsed().as_secs_f64(),
-            resolved.is_some() as u64,
-        );
-
-        Ok(resolved.map(ResolvedCanonicalRoute::from))
     }
 
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {

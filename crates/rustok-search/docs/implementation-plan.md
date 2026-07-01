@@ -5,9 +5,9 @@
 
 ## Execution checkpoint
 
-- Current phase: storefront_legacy_api_removed
-- Last checkpoint: Search admin/storefront retired legacy `admin/src/api.rs` and `storefront/src/api.rs`; admin native/GraphQL adapter now lives in `admin/src/transport/native_server_adapter.rs`, storefront native server-function endpoints live in `storefront/src/transport/native_server_adapter.rs`, GraphQL fallback execution lives in `storefront/src/transport/graphql_adapter.rs`, and `scripts/verify/verify-search-ui-boundary.mjs` rejects reintroducing legacy API modules.
-- Next step: Продолжать parity/evidence hardening для существующих native/GraphQL storefront/admin paths; следующий блокер перед повышением FBA выше `boundary_ready` — live runtime contract execution с реальным provider invocation, так как no-compile runtime contract smoke уже добавлен.
+- Current phase: catalog_projection_search_connected
+- Last checkpoint: PostgreSQL search now consumes product highload projections: `categoryIds` filter through `index_product_categories` including materialized virtual category assignments, `attributeFilters`/`sortAttributeCode` use channel-scoped `index_product_attribute_values`, effective filterable attributes produce dynamic `attr:<code>` facets, and facet buckets expose stable `value` plus optional localized `label`. `verify-search-ui-boundary.mjs` now source-locks these GraphQL/query/engine markers and has fixture coverage for missing catalog projection markers.
+- Next step: Подключить storefront/admin UI controls к новым optional catalog filters/sort fields; следующий блокер перед повышением FBA выше `boundary_ready` остаётся live runtime contract execution с реальным provider invocation.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
 - Last updated at (UTC): 2026-06-29T00:00:00Z
@@ -50,6 +50,8 @@
   - Phase B slice #40 добавил `DEFAULT_SUGGESTION_MIN_LEN`, `StorefrontSuggestionFetchRequest` и `build_storefront_suggestion_fetch_request` в `storefront/src/core.rs`; storefront Leptos suggestions resource больше не владеет inline autocomplete min-length gate или query trim policy.
   - Phase B closure decision: search FFA больше не расширяется без нового функционального surface; текущий кодовый split достаточен для `phase_b_ready`, а дальнейшая работа переводится в parity/evidence hardening.
   - Slice #41 evidence hardening добавил `verify-search-ui-boundary.mjs` и fixture tests, проверяющие admin/storefront crate-root wiring, Leptos-free core helpers, запрет raw `api::*`/adapter calls из UI, storefront native-first + GraphQL fallback split и отсутствие legacy storefront `api.rs`; latest update also forbids legacy admin `api.rs` and pins `admin/src/transport/native_server_adapter.rs`.
+  - Catalog projection search slice подключил `PgSearchEngine` к product-owned highload projections без зависимости от Rust-типов `rustok-index`: category filters используют `index_product_categories`, virtual categories участвуют как materialized assignments, attribute filters/sorts/facets используют `index_product_attribute_values` с явным `channel_id` scope, detached rows исключаются, а facet buckets сохраняют stable key и optional localized label.
+  - Catalog projection guardrail slice расширил `scripts/verify/verify-search-ui-boundary.mjs`: source-lock проверяет `SearchQuery`/GraphQL optional catalog fields, `SearchAttributeFilter`, facet `label`, чтение `index_product_categories`/`index_product_attribute_values`, explicit channel scope, dynamic `attr:<code>` facets и pinned-rule skip при catalog filters; `npm run test:verify:search:ui-boundary` покрывает missing catalog markers.
 - Last verified at (UTC): 2026-06-29T00:00:00Z
 - Owner: `rustok-search` module team
 
@@ -85,6 +87,9 @@
 ### 2. Product hardening
 
 - [ ] довести richer sorting/profile controls и advanced storefront UX polish;
+- [x] Подключить PostgreSQL search к channel-scoped normalized product facets/sorts и materialized virtual category assignments.
+- [x] Закрепить projection-search contract быстрым source/schema guardrail.
+- [ ] Подключить UI controls и route/query contract к optional catalog filters/sort fields.
 - [ ] развить retry/DLQ strategy для ingestion/rebuild pipeline;
 - [ ] завершить admin dashboards и production-grade analytics presentation.
 

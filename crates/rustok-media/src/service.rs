@@ -42,6 +42,13 @@ pub struct MediaStorageCleanupReport {
     pub retry_later: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MediaUsageSnapshot {
+    pub tenant_id: Uuid,
+    pub file_count: i64,
+    pub total_bytes: i64,
+}
+
 impl MediaStorageCleanupReport {
     pub fn is_empty(&self) -> bool {
         self.inspected == 0
@@ -58,6 +65,32 @@ impl MediaStorageCleanupReport {
     pub fn should_retry(&self) -> bool {
         self.retry_later > 0
     }
+}
+
+pub async fn load_media_usage_snapshot(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> Result<MediaUsageSnapshot> {
+    let file_count = MediaEntity::find()
+        .filter(MediaCol::TenantId.eq(tenant_id))
+        .count(db)
+        .await? as i64;
+
+    let total_bytes = MediaEntity::find()
+        .filter(MediaCol::TenantId.eq(tenant_id))
+        .select_only()
+        .column_as(sea_orm::sea_query::Expr::col(MediaCol::Size).sum(), "total")
+        .into_tuple::<Option<i64>>()
+        .one(db)
+        .await?
+        .flatten()
+        .unwrap_or(0);
+
+    Ok(MediaUsageSnapshot {
+        tenant_id,
+        file_count,
+        total_bytes,
+    })
 }
 
 fn classify_cleanup_probe(

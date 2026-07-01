@@ -3,7 +3,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
-use crate::graphql::errors::GraphQLError;
+use rustok_api::graphql::GraphQLError;
 
 use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,

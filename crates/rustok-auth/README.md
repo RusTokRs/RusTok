@@ -10,7 +10,8 @@ refresh-token helpers, invite-token helpers, auth config assembly/validation, an
 - Provide `AuthModule` metadata for the runtime registry.
 - Expose auth primitives used by `apps/server` transport adapters and lifecycle services.
 - Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
-- Own typed `UserAdminMutationPort` and `OAuthAdminMutationPort` boundaries used by GraphQL and native admin mutation adapters.
+- Own typed `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` boundaries used by GraphQL and native adapters.
+- Own the auth lifecycle and OAuth GraphQL query, mutation, input, and output surfaces behind the `graphql` feature.
 
 ## Interactions
 
@@ -27,8 +28,11 @@ refresh-token helpers, invite-token helpers, auth config assembly/validation, an
 - `AUTH_USER_PERMISSIONS`
 - `UserAdminMutationPort`
 - `UserAdminMutationRuntime`
-- `OAuthAdminMutationPort`
-- `OAuthAdminMutationRuntime`
+- `OAuthAdminPort`
+- `OAuthAdminRuntime`
+- `AuthLifecyclePort`
+- `AuthLifecycleRuntime`
+- `graphql::{AuthQuery, AuthMutation, OAuthQuery, OAuthMutation}` (feature `graphql`)
 - `AuthAdminMutationContext`
 - `AuthAdminMutationError`
 - `AuthConfig`

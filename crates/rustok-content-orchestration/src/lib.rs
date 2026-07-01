@@ -125,6 +125,14 @@ use uuid::Uuid;
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
+pub mod graphql;
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
 #[derive(Clone)]
 pub struct SharedContentOrchestrationService(pub Arc<ContentOrchestrationService>);
 

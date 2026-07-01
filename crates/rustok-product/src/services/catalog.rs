@@ -6,7 +6,7 @@ pub use types::{ProductTagState, StorefrontProductList, StorefrontProductListIte
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
 };
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -26,6 +26,7 @@ use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 
 use crate::entities::product_tag;
+use crate::ProductCatalogSchemaService;
 
 use helpers::*;
 
@@ -70,6 +71,13 @@ impl CatalogService {
             warn!("Product creation rejected: no variants");
             return Err(CommerceError::NoVariants);
         }
+        self.validate_primary_category(tenant_id, input.primary_category_id)
+            .await?;
+        if input.publish {
+            ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+                .validate_new_product_publish_requirements(tenant_id, input.primary_category_id)
+                .await?;
+        }
 
         let product_id = generate_id();
         let now = Utc::now();
@@ -110,6 +118,7 @@ impl CatalogService {
                 .shipping_profile_slug
                 .as_deref()
                 .and_then(normalize_shipping_profile_slug)),
+            primary_category_id: Set(input.primary_category_id),
             metadata: Set(normalized_metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -642,6 +651,7 @@ impl CatalogService {
                 .shipping_profile_slug
                 .clone()
                 .or_else(|| extract_shipping_profile_slug(&product.metadata)),
+            primary_category_id: product.primary_category_id,
             tags: product_tags.tags,
             metadata: resolved_metadata,
             created_at: product.created_at.into(),
@@ -875,6 +885,10 @@ impl CatalogService {
         input
             .validate()
             .map_err(|e| CommerceError::Validation(e.to_string()))?;
+        if input.primary_category_id.is_some() {
+            self.validate_primary_category(tenant_id, input.primary_category_id)
+                .await?;
+        }
 
         let txn = self.db.begin().await?;
 
@@ -933,6 +947,11 @@ impl CatalogService {
             product_active.shipping_profile_slug = Set(shipping_profile_input
                 .as_deref()
                 .and_then(normalize_shipping_profile_slug));
+        }
+        let primary_category_changed = input.primary_category_id.is_some()
+            && input.primary_category_id != existing_product.primary_category_id;
+        if input.primary_category_id.is_some() {
+            product_active.primary_category_id = Set(input.primary_category_id);
         }
         if let Some((metadata, _)) = metadata_update.as_ref() {
             product_active.metadata = Set(metadata.clone());
@@ -1022,6 +1041,16 @@ impl CatalogService {
                 DomainEvent::ProductUpdated { product_id },
             )
             .await?;
+        if primary_category_changed {
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    Some(actor_id),
+                    DomainEvent::ProductPrimaryCategoryChanged { product_id },
+                )
+                .await?;
+        }
 
         txn.commit().await?;
         info!(product_id = %product_id, "Product updated successfully");
@@ -1033,6 +1062,37 @@ impl CatalogService {
             None,
         )
         .await
+    }
+
+    async fn validate_primary_category(
+        &self,
+        tenant_id: Uuid,
+        category_id: Option<Uuid>,
+    ) -> CommerceResult<()> {
+        let Some(category_id) = category_id else {
+            return Ok(());
+        };
+        let row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                self.db.get_database_backend(),
+                "SELECT kind FROM catalog_categories WHERE tenant_id = $1 AND id = $2",
+                [tenant_id.into(), category_id.into()],
+            ))
+            .await?;
+        let kind = row
+            .and_then(|row| row.try_get::<String>("", "kind").ok())
+            .ok_or_else(|| {
+                CommerceError::Validation(
+                    "Primary category must reference an existing tenant category".to_string(),
+                )
+            })?;
+        if kind != "structural" {
+            return Err(CommerceError::Validation(
+                "Primary category must be structural".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     #[instrument(skip(self))]
@@ -1054,6 +1114,9 @@ impl CatalogService {
                 warn!(product_id = %product_id, "Product not found for publishing");
                 CommerceError::ProductNotFound(product_id)
             })?;
+        ProductCatalogSchemaService::new(self.db.clone(), self.event_bus.clone())
+            .validate_product_publish_requirements(tenant_id, product_id)
+            .await?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Active);

@@ -1,9 +1,9 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
-use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 #[cfg(feature = "mod-media")]
-use sea_orm::QuerySelect;
+use rustok_media::load_media_usage_snapshot;
+use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
 
@@ -140,32 +140,15 @@ impl SystemQuery {
     /// Media usage statistics for a tenant (requires mod-media feature).
     #[cfg(feature = "mod-media")]
     async fn media_usage(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<MediaUsageStats> {
-        use rustok_media::media::{Column as MediaCol, Entity as MediaEntity};
-
         let db = ctx.data::<DatabaseConnection>()?;
-
-        let file_count = MediaEntity::find()
-            .filter(MediaCol::TenantId.eq(tenant_id))
-            .count(db)
+        let usage = load_media_usage_snapshot(db, tenant_id)
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))? as i64;
-
-        // SUM(size) — manual aggregation via select_only
-        let total_bytes: i64 = MediaEntity::find()
-            .filter(MediaCol::TenantId.eq(tenant_id))
-            .select_only()
-            .column_as(sea_orm::sea_query::Expr::col(MediaCol::Size).sum(), "total")
-            .into_tuple::<Option<i64>>()
-            .one(db)
-            .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?
-            .flatten()
-            .unwrap_or(0);
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         Ok(MediaUsageStats {
-            tenant_id,
-            file_count,
-            total_bytes,
+            tenant_id: usage.tenant_id,
+            file_count: usage.file_count,
+            total_bytes: usage.total_bytes,
         })
     }
 

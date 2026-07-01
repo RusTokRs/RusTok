@@ -7,7 +7,7 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 ## Execution checkpoint
 
 - Текущая фаза: `mcp_leptos_host_composition`; предыдущий owner UI checkpoint: `mcp_admin_owner_ui_slice`.
-- Последняя контрольная точка: Leptos native `#[server]` stage/apply mutations переведены с собственного SQL/filesystem/audit path на owner-defined `McpManagementMutationPort`; server provider делегирует их каноническому `McpManagementService`, поэтому Next GraphQL и Leptos FFA используют единые transaction claim/recovery semantics. `apps/admin` теперь монтирует owner component на `/mcp` и подключает его во всех `csr/hydrate/ssr` профилях, не принимая ownership над MCP UI или transport.
+- Последняя контрольная точка: MCP GraphQL query/mutation/types перенесены из `apps/server` в `rustok-mcp` и работают через единый owner-defined `McpManagementPort`; server provider делегирует reads/writes каноническому `McpManagementService`. Leptos native `#[server]` mutations используют тот же `McpManagementRuntime`, поэтому GraphQL и FFA сохраняют единые transaction claim/recovery semantics без host-owned resolver/DTO.
 - Следующий шаг: добавить authenticated browser-level parity smoke для Next `/dashboard/mcp` и Leptos `/mcp` management workflows поверх уже усиленного draft stage/apply boundary.
 - Открытые блокеры: нет актуальных локальных блокеров для текущего MCP slice; `cargo check -p rustok-server --offline`, `cargo test -p rustok-mcp --lib --offline`, `cargo fmt -p rustok-server --check` и `npm run verify:mcp:admin-boundary` проходят.
 - Передача следующему агенту: сохранять `rustok-mcp` как MCP protocol/tool adapter, persisted draft storage оставлять в `apps/server`, а UI - в owner surface MCP, не в `rustok-ai`. После изменений tool surface повторять `cargo check -p rustok-mcp-admin --features ssr`, `npm run verify:mcp:admin-boundary`, `cargo check -p rustok-server`, `cargo check -p rustok-mcp` и `cargo test -p rustok-mcp --lib`.
@@ -23,7 +23,7 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
   - Next owner surface `apps/next-admin/packages/rustok-mcp` владеет UI ревью MCP/Alloy scaffold drafts, audit events, clients/policies/tokens и management mutations; host route только монтирует `McpAdminPage`.
   - Leptos FFA surface `crates/rustok-mcp/admin` содержит Leptos-free `core.rs`, `transport::{native_server_adapter,graphql_adapter}` и явный `ui/leptos.rs` adapter.
   - Leptos host `apps/admin` подключает owner crate через тонкий маршрут `/mcp`; CSR, hydrate WASM и SSR feature profiles компилируются.
-  - Native `#[server]` functions являются основным внутренним data layer Leptos; mutations получают `McpManagementMutationRuntime` из `ModuleRuntimeExtensions`, а server provider делегирует client/policy/token/scaffold writes `McpManagementService`. GraphQL operation documents параллельно остаются в `transport/graphql_adapter.rs`.
+  - Native `#[server]` functions являются основным внутренним data layer Leptos; mutations и owner GraphQL получают `McpManagementRuntime` из `ModuleRuntimeExtensions`, а server provider делегирует client/policy/token/audit/scaffold reads/writes `McpManagementService`. GraphQL operation documents параллельно остаются в `transport/graphql_adapter.rs`.
   - Boundary guardrail `scripts/verify/verify-mcp-admin-boundary.mjs` проверяет owner placement, требует stage/apply delegation через mutation port, запрещает scaffold persistence/audit SQL в UI adapter и запрещает MCP draft UI внутри `rustok-ai`.
 - Последняя проверка (UTC): 2026-07-01T00:00:00Z.
 - Владелец: `rustok-mcp`.

@@ -127,6 +127,16 @@ Commerce storage остаётся split-domain family, но верхнеуров
 - `cart_line_item_translations`
 - `order_line_item_translations`
 
+Нативные атрибуты продуктового каталога расширяют этот baseline через
+product-owned таблицы:
+
+- `product_attributes`, `product_attribute_translations`, `product_attribute_options`
+- `catalog_categories`, `catalog_category_translations`, `catalog_category_closure`
+- `product_attribute_schemas` и schema/group/binding tables
+- `category_attribute_schema_assignments`, `category_attributes`, `category_attribute_groups`
+- `product_categories`, `virtual_category_product_assignments`
+- `product_attribute_values`, `product_variant_attribute_values` и связанные localized value/option tables
+
 И здесь действует тот же принцип: base rows language-agnostic, локализованные
 поля вынесены в parallel records.
 
@@ -176,9 +186,32 @@ Current-state вывод:
 
 - `index_content`
 - `index_products`
+- `index_product_categories`
+- `index_product_attribute_values`
 
 Они существуют для query/index/search paths и не должны использоваться как
 авторитетный write-side storage.
+
+Product indexer обновляет category и attribute projections по `tenant_id`,
+`product_id` и явной locale. Attribute projection принимает effective schema из
+read-only resolver-а `rustok-product`, раскладывает multiselect по отдельным
+option rows и не индексирует detached values. Локализованные labels не используют
+package-local fallback chain.
+
+Facet/search/sort rows имеют channel scope. Для active channels индексатор создаёт
+отдельный набор строк и вычисляет флаги с приоритетом `attribute defaults <
+schema/category overrides < channel settings`; явный `false` не теряется при
+наследовании. Строка также хранит effective storefront/comparison/admin-grid
+visibility. Если active channel отсутствует, используется единственный global
+scope с `channel_id = null`. Индексы read model включают `channel_id`, поэтому
+поиск не смешивает facet buckets разных каналов.
+
+Перед обновлением category projection индексатор пересчитывает
+`virtual_category_product_assignments` по bounded V1 rules. Материализация
+идемпотентна на уровне `(tenant_id, product_id)`: старые строки товара удаляются,
+после чего в одной транзакции записываются совпавшие virtual categories. Правила
+используют только write-side product facts и effective locale-neutral attributes;
+read model не становится источником истины для rule evaluation.
 
 ## Workflow-хранение
 

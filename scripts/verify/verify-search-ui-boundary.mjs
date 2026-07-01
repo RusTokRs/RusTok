@@ -175,8 +175,83 @@ function assertSearchStorefrontBoundary() {
   assertContains(graphql, "GraphqlRequest", `${graphqlPath}: GraphQL adapter must own raw GraphQL request execution`);
 }
 
+function assertSearchCatalogProjectionContract() {
+  const enginePath = "crates/rustok-search/src/engine.rs";
+  const pgEnginePath = "crates/rustok-search/src/pg_engine.rs";
+  const dictionariesPath = "crates/rustok-search/src/dictionaries.rs";
+  const graphqlTypesPath = "crates/rustok-search/src/graphql/types.rs";
+  const graphqlQueryPath = "crates/rustok-search/src/graphql/query.rs";
+
+  for (const checkedPath of [enginePath, pgEnginePath, dictionariesPath, graphqlTypesPath, graphqlQueryPath]) {
+    assertExists(checkedPath, `${checkedPath}: expected search catalog projection contract file`);
+  }
+
+  const engine = readRepo(enginePath);
+  const pgEngine = readRepo(pgEnginePath);
+  const dictionaries = readRepo(dictionariesPath);
+  const graphqlTypes = readRepo(graphqlTypesPath);
+  const graphqlQuery = readRepo(graphqlQueryPath);
+
+  for (const marker of [
+    "pub channel_id: Option<Uuid>",
+    "pub category_ids: Vec<Uuid>",
+    "pub attribute_filters: Vec<SearchAttributeFilter>",
+    "pub sort_attribute_code: Option<String>",
+    "pub sort_desc: bool",
+    "pub struct SearchAttributeFilter",
+    "pub label: Option<String>",
+  ]) {
+    assertContains(engine, marker, `${enginePath}: catalog projection query/result contract missing ${marker}`);
+  }
+
+  for (const marker of [
+    "index_product_categories",
+    "index_product_attribute_values",
+    "channel_scope_clause",
+    "iav.channel_id IS NULL",
+    "iav.is_filterable = TRUE",
+    "iav.is_detached = FALSE",
+    "('attr:' || iav.attribute_code)",
+    "facet_label",
+    "value_number",
+    "normalized_sort_attribute_code",
+  ]) {
+    assertContains(pgEngine, marker, `${pgEnginePath}: PostgreSQL catalog projection search marker missing ${marker}`);
+  }
+
+  assertContains(dictionaries, "has_catalog_filters(query)", `${dictionariesPath}: pinned query rules must respect catalog filters`);
+  assertContains(dictionaries, "continue;", `${dictionariesPath}: pinned query rules must skip raw reload when catalog filters are present`);
+
+  for (const marker of [
+    "pub channel_id: Option<String>",
+    "pub category_ids: Option<Vec<String>>",
+    "pub attribute_filters: Option<Vec<SearchAttributeFilterInput>>",
+    "pub sort_attribute_code: Option<String>",
+    "pub sort_desc: Option<bool>",
+    "pub struct SearchAttributeFilterInput",
+    "pub label: Option<String>",
+  ]) {
+    assertContains(graphqlTypes, marker, `${graphqlTypesPath}: GraphQL catalog projection schema marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "NormalizedSearchPreviewInput",
+    "parse_optional_uuid(input.channel_id.as_deref())",
+    "normalize_uuid_values(\"category_ids\"",
+    "normalize_attribute_filters(input.attribute_filters)",
+    "normalize_attribute_code(input.sort_attribute_code)",
+    "category_ids: input.category_ids",
+    "attribute_filters: input.attribute_filters",
+    "sort_attribute_code: input.sort_attribute_code",
+    "sort_desc: input.sort_desc",
+  ]) {
+    assertContains(graphqlQuery, marker, `${graphqlQueryPath}: GraphQL catalog projection normalization marker missing ${marker}`);
+  }
+}
+
 assertSearchAdminBoundary();
 assertSearchStorefrontBoundary();
+assertSearchCatalogProjectionContract();
 
 if (failures.length > 0) {
   console.error("search UI boundary verification failed:");

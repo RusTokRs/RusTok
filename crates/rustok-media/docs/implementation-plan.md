@@ -35,6 +35,7 @@
 ## Текущее состояние
 
 - `MediaService`, entities, DTOs и transport adapters уже реализованы;
+- `load_media_usage_snapshot` отдаёт host/system statistics без возврата media entity imports в `apps/server`;
 - media metadata хранится в module-owned tables, а бинарные файлы остаются в `rustok-storage`;
 - upload остаётся REST-first path, GraphQL покрывает read/write flows без multipart semantics;
 - module-owned admin UI и observability surface уже входят в модульный contract;

@@ -11,7 +11,7 @@ use rustok_order::OrderService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use rustok_pricing::PricingService;
-use rustok_product::CatalogService;
+use rustok_product::{CatalogService, ProductCatalogSchemaService};
 use rustok_region::{RegionListRequest, RegionReadPort, RegionService};
 use rustok_telemetry::metrics;
 use sea_orm::{
@@ -1465,6 +1465,234 @@ impl CommerceQuery {
         })
     }
 
+    async fn product_attributes(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        locale: String,
+    ) -> Result<GqlProductAttributeList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
+        let items = service
+            .list_attributes(tenant_id, locale.trim())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<_>>();
+
+        Ok(GqlProductAttributeList {
+            total: items.len() as u64,
+            items,
+        })
+    }
+
+    async fn catalog_categories(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        locale: String,
+    ) -> Result<GqlCatalogCategoryList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
+        let items = service
+            .list_categories(tenant_id, locale.trim())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<_>>();
+
+        Ok(GqlCatalogCategoryList {
+            total: items.len() as u64,
+            items,
+        })
+    }
+
+    async fn product_attribute_schemas(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        locale: String,
+    ) -> Result<GqlProductAttributeSchemaList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
+        let items = service
+            .list_schemas(tenant_id, locale.trim())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<_>>();
+
+        Ok(GqlProductAttributeSchemaList {
+            total: items.len() as u64,
+            items,
+        })
+    }
+
+    async fn product_effective_form(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        product_id: Option<Uuid>,
+        category_id: Option<Uuid>,
+        locale: String,
+    ) -> Result<Option<GqlProductEffectiveForm>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
+        let locale = locale.trim();
+        let form = match (product_id, category_id) {
+            (Some(product_id), _) => service
+                .load_effective_form_for_product(tenant_id, product_id)
+                .await
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?,
+            (None, Some(category_id)) => Some(
+                service
+                    .load_effective_form_for_category(tenant_id, category_id, &[])
+                    .await
+                    .map_err(|err| async_graphql::Error::new(err.to_string()))?,
+            ),
+            (None, None) => {
+                return Err(async_graphql::Error::new(
+                    "Either product_id or category_id is required",
+                ))
+            }
+        };
+        let Some(form) = form else {
+            return Ok(None);
+        };
+        let group_labels = service
+            .load_effective_form_group_labels(tenant_id, form.category_id, locale)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        let definitions = service
+            .list_attributes(tenant_id, locale)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .map(|attribute| (attribute.id, attribute))
+            .collect::<HashMap<_, _>>();
+        let effective_attribute_ids = form
+            .attributes
+            .iter()
+            .map(|binding| binding.attribute_id)
+            .collect::<Vec<_>>();
+        let mut options_by_attribute = service
+            .list_attribute_options(tenant_id, &effective_attribute_ids, locale)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .fold(
+                HashMap::<Uuid, Vec<GqlProductAttributeOption>>::new(),
+                |mut map, option| {
+                    map.entry(option.attribute_id)
+                        .or_default()
+                        .push(GqlProductAttributeOption {
+                            id: option.id,
+                            code: option.code,
+                            label: option.label,
+                            position: option.position,
+                        });
+                    map
+                },
+            );
+
+        let attributes = form
+            .attributes
+            .into_iter()
+            .map(|binding| {
+                let definition = definitions.get(&binding.attribute_id).ok_or_else(|| {
+                    async_graphql::Error::new(format!(
+                        "attribute definition {} is missing",
+                        binding.attribute_id
+                    ))
+                })?;
+                Ok(GqlProductEffectiveFormAttribute {
+                    attribute_id: binding.attribute_id,
+                    code: definition.code.clone(),
+                    label: definition.label.clone(),
+                    value_type: definition.value_type.as_str().to_string(),
+                    is_localized: definition.is_localized,
+                    options: options_by_attribute
+                        .remove(&binding.attribute_id)
+                        .unwrap_or_default(),
+                    group_label: binding
+                        .group_code
+                        .as_ref()
+                        .and_then(|code| group_labels.get(code).cloned()),
+                    group_code: binding.group_code,
+                    is_required: binding.is_required,
+                    is_disabled: binding.is_disabled,
+                    position: binding.position,
+                    source: effective_attribute_source_name(binding.source).to_string(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Some(GqlProductEffectiveForm {
+            category_id: form.category_id,
+            attributes,
+            detached_attribute_ids: form.detached_attribute_ids,
+        }))
+    }
+
+    async fn product_attribute_values(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: String,
+    ) -> Result<Vec<GqlProductAttributeValue>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        ProductCatalogSchemaService::new(db.clone(), event_bus.clone())
+            .load_product_attribute_values(tenant_id, product_id, locale.trim())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+            .map(|items| items.into_iter().map(Into::into).collect())
+    }
+
     /// Catalog-authoritative published product detail.
     ///
     /// Variant `prices` here are compatibility snapshots for catalog/product
@@ -1988,6 +2216,17 @@ async fn find_first_published_product(
 
 fn product_list_path(path: &'static str) -> &'static str {
     path
+}
+
+fn effective_attribute_source_name(
+    source: rustok_product::services::EffectiveAttributeSource,
+) -> &'static str {
+    match source {
+        rustok_product::services::EffectiveAttributeSource::Schema => "schema",
+        rustok_product::services::EffectiveAttributeSource::Inherited => "inherited",
+        rustok_product::services::EffectiveAttributeSource::CloneSnapshot => "clone_snapshot",
+        rustok_product::services::EffectiveAttributeSource::CategoryLocal => "category_local",
+    }
 }
 
 fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {

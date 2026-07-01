@@ -16,6 +16,8 @@
 pub mod access;
 mod alloy_scaffold;
 pub mod alloy_tools;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod management;
 pub mod runtime;
 pub mod server;
@@ -39,10 +41,10 @@ pub use alloy_tools::{
     TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
 };
 pub use management::{
-    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpClientMutationRecord,
-    McpManagementMutationContext, McpManagementMutationError, McpManagementMutationPort,
-    McpManagementMutationRuntime, McpPolicyMutationRecord, McpScaffoldDraftMutationRecord,
-    McpTokenSecretResult, RotateMcpTokenCommand, StageMcpScaffoldDraftCommand,
+    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpAuditEventRecord,
+    McpClientDetailsRecord, McpClientRecord, McpManagementContext, McpManagementMutationError,
+    McpManagementPort, McpManagementRuntime, McpPolicyRecord, McpScaffoldDraftRecord,
+    McpTokenRecord, McpTokenSecretResult, RotateMcpTokenCommand, StageMcpScaffoldDraftCommand,
     UpdateMcpPolicyCommand,
 };
 pub use runtime::{

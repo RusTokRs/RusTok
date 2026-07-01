@@ -6,7 +6,7 @@ pub mod types;
 use async_graphql::{FieldError, Result};
 
 use crate::context::AuthContext;
-use crate::graphql::errors::GraphQLError;
+use rustok_api::graphql::GraphQLError;
 use rustok_api::Permission;
 use rustok_rbac::has_effective_permission_in_set;
 

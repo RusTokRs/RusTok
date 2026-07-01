@@ -541,6 +541,7 @@ fn create_product_input() -> CreateProductInput {
         vendor: Some("Migration Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
+        primary_category_id: None,
         tags: Vec::new(),
         publish: false,
         metadata: serde_json::json!({ "source": "migration-smoke" }),

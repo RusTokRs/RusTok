@@ -66,6 +66,83 @@ pub fn render() {
 `;
 }
 
+function searchEngine({ omitCatalogQuery = false } = {}) {
+  return `
+pub struct SearchQuery {
+  pub channel_id: Option<Uuid>,
+  ${omitCatalogQuery ? "" : "pub category_ids: Vec<Uuid>,"}
+  pub attribute_filters: Vec<SearchAttributeFilter>,
+  pub sort_attribute_code: Option<String>,
+  pub sort_desc: bool,
+}
+pub struct SearchAttributeFilter {}
+pub struct SearchFacetBucket {
+  pub label: Option<String>,
+}
+`;
+}
+
+function pgEngine({ omitProjectionSql = false } = {}) {
+  return `
+fn query() {
+  let _ = "index_product_categories";
+  ${omitProjectionSql ? "" : 'let _ = "index_product_attribute_values";'}
+  let _ = channel_scope_clause;
+  let _ = "iav.channel_id IS NULL";
+  let _ = "iav.is_filterable = TRUE";
+  let _ = "iav.is_detached = FALSE";
+  let _ = "('attr:' || iav.attribute_code)";
+  let _ = "facet_label";
+  let _ = "value_number";
+  let _ = normalized_sort_attribute_code;
+}
+`;
+}
+
+function dictionaries() {
+  return `
+fn apply(query: Query) {
+  if has_catalog_filters(query) {
+    continue;
+  }
+}
+`;
+}
+
+function graphqlTypes() {
+  return `
+pub struct SearchPreviewInput {
+  pub channel_id: Option<String>,
+  pub category_ids: Option<Vec<String>>,
+  pub attribute_filters: Option<Vec<SearchAttributeFilterInput>>,
+  pub sort_attribute_code: Option<String>,
+  pub sort_desc: Option<bool>,
+}
+pub struct SearchAttributeFilterInput {}
+pub struct SearchFacetBucketPayload {
+  pub label: Option<String>,
+}
+`;
+}
+
+function graphqlQuery() {
+  return `
+struct NormalizedSearchPreviewInput {}
+fn normalize(input: Input) {
+  let _ = parse_optional_uuid(input.channel_id.as_deref());
+  let _ = normalize_uuid_values("category_ids", input.category_ids);
+  let _ = normalize_attribute_filters(input.attribute_filters);
+  let _ = normalize_attribute_code(input.sort_attribute_code);
+  let _ = Query {
+    category_ids: input.category_ids,
+    attribute_filters: input.attribute_filters,
+    sort_attribute_code: input.sort_attribute_code,
+    sort_desc: input.sort_desc,
+  };
+}
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-search-ui-boundary-"));
   writeFixtureFile(root, "crates/rustok-search/admin/src/lib.rs", `${options.legacyAdminModApi ? "mod api;\n" : ""}mod core;\nmod transport;\nmod ui;\npub use ui::leptos::SearchAdmin;\n`);
@@ -83,6 +160,11 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/mod.rs", "pub mod graphql_adapter;\npub mod native_server_adapter;\npub async fn fetch_search() { let _ = native_server_adapter::fetch_search; let _ = graphql_adapter::fetch_search; }\npub async fn fetch_suggestions() { let _ = native_server_adapter::fetch_suggestions; let _ = graphql_adapter::fetch_suggestions; }\n");
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/native_server_adapter.rs", "pub fn fetch_storefront_search_server() {}\npub fn fetch_storefront_suggestions_server() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
   writeFixtureFile(root, "crates/rustok-search/storefront/src/transport/graphql_adapter.rs", "use leptos_graphql::GraphqlRequest;\npub fn fetch_storefront_search_graphql() {}\npub fn fetch_storefront_suggestions_graphql() {}\npub fn fetch_search() {}\npub fn fetch_suggestions() {}\n");
+  writeFixtureFile(root, "crates/rustok-search/src/engine.rs", searchEngine(options));
+  writeFixtureFile(root, "crates/rustok-search/src/pg_engine.rs", pgEngine(options));
+  writeFixtureFile(root, "crates/rustok-search/src/dictionaries.rs", dictionaries());
+  writeFixtureFile(root, "crates/rustok-search/src/graphql/types.rs", graphqlTypes());
+  writeFixtureFile(root, "crates/rustok-search/src/graphql/query.rs", graphqlQuery());
   return root;
 }
 
@@ -177,6 +259,28 @@ test("search UI boundary verifier rejects raw storefront adapter calls from UI",
     const result = runVerifier(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /UI adapter must not call raw transport/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("search UI boundary verifier rejects missing catalog query markers", () => {
+  const root = withFixture({ omitCatalogQuery: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /catalog projection query\/result contract/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("search UI boundary verifier rejects missing projection SQL markers", () => {
+  const root = withFixture({ omitProjectionSql: true });
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /PostgreSQL catalog projection search marker/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

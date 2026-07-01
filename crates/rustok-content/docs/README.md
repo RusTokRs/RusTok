@@ -15,13 +15,16 @@ conversion contracts, на которые опираются доменные м
 - `ContentOrchestrationService`, orchestration audit/idempotency и canonical URL state;
 - shared rich-text и locale fallback helpers;
 - conversion flows `topic <-> post`, split/merge topic и canonical URL policy, включая запрет cross-target canonical collisions и alias shadowing;
+- owner-owned GraphQL query `resolveCanonicalRoute` для canonical URL read contract;
+- content-owned GraphQL dataloaders для `nodes`, `node_translations` и `bodies`;
 - orchestration tables, audit trail и domain events;
 - отсутствие product-owned CRUD/runtime adapters для blog/forum/pages.
 
 ## Интеграция
 
 - используется `rustok-blog`, `rustok-forum`, `rustok-pages` и `rustok-comments` как shared helper/orchestration contract;
-- `apps/server` держит только integration bridge и composition root вокруг orchestration path;
+- `rustok-content-orchestration` держит integration bridge и GraphQL mutations conversion path;
+- `apps/server` только собирает GraphQL roots и регистрирует owner-owned dataloaders из owner/support crates;
 - `rustok-index` зависит от canonical URL и reindex semantics, но не становится владельцем orchestration logic;
 - RBAC, idempotency и unsafe-input validation обязаны оставаться частью module-level contract.
 

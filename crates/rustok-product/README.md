@@ -7,6 +7,44 @@
 ## Responsibilities
 
 - Product entities, translations, options, variants, and product-owned migrations.
+- Native catalog categories, category-bound product forms, reusable product
+  attribute schemas, product attribute dictionaries, typed product/variant
+  attribute values, and highload-ready category/value projections.
+- Typed product attribute value reads and transactional patches validate the
+  effective category schema and option ownership, keep localized text in the
+  requested translation row, preserve detached values, and publish one outbox
+  event per patch request.
+- Product publication validates required effective attributes before a product
+  becomes active; localized text-like required values need an explicit non-empty
+  translation row, option attributes need stored option relations, and
+  create-with-publish is rejected when required typed attributes cannot yet be
+  populated.
+- Detached values remain visible to product operators after a primary-category
+  change and can be explicitly cleared through owner-owned native server
+  functions with parallel GraphQL; the service rejects attempts to clear values
+  that are still effective.
+- Effective product forms expose localized option dictionaries and localized
+  group labels with bounded reads; schema/category group creation and
+  `group_code` bindings are available over native server functions plus
+  parallel GraphQL, and the module-owned admin renders grouped typed editors
+  with dirty-field patch semantics.
+- `rustok-index` materializes tenant- and locale-scoped category assignments and
+  normalized attribute rows for facets, full-text input, and sorting. The
+  projection resolves effective category membership through the product-owned
+  schema reader, so detached values are excluded without becoming write-side
+  state.
+- `rustok-search` consumes those materialized category and attribute projections
+  for category/virtual-category filters, channel-scoped attribute facets and
+  attribute sorting, while `rustok-product` remains the write-model owner.
+- Effective visibility is resolved as tri-state overrides with precedence
+  `attribute defaults < schema/category overrides < channel settings`.
+  Attribute facet/search/sort rows are emitted per active channel; tenants with
+  no active channel receive one explicit global projection scope. The rows also
+  retain effective storefront, comparison, and admin-grid visibility flags.
+- Virtual categories use a validated, bounded V1 rule contract over product
+  status, primary-category subtree, intersecting price range, stock state, and
+  effective locale-neutral product attribute equality/ranges. The indexer
+  replaces materialized assignments idempotently before category projections.
 - Product-owned relation storage for taxonomy-backed tags (`product_tags`).
 - Product write-side services and publication lifecycle.
 - Product-side synchronization of first-class `tags` contract fields with the
@@ -49,11 +87,15 @@
 - Used by `rustok-commerce` as the umbrella/root module of the ecommerce family.
 - Consumed by `apps/admin` through manifest-driven module UI composition.
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
+- Consumed by `rustok-index` through the read-only effective-form resolver for
+  highload product projections.
 
 ## Entry points
 
 - `ProductModule`
 - `CatalogService`
+- `services::catalog_schema::resolve_effective_product_form`
+- `ProductCatalogSchemaService`
 - `admin::ProductAdmin`
 - `storefront::ProductView`
 

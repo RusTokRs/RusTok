@@ -2,10 +2,10 @@ use async_graphql::{Context, FieldError, Result, Subscription};
 use futures_util::stream;
 
 use crate::context::{AuthContext, TenantContext};
-use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::rbac_service::RbacService;
+use rustok_api::graphql::GraphQLError;
 use rustok_api::Permission;
 use rustok_core::EventConsumerRuntime;
 

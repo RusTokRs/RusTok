@@ -64,6 +64,8 @@ impl SearchConnectorDescriptor {
 pub struct SearchQuery {
     pub tenant_id: Option<Uuid>,
     pub locale: Option<String>,
+    #[serde(default)]
+    pub channel_id: Option<Uuid>,
     pub original_query: String,
     pub query: String,
     pub ranking_profile: SearchRankingProfile,
@@ -74,6 +76,25 @@ pub struct SearchQuery {
     pub entity_types: Vec<String>,
     pub source_modules: Vec<String>,
     pub statuses: Vec<String>,
+    #[serde(default)]
+    pub category_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub attribute_filters: Vec<SearchAttributeFilter>,
+    #[serde(default)]
+    pub sort_attribute_code: Option<String>,
+    #[serde(default)]
+    pub sort_desc: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchAttributeFilter {
+    pub attribute_code: String,
+    #[serde(default)]
+    pub values: Vec<String>,
+    #[serde(default)]
+    pub min: Option<String>,
+    #[serde(default)]
+    pub max: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,6 +112,8 @@ pub struct SearchResultItem {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchFacetBucket {
     pub value: String,
+    #[serde(default)]
+    pub label: Option<String>,
     pub count: u64,
 }
 

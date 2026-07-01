@@ -175,12 +175,14 @@ pub async fn mcp_create_client_native(
                     display_name: input.display_name,
                     description: optional_string(input.description),
                     actor_type: parse_actor_type(&input.actor_type)?,
+                    delegated_user_id: None,
                     token_name: optional_string(input.token_name),
                     token_expires_at: optional_string(input.token_expires_at),
                     allowed_tools: input.allowed_tools,
                     denied_tools: input.denied_tools,
                     granted_permissions: input.granted_permissions,
                     granted_scopes: input.granted_scopes,
+                    metadata: serde_json::json!({}),
                 },
             )
             .await
@@ -213,6 +215,7 @@ pub async fn mcp_rotate_token_native(
                     token_name: optional_string(input.token_name),
                     expires_at: optional_string(input.expires_at),
                     revoke_existing_tokens: input.revoke_existing_tokens,
+                    metadata: serde_json::json!({}),
                 },
             )
             .await
@@ -244,6 +247,7 @@ pub async fn mcp_update_policy_native(input: UpdateMcpPolicyPayload) -> Result<(
                     denied_tools: input.denied_tools,
                     granted_permissions: input.granted_permissions,
                     granted_scopes: input.granted_scopes,
+                    metadata: serde_json::json!({}),
                 },
             )
             .await
@@ -421,8 +425,8 @@ fn ensure_mcp_read(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> 
 #[cfg(feature = "ssr")]
 async fn mcp_mutation_context() -> Result<
     (
-        rustok_mcp::McpManagementMutationContext,
-        rustok_mcp::McpManagementMutationRuntime,
+        rustok_mcp::McpManagementContext,
+        rustok_mcp::McpManagementRuntime,
     ),
     ServerFnError,
 > {
@@ -438,15 +442,15 @@ async fn mcp_mutation_context() -> Result<
         .get::<Arc<rustok_core::ModuleRuntimeExtensions>>()
         .ok_or_else(|| ServerFnError::new("ModuleRuntimeExtensions not initialized"))?;
     let runtime = extensions
-        .get::<rustok_mcp::McpManagementMutationRuntime>()
+        .get::<rustok_mcp::McpManagementRuntime>()
         .cloned()
         .ok_or_else(|| {
             ServerFnError::new(
-                "McpManagementMutationRuntime is not registered; initialize the server provider",
+                "McpManagementRuntime is not registered; initialize the server provider",
             )
         })?;
     Ok((
-        rustok_mcp::McpManagementMutationContext {
+        rustok_mcp::McpManagementContext {
             actor_id: auth.user_id,
             tenant_id: auth.tenant_id,
         },
@@ -476,9 +480,9 @@ fn optional_string(value: String) -> Option<String> {
 fn secret_payload(result: rustok_mcp::McpTokenSecretResult) -> McpTokenSecretPayload {
     McpTokenSecretPayload {
         client_id: result.client.id.to_string(),
-        token_id: result.token_id.to_string(),
-        token_name: result.token_name,
-        token_preview: result.token_preview,
+        token_id: result.token.id.to_string(),
+        token_name: result.token.token_name,
+        token_preview: result.token.token_preview,
         plaintext_token: result.plaintext_token,
     }
 }
@@ -658,7 +662,7 @@ fn map_draft_row(row: sea_orm::QueryResult) -> Result<McpScaffoldDraftPayload, S
 
 #[cfg(feature = "ssr")]
 fn scaffold_draft_payload(
-    record: rustok_mcp::McpScaffoldDraftMutationRecord,
+    record: rustok_mcp::McpScaffoldDraftRecord,
 ) -> Result<McpScaffoldDraftPayload, ServerFnError> {
     Ok(McpScaffoldDraftPayload {
         id: record.id.to_string(),
@@ -669,9 +673,9 @@ fn scaffold_draft_payload(
         request_json: serde_json::to_string(&record.request_payload).map_err(server_error)?,
         preview_json: serde_json::to_string(&record.preview_payload).map_err(server_error)?,
         workspace_root: record.workspace_root,
-        applied_at: record.applied_at,
-        created_at: record.created_at,
-        updated_at: record.updated_at,
+        applied_at: record.applied_at.map(|value| value.to_rfc3339()),
+        created_at: record.created_at.to_rfc3339(),
+        updated_at: record.updated_at.to_rfc3339(),
     })
 }
 

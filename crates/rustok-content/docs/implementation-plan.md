@@ -5,9 +5,9 @@ orchestration и rich-text/locale contract layer.
 
 ## Execution checkpoint
 
-- Current phase: orchestration_hardening
+- Current phase: owner_owned_graphql_surface
 - Last checkpoint: Добавлены targeted integration сценарии для canonical URL collision и alias-shadow rollback/no-outbox guarantees; compile-free guardrail теперь source-locks эти runtime evidence cases без запуска компиляции.
-- Next step: Закрыть reindex drift evidence и расширить conversion bridge contract coverage без расширения shared storage ownership.
+- Next step: Закрыть reindex drift evidence и расширить conversion bridge contract coverage без возврата GraphQL resolver/DTO в `apps/server`.
 - Open blockers: Compile/runtime execution evidence still pending because this iteration intentionally avoided compilation.
 - Hand-off notes for next agent: Поддерживать `npm run verify:content:orchestration` вместе с любым изменением `ContentOrchestrationService`, `CanonicalUrlService`, collision tests, local docs или registry row.
 - Last updated at (UTC): 2026-06-21T00:00:00Z
@@ -22,6 +22,7 @@ orchestration и rich-text/locale contract layer.
 
 - blog/forum/pages domain CRUD уже вынесены в собственные модули;
 - `rustok-content` владеет orchestration service, audit/idempotency state и canonical URL mapping;
+- canonical route GraphQL query и content GraphQL dataloaders живут в `rustok-content`, а conversion mutations и DTO — в `rustok-content-orchestration`; host только объединяет roots и регистрирует owner-owned loaders;
 - shared locale fallback и rich-text validation уже являются каноническим контрактом для publishable content surfaces;
 - module docs и runtime boundary уже отражают post-split роль.
 

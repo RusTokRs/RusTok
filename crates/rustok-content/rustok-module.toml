@@ -8,3 +8,6 @@ trust_level = "verified"
 ui_classification = "capability_only"
 [crate]
 entry_type = "ContentModule"
+
+[provides.graphql]
+query = "graphql::ContentQuery"

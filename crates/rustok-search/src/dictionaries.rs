@@ -404,6 +404,10 @@ impl SearchDictionaryService {
                 continue;
             }
 
+            if has_catalog_filters(query) {
+                continue;
+            }
+
             if let Some(item) = Self::load_pinned_item(db, query, rule.document_id).await? {
                 pinned.push((rule.pinned_position.max(1), item));
             }
@@ -642,6 +646,10 @@ fn map_pinned_item_row(row: QueryResult) -> Result<SearchResultItem> {
             .try_get::<serde_json::Value>("", "payload")
             .map_err(Error::Database)?,
     })
+}
+
+fn has_catalog_filters(query: &SearchQuery) -> bool {
+    !query.category_ids.is_empty() || !query.attribute_filters.is_empty()
 }
 
 fn pinned_item_matches_query(query: &SearchQuery, row: &QueryResult) -> bool {

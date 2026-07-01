@@ -5,13 +5,13 @@
 
 ## Execution checkpoint
 
-- Current phase: product_admin_legacy_api_removed
-- Last checkpoint: Product admin GraphQL operations moved from legacy `admin/src/api.rs` to `admin/src/transport/graphql_adapter.rs`; `admin/src/transport.rs` remains the facade consumed by Leptos and the crate root no longer wires `mod api`.
+- Current phase: catalog_projection_search_connected
+- Last checkpoint: Effective visibility overrides now survive schema/category inheritance and clone snapshots as validated tri-state fields. Product attribute projections apply `global defaults < schema/category overrides < channel settings`, emit separate normalized rows for every active channel, and use one explicit global scope only when a tenant has no active channels. Category-level `show_on_storefront` also governs the product document attribute payload. `rustok-search` now consumes `index_product_categories` and channel-scoped `index_product_attribute_values` for category/virtual-category filtering, attribute filters, dynamic facets and attribute sorting; the search UI boundary verifier source-locks this projection-search contract.
 - Dependency evidence: product storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
-- Next step: Continue FFA-first sequencing only for small result/input/copy/state policy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
+- Next step: Wire storefront/admin catalog filter controls to the optional search fields.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-18T00:00:00Z
+- Last updated at (UTC): 2026-07-02T00:00:00Z
 
 
 ## FFA/FBA status
@@ -33,6 +33,13 @@
   - FFA slice: storefront transport errors now keep serializable native/GraphQL fallback evidence (`ProductTransportError`, `ProductTransportPath`), core composes `ProductTransportErrorDomEvidence`, and the Leptos error adapter exposes stable `data-product-transport-*` attributes for host/parity smoke checks;
   - FFA slice: product admin list/status/filter, shipping-profile, pricing-preview and pricing deep-link helpers moved into `admin/src/core.rs`; Leptos admin remains the render/effect adapter while GraphQL transport stays unchanged for this slice;
   - FFA slice: product admin GraphQL operations now route through `admin/src/transport.rs`, with `admin/src/transport/graphql_adapter.rs` as the GraphQL adapter; legacy `admin/src/api.rs` is removed and forbidden by `verify-product-admin-boundary.mjs`, preserving the existing `rustok-commerce` GraphQL contract;
+  - FFA/FBA slice: category-bound admin transport DTOs now live behind `admin/src/transport.rs`; native Leptos `#[server]` functions in `admin/src/transport/native_server_adapter.rs` are the default internal path, GraphQL operation documents remain parallel in `admin/src/transport/graphql_adapter.rs`, and server-side GraphQL query/mutation/type bindings in `rustok-commerce/src/graphql/*` call owner-owned `ProductCatalogSchemaService` for attributes, categories, reusable schemas, schema mode assignment, schema/category bindings and effective form preview; the fast guardrail rejects optional/fallback locale for these new localized catalog operations and checks native, GraphQL and server GraphQL markers;
+  - FFA/FBA slice: product CRUD exposes nullable `primary_category_id`; the Leptos product editor loads only structural categories through the module transport facade, persists the selection through GraphQL create/update, and resolves category-first effective-form preview through the native-first/GraphQL-parallel contract using `UiRouteContext.locale`;
+  - FFA/FBA slice: typed product attribute value reads and transactional patches are owner-owned by `ProductCatalogSchemaService`; native Leptos server functions remain the default admin path, GraphQL remains parallel, localized text uses only the explicit host locale, and the fast product boundary guardrail locks both surfaces;
+  - FFA/FBA slice: publish validation is owner-owned by `ProductCatalogSchemaService`; `CatalogService::publish_product` rejects missing required effective attributes before status changes, text-like localized required values require an explicit non-empty translation row, option values require at least one option relation, detached values do not satisfy requirements outside the effective schema, and create-with-publish is rejected for categories with required typed attributes;
+  - FFA/FBA slice: detached values are listed through the typed value read contract and cleared through owner-owned `clear_detached_product_attribute_values`; the service rejects non-detached ids, native `#[server]` remains primary, GraphQL remains parallel, and product admin renders review rows plus explicit clear-all action;
+  - FFA/FBA slice: effective form options are loaded in one bounded query for effective attribute ids and localized by the host locale; effective group labels are resolved from schema/category group translations through the same explicit locale; schema/category group creation and `group_code` bindings are available through native/GraphQL admin contracts; `ProductAttributeEditorState` owns dirty tracking, typed parsing and explicit clear semantics outside Leptos, while `TypedProductAttributeField` renders grouped controls and submit persists values only after the product category is committed;
+  - i18n evidence: `verify-ui-i18n-parity.mjs` больше не исключает `rustok-product`; admin/storefront EN/RU bundles входят в общий `npm run verify:i18n:ui` gate;
   - FFA slice: product admin Leptos rendering moved under `admin/src/ui/leptos.rs`, and `admin/src/lib.rs` now acts as the module/re-export boundary for `ProductAdmin`;
   - FFA slice: selected product admin summary labels, pricing preview state and pricing deep-link are composed by `SelectedProductSummaryViewModel` in `admin/src/core.rs`, keeping Leptos summary rendering as markup-only;
   - FFA slice: product admin list-card display state (status label/badge, type fallback, meta label, shipping profile chip and published/created timestamp) is composed by `ProductAdminListItemViewModel` in `admin/src/core.rs`, keeping Leptos list rendering as markup/action binding only;
@@ -71,7 +78,7 @@
   - FFA guardrail: `scripts/verify/verify-product-admin-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-admin-boundary.test.mjs`; it checks product admin core/transport/ui split without long Cargo compilation;
   - FFA guardrail: `scripts/verify/verify-product-storefront-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-storefront-boundary.test.mjs`; it checks product storefront core/transport/ui split plus catalog rail label and selected metadata ownership without long Cargo compilation;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-06-18T00:00:00Z
+- Last verified at (UTC): 2026-07-01T00:00:00Z
 - Owner: `rustok-product` module team
 
 ## Область работ
@@ -116,6 +123,29 @@
 - transport-level validation и public transport по-прежнему публикуются фасадом `rustok-commerce`.
 
 ## Этапы
+
+### Нативные атрибуты каталога и category-bound формы
+
+- [x] Добавить write-side storage для `product_attributes`, translations, options, channel settings, `catalog_categories`, closure table, reusable `product_attribute_schemas`, category schema assignments, category-local bindings/groups, `product_categories`, virtual category materialization и typed product/variant attribute values.
+- [x] Зафиксировать `products.primary_category_id` как structural category, определяющую effective product form.
+- [x] Добавить framework-independent schema resolver для режимов `inherit`, `use_schema`, `clone_from_category` и `custom`; `clone_from_category` является snapshot, `inherit` является live inheritance.
+- [x] Добавить owner-owned `ProductCatalogSchemaService` для create attribute/category/schema, schema mode assignment, schema/category bindings и загрузки effective form из storage.
+- [x] Добавить product/catalog-specific domain events для attribute/schema/category/value изменений и подключить их к product indexer reindex flow.
+- [x] Добавить read-side projection storage для highload category assignments и normalized attribute facet/search/sort values.
+- [x] Добавить category-bound admin transport DTOs и GraphQL operation contracts для CRUD attributes/categories/schemas, schema/category bindings и effective product form preview; localized operations consume host-provided effective locale without module-local fallback.
+- [x] Подключить server-side GraphQL resolvers к `ProductCatalogSchemaService` для CRUD attributes/categories/schemas, schema/category bindings и effective product form preview.
+- [x] Подключить native Leptos `#[server]` functions к `ProductCatalogSchemaService` как default internal data layer в product admin, оставив GraphQL как parallel contract.
+- [x] Подключить `primary_category_id` к owner DTO/entity/service, GraphQL create/update/read и product admin category-first selector; загружать effective form и detached markers по выбранной structural category.
+- [x] Добавить typed read/patch contract для product attribute values с explicit clear, empty multiselect clear, effective-schema/option validation, localized translation storage, detached read markers, transactional outbox event и native/GraphQL parity.
+- [x] Перевести product admin form с metadata/custom-field ввода на grouped typed effective schema values с dirty patch semantics, локализованными option dictionaries и locale-aware group labels.
+- [x] Добавить owner-owned publish validation для required effective attributes без module-local locale fallback.
+- [x] Добавить detached-value review/clear API и product admin controls с native/GraphQL parity.
+- [x] Материализовать effective category assignments и normalized attribute facet/search/sort rows в runtime indexer.
+- [x] Материализовать bounded V1 virtual category rules в `virtual_category_product_assignments`.
+- [x] Применить schema/category visibility overrides и channel settings в runtime facet/search/sort projections.
+- [x] Подключить `rustok-search` к channel-scoped normalized facets/sorts и materialized virtual category assignments.
+- [x] Закрепить projection-search contract быстрым source/schema guardrail.
+- [ ] Подключить storefront/admin UI controls к optional catalog filters/sorts.
 
 ### 1. Contract stability
 

@@ -20,6 +20,14 @@ use super::helpers::{
 use super::types::{CartPromotionKind, CartPromotionPreview};
 use super::CartService;
 
+struct PromotionAdjustmentInput<'a> {
+    line_item_id: Option<Uuid>,
+    source_id: &'a str,
+    amount: Decimal,
+    scope: &'a str,
+    metadata: Value,
+}
+
 impl CartService {
     pub async fn preview_percentage_promotion(
         &self,
@@ -92,15 +100,17 @@ impl CartService {
         self.apply_promotion_adjustment(
             tenant_id,
             cart_id,
-            line_item_id,
-            source_id,
-            preview.adjustment_amount,
-            if line_item_id.is_some() {
-                LINE_ITEM_PROMOTION_SCOPE
-            } else {
-                CART_PROMOTION_SCOPE
+            PromotionAdjustmentInput {
+                line_item_id,
+                source_id,
+                amount: preview.adjustment_amount,
+                scope: if line_item_id.is_some() {
+                    LINE_ITEM_PROMOTION_SCOPE
+                } else {
+                    CART_PROMOTION_SCOPE
+                },
+                metadata,
             },
-            metadata,
         )
         .await
     }
@@ -171,15 +181,17 @@ impl CartService {
         self.apply_promotion_adjustment(
             tenant_id,
             cart_id,
-            line_item_id,
-            source_id,
-            preview.adjustment_amount,
-            if line_item_id.is_some() {
-                LINE_ITEM_PROMOTION_SCOPE
-            } else {
-                CART_PROMOTION_SCOPE
+            PromotionAdjustmentInput {
+                line_item_id,
+                source_id,
+                amount: preview.adjustment_amount,
+                scope: if line_item_id.is_some() {
+                    LINE_ITEM_PROMOTION_SCOPE
+                } else {
+                    CART_PROMOTION_SCOPE
+                },
+                metadata,
             },
-            metadata,
         )
         .await
     }
@@ -239,11 +251,13 @@ impl CartService {
         self.apply_promotion_adjustment(
             tenant_id,
             cart_id,
-            None,
-            source_id,
-            preview.adjustment_amount,
-            SHIPPING_PROMOTION_SCOPE,
-            metadata,
+            PromotionAdjustmentInput {
+                line_item_id: None,
+                source_id,
+                amount: preview.adjustment_amount,
+                scope: SHIPPING_PROMOTION_SCOPE,
+                metadata,
+            },
         )
         .await
     }
@@ -304,11 +318,13 @@ impl CartService {
         self.apply_promotion_adjustment(
             tenant_id,
             cart_id,
-            None,
-            source_id,
-            preview.adjustment_amount,
-            SHIPPING_PROMOTION_SCOPE,
-            metadata,
+            PromotionAdjustmentInput {
+                line_item_id: None,
+                source_id,
+                amount: preview.adjustment_amount,
+                scope: SHIPPING_PROMOTION_SCOPE,
+                metadata,
+            },
         )
         .await
     }
@@ -317,12 +333,15 @@ impl CartService {
         &self,
         tenant_id: Uuid,
         cart_id: Uuid,
-        line_item_id: Option<Uuid>,
-        source_id: &str,
-        amount: Decimal,
-        scope: &str,
-        metadata: Value,
+        input: PromotionAdjustmentInput<'_>,
     ) -> CartResult<CartResponse> {
+        let PromotionAdjustmentInput {
+            line_item_id,
+            source_id,
+            amount,
+            scope,
+            metadata,
+        } = input;
         let source_id = normalize_required_adjustment_source_id(source_id)?;
         let txn = self.db.begin().await?;
         let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;

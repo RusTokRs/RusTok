@@ -37,6 +37,7 @@ Shared foundation / support crates:
 ## Runtime surface
 
 - `/api/graphql` и `/api/fn/*` являются параллельными transport-слоями; Leptos server functions не заменяют GraphQL API.
+- `/api/graphql/schema.graphql` публикует собранную SDL-схему без tenant context для contract tooling; full introspection экспортируется POST-запросом к `/api/graphql`. Оба snapshot входят в reference artifacts вместе с OpenAPI JSON/YAML.
 - Embedded UI больше не считается безусловной частью backend binary: `rustok-admin` и `rustok-storefront` линкуются только при compile-time feature-флагах `embed-admin` / `embed-storefront`, а не просто по факту наличия кода в workspace.
 - Commerce OpenAPI/REST surface на `/admin/*` теперь включает первый post-order refund contract поверх `payment-collections`; host публикует эти routes, но refund lifecycle остаётся domain-owned в `rustok-payment` и `rustok-commerce`.
 - Commerce surface больше не является compile-time baseline для любого server build: `controllers::commerce`, commerce-specific error mapping и commerce fragment в OpenAPI живут только при `mod-commerce`, так что reduced/headless host может собираться без ecommerce transport слоя.
@@ -52,6 +53,14 @@ Shared foundation / support crates:
   `apps/server/src/controllers/<module>` и `apps/server/src/graphql/<module>` не являются
   valid composition points для optional modules; source guard `module_surface_boundary_guard`
   блокирует возврат server-owned shims.
+- Shared content canonical query и cross-module conversion mutations также приходят готовыми
+  GraphQL roots из `rustok-content` и `rustok-content-orchestration`; host не владеет их resolver/DTO.
+- Auth lifecycle и OAuth GraphQL query/mutation/types принадлежат `rustok-auth`; server реализует только `AuthLifecyclePort`/`OAuthAdminPort` поверх persisted lifecycle/OAuth/email services и регистрирует соответствующие runtimes в shared runtime extensions.
+- MCP GraphQL query/mutation/types принадлежат `rustok-mcp`; server реализует `McpManagementPort` поверх persisted `McpManagementService` и регистрирует `McpManagementRuntime`.
+- Content GraphQL dataloaders для `nodes`, `node_translations` и `bodies` живут в
+  `rustok-content`; `apps/server` только регистрирует owner-owned loader types в schema builder.
+- System GraphQL может публиковать media usage, но читает его через `rustok-media::load_media_usage_snapshot`,
+  без прямого импорта module-owned media entities.
 - Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле.
 - Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
 - Server migrator является backend composition root для module-owned schema: content-family модули (`blog`, `pages`, `comments`) и search обязаны подключаться здесь через `crates/rustok-*/src/migrations`, иначе внешние Next/Leptos admin surfaces получают рабочий route shell без нужных таблиц.
@@ -150,6 +159,7 @@ Shared foundation / support crates:
 - `cargo xtask module validate <slug>` для модулей, чей host wiring или manifest contract изменился;
 - targeted contract checks для GraphQL, REST, server functions и health/runtime surface;
 - отдельная проверка health/runtime paths, если затронуты deployment profile, `host_mode` или remote executor/runtime guardrails.
+- export API contracts через `node scripts/verify/export-reference-artifacts.mjs artifacts/reference`; Bash-обёртка `scripts/verify/export-reference-artifacts.sh` предназначена для CI и Unix-сред.
 
 ## Связанные документы
 

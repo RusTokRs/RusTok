@@ -18,18 +18,11 @@ mod schema_codegen {
 }
 
 use super::ai::{AiMutation, AiQuery, AiSubscription};
-use super::auth::{AuthMutation, AuthQuery};
 use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::TenantNameLoader;
-#[cfg(feature = "mod-content")]
-use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
-use super::mcp::{McpMutation, McpQuery};
 use super::mutations::RootMutation;
-use super::oauth::{OAuthMutation, OAuthQuery};
 use super::observability::GraphqlObservability;
 use super::queries::RootQuery;
-use super::rbac::{RbacMutation, RbacQuery};
-use super::search::{SearchMutationRoot, SearchQueryRoot};
 use super::security::GraphqlSecurityPolicy;
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;
@@ -37,6 +30,12 @@ use super::system::SystemQuery;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
+use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
+#[cfg(feature = "mod-content")]
+use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
+use rustok_mcp::graphql::{McpMutation, McpQuery};
+use rustok_rbac::graphql::{RbacGraphqlRoleWriterHandle, RbacMutation, RbacQuery};
+use rustok_search::graphql::{SearchGraphqlRateLimiterHandle, SearchMutationRoot, SearchQueryRoot};
 
 /// Slugs used for runtime `tenant_modules.is_enabled()` guards.
 pub mod module_slug {
@@ -67,6 +66,13 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    rustok_content_orchestration::graphql::ContentOrchestrationMutation,
     AiMutation,
     SearchMutationRoot,
     AuthMutation,
@@ -93,6 +99,8 @@ pub fn build_schema(
     build_event_hub: Arc<BuildEventHub>,
     field_definition_cache: FieldDefinitionCache,
     runtime_extensions: Arc<ModuleRuntimeExtensions>,
+    rbac_role_writer: RbacGraphqlRoleWriterHandle,
+    search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
     let builder = Schema::build(
@@ -136,7 +144,14 @@ pub fn build_schema(
         .data(build_event_hub)
         .data(build_field_def_registry())
         .data(field_definition_cache)
-        .data(runtime_extensions);
+        .data(runtime_extensions)
+        .data(rbac_role_writer);
+
+    let builder = if let Some(search_rate_limiter) = search_rate_limiter {
+        builder.data(search_rate_limiter)
+    } else {
+        builder
+    };
 
     #[cfg(feature = "mod-media")]
     let builder = builder.data(storage);

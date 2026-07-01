@@ -106,9 +106,10 @@ separated into `alloy_apply_module_scaffold` with explicit confirmation.
   - Leptos FFA package `crates/rustok-mcp/admin`
   - Next host route `/dashboard/mcp` and Leptos host route `/mcp` only mount the owner packages and
     do not own MCP transport logic
-- owner-defined `McpManagementMutationPort` with an `apps/server` provider that delegates client,
-  policy, token, and Alloy scaffold draft writes to the canonical transactional
+- owner-defined `McpManagementPort` with an `apps/server` provider that delegates client,
+  policy, token, audit, and Alloy scaffold draft reads/writes to the canonical transactional
   `McpManagementService`; the Leptos owner package contains no scaffold persistence or audit SQL
+- owner-defined GraphQL query, mutation, and DTO surface behind the `graphql` feature
 
 ### What is not implemented yet
 

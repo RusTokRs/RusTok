@@ -21,6 +21,10 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
 
+[provides.graphql]
+query = "graphql::RbacQuery"
+mutation = "graphql::RbacMutation"
+
 [fba.provider]
 registry = "contracts/rbac-fba-registry.json"
 contract_version = "rbac.permission_decision.v1"

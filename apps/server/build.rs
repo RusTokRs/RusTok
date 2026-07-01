@@ -174,13 +174,17 @@ fn build_optional_module_entry(
     let graphql_query_expr = spec.graphql_query_type.clone().or_else(|| {
         crate_root
             .as_ref()
-            .filter(|root| has_any(root, &["src/graphql/mod.rs", "src/graphql.rs"]))
+            .filter(|root| {
+                !has_package_manifest && has_any(root, &["src/graphql/mod.rs", "src/graphql.rs"])
+            })
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Query"))
     });
     let graphql_mutation_expr = spec.graphql_mutation_type.clone().or_else(|| {
         crate_root
             .as_ref()
-            .filter(|root| has_any(root, &["src/graphql/mod.rs", "src/graphql.rs"]))
+            .filter(|root| {
+                !has_package_manifest && has_any(root, &["src/graphql/mod.rs", "src/graphql.rs"])
+            })
             .map(|_| format!("{crate_ident}::graphql::{type_stem}Mutation"))
     });
 

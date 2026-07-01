@@ -42,7 +42,7 @@ const nextRoutePath = "apps/next-admin/src/app/dashboard/mcp/page.tsx";
 const leptosHostCargoPath = "apps/admin/Cargo.toml";
 const leptosHostRouterPath = "apps/admin/src/app/router.rs";
 const leptosLibPath = "crates/rustok-mcp/admin/src/lib.rs";
-const leptosUiPath = "crates/rustok-mcp/admin/src/ui.rs";
+const leptosUiPath = "crates/rustok-mcp/admin/src/ui/leptos.rs";
 const transportModPath = "crates/rustok-mcp/admin/src/transport/mod.rs";
 const nativeAdapterPath = "crates/rustok-mcp/admin/src/transport/native_server_adapter.rs";
 const graphqlAdapterPath = "crates/rustok-mcp/admin/src/transport/graphql_adapter.rs";
@@ -64,8 +64,8 @@ for (const [file, description] of [
   [transportModPath, "expected MCP transport facade"],
   [nativeAdapterPath, "expected MCP native server-function adapter"],
   [graphqlAdapterPath, "expected MCP GraphQL adapter"],
-  [managementContractPath, "expected MCP management mutation port contract"],
-  [managementProviderPath, "expected server MCP management mutation provider"],
+  [managementContractPath, "expected MCP management port contract"],
+  [managementProviderPath, "expected server MCP management provider"],
   [runtimeRegistrationPath, "expected host runtime provider registration"],
   [mcpPlanPath, "expected MCP implementation plan"],
   [centralRegistryPath, "expected central module registry"],
@@ -141,7 +141,7 @@ for (const marker of [
   "mcp_update_policy_native",
   "mcp_revoke_token_native",
   "mcp_deactivate_client_native",
-  "McpManagementMutationRuntime",
+  "McpManagementRuntime",
   "ensure_mcp_read",
   "SELECT id, client_id, actor_id, actor_type, action, outcome",
   "SELECT id, slug, display_name, description, actor_type, is_active",
@@ -166,7 +166,7 @@ for (const marker of [
   assertNotContains(
     nativeAdapter,
     marker,
-    `${nativeAdapterPath}: owner UI adapter must delegate scaffold writes through McpManagementMutationPort (${marker})`,
+    `${nativeAdapterPath}: owner UI adapter must delegate scaffold writes through McpManagementPort (${marker})`,
   );
 }
 assertNotContains(
@@ -201,24 +201,24 @@ for (const marker of ["leptos::", "#[component]", "#[server]", "RwSignal", "Loca
 }
 
 for (const marker of [
-  "trait McpManagementMutationPort",
-  "struct McpManagementMutationRuntime",
+  "trait McpManagementPort",
+  "struct McpManagementRuntime",
   "CreateMcpClientCommand",
   "RotateMcpTokenCommand",
   "UpdateMcpPolicyCommand",
   "StageMcpScaffoldDraftCommand",
   "ApplyMcpScaffoldDraftCommand",
-  "McpScaffoldDraftMutationRecord",
+  "McpScaffoldDraftRecord",
 ]) {
-  assertContains(managementContract, marker, `${managementContractPath}: expected owner mutation contract ${marker}`);
+  assertContains(managementContract, marker, `${managementContractPath}: expected owner management contract ${marker}`);
 }
 assertNotContains(managementContract, "sea_orm", `${managementContractPath}: owner port contract must remain persistence-free`);
-assertContains(managementProvider, "impl McpManagementMutationPort", `${managementProviderPath}: server must implement MCP mutation port`);
+assertContains(managementProvider, "impl McpManagementPort", `${managementProviderPath}: server must implement MCP management port`);
 assertContains(managementProvider, "McpManagementService::create_client", `${managementProviderPath}: provider must delegate to canonical management service`);
 assertContains(managementProvider, "McpManagementService::rotate_token", `${managementProviderPath}: provider must preserve canonical token security logic`);
 assertContains(managementProvider, "McpManagementService::stage_scaffold_draft", `${managementProviderPath}: provider must delegate scaffold staging to the canonical management service`);
 assertContains(managementProvider, "McpManagementService::apply_scaffold_draft", `${managementProviderPath}: provider must preserve canonical scaffold claim/recovery logic`);
-assertContains(runtimeRegistration, "McpManagementMutationRuntime::new", `${runtimeRegistrationPath}: host must register MCP mutation runtime`);
+assertContains(runtimeRegistration, "McpManagementRuntime::new", `${runtimeRegistrationPath}: host must register MCP management runtime`);
 
 for (const marker of [
   "MCP Alloy Drafts",

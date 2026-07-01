@@ -43,3 +43,8 @@
 - [План реализации](./implementation-plan.md)
 - [Admin package](../admin/README.md)
 - [Контракт manifest-слоя](../../../docs/modules/manifest.md)
+
+## Заметки по host boundary
+
+- `load_media_usage_snapshot` даёт host/system statistics без прямых media entity imports в `apps/server`.
+- System GraphQL в `apps/server` должен потреблять media usage только через owner API.

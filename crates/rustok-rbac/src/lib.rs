@@ -1,6 +1,8 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+#[cfg(feature = "graphql")]
+pub mod graphql;
 pub mod integration;
 pub mod ports;
 pub mod services;

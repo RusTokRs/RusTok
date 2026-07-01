@@ -606,6 +606,7 @@ impl DirectTaskHandler for ProductCopyHandler {
                     vendor: None,
                     product_type: None,
                     shipping_profile_slug: None,
+                    primary_category_id: None,
                     tags: None,
                     metadata: None,
                     status: None,

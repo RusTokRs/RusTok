@@ -59,6 +59,10 @@ default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "storefront/locales"
 
+[provides.graphql]
+query = "graphql::SearchQueryRoot"
+mutation = "graphql::SearchMutationRoot"
+
 [fba.provider]
 registry = "contracts/search-fba-registry.json"
 contract_version = "search.query.v1"

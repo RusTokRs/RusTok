@@ -2,9 +2,9 @@ use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::app::AppContext;
 
 use crate::context::{AuthContext, TenantContext};
-use crate::graphql::errors::GraphQLError;
 use crate::services::rbac_service::RbacService;
 use crate::services::settings_service::SettingsService;
+use rustok_api::graphql::GraphQLError;
 
 use super::types::PlatformSettingsPayload;
 

@@ -7,6 +7,7 @@ description.workspace = true
 
 [dependencies]
 rustok-api.workspace = true
+async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
@@ -28,3 +29,7 @@ validator.workspace = true
 tokio.workspace = true
 rustok-test-utils.workspace = true
 proptest = "1.11"
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "async-graphql/dataloader", "rustok-api/server"]

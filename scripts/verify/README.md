@@ -24,6 +24,8 @@ node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node scripts/verify/verify-api-surface-contract.mjs
+node scripts/verify/export-reference-artifacts.mjs artifacts/reference
+node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fallback-profiles.mjs
@@ -42,6 +44,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | После рефакторинга модуля | `./scripts/verify/verify-all.sh -v` |
 | Ревью PR | `./scripts/verify/verify-all.sh -v` |
 | Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` + `node scripts/verify/verify-api-surface-contract.mjs` |
+| Экспорт OpenAPI и GraphQL contracts | `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` |
 | Добавили новый event | `./scripts/verify/verify-all.sh events` |
 | Проверка anti-bypass drift | `./scripts/verify/verify-all.sh anti-bypass` |
 | Добавили миграцию | `./scripts/verify/verify-all.sh tenant-isolation` + `./scripts/verify/verify-migration-smoke.sh`; в CI тот же smoke закреплён отдельным job `migration-smoke` |
@@ -616,6 +619,7 @@ Repo-side guardrail для i18n contract платформы.
 Что проверяет:
 - module UI wiring не расходится с host-provided locale contract;
 - ключевые surface точки не обходят canonical locale provider.
+- JSON bundles `rustok-product/admin` и `rustok-product/storefront` входят в общий key-parity scan без исключений.
 
 **Severity:** HIGH. Нарушение parity приводит к фрагментации i18n и различию поведения между surface-ами.
 
