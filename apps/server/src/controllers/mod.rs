@@ -7,12 +7,8 @@ pub mod health;
 pub mod installer;
 pub mod marketplace_registry;
 pub mod mcp;
-#[cfg(feature = "mod-media")]
-pub mod media;
 pub mod metrics;
 pub mod oauth;
 pub mod oauth_metadata;
 pub mod swagger;
 pub mod users;
-#[cfg(feature = "mod-workflow")]
-pub mod workflow;

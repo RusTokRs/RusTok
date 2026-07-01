@@ -11,6 +11,13 @@ recommended_admin_surfaces = ["leptos-admin"]
 [crate]
 entry_type = "MediaModule"
 
+[provides.graphql]
+query = "graphql::MediaQuery"
+mutation = "graphql::MediaMutation"
+
+[provides.http]
+routes = "controllers::routes"
+
 [provides.admin_ui]
 leptos_crate = "rustok-media-admin"
 route_segment = "media"

@@ -15,11 +15,15 @@ fn optional_module_transport_shims_do_not_live_in_server() {
         "controllers/blog",
         "controllers/commerce",
         "controllers/forum",
+        "controllers/media",
         "controllers/pages.rs",
+        "controllers/workflow",
         "graphql/blog",
         "graphql/commerce",
         "graphql/forum",
+        "graphql/media",
         "graphql/pages",
+        "graphql/workflow",
     ];
 
     for relative in forbidden_paths {
@@ -58,6 +62,8 @@ fn optional_module_openapi_definitions_do_not_live_in_server() {
         "rustok_forum::controllers",
         "rustok_pages::controllers",
         "rustok_commerce::controllers",
+        "rustok_media::controllers",
+        "rustok_workflow::controllers",
         "rustok_product::dto::CreateProductInput",
         "rustok_cart::dto::CartResponse",
     ] {

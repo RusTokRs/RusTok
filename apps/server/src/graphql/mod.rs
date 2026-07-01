@@ -6,8 +6,6 @@ pub mod errors;
 pub mod flex;
 pub mod loaders;
 pub mod mcp;
-#[cfg(feature = "mod-media")]
-pub mod media;
 pub mod mutations;
 pub mod oauth;
 pub mod observability;
@@ -21,7 +19,5 @@ pub mod settings;
 pub mod subscriptions;
 pub mod system;
 pub mod types;
-#[cfg(feature = "mod-workflow")]
-pub mod workflow;
 
 pub use schema::{build_schema, AppSchema, SharedGraphqlSchema};
