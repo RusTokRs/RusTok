@@ -15,7 +15,7 @@ use crate::middleware::rate_limit::{
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
-use crate::services::content_orchestration::init_content_orchestration;
+use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
 use crate::services::marketplace_catalog::{
@@ -120,7 +120,10 @@ pub async fn bootstrap_app_runtime(
                 ))
             })?;
         middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
-        init_content_orchestration(ctx);
+        rustok_content_orchestration::init_content_orchestration(
+            ctx,
+            transactional_event_bus_from_context(ctx),
+        );
 
         init_storage(ctx, settings).await?;
 

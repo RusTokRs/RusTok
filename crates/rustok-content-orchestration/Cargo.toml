@@ -1,0 +1,33 @@
+[package]
+name = "rustok-content-orchestration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Owner-owned cross-module content orchestration bridge for blog/forum/content workflows"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+loco-rs.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
+rustok-blog = { workspace = true, optional = true }
+rustok-comments = { workspace = true, features = ["server"], optional = true }
+rustok-content = { workspace = true, optional = true }
+rustok-core.workspace = true
+rustok-forum = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, features = ["loco-adapter"] }
+rustok-taxonomy = { workspace = true, optional = true }
+sea-orm.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+rustok-test-utils.workspace = true
+tokio.workspace = true
+
+[features]
+default = []
+mod-content = ["dep:rustok-content"]
+mod-blog = ["dep:rustok-blog", "dep:rustok-taxonomy"]
+mod-forum = ["dep:rustok-forum", "dep:rustok-taxonomy"]
+mod-comments = ["dep:rustok-comments"]

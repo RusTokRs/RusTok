@@ -396,8 +396,10 @@ jobs:
         with:
           name: reference-artifacts
           path: artifacts/reference/**
+      - name: Verify reference artifact layout
+        run: node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
       - name: Show manifest entries
-        run: rg -n "openapi|graphql-introspection|manifest.txt" artifacts/reference -S
+        run: rg -n "openapi/|graphql/|manifest.json" artifacts/reference -S
       - name: Stop rustok-server
         if: always()
         run: |

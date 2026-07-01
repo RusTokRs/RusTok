@@ -44,13 +44,6 @@ use crate::services::build_event_hub::{
 };
 use crate::services::build_service::BuildService;
 use crate::services::build_service::EventBusBuildEventPublisher;
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-use crate::services::content_orchestration::content_orchestration_from_context;
 use crate::services::event_bus::event_bus_from_context;
 #[cfg(test)]
 use crate::services::flex_attached_values::{
@@ -70,6 +63,13 @@ use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
 };
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use rustok_content_orchestration::content_orchestration_from_context;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use std::sync::Arc;
 use uuid::Uuid;

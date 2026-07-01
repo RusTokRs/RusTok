@@ -1,15 +1,15 @@
 ---
-id: doc://docs/operations/script-script-command-github-workflows-ci-yml-github-actions-job-reference-artifacts-step-8-run.md
+id: doc://docs/operations/script-script-command-github-workflows-ci-yml-github-actions-job-reference-artifacts-step-10-run.md
 kind: operations_documentation
 language: en
 source_language: en
 entities:
-  - script-command://.github/workflows/ci.yml#github-actions:job:reference-artifacts:step:8:run
+  - script-command://.github/workflows/ci.yml#github-actions:job:reference-artifacts:step:10:run
 last_verified_snapshot: snap_jsonl_00000021
 status: verified
 ---
 
-# Script Command `GitHub Actions run step Verify reference artifact layout`
+# Script Command `GitHub Actions run step Stop rustok-server`
 
 ## Purpose
 
@@ -17,7 +17,7 @@ Document when this operational item is used, who owns it, and what successful ex
 
 ## Contract
 
-- Canonical entity: `script-command://.github/workflows/ci.yml#github-actions:job:reference-artifacts:step:8:run`
+- Canonical entity: `script-command://.github/workflows/ci.yml#github-actions:job:reference-artifacts:step:10:run`
 - Entity kind: `script_command`
 - Source: `.github/workflows/ci.yml`:73
 
@@ -33,4 +33,4 @@ Document when this operational item is used, who owns it, and what successful ex
 
 ## Notes
 
-Generated from diagnostic `diag_script_65e8fb560c249fbf`. Review this page before relying on it as operational documentation.
+Generated from diagnostic `diag_script_reference_artifacts_step_10_run`. Review this page before relying on it as operational documentation.

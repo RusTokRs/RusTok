@@ -7,7 +7,7 @@ use axum::{
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    http::HeaderMap,
+    http::{header, HeaderMap},
     response::IntoResponse,
     routing::get,
     Extension, Json,
@@ -86,6 +86,13 @@ async fn graphql_playground() -> impl axum::response::IntoResponse {
     axum::response::Html(async_graphql::http::playground_source(
         GraphQLPlaygroundConfig::new("/api/graphql").subscription_endpoint("/api/graphql/ws"),
     ))
+}
+
+async fn graphql_schema_sdl(Extension(schema): Extension<Arc<AppSchema>>) -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        schema.sdl(),
+    )
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -249,5 +256,6 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/graphql")
         .add("/", get(graphql_playground).post(graphql_handler))
+        .add("/schema.graphql", get(graphql_schema_sdl))
         .add("/ws", get(graphql_ws_handler))
 }

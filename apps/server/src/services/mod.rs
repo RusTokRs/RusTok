@@ -5,7 +5,6 @@ pub mod auth_admin_mutation_provider;
 pub mod auth_lifecycle;
 pub mod build_event_hub;
 pub mod build_executor;
-pub mod content_orchestration;
 pub mod effective_module_policy;
 pub mod email;
 pub mod event_bus;

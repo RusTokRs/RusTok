@@ -10014,6 +10014,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-content-orchestration"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "loco-rs",
+ "rustok-api",
+ "rustok-blog",
+ "rustok-comments",
+ "rustok-content",
+ "rustok-core",
+ "rustok-forum",
+ "rustok-outbox",
+ "rustok-taxonomy",
+ "rustok-test-utils",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-core"
 version = "0.1.0"
 dependencies = [
@@ -11092,6 +11114,7 @@ dependencies = [
  "rustok-comments",
  "rustok-commerce",
  "rustok-content",
+ "rustok-content-orchestration",
  "rustok-core",
  "rustok-customer",
  "rustok-email",

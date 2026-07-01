@@ -60,9 +60,10 @@ scripts/verify/export-reference-artifacts.sh artifacts/reference
 Что делает скрипт:
 
 - генерирует rustdoc для `rustok-server` и `rustok-workflow` (если не задан `SKIP_RUSTDOC=1`);
-- сохраняет OpenAPI (`/api/openapi.json`, `/api/openapi.yaml`);
-- сохраняет GraphQL introspection snapshot из `/api/graphql`;
-- пишет `manifest.txt` с timestamp/base_url.
+- сохраняет OpenAPI в `openapi/openapi.json` и `openapi/openapi.yaml`;
+- сохраняет full GraphQL introspection в `graphql/introspection.json`;
+- сохраняет GraphQL SDL из `/api/graphql/schema.graphql` в `graphql/schema.graphql`;
+- пишет `manifest.json` и legacy `manifest.txt` с timestamp/base_url/git commit.
 
 Переменные окружения:
 
@@ -74,7 +75,8 @@ scripts/verify/export-reference-artifacts.sh artifacts/reference
 ```bash
 cargo xtask --help
 scripts/verify/export-reference-artifacts.sh artifacts/reference
-rg -n "openapi|graphql-introspection|manifest.txt" artifacts/reference -S
+node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
+rg -n "openapi/|graphql/|manifest.json" artifacts/reference -S
 ```
 
 ## Reference artifacts pipeline in CI (DOC-09 / B12)
@@ -86,6 +88,7 @@ Job обязан:
 
 - поднять runtime (`rustok-server`) и дождаться `/api/openapi.json`;
 - выполнить `scripts/verify/export-reference-artifacts.sh artifacts/reference`;
+- проверить layout и полноту экспорта через `node scripts/verify/verify-reference-artifacts.mjs artifacts/reference`;
 - опубликовать `artifacts/reference/**` через `actions/upload-artifact`;
 - быть включённым в aggregate gate `ci-success`.
 

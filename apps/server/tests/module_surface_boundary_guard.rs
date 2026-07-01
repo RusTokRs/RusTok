@@ -73,3 +73,38 @@ fn optional_module_openapi_definitions_do_not_live_in_server() {
         );
     }
 }
+
+#[test]
+fn content_orchestration_bridge_does_not_live_in_server() {
+    let server_impl = repo_root().join("apps/server/src/services/content_orchestration.rs");
+    assert!(
+        !server_impl.exists(),
+        "content orchestration bridge is cross-module domain logic and must live outside apps/server"
+    );
+
+    let services_dir = repo_root().join("apps/server/src/services");
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&services_dir).expect("server services dir should be readable") {
+        let entry = entry.expect("server service entry should be readable");
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).expect("server service source should read");
+        for forbidden in [
+            "rustok_blog::",
+            "rustok_forum::",
+            "rustok_taxonomy::",
+            "rustok_comments::",
+        ] {
+            if source.contains(forbidden) {
+                offenders.push(format!("{} contains {forbidden}", path.display()));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "server services must not own content/blog/forum orchestration internals: {offenders:?}"
+    );
+}

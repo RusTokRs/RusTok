@@ -27,6 +27,7 @@ RusToK использует гибридный transport layer:
 |---|---|---|
 | GraphQL | `/api/graphql` | Единая точка для admin/storefront UI |
 | GraphQL WS | `/api/graphql/ws` | Subscriptions transport |
+| GraphQL SDL | `/api/graphql/schema.graphql` | Machine-readable GraphQL schema export for reference artifacts |
 | REST | `/api/v1/...` | Интеграции, webhooks, batch/ops scenarios |
 | MCP management/runtime | `/api/mcp/...` | Persisted MCP clients/tokens/policies/audit и remote runtime bootstrap |
 | Commerce REST | `/store/...`, `/admin/...` | Совместимые ecommerce HTTP flows |
@@ -157,13 +158,14 @@ observability evidence.
 Для contract-level изменений API обязательны обновляемые reference-артефакты:
 
 - OpenAPI snapshots (`/api/openapi.json`, `/api/openapi.yaml`)
-- GraphQL introspection snapshot (`/api/graphql`)
+- GraphQL snapshots: full introspection (`/api/graphql`) and SDL (`/api/graphql/schema.graphql`)
 - rustdoc artifacts для `rustok-server` и `rustok-workflow`
 
 Канонический локальный экспорт выполняется через:
 
 ```bash
 scripts/verify/export-reference-artifacts.sh artifacts/reference
+node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 ```
 
 Правило: при изменении GraphQL/REST/`#[server]` contract в PR должен быть

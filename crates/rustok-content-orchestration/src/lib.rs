@@ -76,6 +76,13 @@ use rustok_forum::{
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
+use rustok_outbox::TransactionalEventBus;
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
 use rustok_taxonomy::{
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus,
@@ -127,7 +134,7 @@ pub struct SharedContentOrchestrationService(pub Arc<ContentOrchestrationService
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-pub fn init_content_orchestration(ctx: &AppContext) {
+pub fn init_content_orchestration(ctx: &AppContext, event_bus: TransactionalEventBus) {
     if ctx
         .shared_store
         .get::<SharedContentOrchestrationService>()
@@ -138,7 +145,7 @@ pub fn init_content_orchestration(ctx: &AppContext) {
 
     let service = Arc::new(ContentOrchestrationService::new(
         ctx.db.clone(),
-        crate::services::event_bus::transactional_event_bus_from_context(ctx),
+        event_bus,
         Arc::new(ServerContentOrchestrationBridge),
     ));
     ctx.shared_store
@@ -165,7 +172,11 @@ pub fn content_orchestration_from_context(ctx: &AppContext) -> Arc<ContentOrches
     feature = "mod-forum",
     feature = "mod-comments"
 )))]
-pub fn init_content_orchestration(_ctx: &AppContext) {}
+pub fn init_content_orchestration(
+    _ctx: &AppContext,
+    _event_bus: rustok_outbox::TransactionalEventBus,
+) {
+}
 
 #[cfg(all(
     feature = "mod-content",
