@@ -11,10 +11,10 @@ stage = "post_build"
 command = "scripts\\tailwind-build.cmd"
 
 [[proxy]]
-backend = "http://localhost:5150/api/"
+backend = "http://127.0.0.1:5150/api/"
 rewrite = "/api/"
 
 [[proxy]]
-backend = "ws://localhost:5150/api/graphql/ws"
+backend = "ws://127.0.0.1:5150/api/graphql/ws"
 rewrite = "/api/graphql/ws"
 ws = true

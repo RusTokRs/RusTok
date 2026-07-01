@@ -6,7 +6,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 const SERVER_GRAPHQL_URL = `${API_BASE_URL}/api/graphql`;
 const CLIENT_GRAPHQL_URL =
-  process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT ?? SERVER_GRAPHQL_URL;
+  process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT ?? '/api/rustok/graphql';
 
 interface GraphqlRequest<V> {
   query: string;

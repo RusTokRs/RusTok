@@ -15,8 +15,7 @@ interface StatsErrorProps {
 async function captureException(error: Error) {
   if (process.env.NEXT_PUBLIC_SENTRY_DISABLED) return;
 
-  const packageName = '@sentry/nextjs';
-  const Sentry = await import(/* webpackIgnore: true */ packageName);
+  const Sentry = await import('@sentry/nextjs');
   Sentry.captureException(error);
 }
 

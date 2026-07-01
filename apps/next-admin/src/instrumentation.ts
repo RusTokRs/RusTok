@@ -22,10 +22,7 @@ function isSentryEnabled() {
 }
 
 async function loadSentry() {
-  const packageName = '@sentry/nextjs';
-  return import(/* webpackIgnore: true */ packageName) as Promise<
-    typeof import('@sentry/nextjs')
-  >;
+  return import('@sentry/nextjs');
 }
 
 export async function register() {

@@ -3,10 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 async function loadSentry() {
-  const packageName = '@sentry/nextjs';
-  return import(/* webpackIgnore: true */ packageName) as Promise<
-    typeof import('@sentry/nextjs')
-  >;
+  return import('@sentry/nextjs');
 }
 
 async function initSentry() {

@@ -1580,7 +1580,7 @@ pub fn is_valid_module_slug(value: &str) -> bool {
     !value.is_empty()
         && value
             .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '_')
 }
 
 pub fn is_valid_admin_surface(value: &str) -> bool {
