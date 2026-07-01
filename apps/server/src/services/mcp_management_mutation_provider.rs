@@ -3,13 +3,15 @@ use chrono::{DateTime, Utc};
 use sea_orm::DatabaseConnection;
 
 use rustok_mcp::{
-    CreateMcpClientCommand, McpClientMutationRecord, McpManagementMutationContext,
-    McpManagementMutationError, McpManagementMutationPort, McpPolicyMutationRecord,
-    McpTokenSecretResult, RotateMcpTokenCommand, UpdateMcpPolicyCommand,
+    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpClientMutationRecord,
+    McpManagementMutationContext, McpManagementMutationError, McpManagementMutationPort,
+    McpPolicyMutationRecord, McpScaffoldDraftMutationRecord, McpTokenSecretResult,
+    RotateMcpTokenCommand, StageMcpScaffoldDraftCommand, UpdateMcpPolicyCommand,
 };
 
 use super::mcp_management::{
-    CreateMcpClientInput, McpManagementService, RotateMcpTokenInput, UpdateMcpPolicyInput,
+    ApplyMcpScaffoldDraftInput, CreateMcpClientInput, McpManagementService, RotateMcpTokenInput,
+    StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
 };
 
 pub struct ServerMcpManagementMutationProvider {
@@ -154,6 +156,45 @@ impl McpManagementMutationPort for ServerMcpManagementMutationProvider {
         .map(|_| ())
         .map_err(mutation_error)
     }
+
+    async fn stage_scaffold_draft(
+        &self,
+        context: &McpManagementMutationContext,
+        command: StageMcpScaffoldDraftCommand,
+    ) -> Result<McpScaffoldDraftMutationRecord, McpManagementMutationError> {
+        McpManagementService::stage_scaffold_draft(
+            &self.db,
+            context.tenant_id,
+            StageMcpScaffoldDraftInput {
+                client_id: command.client_id,
+                request: command.request,
+                created_by: Some(context.actor_id),
+            },
+        )
+        .await
+        .map(scaffold_draft_record)
+        .map_err(mutation_error)
+    }
+
+    async fn apply_scaffold_draft(
+        &self,
+        context: &McpManagementMutationContext,
+        command: ApplyMcpScaffoldDraftCommand,
+    ) -> Result<McpScaffoldDraftMutationRecord, McpManagementMutationError> {
+        McpManagementService::apply_scaffold_draft(
+            &self.db,
+            context.tenant_id,
+            command.draft_id,
+            ApplyMcpScaffoldDraftInput {
+                workspace_root: command.workspace_root,
+                confirm: command.confirm,
+                applied_by: Some(context.actor_id),
+            },
+        )
+        .await
+        .map(|(draft, _)| scaffold_draft_record(draft))
+        .map_err(mutation_error)
+    }
 }
 
 fn parse_optional_datetime(
@@ -180,6 +221,24 @@ fn client_record(client: &crate::models::mcp_clients::Model) -> McpClientMutatio
         display_name: client.display_name.clone(),
         actor_type: client.actor_type(),
         is_active: client.is_active(),
+    }
+}
+
+fn scaffold_draft_record(
+    draft: crate::models::mcp_scaffold_drafts::Model,
+) -> McpScaffoldDraftMutationRecord {
+    McpScaffoldDraftMutationRecord {
+        id: draft.id,
+        client_id: draft.client_id,
+        slug: draft.slug,
+        crate_name: draft.crate_name,
+        status: draft.status,
+        request_payload: draft.request_payload,
+        preview_payload: draft.preview_payload,
+        workspace_root: draft.workspace_root,
+        applied_at: draft.applied_at.map(|value| value.to_rfc3339()),
+        created_at: draft.created_at.to_rfc3339(),
+        updated_at: draft.updated_at.to_rfc3339(),
     }
 }
 

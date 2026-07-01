@@ -39,9 +39,11 @@ pub use alloy_tools::{
     TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
 };
 pub use management::{
-    CreateMcpClientCommand, McpClientMutationRecord, McpManagementMutationContext,
-    McpManagementMutationError, McpManagementMutationPort, McpManagementMutationRuntime,
-    McpPolicyMutationRecord, McpTokenSecretResult, RotateMcpTokenCommand, UpdateMcpPolicyCommand,
+    ApplyMcpScaffoldDraftCommand, CreateMcpClientCommand, McpClientMutationRecord,
+    McpManagementMutationContext, McpManagementMutationError, McpManagementMutationPort,
+    McpManagementMutationRuntime, McpPolicyMutationRecord, McpScaffoldDraftMutationRecord,
+    McpTokenSecretResult, RotateMcpTokenCommand, StageMcpScaffoldDraftCommand,
+    UpdateMcpPolicyCommand,
 };
 pub use runtime::{
     McpAccessResolver, McpAuditSink, McpRuntimeBinding, McpScaffoldDraftRuntimeContext,

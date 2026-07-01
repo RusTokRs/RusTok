@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::McpActorType;
+use crate::{McpActorType, ScaffoldModuleRequest};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct McpManagementMutationContext {
@@ -43,6 +43,19 @@ pub struct UpdateMcpPolicyCommand {
     pub granted_scopes: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct StageMcpScaffoldDraftCommand {
+    pub client_id: Option<Uuid>,
+    pub request: ScaffoldModuleRequest,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ApplyMcpScaffoldDraftCommand {
+    pub draft_id: Uuid,
+    pub workspace_root: String,
+    pub confirm: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct McpClientMutationRecord {
     pub id: Uuid,
@@ -68,6 +81,21 @@ pub struct McpPolicyMutationRecord {
     pub denied_tools: Vec<String>,
     pub granted_permissions: Vec<String>,
     pub granted_scopes: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct McpScaffoldDraftMutationRecord {
+    pub id: Uuid,
+    pub client_id: Option<Uuid>,
+    pub slug: String,
+    pub crate_name: String,
+    pub status: String,
+    pub request_payload: serde_json::Value,
+    pub preview_payload: serde_json::Value,
+    pub workspace_root: Option<String>,
+    pub applied_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -115,6 +143,18 @@ pub trait McpManagementMutationPort: Send + Sync {
         client_id: Uuid,
         reason: Option<String>,
     ) -> Result<(), McpManagementMutationError>;
+
+    async fn stage_scaffold_draft(
+        &self,
+        context: &McpManagementMutationContext,
+        command: StageMcpScaffoldDraftCommand,
+    ) -> Result<McpScaffoldDraftMutationRecord, McpManagementMutationError>;
+
+    async fn apply_scaffold_draft(
+        &self,
+        context: &McpManagementMutationContext,
+        command: ApplyMcpScaffoldDraftCommand,
+    ) -> Result<McpScaffoldDraftMutationRecord, McpManagementMutationError>;
 }
 
 #[derive(Clone)]

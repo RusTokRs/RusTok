@@ -44,6 +44,7 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/apps") view=OAuthAppsPage />
                                 <Route path=path!("/ai") view=rustok_ai_admin::AiAdmin />
                                 <Route path=path!("/ai/diagnostics") view=rustok_ai_admin::AiAdmin />
+                                <Route path=path!("/mcp") view=rustok_mcp_admin::McpAdmin />
                                 <Route path=path!("/workflows") view=Workflows />
                                 <Route path=path!("/workflows/:id") view=WorkflowDetailPage />
                                 <Route path=path!("/roles") view=RolesPage />

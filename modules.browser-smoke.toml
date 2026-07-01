@@ -1,0 +1,35 @@
+schema = 2
+app = "rustok-server"
+
+[build]
+target = "x86_64-pc-windows-msvc"
+profile = "dev"
+
+[build.server]
+embed_admin = false
+embed_storefront = false
+
+[build.admin]
+stack = "leptos"
+public_url = "http://localhost:3001"
+redirect_uris = ["http://localhost:3001/auth/callback"]
+
+[[build.storefront]]
+id = "default"
+stack = "next"
+public_url = "http://localhost:3100"
+redirect_uris = ["http://localhost:3100/auth/callback"]
+
+[modules]
+auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
+cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
+channel = { crate = "rustok-channel", source = "path", path = "crates/rustok-channel", required = true }
+email = { crate = "rustok-email", source = "path", path = "crates/rustok-email", required = true }
+index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
+search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
+outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
+tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
+rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
+
+[settings]
+default_enabled = []

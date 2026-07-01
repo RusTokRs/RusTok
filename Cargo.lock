@@ -9321,6 +9321,7 @@ dependencies = [
  "rustok-index-admin",
  "rustok-installer",
  "rustok-inventory-admin",
+ "rustok-mcp-admin",
  "rustok-media",
  "rustok-media-admin",
  "rustok-order-admin",

@@ -176,6 +176,7 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
                                 icon="activity"
                                 children=vec![
                                     NavChild { href: "/ai".to_string(), label: t_string!(i18n, app.nav.ai).to_string() },
+                                    NavChild { href: "/mcp".to_string(), label: t_string!(i18n, app.nav.mcp).to_string() },
                                     NavChild { href: "/email".to_string(), label: t_string!(i18n, app.nav.email).to_string() },
                                     NavChild { href: "/cache".to_string(), label: t_string!(i18n, app.nav.cache).to_string() },
                                     NavChild { href: "/events".to_string(), label: t_string!(i18n, events.title).to_string() },

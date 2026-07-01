@@ -39,6 +39,8 @@ function assertNotContains(text, pattern, description) {
 
 const nextPackagePath = "apps/next-admin/packages/rustok-mcp/src/index.tsx";
 const nextRoutePath = "apps/next-admin/src/app/dashboard/mcp/page.tsx";
+const leptosHostCargoPath = "apps/admin/Cargo.toml";
+const leptosHostRouterPath = "apps/admin/src/app/router.rs";
 const leptosLibPath = "crates/rustok-mcp/admin/src/lib.rs";
 const leptosUiPath = "crates/rustok-mcp/admin/src/ui.rs";
 const transportModPath = "crates/rustok-mcp/admin/src/transport/mod.rs";
@@ -55,6 +57,8 @@ const centralRegistryPath = "docs/modules/registry.md";
 for (const [file, description] of [
   [nextPackagePath, "expected MCP Next owner package entry"],
   [nextRoutePath, "expected thin MCP host route"],
+  [leptosHostCargoPath, "expected MCP Leptos host dependency"],
+  [leptosHostRouterPath, "expected MCP Leptos host route"],
   [leptosLibPath, "expected MCP Leptos admin crate root"],
   [leptosUiPath, "expected MCP Leptos UI adapter"],
   [transportModPath, "expected MCP transport facade"],
@@ -71,6 +75,8 @@ for (const [file, description] of [
 
 const nextPackage = readRepo(nextPackagePath);
 const nextRoute = readRepo(nextRoutePath);
+const leptosHostCargo = readRepo(leptosHostCargoPath);
+const leptosHostRouter = readRepo(leptosHostRouterPath);
 const leptosLib = readRepo(leptosLibPath);
 const leptosUi = readRepo(leptosUiPath);
 const transportMod = readRepo(transportModPath);
@@ -109,6 +115,12 @@ for (const marker of [
 
 assertContains(nextRoute, "import { McpAdminPage } from '@rustok/mcp-admin';", `${nextRoutePath}: route must mount the MCP owner package`);
 assertNotContains(nextRoute, "mcpModuleScaffoldDrafts", `${nextRoutePath}: host route must not own MCP draft GraphQL`);
+assertContains(leptosHostCargo, "rustok-mcp-admin", `${leptosHostCargoPath}: host must depend on the MCP owner package`);
+assertContains(leptosHostCargo, "rustok-mcp-admin/csr", `${leptosHostCargoPath}: CSR debug profile must include the MCP owner package`);
+assertContains(leptosHostCargo, "rustok-mcp-admin/hydrate", `${leptosHostCargoPath}: hydrate profile must include the MCP owner package`);
+assertContains(leptosHostCargo, "rustok-mcp-admin/ssr", `${leptosHostCargoPath}: SSR profile must include the MCP owner package`);
+assertContains(leptosHostRouter, 'path=path!("/mcp") view=rustok_mcp_admin::McpAdmin', `${leptosHostRouterPath}: host route must mount the MCP owner component`);
+assertNotContains(leptosHostRouter, "mcpModuleScaffoldDrafts", `${leptosHostRouterPath}: Leptos host route must not own MCP transport logic`);
 
 assertContains(leptosLib, "pub use ui::McpAdmin;", `${leptosLibPath}: Leptos crate must re-export owner UI`);
 assertContains(leptosUi, "transport::fetch_scaffold_drafts", `${leptosUiPath}: UI must call transport facade`);
@@ -137,12 +149,25 @@ for (const marker of [
   "SELECT id, token_name, token_preview, last_used_at, expires_at, revoked_at",
   "ensure_mcp_manage",
   "mcp:manage required",
+  ".stage_scaffold_draft(",
+  ".apply_scaffold_draft(",
+  "StageMcpScaffoldDraftCommand",
+  "ApplyMcpScaffoldDraftCommand",
+]) {
+  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native adapter must keep DB-backed runtime marker ${marker}`);
+}
+for (const marker of [
   "generate_module_scaffold",
   "apply_staged_scaffold",
   "INSERT INTO mcp_scaffold_drafts",
+  "UPDATE mcp_scaffold_drafts",
   "INSERT INTO mcp_audit_logs",
 ]) {
-  assertContains(nativeAdapter, marker, `${nativeAdapterPath}: native adapter must keep DB-backed runtime marker ${marker}`);
+  assertNotContains(
+    nativeAdapter,
+    marker,
+    `${nativeAdapterPath}: owner UI adapter must delegate scaffold writes through McpManagementMutationPort (${marker})`,
+  );
 }
 assertNotContains(
   nativeAdapter,
@@ -181,6 +206,9 @@ for (const marker of [
   "CreateMcpClientCommand",
   "RotateMcpTokenCommand",
   "UpdateMcpPolicyCommand",
+  "StageMcpScaffoldDraftCommand",
+  "ApplyMcpScaffoldDraftCommand",
+  "McpScaffoldDraftMutationRecord",
 ]) {
   assertContains(managementContract, marker, `${managementContractPath}: expected owner mutation contract ${marker}`);
 }
@@ -188,6 +216,8 @@ assertNotContains(managementContract, "sea_orm", `${managementContractPath}: own
 assertContains(managementProvider, "impl McpManagementMutationPort", `${managementProviderPath}: server must implement MCP mutation port`);
 assertContains(managementProvider, "McpManagementService::create_client", `${managementProviderPath}: provider must delegate to canonical management service`);
 assertContains(managementProvider, "McpManagementService::rotate_token", `${managementProviderPath}: provider must preserve canonical token security logic`);
+assertContains(managementProvider, "McpManagementService::stage_scaffold_draft", `${managementProviderPath}: provider must delegate scaffold staging to the canonical management service`);
+assertContains(managementProvider, "McpManagementService::apply_scaffold_draft", `${managementProviderPath}: provider must preserve canonical scaffold claim/recovery logic`);
 assertContains(runtimeRegistration, "McpManagementMutationRuntime::new", `${runtimeRegistrationPath}: host must register MCP mutation runtime`);
 
 for (const marker of [

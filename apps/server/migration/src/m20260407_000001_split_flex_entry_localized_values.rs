@@ -105,14 +105,11 @@ JOIN flex_schemas AS schema_row ON schema_row.id = entry_row.schema_id
 JOIN tenants AS tenant ON tenant.id = entry_row.tenant_id
 LEFT JOIN LATERAL (
     SELECT
-        definition ->> 'field_key' AS field_key,
-        entry_row.data -> (definition ->> 'field_key') AS field_value
-        definition ->> 'field_key' AS field_key,
-        entry_row.data -> (definition ->> 'field_key') AS field_value
-    FROM jsonb_array_elements(schema_row.fields_config) AS definition
-    WHERE COALESCE((definition ->> 'is_localized')::boolean, false)
-) AS localized_kv ON TRUE
-      AND NULLIF(definition ->> 'field_key', '') IS NOT NULL
+        field_definition ->> 'field_key' AS field_key,
+        entry_row.data -> (field_definition ->> 'field_key') AS field_value
+    FROM jsonb_array_elements(schema_row.fields_config) AS field_definition
+    WHERE COALESCE((field_definition ->> 'is_localized')::boolean, false)
+      AND NULLIF(field_definition ->> 'field_key', '') IS NOT NULL
 ) AS localized_kv ON TRUE
 GROUP BY
     entry_row.id,

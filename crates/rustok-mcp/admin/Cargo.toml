@@ -10,6 +10,7 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+csr = ["leptos/csr"]
 hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",

@@ -319,9 +319,31 @@ pub async fn mcp_stage_scaffold_draft_native(
 ) -> Result<McpScaffoldDraftPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (db, auth) = mcp_native_context().await?;
-        ensure_mcp_manage(&auth)?;
-        stage_draft(&db, &auth, input).await
+        let (context, runtime) = mcp_mutation_context().await?;
+        let client_id = input
+            .client_id
+            .map(|value| uuid::Uuid::parse_str(&value).map_err(ServerFnError::new))
+            .transpose()?;
+        runtime
+            .port()
+            .stage_scaffold_draft(
+                &context,
+                rustok_mcp::StageMcpScaffoldDraftCommand {
+                    client_id,
+                    request: rustok_mcp::ScaffoldModuleRequest {
+                        slug: input.slug,
+                        name: input.name,
+                        description: input.description,
+                        dependencies: input.dependencies,
+                        with_graphql: input.with_graphql,
+                        with_rest: input.with_rest,
+                        write_files: false,
+                    },
+                },
+            )
+            .await
+            .map_err(server_error)
+            .and_then(scaffold_draft_payload)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -338,9 +360,20 @@ pub async fn mcp_apply_scaffold_draft_native(
 ) -> Result<McpScaffoldDraftPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (db, auth) = mcp_native_context().await?;
-        ensure_mcp_manage(&auth)?;
-        apply_draft(&db, &auth, input).await
+        let (context, runtime) = mcp_mutation_context().await?;
+        runtime
+            .port()
+            .apply_scaffold_draft(
+                &context,
+                rustok_mcp::ApplyMcpScaffoldDraftCommand {
+                    draft_id: uuid::Uuid::parse_str(&input.draft_id).map_err(ServerFnError::new)?,
+                    workspace_root: input.workspace_root,
+                    confirm: input.confirm,
+                },
+            )
+            .await
+            .map_err(server_error)
+            .and_then(scaffold_draft_payload)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -586,299 +619,6 @@ async fn list_scaffold_drafts(
 }
 
 #[cfg(feature = "ssr")]
-async fn stage_draft(
-    db: &sea_orm::DatabaseConnection,
-    auth: &rustok_api::AuthContext,
-    input: StageMcpScaffoldDraftPayload,
-) -> Result<McpScaffoldDraftPayload, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let client_id = input
-        .client_id
-        .as_deref()
-        .map(|value| uuid::Uuid::parse_str(value).map_err(ServerFnError::new))
-        .transpose()?;
-    if let Some(client_id) = client_id {
-        require_mcp_client(db, auth.tenant_id, client_id).await?;
-    }
-
-    let request = rustok_mcp::ScaffoldModuleRequest {
-        slug: input.slug,
-        name: input.name,
-        description: input.description,
-        dependencies: input.dependencies,
-        with_graphql: input.with_graphql,
-        with_rest: input.with_rest,
-        write_files: false,
-    };
-    let preview = rustok_mcp::generate_module_scaffold(&request).map_err(ServerFnError::new)?;
-    let draft_id = uuid::Uuid::new_v4();
-    let now = chrono::Utc::now();
-    let request_json = serde_json::to_value(&request).map_err(ServerFnError::new)?;
-    let preview_json = serde_json::to_value(&preview).map_err(ServerFnError::new)?;
-    let backend = db.get_database_backend();
-
-    db.execute(Statement::from_sql_and_values(
-        backend,
-        format!(
-            "INSERT INTO mcp_scaffold_drafts (id, tenant_id, client_id, slug, crate_name, status, request_payload, preview_payload, workspace_root, applied_at, created_by, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
-            placeholder(backend, 8),
-            placeholder(backend, 9),
-            placeholder(backend, 10),
-            placeholder(backend, 11),
-            placeholder(backend, 12),
-            placeholder(backend, 13),
-        ),
-        vec![
-            draft_id.into(),
-            auth.tenant_id.into(),
-            client_id.into(),
-            request.slug.clone().into(),
-            preview.crate_name.clone().into(),
-            "staged".into(),
-            request_json.into(),
-            preview_json.into(),
-            Option::<String>::None.into(),
-            Option::<chrono::DateTime<chrono::Utc>>::None.into(),
-            Some(auth.user_id).into(),
-            now.into(),
-            now.into(),
-        ],
-    ))
-    .await
-    .map_err(server_error)?;
-
-    record_audit_event(
-        db,
-        AuditEventInput {
-            tenant_id: auth.tenant_id,
-            client_id,
-            actor_id: Some(auth.user_id.to_string()),
-            action: "scaffold_draft_staged",
-            tool_name: Some("alloy_scaffold_module"),
-            correlation_id: Some(draft_id.to_string()),
-            metadata: serde_json::json!({
-                "draft_id": draft_id,
-                "slug": request.slug,
-                "crate_name": preview.crate_name,
-            }),
-            created_by: Some(auth.user_id),
-        },
-    )
-    .await?;
-
-    select_draft(db, auth.tenant_id, draft_id).await
-}
-
-#[cfg(feature = "ssr")]
-async fn apply_draft(
-    db: &sea_orm::DatabaseConnection,
-    auth: &rustok_api::AuthContext,
-    input: ApplyMcpScaffoldDraftPayload,
-) -> Result<McpScaffoldDraftPayload, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    if !input.confirm {
-        return Err(ServerFnError::new(
-            "Refusing to apply scaffold draft without confirm=true",
-        ));
-    }
-    let draft_id = uuid::Uuid::parse_str(&input.draft_id).map_err(ServerFnError::new)?;
-    let draft = select_draft(db, auth.tenant_id, draft_id).await?;
-    if draft.status == "APPLIED" {
-        return Err(ServerFnError::new(format!(
-            "Scaffold draft {} has already been applied",
-            draft_id
-        )));
-    }
-
-    let request = serde_json::from_str::<rustok_mcp::ScaffoldModuleRequest>(&draft.request_json)
-        .map_err(ServerFnError::new)?;
-    let preview = serde_json::from_str::<rustok_mcp::ScaffoldModulePreview>(&draft.preview_json)
-        .map_err(ServerFnError::new)?;
-    let staged = rustok_mcp::StagedModuleScaffold {
-        draft_id: draft.id.clone(),
-        request,
-        preview,
-        status: rustok_mcp::ModuleScaffoldDraftStatus::Staged,
-    };
-    rustok_mcp::apply_staged_scaffold(&staged, &input.workspace_root)
-        .map_err(ServerFnError::new)?;
-
-    let now = chrono::Utc::now();
-    let backend = db.get_database_backend();
-    db.execute(Statement::from_sql_and_values(
-        backend,
-        format!(
-            "UPDATE mcp_scaffold_drafts SET status = {}, workspace_root = {}, applied_at = {}, updated_at = {} WHERE id = {} AND tenant_id = {}",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-        ),
-        vec![
-            "applied".into(),
-            input.workspace_root.clone().into(),
-            now.into(),
-            now.into(),
-            draft_id.into(),
-            auth.tenant_id.into(),
-        ],
-    ))
-    .await
-    .map_err(server_error)?;
-
-    record_audit_event(
-        db,
-        AuditEventInput {
-            tenant_id: auth.tenant_id,
-            client_id: draft
-                .client_id
-                .as_deref()
-                .map(|value| uuid::Uuid::parse_str(value).map_err(ServerFnError::new))
-                .transpose()?,
-            actor_id: Some(auth.user_id.to_string()),
-            action: "scaffold_draft_applied",
-            tool_name: Some("alloy_apply_module_scaffold"),
-            correlation_id: Some(draft_id.to_string()),
-            metadata: serde_json::json!({
-                "draft_id": draft_id,
-                "slug": draft.slug,
-                "crate_name": draft.crate_name,
-                "workspace_root": input.workspace_root,
-            }),
-            created_by: Some(auth.user_id),
-        },
-    )
-    .await?;
-
-    select_draft(db, auth.tenant_id, draft_id).await
-}
-
-#[cfg(feature = "ssr")]
-async fn require_mcp_client(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    client_id: uuid::Uuid,
-) -> Result<(), ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    let exists = db
-        .query_one(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT id FROM mcp_clients WHERE id = {} AND tenant_id = {} LIMIT 1",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-            ),
-            vec![client_id.into(), tenant_id.into()],
-        ))
-        .await
-        .map_err(server_error)?
-        .is_some();
-    if exists {
-        Ok(())
-    } else {
-        Err(ServerFnError::new("MCP client not found"))
-    }
-}
-
-#[cfg(feature = "ssr")]
-async fn select_draft(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    draft_id: uuid::Uuid,
-) -> Result<McpScaffoldDraftPayload, ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    db.query_one(Statement::from_sql_and_values(
-        backend,
-        format!(
-            "SELECT id, client_id, slug, crate_name, status, request_payload, preview_payload, workspace_root, applied_at, created_at, updated_at FROM mcp_scaffold_drafts WHERE id = {} AND tenant_id = {} LIMIT 1",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-        ),
-        vec![draft_id.into(), tenant_id.into()],
-    ))
-    .await
-    .map_err(server_error)?
-    .ok_or_else(|| ServerFnError::new("MCP scaffold draft not found"))
-    .and_then(map_draft_row)
-}
-
-#[cfg(feature = "ssr")]
-struct AuditEventInput {
-    tenant_id: uuid::Uuid,
-    client_id: Option<uuid::Uuid>,
-    actor_id: Option<String>,
-    action: &'static str,
-    tool_name: Option<&'static str>,
-    correlation_id: Option<String>,
-    metadata: serde_json::Value,
-    created_by: Option<uuid::Uuid>,
-}
-
-#[cfg(feature = "ssr")]
-async fn record_audit_event(
-    db: &sea_orm::DatabaseConnection,
-    input: AuditEventInput,
-) -> Result<(), ServerFnError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    let backend = db.get_database_backend();
-    db.execute(Statement::from_sql_and_values(
-        backend,
-        format!(
-            "INSERT INTO mcp_audit_logs (id, tenant_id, client_id, token_id, actor_id, actor_type, action, outcome, tool_name, reason, correlation_id, metadata, created_by, created_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-            placeholder(backend, 1),
-            placeholder(backend, 2),
-            placeholder(backend, 3),
-            placeholder(backend, 4),
-            placeholder(backend, 5),
-            placeholder(backend, 6),
-            placeholder(backend, 7),
-            placeholder(backend, 8),
-            placeholder(backend, 9),
-            placeholder(backend, 10),
-            placeholder(backend, 11),
-            placeholder(backend, 12),
-            placeholder(backend, 13),
-            placeholder(backend, 14),
-        ),
-        vec![
-            uuid::Uuid::new_v4().into(),
-            input.tenant_id.into(),
-            input.client_id.into(),
-            Option::<uuid::Uuid>::None.into(),
-            input.actor_id.into(),
-            Some("human_user").into(),
-            input.action.into(),
-            "success".into(),
-            input.tool_name.map(ToOwned::to_owned).into(),
-            Option::<String>::None.into(),
-            input.correlation_id.into(),
-            input.metadata.into(),
-            input.created_by.into(),
-            chrono::Utc::now().into(),
-        ],
-    ))
-    .await
-    .map_err(server_error)?;
-    Ok(())
-}
-
-#[cfg(feature = "ssr")]
 fn map_draft_row(row: sea_orm::QueryResult) -> Result<McpScaffoldDraftPayload, ServerFnError> {
     let request_json = row
         .try_get::<serde_json::Value>("", "request_payload")
@@ -913,6 +653,25 @@ fn map_draft_row(row: sea_orm::QueryResult) -> Result<McpScaffoldDraftPayload, S
             .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "updated_at")
             .map_err(server_error)?
             .to_rfc3339(),
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn scaffold_draft_payload(
+    record: rustok_mcp::McpScaffoldDraftMutationRecord,
+) -> Result<McpScaffoldDraftPayload, ServerFnError> {
+    Ok(McpScaffoldDraftPayload {
+        id: record.id.to_string(),
+        client_id: record.client_id.map(|value| value.to_string()),
+        slug: record.slug,
+        crate_name: record.crate_name,
+        status: status_for_ui(&record.status),
+        request_json: serde_json::to_string(&record.request_payload).map_err(server_error)?,
+        preview_json: serde_json::to_string(&record.preview_payload).map_err(server_error)?,
+        workspace_root: record.workspace_root,
+        applied_at: record.applied_at,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
     })
 }
 

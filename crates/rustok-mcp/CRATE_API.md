@@ -34,6 +34,10 @@
 - `pub trait McpAccessResolver`
 - `pub trait McpAuditSink`
 - `pub trait McpScaffoldDraftStore`
+- `pub trait McpManagementMutationPort`
+- `pub struct StageMcpScaffoldDraftCommand`
+- `pub struct ApplyMcpScaffoldDraftCommand`
+- `pub struct McpScaffoldDraftMutationRecord`
 - Публичные MCP tools из `tools::*` и `alloy_tools::*`.
 
 ## События
@@ -70,6 +74,7 @@
   - подменять review/apply границу для generated code.
 - `alloy_apply_module_scaffold` должен требовать явное подтверждение `confirm=true` и не должен обходить предшествующий review step.
 - Persisted scaffold draft control plane живёт в `apps/server` (`mcp_scaffold_drafts`, REST `/api/mcp/scaffold-drafts*`, GraphQL `mcpModuleScaffoldDraft*`) и не подменяет локальный crate API `rustok-mcp`.
+- Leptos native mutations stage/apply обязаны делегировать через `McpManagementMutationPort` в server-owned `McpManagementService`; UI package не содержит scaffold persistence, filesystem apply или audit SQL.
 
 ### События / outbox-побочные эффекты
 - Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.

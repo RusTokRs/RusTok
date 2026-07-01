@@ -2,13 +2,12 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    CreateOAuthAppInput, GraphqlUserResponse, GraphqlUsersResponse, OAuthApp, UpdateOAuthAppInput,
+    CreateOAuthAppInput, GraphqlUser, GraphqlUserResponse, GraphqlUsersResponse, OAuthApp,
+    UpdateOAuthAppInput,
 };
 
 #[cfg(feature = "ssr")]
-use crate::model::{
-    AppType, GraphqlPageInfo, GraphqlUser, GraphqlUserEdge, GraphqlUsersConnection,
-};
+use crate::model::{AppType, GraphqlPageInfo, GraphqlUserEdge, GraphqlUsersConnection};
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 #[cfg(feature = "ssr")]

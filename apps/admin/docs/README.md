@@ -126,6 +126,7 @@ route-selection UX и контейнеры module-owned UI должны след
 - Host прокидывает effective locale через `UiRouteContext.locale`; module-owned Leptos packages обязаны использовать это значение и не должны вводить собственную query/header/cookie fallback-цепочку.
 - Module-owned admin packages обязаны поддерживать тот же runtime split: `#[server]` preferred в SSR/hydrate, GraphQL/REST fallback для standalone CSR/debug. Пакет не должен становиться ни GraphQL-only для monolith, ни `#[server]`-only для headless/debug.
 - Core modules с UI подчиняются тому же ownership rule, что и optional modules: наличие UI не делает host владельцем модульной поверхности.
+- Capability-owned MCP surface подключается host-маршрутом `/mcp`, который монтирует только `rustok_mcp_admin::McpAdmin`; persisted scaffold writes и transport logic остаются в owner port/server provider, а не в `apps/admin`.
 - Route-selection contract тоже host-owned: `apps/admin` санитизирует query по typed schema из
   `rustok-api`, отдаёт модульным пакетам уже canonical route context и предоставляет generic
   Leptos query plumbing через `leptos-ui-routing`.
