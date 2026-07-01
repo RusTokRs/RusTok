@@ -530,8 +530,8 @@ fn resolve_requested_locale(
 
 #[cfg(feature = "ssr")]
 fn ensure_permission(
-    permissions: &[rustok_core::Permission],
-    required: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
+    required: &[rustok_api::Permission],
     message: &str,
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_any_effective_permission(permissions, required) {
@@ -583,7 +583,7 @@ async fn update_variant_price_native_with_context(
     variant_id: String,
     payload: PricingPriceDraft,
 ) -> Result<(), ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_pricing::PricingService;
 
     ensure_permission(
@@ -605,7 +605,7 @@ async fn update_variant_price_native_with_context(
 
     let service = PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
     if let Some(price_list_id) = price_list_id {
         service
@@ -653,7 +653,7 @@ async fn preview_variant_discount_native_with_context(
     variant_id: String,
     payload: PricingDiscountDraft,
 ) -> Result<PricingAdjustmentPreview, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_pricing::PricingService;
 
     ensure_permission(
@@ -670,7 +670,7 @@ async fn preview_variant_discount_native_with_context(
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
     let service = PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
 
     let preview = if let Some(price_list_id) = price_list_id {
@@ -710,7 +710,7 @@ async fn apply_variant_discount_native_with_context(
     variant_id: String,
     payload: PricingDiscountDraft,
 ) -> Result<PricingAdjustmentPreview, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_pricing::PricingService;
 
     ensure_permission(
@@ -727,7 +727,7 @@ async fn apply_variant_discount_native_with_context(
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
     let service = PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
 
     let preview = if let Some(price_list_id) = price_list_id {
@@ -808,7 +808,7 @@ async fn list_active_price_lists_native_with_context(
     channel_id: Option<String>,
     channel_slug: Option<String>,
 ) -> Result<Vec<PricingPriceListOption>, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_pricing::PricingService;
 
     ensure_permission(
@@ -844,7 +844,7 @@ async fn list_active_price_lists_native_with_context(
         .and_then(|value| Uuid::parse_str(value).ok());
     let service = PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
 
     service
@@ -873,7 +873,7 @@ async fn update_price_list_rule_native_with_context(
     price_list_id: String,
     payload: PricingPriceListRuleDraft,
 ) -> Result<PricingPriceListOption, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_pricing::PricingService;
 
     ensure_permission(
@@ -889,7 +889,7 @@ async fn update_price_list_rule_native_with_context(
         parse_optional_decimal(&payload.adjustment_percent, "adjustment_percent")?;
     let service = PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
     service
         .set_price_list_percentage_rule(tenant.id, auth.user_id, price_list_id, adjustment_percent)
@@ -971,7 +971,7 @@ async fn update_price_list_scope_native_with_context(
     price_list_id: String,
     payload: PricingPriceListScopeDraft,
 ) -> Result<PricingPriceListOption, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_pricing::PricingService;
 
     ensure_permission(
@@ -986,7 +986,7 @@ async fn update_price_list_scope_native_with_context(
     let channel_slug = sanitize_channel_slug(text_or_none(payload.channel_slug));
     let service = PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
 
     service
@@ -1119,9 +1119,9 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_channel::ChannelService;
-        use rustok_core::Permission;
         use rustok_pricing::PricingService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -1144,7 +1144,7 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
 
         let service = PricingService::new(
             app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
         );
         let channel_service = ChannelService::new(app_ctx.db.clone());
         let channel_slug = request_context
@@ -1234,8 +1234,8 @@ async fn pricing_admin_products_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_pricing::PricingService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -1256,7 +1256,7 @@ async fn pricing_admin_products_native(
             resolve_requested_locale(Some(locale), None, tenant.default_locale.as_str());
         let service = PricingService::new(
             app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
         );
         let status = status
             .as_deref()
@@ -1309,8 +1309,8 @@ async fn pricing_admin_product_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_pricing::{PriceResolutionContext, PricingService};
 
         let app_ctx = expect_context::<AppContext>();
@@ -1377,7 +1377,7 @@ async fn pricing_admin_product_native(
         });
         let service = PricingService::new(
             app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
         );
         let product_id = parse_product_id(&product_id)?;
         let mut detail = match service
@@ -1602,12 +1602,12 @@ mod tests {
     use loco_rs::environment::Environment;
     use loco_rs::storage::{self, Storage};
     use loco_rs::tests_cfg::config::test_config;
+    use rustok_api::Permission;
     use rustok_api::{AuthContext, TenantContext};
     use rustok_commerce_foundation::dto::{
         CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
     };
     use rustok_core::events::EventTransport;
-    use rustok_core::Permission;
     use rustok_product::CatalogService;
     use rustok_test_utils::db::setup_test_db;
     use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};

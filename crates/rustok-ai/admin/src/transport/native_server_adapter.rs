@@ -987,11 +987,11 @@ async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, Server
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_provider_manage_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_effective_permission(
         permissions,
-        &rustok_core::Permission::AI_PROVIDERS_MANAGE,
+        &rustok_api::Permission::AI_PROVIDERS_MANAGE,
     ) {
         return Err(ServerFnError::new("ai:providers:manage required"));
     }
@@ -1000,11 +1000,11 @@ fn ensure_ai_provider_manage_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_tool_profile_manage_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_effective_permission(
         permissions,
-        &rustok_core::Permission::AI_TASK_PROFILES_MANAGE,
+        &rustok_api::Permission::AI_TASK_PROFILES_MANAGE,
     ) {
         return Err(ServerFnError::new("ai:task_profiles:manage required"));
     }
@@ -1013,12 +1013,10 @@ fn ensure_ai_tool_profile_manage_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_session_read_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(
-        permissions,
-        &rustok_core::Permission::AI_SESSIONS_READ,
-    ) {
+    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::AI_SESSIONS_READ)
+    {
         return Err(ServerFnError::new("ai:sessions:read required"));
     }
     Ok(())
@@ -1026,9 +1024,9 @@ fn ensure_ai_session_read_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_session_run_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(permissions, &rustok_core::Permission::AI_SESSIONS_RUN)
+    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::AI_SESSIONS_RUN)
     {
         return Err(ServerFnError::new("ai:sessions:run required"));
     }
@@ -1037,11 +1035,11 @@ fn ensure_ai_session_run_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_approval_resolve_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_effective_permission(
         permissions,
-        &rustok_core::Permission::AI_APPROVALS_RESOLVE,
+        &rustok_api::Permission::AI_APPROVALS_RESOLVE,
     ) {
         return Err(ServerFnError::new("ai:approvals:resolve required"));
     }
@@ -1050,10 +1048,9 @@ fn ensure_ai_approval_resolve_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_run_cancel_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(permissions, &rustok_core::Permission::AI_RUNS_CANCEL)
-    {
+    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::AI_RUNS_CANCEL) {
         return Err(ServerFnError::new("ai:runs:cancel required"));
     }
     Ok(())
@@ -1061,18 +1058,18 @@ fn ensure_ai_run_cancel_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_ai_overview_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
-    if rustok_api::has_effective_permission(
-        permissions,
-        &rustok_core::Permission::AI_PROVIDERS_READ,
-    ) || rustok_api::has_effective_permission(
-        permissions,
-        &rustok_core::Permission::AI_TASK_PROFILES_READ,
-    ) || rustok_api::has_effective_permission(
-        permissions,
-        &rustok_core::Permission::AI_SESSIONS_READ,
-    ) {
+    if rustok_api::has_effective_permission(permissions, &rustok_api::Permission::AI_PROVIDERS_READ)
+        || rustok_api::has_effective_permission(
+            permissions,
+            &rustok_api::Permission::AI_TASK_PROFILES_READ,
+        )
+        || rustok_api::has_effective_permission(
+            permissions,
+            &rustok_api::Permission::AI_SESSIONS_READ,
+        )
+    {
         Ok(())
     } else {
         Err(ServerFnError::new("AI read permissions required"))

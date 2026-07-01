@@ -12,8 +12,11 @@ ssr = [
   "dep:leptos_axum",
   "dep:loco-rs",
   "dep:rustok-channel",
+  "dep:rustok-blog",
+  "dep:rustok-core",
+  "dep:rustok-outbox",
   "dep:rustok-tenant",
-  "rustok-api/loco-adapter",
+  "rustok-api/server",
 ]
 
 [dependencies]
@@ -23,8 +26,9 @@ leptos-graphql.workspace = true
 leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
-rustok-core.workspace = true
-rustok-blog.workspace = true
+rustok-core = { workspace = true, optional = true }
+rustok-blog = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-channel = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-tenant = { workspace = true, optional = true }

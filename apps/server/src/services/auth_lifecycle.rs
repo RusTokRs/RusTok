@@ -889,11 +889,11 @@ mod tests {
             .expect("failed to resolve user permissions from rustok-rbac");
 
         assert!(
-            resolved_permissions.contains(&rustok_core::Permission::PRODUCTS_CREATE),
+            resolved_permissions.contains(&rustok_api::Permission::PRODUCTS_CREATE),
             "manager role permissions should be available"
         );
         assert!(
-            !resolved_permissions.contains(&rustok_core::Permission::USERS_MANAGE),
+            !resolved_permissions.contains(&rustok_api::Permission::USERS_MANAGE),
             "manager role should not get admin-only permissions"
         );
     }
@@ -1026,7 +1026,7 @@ mod tests {
             "same role should resolve to identical permissions independent of creation path"
         );
         assert!(
-            lifecycle_permissions.contains(&rustok_core::Permission::PRODUCTS_CREATE),
+            lifecycle_permissions.contains(&rustok_api::Permission::PRODUCTS_CREATE),
             "manager permission baseline should include PRODUCTS_CREATE"
         );
     }

@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, Json};
 use loco_rs::{app::AppContext, Error, Result};
+use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext};
-use rustok_core::Permission;
 
 use crate::{
     ForumWidgetCatalogResponse, ForumWidgetContractService, ForumWidgetPropsValidationResponse,

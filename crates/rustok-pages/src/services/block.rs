@@ -8,8 +8,9 @@ use tracing::instrument;
 use url::Url;
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;

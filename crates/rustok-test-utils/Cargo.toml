@@ -6,6 +6,7 @@ license.workspace = true
 description = "Test utilities for RusToK - fixtures, mocks, and helpers for testing"
 
 [dependencies]
+rustok-api.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true

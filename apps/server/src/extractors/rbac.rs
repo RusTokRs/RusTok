@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 use crate::extractors::auth::CurrentUser;
 
@@ -75,246 +75,225 @@ macro_rules! define_permission_extractor {
 }
 
 // Define common permission extractors
-define_permission_extractor!(RequirePostsCreate, rustok_core::Permission::POSTS_CREATE);
-define_permission_extractor!(RequirePostsRead, rustok_core::Permission::POSTS_READ);
-define_permission_extractor!(RequirePostsUpdate, rustok_core::Permission::POSTS_UPDATE);
-define_permission_extractor!(RequirePostsDelete, rustok_core::Permission::POSTS_DELETE);
-define_permission_extractor!(RequirePostsList, rustok_core::Permission::POSTS_LIST);
+define_permission_extractor!(RequirePostsCreate, rustok_api::Permission::POSTS_CREATE);
+define_permission_extractor!(RequirePostsRead, rustok_api::Permission::POSTS_READ);
+define_permission_extractor!(RequirePostsUpdate, rustok_api::Permission::POSTS_UPDATE);
+define_permission_extractor!(RequirePostsDelete, rustok_api::Permission::POSTS_DELETE);
+define_permission_extractor!(RequirePostsList, rustok_api::Permission::POSTS_LIST);
 
-define_permission_extractor!(RequireNodesCreate, rustok_core::Permission::NODES_CREATE);
-define_permission_extractor!(RequireNodesRead, rustok_core::Permission::NODES_READ);
-define_permission_extractor!(RequireNodesUpdate, rustok_core::Permission::NODES_UPDATE);
-define_permission_extractor!(RequireNodesDelete, rustok_core::Permission::NODES_DELETE);
-define_permission_extractor!(RequireNodesList, rustok_core::Permission::NODES_LIST);
+define_permission_extractor!(RequireNodesCreate, rustok_api::Permission::NODES_CREATE);
+define_permission_extractor!(RequireNodesRead, rustok_api::Permission::NODES_READ);
+define_permission_extractor!(RequireNodesUpdate, rustok_api::Permission::NODES_UPDATE);
+define_permission_extractor!(RequireNodesDelete, rustok_api::Permission::NODES_DELETE);
+define_permission_extractor!(RequireNodesList, rustok_api::Permission::NODES_LIST);
 
 define_permission_extractor!(
     RequireProductsCreate,
-    rustok_core::Permission::PRODUCTS_CREATE
+    rustok_api::Permission::PRODUCTS_CREATE
 );
-define_permission_extractor!(RequireProductsRead, rustok_core::Permission::PRODUCTS_READ);
+define_permission_extractor!(RequireProductsRead, rustok_api::Permission::PRODUCTS_READ);
 define_permission_extractor!(
     RequireProductsUpdate,
-    rustok_core::Permission::PRODUCTS_UPDATE
+    rustok_api::Permission::PRODUCTS_UPDATE
 );
 define_permission_extractor!(
     RequireProductsDelete,
-    rustok_core::Permission::PRODUCTS_DELETE
+    rustok_api::Permission::PRODUCTS_DELETE
 );
-define_permission_extractor!(RequireProductsList, rustok_core::Permission::PRODUCTS_LIST);
+define_permission_extractor!(RequireProductsList, rustok_api::Permission::PRODUCTS_LIST);
 
-define_permission_extractor!(RequireOrdersCreate, rustok_core::Permission::ORDERS_CREATE);
-define_permission_extractor!(RequireOrdersRead, rustok_core::Permission::ORDERS_READ);
-define_permission_extractor!(RequireOrdersUpdate, rustok_core::Permission::ORDERS_UPDATE);
-define_permission_extractor!(RequireOrdersDelete, rustok_core::Permission::ORDERS_DELETE);
-define_permission_extractor!(RequireOrdersList, rustok_core::Permission::ORDERS_LIST);
+define_permission_extractor!(RequireOrdersCreate, rustok_api::Permission::ORDERS_CREATE);
+define_permission_extractor!(RequireOrdersRead, rustok_api::Permission::ORDERS_READ);
+define_permission_extractor!(RequireOrdersUpdate, rustok_api::Permission::ORDERS_UPDATE);
+define_permission_extractor!(RequireOrdersDelete, rustok_api::Permission::ORDERS_DELETE);
+define_permission_extractor!(RequireOrdersList, rustok_api::Permission::ORDERS_LIST);
 
-define_permission_extractor!(RequireUsersCreate, rustok_core::Permission::USERS_CREATE);
-define_permission_extractor!(RequireUsersRead, rustok_core::Permission::USERS_READ);
-define_permission_extractor!(RequireUsersUpdate, rustok_core::Permission::USERS_UPDATE);
-define_permission_extractor!(RequireUsersDelete, rustok_core::Permission::USERS_DELETE);
-define_permission_extractor!(RequireUsersList, rustok_core::Permission::USERS_LIST);
+define_permission_extractor!(RequireUsersCreate, rustok_api::Permission::USERS_CREATE);
+define_permission_extractor!(RequireUsersRead, rustok_api::Permission::USERS_READ);
+define_permission_extractor!(RequireUsersUpdate, rustok_api::Permission::USERS_UPDATE);
+define_permission_extractor!(RequireUsersDelete, rustok_api::Permission::USERS_DELETE);
+define_permission_extractor!(RequireUsersList, rustok_api::Permission::USERS_LIST);
 
-define_permission_extractor!(RequireSettingsRead, rustok_core::Permission::SETTINGS_READ);
+define_permission_extractor!(RequireSettingsRead, rustok_api::Permission::SETTINGS_READ);
 define_permission_extractor!(
     RequireSettingsUpdate,
-    rustok_core::Permission::SETTINGS_UPDATE
+    rustok_api::Permission::SETTINGS_UPDATE
 );
 define_permission_extractor!(
     RequireFlexSchemasCreate,
-    rustok_core::Permission::FLEX_SCHEMAS_CREATE
+    rustok_api::Permission::FLEX_SCHEMAS_CREATE
 );
 define_permission_extractor!(
     RequireFlexSchemasRead,
-    rustok_core::Permission::FLEX_SCHEMAS_READ
+    rustok_api::Permission::FLEX_SCHEMAS_READ
 );
 define_permission_extractor!(
     RequireFlexSchemasUpdate,
-    rustok_core::Permission::FLEX_SCHEMAS_UPDATE
+    rustok_api::Permission::FLEX_SCHEMAS_UPDATE
 );
 define_permission_extractor!(
     RequireFlexSchemasDelete,
-    rustok_core::Permission::FLEX_SCHEMAS_DELETE
+    rustok_api::Permission::FLEX_SCHEMAS_DELETE
 );
 define_permission_extractor!(
     RequireFlexSchemasList,
-    rustok_core::Permission::FLEX_SCHEMAS_LIST
+    rustok_api::Permission::FLEX_SCHEMAS_LIST
 );
 define_permission_extractor!(
     RequireFlexEntriesCreate,
-    rustok_core::Permission::FLEX_ENTRIES_CREATE
+    rustok_api::Permission::FLEX_ENTRIES_CREATE
 );
 define_permission_extractor!(
     RequireFlexEntriesRead,
-    rustok_core::Permission::FLEX_ENTRIES_READ
+    rustok_api::Permission::FLEX_ENTRIES_READ
 );
 define_permission_extractor!(
     RequireFlexEntriesUpdate,
-    rustok_core::Permission::FLEX_ENTRIES_UPDATE
+    rustok_api::Permission::FLEX_ENTRIES_UPDATE
 );
 define_permission_extractor!(
     RequireFlexEntriesDelete,
-    rustok_core::Permission::FLEX_ENTRIES_DELETE
+    rustok_api::Permission::FLEX_ENTRIES_DELETE
 );
 define_permission_extractor!(
     RequireFlexEntriesList,
-    rustok_core::Permission::FLEX_ENTRIES_LIST
+    rustok_api::Permission::FLEX_ENTRIES_LIST
 );
 
-define_permission_extractor!(
-    RequireAnalyticsRead,
-    rustok_core::Permission::ANALYTICS_READ
-);
+define_permission_extractor!(RequireAnalyticsRead, rustok_api::Permission::ANALYTICS_READ);
 define_permission_extractor!(
     RequireAnalyticsExport,
-    rustok_core::Permission::ANALYTICS_EXPORT
+    rustok_api::Permission::ANALYTICS_EXPORT
 );
 
 define_permission_extractor!(
     RequireBlogPostsCreate,
-    rustok_core::Permission::BLOG_POSTS_CREATE
+    rustok_api::Permission::BLOG_POSTS_CREATE
 );
 define_permission_extractor!(
     RequireBlogPostsRead,
-    rustok_core::Permission::BLOG_POSTS_READ
+    rustok_api::Permission::BLOG_POSTS_READ
 );
 define_permission_extractor!(
     RequireBlogPostsUpdate,
-    rustok_core::Permission::BLOG_POSTS_UPDATE
+    rustok_api::Permission::BLOG_POSTS_UPDATE
 );
 define_permission_extractor!(
     RequireBlogPostsDelete,
-    rustok_core::Permission::BLOG_POSTS_DELETE
+    rustok_api::Permission::BLOG_POSTS_DELETE
 );
 define_permission_extractor!(
     RequireBlogPostsList,
-    rustok_core::Permission::BLOG_POSTS_LIST
+    rustok_api::Permission::BLOG_POSTS_LIST
 );
 define_permission_extractor!(
     RequireBlogPostsPublish,
-    rustok_core::Permission::BLOG_POSTS_PUBLISH
+    rustok_api::Permission::BLOG_POSTS_PUBLISH
 );
 
 define_permission_extractor!(
     RequireForumTopicsCreate,
-    rustok_core::Permission::FORUM_TOPICS_CREATE
+    rustok_api::Permission::FORUM_TOPICS_CREATE
 );
 define_permission_extractor!(
     RequireForumTopicsRead,
-    rustok_core::Permission::FORUM_TOPICS_READ
+    rustok_api::Permission::FORUM_TOPICS_READ
 );
 define_permission_extractor!(
     RequireForumTopicsUpdate,
-    rustok_core::Permission::FORUM_TOPICS_UPDATE
+    rustok_api::Permission::FORUM_TOPICS_UPDATE
 );
 define_permission_extractor!(
     RequireForumTopicsDelete,
-    rustok_core::Permission::FORUM_TOPICS_DELETE
+    rustok_api::Permission::FORUM_TOPICS_DELETE
 );
 define_permission_extractor!(
     RequireForumTopicsList,
-    rustok_core::Permission::FORUM_TOPICS_LIST
+    rustok_api::Permission::FORUM_TOPICS_LIST
 );
 define_permission_extractor!(
     RequireForumTopicsModerate,
-    rustok_core::Permission::FORUM_TOPICS_MODERATE
+    rustok_api::Permission::FORUM_TOPICS_MODERATE
 );
 
 define_permission_extractor!(
     RequireForumRepliesCreate,
-    rustok_core::Permission::FORUM_REPLIES_CREATE
+    rustok_api::Permission::FORUM_REPLIES_CREATE
 );
 define_permission_extractor!(
     RequireForumRepliesRead,
-    rustok_core::Permission::FORUM_REPLIES_READ
+    rustok_api::Permission::FORUM_REPLIES_READ
 );
 define_permission_extractor!(
     RequireForumRepliesModerate,
-    rustok_core::Permission::FORUM_REPLIES_MODERATE
+    rustok_api::Permission::FORUM_REPLIES_MODERATE
 );
 
 define_permission_extractor!(
     RequireForumCategoriesCreate,
-    rustok_core::Permission::FORUM_CATEGORIES_CREATE
+    rustok_api::Permission::FORUM_CATEGORIES_CREATE
 );
 define_permission_extractor!(
     RequireForumCategoriesList,
-    rustok_core::Permission::FORUM_CATEGORIES_LIST
+    rustok_api::Permission::FORUM_CATEGORIES_LIST
 );
 define_permission_extractor!(
     RequireForumCategoriesUpdate,
-    rustok_core::Permission::FORUM_CATEGORIES_UPDATE
+    rustok_api::Permission::FORUM_CATEGORIES_UPDATE
 );
 define_permission_extractor!(
     RequireForumCategoriesDelete,
-    rustok_core::Permission::FORUM_CATEGORIES_DELETE
+    rustok_api::Permission::FORUM_CATEGORIES_DELETE
 );
 
-define_permission_extractor!(RequirePagesCreate, rustok_core::Permission::PAGES_CREATE);
-define_permission_extractor!(RequirePagesRead, rustok_core::Permission::PAGES_READ);
-define_permission_extractor!(RequirePagesUpdate, rustok_core::Permission::PAGES_UPDATE);
-define_permission_extractor!(RequirePagesDelete, rustok_core::Permission::PAGES_DELETE);
+define_permission_extractor!(RequirePagesCreate, rustok_api::Permission::PAGES_CREATE);
+define_permission_extractor!(RequirePagesRead, rustok_api::Permission::PAGES_READ);
+define_permission_extractor!(RequirePagesUpdate, rustok_api::Permission::PAGES_UPDATE);
+define_permission_extractor!(RequirePagesDelete, rustok_api::Permission::PAGES_DELETE);
 
-define_permission_extractor!(
-    RequireInventoryRead,
-    rustok_core::Permission::INVENTORY_READ
-);
+define_permission_extractor!(RequireInventoryRead, rustok_api::Permission::INVENTORY_READ);
 define_permission_extractor!(
     RequireInventoryUpdate,
-    rustok_core::Permission::INVENTORY_UPDATE
+    rustok_api::Permission::INVENTORY_UPDATE
 );
-define_permission_extractor!(
-    RequireInventoryList,
-    rustok_core::Permission::INVENTORY_LIST
-);
+define_permission_extractor!(RequireInventoryList, rustok_api::Permission::INVENTORY_LIST);
 
-define_permission_extractor!(
-    RequireScriptsCreate,
-    rustok_core::Permission::SCRIPTS_CREATE
-);
-define_permission_extractor!(RequireScriptsRead, rustok_core::Permission::SCRIPTS_READ);
-define_permission_extractor!(RequireScriptsList, rustok_core::Permission::SCRIPTS_LIST);
-define_permission_extractor!(
-    RequireScriptsManage,
-    rustok_core::Permission::SCRIPTS_MANAGE
-);
+define_permission_extractor!(RequireScriptsCreate, rustok_api::Permission::SCRIPTS_CREATE);
+define_permission_extractor!(RequireScriptsRead, rustok_api::Permission::SCRIPTS_READ);
+define_permission_extractor!(RequireScriptsList, rustok_api::Permission::SCRIPTS_LIST);
+define_permission_extractor!(RequireScriptsManage, rustok_api::Permission::SCRIPTS_MANAGE);
 
-define_permission_extractor!(RequireMcpRead, rustok_core::Permission::MCP_READ);
-define_permission_extractor!(RequireMcpManage, rustok_core::Permission::MCP_MANAGE);
+define_permission_extractor!(RequireMcpRead, rustok_api::Permission::MCP_READ);
+define_permission_extractor!(RequireMcpManage, rustok_api::Permission::MCP_MANAGE);
 
 define_permission_extractor!(
     RequireWorkflowsCreate,
-    rustok_core::Permission::WORKFLOWS_CREATE
+    rustok_api::Permission::WORKFLOWS_CREATE
 );
-define_permission_extractor!(
-    RequireWorkflowsRead,
-    rustok_core::Permission::WORKFLOWS_READ
-);
+define_permission_extractor!(RequireWorkflowsRead, rustok_api::Permission::WORKFLOWS_READ);
 define_permission_extractor!(
     RequireWorkflowsUpdate,
-    rustok_core::Permission::WORKFLOWS_UPDATE
+    rustok_api::Permission::WORKFLOWS_UPDATE
 );
 define_permission_extractor!(
     RequireWorkflowsDelete,
-    rustok_core::Permission::WORKFLOWS_DELETE
+    rustok_api::Permission::WORKFLOWS_DELETE
 );
-define_permission_extractor!(
-    RequireWorkflowsList,
-    rustok_core::Permission::WORKFLOWS_LIST
-);
+define_permission_extractor!(RequireWorkflowsList, rustok_api::Permission::WORKFLOWS_LIST);
 define_permission_extractor!(
     RequireWorkflowsExecute,
-    rustok_core::Permission::WORKFLOWS_EXECUTE
+    rustok_api::Permission::WORKFLOWS_EXECUTE
 );
 define_permission_extractor!(
     RequireWorkflowExecutionsRead,
-    rustok_core::Permission::WORKFLOW_EXECUTIONS_READ
+    rustok_api::Permission::WORKFLOW_EXECUTIONS_READ
 );
 define_permission_extractor!(
     RequireWorkflowExecutionsList,
-    rustok_core::Permission::WORKFLOW_EXECUTIONS_LIST
+    rustok_api::Permission::WORKFLOW_EXECUTIONS_LIST
 );
 
-define_permission_extractor!(RequireLogsRead, rustok_core::Permission::LOGS_READ);
+define_permission_extractor!(RequireLogsRead, rustok_api::Permission::LOGS_READ);
 
 /// Helper to check permission inline without extractor
 ///
@@ -389,7 +368,8 @@ pub fn check_all_permissions(
 mod tests {
     use super::*;
     use axum::http::StatusCode;
-    use rustok_core::{Permission, UserRole};
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
 
     fn create_test_user(role: UserRole) -> CurrentUser {
         use crate::models::users;

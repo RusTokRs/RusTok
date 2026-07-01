@@ -14,8 +14,9 @@ ssr = [
   "dep:loco-rs",
   "dep:rustok-cart",
   "dep:rustok-customer",
+  "dep:rustok-outbox",
   "dep:rustok-pricing",
-  "rustok-api/loco-adapter",
+  "rustok-api/server",
 ]
 
 [dependencies]
@@ -27,6 +28,7 @@ loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-cart = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-pricing = { workspace = true, optional = true }
 sea-orm.workspace = true
 rust_decimal.workspace = true

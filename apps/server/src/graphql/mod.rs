@@ -1,15 +1,9 @@
 pub mod ai;
 pub mod auth;
-#[cfg(feature = "mod-blog")]
-pub mod blog;
-#[cfg(feature = "mod-commerce")]
-pub mod commerce;
 pub mod common;
 pub mod connection;
 pub mod errors;
 pub mod flex;
-#[cfg(feature = "mod-forum")]
-pub mod forum;
 pub mod loaders;
 pub mod mcp;
 #[cfg(feature = "mod-media")]
@@ -17,8 +11,6 @@ pub mod media;
 pub mod mutations;
 pub mod oauth;
 pub mod observability;
-#[cfg(feature = "mod-pages")]
-pub mod pages;
 pub mod persisted;
 pub mod queries;
 pub mod rbac;

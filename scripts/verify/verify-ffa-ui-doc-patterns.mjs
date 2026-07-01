@@ -20,11 +20,22 @@ function readText(relativePath) {
 function listFiles(relativeDir, predicate = () => true) {
   const root = path.join(repoRoot, relativeDir);
   const result = [];
+  const skippedDirectories = new Set([
+    ".git",
+    ".next",
+    "dist",
+    "node_modules",
+    "target",
+    "test-results",
+  ]);
 
   function walk(directory) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
+        if (skippedDirectories.has(entry.name)) {
+          continue;
+        }
         walk(fullPath);
         continue;
       }

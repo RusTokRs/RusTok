@@ -22,6 +22,27 @@ status: verified
 
 Leptos hosts являются основным runtime-путём для platform-owned UI внутри Rust workspace. Next.js hosts идут параллельным headless-путём и должны сохранять parity по transport, auth, i18n и module contracts.
 
+## FFA status для frontend-hosts
+
+FFA migration status ведётся для module-owned UI packages в
+[`docs/modules/registry.md`](../modules/registry.md#ffafba-readiness-board-module-owned-ui).
+Сами frontend-приложения не получают module FFA status, потому что они не являются владельцами
+domain UI. Их целевой статус — **FFA-compatible composition host**:
+
+- `apps/admin` и `apps/storefront` остаются Leptos SSR/hydrate hosts, которые монтируют
+  module-owned surfaces и передают host context;
+- `apps/next-admin` и `apps/next-frontend` остаются параллельными Next.js/headless hosts,
+  которые сохраняют route/auth/i18n/transport parity;
+- host-код может содержать shell, navigation, routing, install/governance и другие host-owned
+  capabilities, но не module-specific CRUD/business workflows;
+- FFA coverage фронтендов проверяется по host contract и parity gates, а не через перенос
+  самих `apps/*` в `core/transport/ui` форму.
+
+Текущие host-level FFA slices закреплены быстрым gate
+`npm run verify:frontend:host-ffa-contract`: `apps/admin` держит sidebar navigation policy в
+`src/widgets/app_shell/core.rs`, а `apps/storefront` держит header route/link policy в
+`src/widgets/header/core.rs`; соответствующие Leptos-файлы остаются render adapters.
+
 ## Базовый UI contract
 
 - Host-приложения композируют UI-поверхности, но не забирают модульный business UI в свой код.

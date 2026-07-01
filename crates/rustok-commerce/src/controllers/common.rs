@@ -1,6 +1,6 @@
 use loco_rs::{Error, Result};
+use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext};
-use rustok_core::Permission;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

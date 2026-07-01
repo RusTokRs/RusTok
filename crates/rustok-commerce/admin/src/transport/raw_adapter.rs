@@ -587,8 +587,8 @@ fn optional_json_text(value: &str) -> Option<String> {
 
 #[cfg(feature = "ssr")]
 fn ensure_permission(
-    permissions: &[rustok_core::Permission],
-    required: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
+    required: &[rustok_api::Permission],
     message: &str,
 ) -> Result<(), ServerFnError> {
     if required
@@ -697,8 +697,8 @@ async fn preview_cart_promotion_native_with_context(
     cart_id: String,
     payload: CommerceCartPromotionDraft,
 ) -> Result<CommerceCartPromotionPreview, ServerFnError> {
+    use rustok_api::Permission;
     use rustok_cart::CartService;
-    use rustok_core::Permission;
 
     ensure_permission(
         &auth.permissions,
@@ -781,8 +781,8 @@ async fn apply_cart_promotion_native_with_context(
     cart_id: String,
     payload: CommerceCartPromotionDraft,
 ) -> Result<CommerceAdminCartSnapshot, ServerFnError> {
+    use rustok_api::Permission;
     use rustok_cart::CartService;
-    use rustok_core::Permission;
 
     ensure_permission(
         &auth.permissions,
@@ -883,7 +883,7 @@ fn parse_optional_uuid(
 fn order_service_from_context(app_ctx: &loco_rs::app::AppContext) -> rustok_order::OrderService {
     rustok_order::OrderService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     )
 }
 
@@ -915,7 +915,7 @@ async fn fetch_order_changes_native_with_context(
     order_id: Option<String>,
     status: Option<String>,
 ) -> Result<CommerceOrderChangeList, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     ensure_permission(
         &auth.permissions,
@@ -961,7 +961,7 @@ async fn apply_order_change_native_with_context(
     id: String,
     draft: CommerceOrderChangeActionDraft,
 ) -> Result<CommerceOrderChange, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     ensure_permission(
         &auth.permissions,
@@ -998,7 +998,7 @@ async fn cancel_order_change_native_with_context(
     id: String,
     draft: CommerceOrderChangeActionDraft,
 ) -> Result<CommerceOrderChange, ServerFnError> {
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     ensure_permission(
         &auth.permissions,
@@ -1244,11 +1244,11 @@ mod tests {
     use loco_rs::environment::Environment;
     use loco_rs::storage::{self, Storage};
     use loco_rs::tests_cfg::config::test_config;
+    use rustok_api::Permission;
     use rustok_api::{AuthContext, TenantContext};
     use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
     use rustok_cart::CartService;
     use rustok_core::events::EventTransport;
-    use rustok_core::Permission;
     use rustok_fulfillment::dto::CreateShippingOptionInput;
     use rustok_fulfillment::FulfillmentService;
     use rustok_order::dto::{CreateOrderChangeInput, CreateOrderInput, CreateOrderLineItemInput};

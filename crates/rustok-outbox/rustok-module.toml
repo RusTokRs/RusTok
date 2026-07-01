@@ -24,8 +24,8 @@ leptos_locales_path = "admin/locales"
 [fba.provider]
 registry = "contracts/outbox-fba-registry.json"
 contract_version = "outbox.relay_control.v1"
-context = "rustok_core::ports::PortContext"
-error = "rustok_core::ports::PortError"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
 runtime_profile = "embedded_native"
 fallback_profiles = ["embedded_native"]
 degraded_modes = ["pause_relay_worker", "surface_dlq_retry_needed"]

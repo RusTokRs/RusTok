@@ -6,7 +6,7 @@
 ## Execution checkpoint
 
 - Current phase: storefront_legacy_api_removed
-- Last checkpoint: Admin and storefront FFA cleanup retired legacy `src/api.rs`; storefront native-first/GraphQL fallback read logic lives under `storefront/src/transport/`, admin GraphQL-first + REST fallback logic lives in `admin/src/transport/graphql_adapter.rs` and `admin/src/transport/rest_adapter.rs`, and the forum boundary verifiers reject reintroducing legacy API modules.
+- Last checkpoint: Admin and storefront FFA cleanup retired legacy `src/api.rs`; storefront native-first/GraphQL fallback read logic lives under `storefront/src/transport/`, admin GraphQL-first + REST fallback logic lives in `admin/src/transport/graphql_adapter.rs` and `admin/src/transport/rest_adapter.rs`, and the forum boundary verifiers reject reintroducing legacy API modules. Public GraphQL reads now use `SecurityContext::public_read()` when `AuthContext` is absent instead of `SecurityContext::system()`, while visibility/permission filters remain in the forum read paths.
 - Next step: Steady-state maintenance: refresh Wave evidence before `refresh_policy.next_due_at`, keep no-compile gates and fixture tests green, and integrate only compatible platform features
 - Open blockers: None.
 - Hand-off notes for next agent: Держать forum domain ownership неизменным; любые widget-изменения проводить как capability-consumer слой и синхронно обновлять central docs; FFA status block, FBA placeholder и central readiness board обновлять в том же PR.
@@ -19,6 +19,7 @@
 - Steady-state gate: live Wave 1 evidence is now pinned by `npm run verify:page-builder:consumer:forum` (no compilation) across audit trail, fallback, smoke outcomes, numeric SLO metrics, forum-owned observability traces, rollback, approvals and the monthly refresh policy (`max_age_days <= 45`, `next_due_at` after `created_at`, stale evidence blocks rollout until refreshed); `npm run verify:forum:wave-evidence-freshness` выделяет проверку актуальности по срокам в отдельный быстрый gate и валидирует фактическую материализацию и непустую форму обязательных refresh sections плюс provenance последнего refresh (`refresh_history.latest_refresh`), а `npm run test:verify:forum:wave-evidence-freshness` закрепляет fresh/stale/overwide-window/missing-policy-section/missing-actual-section/empty-section/refresh-history-drift fixtures без компиляции.
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - public read authority slice: forum GraphQL request security resolves authenticated snapshots through `SecurityContext::from_permission_snapshot(...)` and resolves missing-auth public reads to `SecurityContext::public_read()`; helper names with `*_or_system` are forbidden outside tests by the API surface verifier;
   - machine-readable FW-1 contract freeze зафиксирован в `rustok-module.toml` (`widgets`, `compatibility_matrix`, `error_mapping`);
   - API parity: forum widget catalog/validation доступен через REST + GraphQL contract surface;
   - regression coverage расширено: storefront reply read-path подтверждает approved-only visibility semantics;

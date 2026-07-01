@@ -952,7 +952,7 @@ pub(super) fn with_x_default(
     tenant_default_locale: &str,
 ) -> Vec<SeoAlternateLink> {
     let x_default_locale = x_default_locale
-        .and_then(rustok_core::normalize_locale_tag)
+        .and_then(rustok_api::normalize_locale_tag)
         .unwrap_or_else(|| tenant_default_locale.to_string());
     for alternate in &mut alternates {
         alternate.x_default = alternate.locale == x_default_locale;

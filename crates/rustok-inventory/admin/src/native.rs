@@ -6,31 +6,6 @@ use crate::model::{
     InventoryReservationWriteResult,
 };
 
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR: &str =
-    "inventory/bootstrap requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR: &str =
-    "inventory/products requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_PRODUCT_REQUIRES_SSR_ERROR: &str =
-    "inventory/product requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_SET_QUANTITY_REQUIRES_SSR_ERROR: &str =
-    "inventory/variant/set-quantity requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_ADJUST_QUANTITY_REQUIRES_SSR_ERROR: &str =
-    "inventory/variant/adjust-quantity requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_RESERVE_QUANTITY_REQUIRES_SSR_ERROR: &str =
-    "inventory/variant/reserve-quantity requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_CHECK_AVAILABILITY_REQUIRES_SSR_ERROR: &str =
-    "inventory/variant/check-availability requires the `ssr` feature";
-#[cfg(not(feature = "ssr"))]
-pub(crate) const INVENTORY_RELEASE_RESERVATION_REQUIRES_SSR_ERROR: &str =
-    "inventory/variant/release-reservation requires the `ssr` feature";
-
 pub(crate) async fn fetch_bootstrap() -> Result<InventoryAdminBootstrap, ServerFnError> {
     inventory_bootstrap_native().await
 }
@@ -94,8 +69,8 @@ pub(crate) async fn release_reservation_quantity(
 
 #[cfg(feature = "ssr")]
 fn ensure_permission(
-    permissions: &[rustok_core::Permission],
-    required: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
+    required: &[rustok_api::Permission],
     message: &str,
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_any_effective_permission(permissions, required) {
@@ -274,8 +249,8 @@ fn map_variant(value: rustok_inventory::AdminInventoryVariant) -> crate::model::
 async fn inventory_bootstrap_native() -> Result<InventoryAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -295,7 +270,9 @@ async fn inventory_bootstrap_native() -> Result<InventoryAdminBootstrap, ServerF
     }
     #[cfg(not(feature = "ssr"))]
     {
-        Err(ServerFnError::new(INVENTORY_BOOTSTRAP_REQUIRES_SSR_ERROR))
+        Err(ServerFnError::new(
+            "inventory/bootstrap requires the `ssr` feature",
+        ))
     }
 }
 
@@ -310,8 +287,8 @@ async fn inventory_products_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_inventory::{AdminInventoryProductsFilter, AdminInventoryReadService};
 
         let app_ctx = expect_context::<AppContext>();
@@ -353,7 +330,9 @@ async fn inventory_products_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (tenant_id, locale, search, status);
-        Err(ServerFnError::new(INVENTORY_PRODUCTS_REQUIRES_SSR_ERROR))
+        Err(ServerFnError::new(
+            "inventory/products requires the `ssr` feature",
+        ))
     }
 }
 
@@ -367,8 +346,8 @@ async fn inventory_product_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_inventory::AdminInventoryReadService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -402,7 +381,9 @@ async fn inventory_product_native(
     #[cfg(not(feature = "ssr"))]
     {
         let _ = (tenant_id, id, locale);
-        Err(ServerFnError::new(INVENTORY_PRODUCT_REQUIRES_SSR_ERROR))
+        Err(ServerFnError::new(
+            "inventory/product requires the `ssr` feature",
+        ))
     }
 }
 
@@ -416,9 +397,10 @@ async fn inventory_set_quantity_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, TenantContext};
-        use rustok_core::Permission;
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
         use rustok_inventory::InventoryService;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
 
         let app_ctx = expect_context::<AppContext>();
         let event_bus = transactional_event_bus_from_context(&app_ctx);
@@ -449,7 +431,7 @@ async fn inventory_set_quantity_native(
     {
         let _ = (tenant_id, variant_id, quantity);
         Err(ServerFnError::new(
-            INVENTORY_SET_QUANTITY_REQUIRES_SSR_ERROR,
+            "inventory/variant/set-quantity requires the `ssr` feature",
         ))
     }
 }
@@ -464,9 +446,10 @@ async fn inventory_adjust_quantity_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, TenantContext};
-        use rustok_core::Permission;
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
         use rustok_inventory::InventoryService;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
 
         let app_ctx = expect_context::<AppContext>();
         let event_bus = transactional_event_bus_from_context(&app_ctx);
@@ -503,7 +486,7 @@ async fn inventory_adjust_quantity_native(
     {
         let _ = (tenant_id, variant_id, adjustment);
         Err(ServerFnError::new(
-            INVENTORY_ADJUST_QUANTITY_REQUIRES_SSR_ERROR,
+            "inventory/variant/adjust-quantity requires the `ssr` feature",
         ))
     }
 }
@@ -518,8 +501,8 @@ async fn inventory_reserve_quantity_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_inventory::InventoryService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -539,7 +522,7 @@ async fn inventory_reserve_quantity_native(
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         InventoryService::new(
             app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
         )
         .reserve(tenant.id, variant_id, quantity)
         .await
@@ -550,7 +533,7 @@ async fn inventory_reserve_quantity_native(
     {
         let _ = (tenant_id, variant_id, quantity);
         Err(ServerFnError::new(
-            INVENTORY_RESERVE_QUANTITY_REQUIRES_SSR_ERROR,
+            "inventory/variant/reserve-quantity requires the `ssr` feature",
         ))
     }
 }
@@ -565,9 +548,10 @@ async fn inventory_check_availability_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::{loco::transactional_event_bus_from_context, AuthContext, TenantContext};
-        use rustok_core::Permission;
+        use rustok_api::Permission;
+        use rustok_api::{AuthContext, TenantContext};
         use rustok_inventory::InventoryService;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
 
         let app_ctx = expect_context::<AppContext>();
         let event_bus = transactional_event_bus_from_context(&app_ctx);
@@ -595,7 +579,7 @@ async fn inventory_check_availability_native(
     {
         let _ = (tenant_id, variant_id, requested_quantity);
         Err(ServerFnError::new(
-            INVENTORY_CHECK_AVAILABILITY_REQUIRES_SSR_ERROR,
+            "inventory/variant/check-availability requires the `ssr` feature",
         ))
     }
 }
@@ -610,8 +594,8 @@ async fn inventory_release_reservation_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_inventory::InventoryService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -631,7 +615,7 @@ async fn inventory_release_reservation_native(
         let variant_id = parse_uuid(&variant_id, "variant_id")?;
         InventoryService::new(
             app_ctx.db.clone(),
-            rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
         )
         .release_reservation_quantity(tenant.id, variant_id, quantity)
         .await
@@ -642,7 +626,7 @@ async fn inventory_release_reservation_native(
     {
         let _ = (tenant_id, variant_id, quantity);
         Err(ServerFnError::new(
-            INVENTORY_RELEASE_RESERVATION_REQUIRES_SSR_ERROR,
+            "inventory/variant/release-reservation requires the `ssr` feature",
         ))
     }
 }

@@ -1,12 +1,12 @@
 use async_graphql::{EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
+use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput, SetCartAdjustmentInput};
 use rustok_cart::CartService;
 use rustok_commerce::dto::{CompleteCheckoutInput, ShippingProfileTranslationInput};
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{CheckoutService, ShippingProfileService};
-use rustok_core::Permission;
 use rustok_customer::dto::CreateCustomerInput;
 use rustok_customer::CustomerService;
 use rustok_fulfillment::dto::{

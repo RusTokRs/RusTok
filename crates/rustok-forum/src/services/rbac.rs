@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
-use rustok_core::{Action, PermissionScope, Resource, SecurityContext};
+use rustok_core::{PermissionScope, SecurityContext};
+
+use rustok_api::{Action, Resource};
 
 use crate::error::{ForumError, ForumResult};
 

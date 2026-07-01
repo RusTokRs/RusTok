@@ -1,10 +1,11 @@
 use async_graphql::{dataloader::DataLoader, Context, ErrorExtensions, FieldError, Object, Result};
+use rustok_api::Permission;
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError, PaginationInput},
     has_any_effective_permission, AuthContext, RequestContext, TenantContext,
 };
 use rustok_channel::ChannelService;
-use rustok_core::{Permission, SecurityContext};
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
     graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
@@ -60,7 +61,10 @@ impl ForumQuery {
         let (categories, total) = service
             .list_paginated_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 &locale,
                 page,
                 per_page,
@@ -131,7 +135,10 @@ impl ForumQuery {
         let (topics, total) = service
             .list_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 filter,
                 Some(tenant.default_locale.as_str()),
             )
@@ -201,7 +208,10 @@ impl ForumQuery {
         let category = match service
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -239,7 +249,10 @@ impl ForumQuery {
         let topic = match service
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -299,7 +312,10 @@ impl ForumQuery {
         let (replies, total) = service
             .list_response_for_topic_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 filter,
                 Some(tenant.default_locale.as_str()),
@@ -363,7 +379,14 @@ impl ForumQuery {
         )?;
 
         let stats = UserStatsService::new(db.clone())
-            .get(tenant_id, auth.security_context(), user_id)
+            .get(
+                tenant_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                user_id,
+            )
             .await?;
 
         Ok(GqlForumUserStats {
@@ -409,7 +432,7 @@ impl ForumQuery {
         let (categories, total) = service
             .list_paginated_with_locale_fallback(
                 resolved_tenant_id,
-                forum_security_or_system(ctx),
+                forum_request_security(ctx),
                 &locale,
                 page,
                 per_page,
@@ -475,7 +498,7 @@ impl ForumQuery {
         let (topics, total) = list_public_storefront_topics(
             &service,
             resolved_tenant_id,
-            forum_security_or_system(ctx),
+            forum_request_security(ctx),
             filter,
             Some(tenant.default_locale.as_str()),
             public_channel_slug(ctx),
@@ -543,7 +566,7 @@ impl ForumQuery {
         let topic = match service
             .get_with_locale_fallback(
                 resolved_tenant_id,
-                forum_security_or_system(ctx),
+                forum_request_security(ctx),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -604,7 +627,7 @@ impl ForumQuery {
         let topic = match topic_service
             .get_with_locale_fallback(
                 resolved_tenant_id,
-                forum_security_or_system(ctx),
+                forum_request_security(ctx),
                 topic_id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -638,7 +661,7 @@ impl ForumQuery {
         let (replies, total) = service
             .list_response_for_topic_by_statuses_with_locale_fallback(
                 resolved_tenant_id,
-                forum_security_or_system(ctx),
+                forum_request_security(ctx),
                 topic_id,
                 filter,
                 Some(tenant.default_locale.as_str()),
@@ -706,10 +729,15 @@ fn require_forum_permission(
     Ok(auth)
 }
 
-fn forum_security_or_system(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data::<AuthContext>()
-        .map(|auth| auth.security_context())
-        .unwrap_or_else(|_| SecurityContext::system())
+fn forum_request_security(ctx: &Context<'_>) -> SecurityContext {
+    ctx.data_opt::<AuthContext>()
+        .map(|auth| {
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            )
+        })
+        .unwrap_or_else(SecurityContext::public_read)
 }
 
 fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
@@ -1059,13 +1087,13 @@ mod tests {
     };
     use async_graphql::{EmptyMutation, EmptySubscription, Schema};
     use rustok_api::{RequestContext, TenantContext};
-    use rustok_core::{MemoryTransport, SecurityContext, UserRole};
-    use rustok_outbox::TransactionalEventBus;
+    use rustok_core::{SecurityContext, UserRole};
+    use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
     use rustok_taxonomy::entities::{
         taxonomy_term, taxonomy_term_alias, taxonomy_term_translation,
     };
     use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -1086,6 +1114,10 @@ mod tests {
 
     async fn ensure_forum_query_schema(db: &DatabaseConnection) {
         let manager = SchemaManager::new(db);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
         for migration in migrations::migrations() {
             migration
                 .up(&manager)
@@ -1195,8 +1227,7 @@ mod tests {
         let db = setup_forum_query_db().await;
         ensure_forum_query_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let tenant_id = Uuid::new_v4();
         let security = SecurityContext::system();
@@ -1341,8 +1372,7 @@ mod tests {
         let db = setup_forum_query_db().await;
         ensure_forum_query_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let tenant_id = Uuid::new_v4();
         enable_forum_module(&db, tenant_id).await;
@@ -1441,8 +1471,7 @@ mod tests {
         let db = setup_forum_query_db().await;
         ensure_forum_query_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let tenant_id = Uuid::new_v4();
         enable_forum_module(&db, tenant_id).await;

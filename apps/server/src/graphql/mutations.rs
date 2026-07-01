@@ -65,11 +65,12 @@ use crate::services::platform_composition::{
     PlatformCompositionService,
 };
 use crate::services::rbac_service::RbacService;
+use rustok_api::Permission;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
 };
-use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, Permission};
+use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -165,7 +166,7 @@ async fn validate_custom_fields(
     Ok(prepare_user_custom_fields_write(
         db,
         tenant_id,
-        rustok_core::PLATFORM_FALLBACK_LOCALE,
+        rustok_api::PLATFORM_FALLBACK_LOCALE,
         None,
         None,
         custom_fields,
@@ -545,7 +546,10 @@ impl RootMutation {
         let result = service
             .promote_topic_to_post(
                 tenant.id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 rustok_content::PromoteTopicToPostInput {
                     topic_id: input.topic_id,
                     locale: input.locale,
@@ -590,7 +594,10 @@ impl RootMutation {
         let result = service
             .demote_post_to_topic(
                 tenant.id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 rustok_content::DemotePostToTopicInput {
                     post_id: input.post_id,
                     locale: input.locale,
@@ -633,7 +640,10 @@ impl RootMutation {
         let result = service
             .split_topic(
                 tenant.id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 rustok_content::SplitTopicInput {
                     topic_id: input.topic_id,
                     locale: input.locale,
@@ -677,7 +687,10 @@ impl RootMutation {
         let result = service
             .merge_topics(
                 tenant.id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 rustok_content::MergeTopicsInput {
                     target_topic_id: input.target_topic_id,
                     source_topic_ids: input.source_topic_ids,
@@ -740,7 +753,7 @@ impl RootMutation {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &rustok_core::Permission::USERS_MANAGE,
+            &rustok_api::Permission::USERS_MANAGE,
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;

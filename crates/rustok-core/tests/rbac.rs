@@ -1,4 +1,5 @@
-use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
+use rustok_api::{Action, Permission, Resource};
+use rustok_core::{Rbac, UserRole};
 
 #[test]
 fn manage_implies_specific_action() {

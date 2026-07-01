@@ -7,21 +7,21 @@ use crate::graphql::common::PageInfo;
     feature = "mod-forum",
     graphql(concrete(
         name = "ForumCategoryConnection",
-        params(crate::graphql::forum::GqlForumCategory)
+        params(rustok_forum::graphql::GqlForumCategory)
     ))
 )]
 #[cfg_attr(
     feature = "mod-forum",
     graphql(concrete(
         name = "ForumTopicConnection",
-        params(crate::graphql::forum::GqlForumTopic)
+        params(rustok_forum::graphql::GqlForumTopic)
     ))
 )]
 #[cfg_attr(
     feature = "mod-forum",
     graphql(concrete(
         name = "ForumReplyConnection",
-        params(crate::graphql::forum::GqlForumReply)
+        params(rustok_forum::graphql::GqlForumReply)
     ))
 )]
 pub struct ListConnection<T>

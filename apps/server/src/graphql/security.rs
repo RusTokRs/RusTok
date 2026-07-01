@@ -6,7 +6,7 @@ use async_graphql::extensions::{
 };
 use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
 use async_graphql::{FieldError, Pos, Request, Response, ServerResult};
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
@@ -227,7 +227,7 @@ mod tests {
     };
     use crate::context::AuthContext;
     use async_graphql::{EmptySubscription, Object, Request, Schema, SimpleObject};
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use serde_json::json;
     use uuid::Uuid;
 

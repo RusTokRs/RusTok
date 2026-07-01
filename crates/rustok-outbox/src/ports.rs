@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_core::ports::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 
 /// Require shared write semantics for relay control calls.

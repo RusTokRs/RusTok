@@ -9,7 +9,7 @@
  */
 
 use async_trait::async_trait;
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-use crate::locale::normalize_locale_tag;
+use rustok_api::normalize_locale_tag;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SeoMetaTranslationView {

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
-use rustok_core::{locale_tags_match, normalize_locale_tag};
+use rustok_api::{locale_tags_match, normalize_locale_tag};
 use rustok_telemetry::metrics as telemetry_metrics;
 use serde::{Deserialize, Serialize};
 

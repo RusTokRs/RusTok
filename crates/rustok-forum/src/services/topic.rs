@@ -32,12 +32,12 @@ use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
-    PLATFORM_FALLBACK_LOCALE,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
-use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
+use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};

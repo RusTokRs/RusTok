@@ -14,7 +14,8 @@ ssr = [
   "dep:loco-rs",
   "dep:rustok-channel",
   "dep:rustok-pricing",
-  "rustok-api/loco-adapter",
+  "dep:rustok-outbox",
+  "rustok-api/server",
 ]
 
 [dependencies]
@@ -25,7 +26,7 @@ leptos-ui-routing.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-channel = { workspace = true, optional = true }
-rustok-core.workspace = true
 rustok-pricing = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true

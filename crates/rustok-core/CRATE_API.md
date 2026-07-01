@@ -22,7 +22,10 @@
 
 ## Зависимости от других rustok-крейтов
 - `rustok-telemetry`
-- `rustok-outbox`
+- `rustok-events`
+
+`rustok-outbox` используется только в dev-dependencies для integration tests.
+Neutral `Port*` contracts принадлежат `rustok-api` и не входят в public surface core.
 
 ## Частые ошибки ИИ
 - Путает `AppContext` из `rustok_core::context` с локальными контекстами сервисов.

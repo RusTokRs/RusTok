@@ -53,9 +53,13 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.create_comment(tenant_id, SecurityContext::system(), request)
-            .await
-            .map_err(comments_error_to_port_error)
+        self.create_comment(
+            tenant_id,
+            SecurityContext::try_from_port_context(&context)?,
+            request,
+        )
+        .await
+        .map_err(comments_error_to_port_error)
     }
 
     async fn get_comment(
@@ -68,7 +72,7 @@ impl CommentsThreadPort for CommentsService {
         let tenant_id = parse_tenant_id(&context)?;
         self.get_comment(
             tenant_id,
-            SecurityContext::system(),
+            SecurityContext::try_from_port_context(&context)?,
             comment_id,
             &context.locale,
             fallback_locale.as_deref(),
@@ -89,7 +93,7 @@ impl CommentsThreadPort for CommentsService {
         let tenant_id = parse_tenant_id(&context)?;
         self.list_comments_for_target(
             tenant_id,
-            SecurityContext::system(),
+            SecurityContext::try_from_port_context(&context)?,
             &target_type,
             target_id,
             filter,
@@ -107,9 +111,14 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.update_comment(tenant_id, SecurityContext::system(), comment_id, request)
-            .await
-            .map_err(comments_error_to_port_error)
+        self.update_comment(
+            tenant_id,
+            SecurityContext::try_from_port_context(&context)?,
+            comment_id,
+            request,
+        )
+        .await
+        .map_err(comments_error_to_port_error)
     }
 
     async fn delete_comment(
@@ -119,9 +128,13 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<(), PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.delete_comment(tenant_id, SecurityContext::system(), comment_id)
-            .await
-            .map_err(comments_error_to_port_error)
+        self.delete_comment(
+            tenant_id,
+            SecurityContext::try_from_port_context(&context)?,
+            comment_id,
+        )
+        .await
+        .map_err(comments_error_to_port_error)
     }
 }
 

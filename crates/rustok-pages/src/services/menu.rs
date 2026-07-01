@@ -8,15 +8,14 @@ use std::future::Future;
 use std::pin::Pin;
 use uuid::Uuid;
 
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::entities::{menu, menu_item, menu_item_translation, menu_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_scope;
-
-const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
 pub struct MenuService {
     db: DatabaseConnection,

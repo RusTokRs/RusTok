@@ -1,6 +1,6 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result};
 use loco_rs::app::AppContext;
-use rustok_core::Permission;
+use rustok_api::Permission;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};

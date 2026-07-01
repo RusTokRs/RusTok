@@ -4,7 +4,7 @@ use rustok_commerce_foundation::dto::{
     ProductImageResponse, ProductResponse, ProductTranslationResponse,
 };
 use rustok_commerce_foundation::entities::product::ProductStatus;
-use rustok_media::MediaImageDescriptor;
+use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     builtin_slug, populate_image_template_fields, schema, SeoBulkSummaryRecord,
     SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord, SeoTargetAlternateRoute,
@@ -313,19 +313,19 @@ fn map_product_response(
 fn resolve_primary_product_image(
     images: &[ProductImageResponse],
     locale: &str,
-) -> Option<MediaImageDescriptor> {
+) -> Option<SeoTargetImageRecord> {
     let image = images.first()?;
     let alt = localized_product_image_alt(image, locale).or_else(|| image.alt_text.clone());
-    MediaImageDescriptor::from_parts(image.url.clone(), alt, None, None, None)
+    SeoTargetImageRecord::from_parts(image.url.clone(), alt, None, None, None)
 }
 
 fn localized_product_image_alt(image: &ProductImageResponse, locale: &str) -> Option<String> {
-    let requested = rustok_core::normalize_locale_tag(locale).unwrap_or_else(|| locale.to_string());
+    let requested = rustok_api::normalize_locale_tag(locale).unwrap_or_else(|| locale.to_string());
     image
         .translations
         .iter()
         .find(|translation| {
-            rustok_core::normalize_locale_tag(translation.locale.as_str())
+            rustok_api::normalize_locale_tag(translation.locale.as_str())
                 .is_some_and(|normalized| normalized == requested)
         })
         .and_then(|translation| translation.alt_text.clone())
@@ -337,10 +337,10 @@ fn resolve_product_translation<'a>(
     fallback: Option<&str>,
 ) -> (Option<&'a ProductTranslationResponse>, String) {
     let candidates =
-        rustok_core::build_locale_candidates([Some(requested), fallback, Some("en")], true);
+        rustok_api::build_locale_candidates([Some(requested), fallback, Some("en")], true);
     for candidate in candidates {
         if let Some(item) = items.iter().find(|item| {
-            rustok_core::normalize_locale_tag(item.locale.as_str())
+            rustok_api::normalize_locale_tag(item.locale.as_str())
                 .is_some_and(|locale| locale == candidate)
         }) {
             return (Some(item), candidate);
@@ -351,7 +351,7 @@ fn resolve_product_translation<'a>(
         items.first(),
         items
             .first()
-            .and_then(|item| rustok_core::normalize_locale_tag(item.locale.as_str()))
+            .and_then(|item| rustok_api::normalize_locale_tag(item.locale.as_str()))
             .unwrap_or_else(|| requested.to_string()),
     )
 }
@@ -376,7 +376,7 @@ fn matches_module_path(parsed: &Url, module: &str) -> bool {
     if segments.len() > 2
         && segments
             .first()
-            .and_then(|item| rustok_core::normalize_locale_tag(item))
+            .and_then(|item| rustok_api::normalize_locale_tag(item))
             .is_some()
         && segments.get(1) == Some(&"modules")
     {

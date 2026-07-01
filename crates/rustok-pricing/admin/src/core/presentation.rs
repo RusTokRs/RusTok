@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use rustok_api::locale_tags_match;
+
 use crate::core::routing::format_channel_scope_text;
 use crate::i18n::t;
 use crate::model::{
@@ -7,12 +9,6 @@ use crate::model::{
     PricingProductDetail, PricingProductListItem, PricingProductTranslation,
     PricingResolutionContext, PricingVariant,
 };
-
-pub(crate) fn locale_tags_match(left: &str, right: &str) -> bool {
-    left.trim()
-        .replace('_', "-")
-        .eq_ignore_ascii_case(&right.trim().replace('_', "-"))
-}
 
 #[derive(Clone)]
 pub(crate) struct PricingSummary {

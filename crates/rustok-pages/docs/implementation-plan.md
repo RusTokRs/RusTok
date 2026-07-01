@@ -7,7 +7,8 @@
 ## Execution checkpoint
 
 - Current phase: storefront_legacy_api_removed
-- Last checkpoint: Pages admin and storefront retired legacy `src/api.rs`; admin GraphQL operations live in `admin/src/transport/graphql_adapter.rs`, storefront raw transport is split between `storefront/src/transport/graphql_adapter.rs` and `storefront/src/transport/native_server_adapter.rs`, crate roots no longer wire `mod api`, and `verify-pages-ui-boundary.mjs` rejects reintroducing either legacy API module.
+- Last checkpoint: Pages admin and storefront retired legacy `src/api.rs`; admin GraphQL operations live in `admin/src/transport/graphql_adapter.rs`, storefront raw transport is split between `storefront/src/transport/graphql_adapter.rs` and `storefront/src/transport/native_server_adapter.rs`, crate roots no longer wire `mod api`, and `verify-pages-ui-boundary.mjs` rejects reintroducing either legacy API module. Public GraphQL/storefront reads now use `SecurityContext::public_read()` when `AuthContext` is absent, while published/channel visibility filtering stays in the pages read path.
+- Dependency evidence: storefront no-feature/hydrate profiles contain neither `rustok-core` nor backend `rustok-pages`; runtime dependencies are optional and enabled only by `ssr`.
 - Next step: Провести реальный control-plane Wave 0 dry-run на internal tenant и заменить синтетический пакет фактическими before/after snapshots; затем заменить Wave 1 readiness draft реальным tenant packet только вместе с owner sign-off и SLO/smoke evidence. Для no-compile Wave 1 hold использовать `npm run verify:page-builder:wave1-readiness-draft`; для FFA boundary evidence использовать быстрый `verify-pages-ui-boundary.mjs`; для FBA rollout policy использовать `npm run verify:page-builder:consumer:pages`.
 - Open blockers: None.
 - Hand-off notes for next agent:
@@ -77,13 +78,14 @@
 - FBA status: `in_progress` (consumer baseline для `rustok-page-builder`; remote runtime profile ещё не включён)
 - Structural shape: `core_transport_ui`
 - Evidence:
+  - public read authority slice: pages GraphQL request security resolves authenticated snapshots through `SecurityContext::from_permission_snapshot(...)` and resolves missing-auth public reads to `SecurityContext::public_read()`; storefront native slug reads use the same anonymous authority and preserve published/channel visibility filtering;
   - module plan синхронизирован с central FFA/FBA readiness board;
   - FBA consumer metadata синхронизирована с `crates/rustok-page-builder/contracts/page-builder-fba-registry.json`, `rustok-module.toml` и baseline gate;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs;
   - FFA maintenance slice: create-page draft normalization, channel slug CSV parsing and route text checks переиспользуют shared UI helpers из `rustok-api` без изменения native/GraphQL транспорта;
   - FFA admin slice: Leptos render/effect adapter живёт в `admin/src/ui/leptos.rs`, transport facade — в `admin/src/transport/`, GraphQL adapter — в `admin/src/transport/graphql_adapter.rs`; внешний GraphQL contract не менялся, legacy `admin/src/api.rs` удалён и закреплён как forbidden by `verify-pages-ui-boundary.mjs`;
   - FFA storefront slice: Leptos render/bind adapter живёт в `storefront/src/ui/leptos.rs`, crate root только wires modules/re-export `PagesView`, transport facade — в `storefront/src/transport/mod.rs`, GraphQL adapter — в `storefront/src/transport/graphql_adapter.rs`, native server adapter — в `storefront/src/transport/native_server_adapter.rs`; legacy `storefront/src/api.rs` удалён и fast boundary guardrail `scripts/verify/verify-pages-ui-boundary.mjs` фиксирует admin/storefront split, Leptos-free core и docs sync.
-- Last verified at (UTC): 2026-06-29T00:00:00Z
+- Last verified at (UTC): 2026-07-01T00:00:00Z
 - Owner: `rustok-pages` module team
 
 ## PB-FBA immediate sprint (продолжение page builder разработки)

@@ -55,8 +55,8 @@ pub async fn update_region(
 
 #[cfg(feature = "ssr")]
 fn ensure_permission(
-    permissions: &[rustok_core::Permission],
-    required: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
+    required: &[rustok_api::Permission],
     message: &str,
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_any_effective_permission(permissions, required) {
@@ -199,8 +199,8 @@ async fn load_region_detail(
 async fn region_bootstrap_native() -> Result<RegionAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -232,8 +232,8 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_region::RegionService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -280,8 +280,8 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, RequestContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_region::RegionService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -327,8 +327,8 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_region::{CreateRegionInput, RegionService, RegionTranslationInput};
 
         let app_ctx = expect_context::<AppContext>();
@@ -395,8 +395,8 @@ async fn region_update_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_region::{RegionService, RegionTranslationInput, UpdateRegionInput};
 
         let app_ctx = expect_context::<AppContext>();

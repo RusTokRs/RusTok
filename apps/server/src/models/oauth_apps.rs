@@ -1,6 +1,6 @@
 //! Business logic wrapper for OAuth apps
 
-use rustok_core::Permission;
+use rustok_api::Permission;
 use sea_orm::{entity::prelude::*, Condition, QueryFilter};
 use std::str::FromStr;
 use uuid::Uuid;

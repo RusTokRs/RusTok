@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit",
     "lint:fix": "eslint src --fix && bun format",
     "lint:strict": "eslint src --max-warnings=0",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install chromium",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
@@ -130,6 +133,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@faker-js/faker": "^10.5.0",
+    "@playwright/test": "^1.60.0",
     "@types/node": "26.0.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.2",

@@ -9,7 +9,7 @@
 - registry entry metadata (`display_name`, `owner_module_slug`) для shared operator/admin surfaces;
 - capability flags `authoring`, `routing`, `bulk`, `sitemaps`;
 - typed backend records для route match, loaded target, bulk summary и sitemap candidate;
-- image boundary alias `SeoTargetImageRecord = rustok_media::MediaImageDescriptor` для OG/Twitter/schema fallback;
+- независимый image boundary DTO `SeoTargetImageRecord` для OG/Twitter/schema fallback без зависимости на `rustok-media`;
 - минимальные JSON-LD builders для built-in rich-snippet shapes, чтобы owner providers не собирали schema.org payload как raw `json!` blobs;
 - helper `populate_image_template_fields` для image-aware SEO templates;
 - runtime wiring через `ModuleRuntimeExtensions`, а не через manifest-магии.
@@ -37,7 +37,7 @@
 - `locale`;
 - `route`;
 - slug/handle/id поля, которые нужны для шаблонов (`slug`, `handle`, `category_id`, `topic_id`);
-- image-aware template keys, заполняемые только через `MediaImageDescriptor` (`image_url`, `image_alt`, `image_width`, `image_height`, `image_mime`, `image_extension`, `image_pixel_count`, `image_aspect_ratio`, `image_has_alt`, `image_has_size`, `image_count`).
+- image-aware template keys, заполняемые через `SeoTargetImageRecord` (`image_url`, `image_alt`, `image_width`, `image_height`, `image_mime`, `image_extension`, `image_pixel_count`, `image_aspect_ratio`, `image_has_alt`, `image_has_size`, `image_count`).
 
 Owner module не должен отдавать сырой HTML, произвольный JSON или внутренние DTO в template runtime. Шаблоны рендерит только `rustok-seo`; provider отвечает только за typed target loading и безопасный field map.
 

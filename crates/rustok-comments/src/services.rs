@@ -7,10 +7,11 @@ use std::{collections::HashMap, time::Instant};
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource};
 use rustok_content::{
     dto::validation::validate_body_format, normalize_locale_code, resolve_by_locale_with_fallback,
 };
-use rustok_core::{Action, PermissionScope, Resource, SecurityContext};
+use rustok_core::{PermissionScope, SecurityContext};
 use rustok_telemetry::metrics;
 
 use crate::dto::{

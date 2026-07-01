@@ -17,8 +17,10 @@ ssr = [
   "dep:loco-rs",
   "dep:rustok-core",
   "dep:rustok-events",
+  "dep:rustok-outbox",
   "dep:rustok-search",
   "dep:sea-orm",
+  "rustok-api/server",
 ]
 
 [dependencies]
@@ -32,6 +34,7 @@ loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-events = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-search = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

@@ -36,8 +36,8 @@ pub use jwt::{
 };
 
 use async_trait::async_trait;
+use rustok_api::Permission;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use rustok_core::permissions::Permission;
 
 /// Canonical auth-owned RBAC surface published by the module.
 ///
@@ -106,8 +106,8 @@ impl RusToKModule for AuthModule {
 #[cfg(test)]
 mod tests {
     use super::{AuthModule, AUTH_USER_PERMISSIONS};
+    use rustok_api::Permission;
     use rustok_core::module::{ModuleKind, RusToKModule};
-    use rustok_core::Permission;
 
     #[test]
     fn auth_module_publishes_exact_users_permission_surface() {

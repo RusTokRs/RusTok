@@ -13,14 +13,15 @@ mod tests;
 
 use loco_rs::{app::AppContext, controller::Routes, Error, Result};
 use rust_decimal::Decimal;
-use rustok_api::{loco::transactional_event_bus_from_context, RequestContext};
+use rustok_api::locale_tags_match;
+use rustok_api::RequestContext;
 use rustok_cart::CartError;
 use rustok_cart::CartService;
-use rustok_core::locale_tags_match;
 use rustok_customer::CustomerService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,

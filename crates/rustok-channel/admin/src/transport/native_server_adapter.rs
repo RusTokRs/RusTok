@@ -15,9 +15,9 @@ use crate::model::{
 };
 
 #[cfg(feature = "ssr")]
-fn ensure_manage_permission(permissions: &[rustok_core::Permission]) -> Result<(), ServerFnError> {
+fn ensure_manage_permission(permissions: &[rustok_api::Permission]) -> Result<(), ServerFnError> {
     use rustok_api::has_any_effective_permission;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     if !has_any_effective_permission(
         permissions,

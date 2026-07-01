@@ -37,6 +37,8 @@ Think of it like Lego for backend systems: each module is a self-contained brick
 
 RusTok is designed for teams that are tired of duct-taping multiple platforms together, paying for SaaS services that charge per seat, or inheriting a codebase where "just add a plugin" has become an act of courage.
 
+![RusTok Platform Overview](assets/rustok-platform-overview.png)
+
 ---
 
 ## What can you build?
@@ -241,6 +243,18 @@ Leptos apps (admin and storefront) use `#[server]` functions as their data layer
 | **All separate** | Leptos standalone or Next.js | Any, separate process | HTTP `/api/fn/*` for Leptos; GraphQL for Next.js | Large teams, independent release cycles |
 | **Pure headless** | External / custom | Any consumer | GraphQL | Mobile-first, third-party integrations |
 | **Multi-frontend** | Any of the above | Multiple: web + mobile + partner portals | HTTP `/api/fn/*` or GraphQL per client type | Multi-brand, multi-channel, marketplace |
+
+![RusTok Deployment Profiles](assets/deployment-profiles-overview.svg)
+
+![RusTok Monolith Deployment](assets/deployment-profile-monolith.svg)
+
+![RusTok Embedded Admin and External Storefront Deployment](assets/deployment-profile-embedded-admin-external-storefront.svg)
+
+![RusTok All Separate Deployment](assets/deployment-profile-all-separate.svg)
+
+![RusTok Pure Headless Deployment](assets/deployment-profile-pure-headless.svg)
+
+![RusTok Multi-Frontend Deployment](assets/deployment-profile-multi-frontend.svg)
 
 ### How deployment flexibility compares
 

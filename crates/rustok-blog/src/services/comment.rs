@@ -6,14 +6,15 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
+use rustok_api::{Action, Resource};
 use rustok_comments::{
     CommentListItem as DomainCommentListItem, CommentRecord as DomainCommentRecord,
     CommentStatus as DomainCommentStatus, CommentsService,
     CreateCommentInput as DomainCreateCommentInput, ListCommentsFilter as DomainListCommentsFilter,
     UpdateCommentInput as DomainUpdateCommentInput,
 };
-use rustok_content::PLATFORM_FALLBACK_LOCALE;
-use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
+use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 

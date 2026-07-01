@@ -9,7 +9,7 @@ use crate::model::{PageBlock, PageBody, PageDetail, PageList, PageListItem, Page
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
 #[cfg(feature = "ssr")]
-const PLATFORM_FALLBACK_LOCALE: &str = "en";
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 pub async fn fetch_storefront_pages_server(
     tenant_slug: Option<String>,
@@ -31,10 +31,10 @@ async fn storefront_pages_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::loco::transactional_event_bus_from_context;
         use rustok_channel::ChannelService;
         use rustok_content::entities::node::ContentStatus;
         use rustok_core::SecurityContext;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
         use rustok_pages::{ListPagesFilter as RuntimeListPagesFilter, PageService};
         use rustok_tenant::TenantService;
 
@@ -104,7 +104,7 @@ async fn storefront_pages_native(
         let selected_page = service
             .get_by_slug_with_locale_fallback(
                 tenant_id,
-                SecurityContext::system(),
+                SecurityContext::public_read(),
                 requested_locale.as_str(),
                 page_slug.as_str(),
                 Some(fallback_locale.as_str()),

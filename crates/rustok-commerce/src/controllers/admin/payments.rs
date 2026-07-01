@@ -4,8 +4,8 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
+use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
-use rustok_core::Permission;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 

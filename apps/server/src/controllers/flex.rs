@@ -495,9 +495,10 @@ mod tests {
         tests_cfg::config::test_config,
     };
     use migration::Migrator;
+    use rustok_api::Permission;
     use rustok_core::{
         field_schema::{FieldDefinition, FieldType},
-        Permission, UserRole, UserStatus,
+        UserRole, UserStatus,
     };
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};

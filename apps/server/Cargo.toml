@@ -72,7 +72,7 @@ mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
-rustok-api = { workspace = true, features = ["loco-adapter"] }
+rustok-api = { workspace = true, features = ["server"] }
 rustok-auth.workspace = true
 rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-channel.workspace = true
@@ -110,7 +110,7 @@ rustok-mcp.workspace = true
 rustok-ai = { workspace = true, features = ["server"] }
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
-rustok-outbox.workspace = true
+rustok-outbox = { workspace = true, features = ["loco-adapter"] }
 rustok-installer = { path = "../../crates/rustok-installer" }
 alloy            = { workspace = true, optional = true }
 rustok-workflow  = { workspace = true, optional = true }

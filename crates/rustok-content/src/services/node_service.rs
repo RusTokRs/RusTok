@@ -8,10 +8,9 @@ use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::{
-    prepare_content_payload, Action, DomainEvent, PermissionScope, Resource, SecurityContext,
-    PLATFORM_FALLBACK_LOCALE,
-};
+use rustok_core::{prepare_content_payload, DomainEvent, PermissionScope, SecurityContext};
+
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{

@@ -1,7 +1,7 @@
 # rustok-outbox / CRATE_API
 
 ## Публичные модули
-`entity`, `migration`, `relay`, `transactional`, `transport`.
+`entity`, `migration`, `ports`, `relay`, `transactional`, `transport`; `loco` доступен с feature `loco-adapter`.
 
 ## Основные публичные типы и сигнатуры
 - `pub struct TransactionalEventBus`
@@ -16,6 +16,8 @@
 
 ## Зависимости от других rustok-крейтов
 - `rustok-core`
+- `rustok-api`
+- `rustok-events`
 
 ## Частые ошибки ИИ
 - Публикует event напрямую в transport вместо `TransactionalEventBus::publish` внутри tx.

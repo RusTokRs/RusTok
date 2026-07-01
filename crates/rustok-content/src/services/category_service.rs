@@ -6,7 +6,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_core::{SecurityContext, PLATFORM_FALLBACK_LOCALE};
+use rustok_core::SecurityContext;
+
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 use crate::dto::category::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,

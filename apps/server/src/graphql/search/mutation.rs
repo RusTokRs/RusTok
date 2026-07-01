@@ -352,7 +352,7 @@ async fn ensure_settings_manage_permission(ctx: &Context<'_>) -> Result<()> {
         &app_ctx.db,
         &tenant.id,
         &auth.user_id,
-        &rustok_core::Permission::SETTINGS_MANAGE,
+        &rustok_api::Permission::SETTINGS_MANAGE,
     )
     .await
     .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;

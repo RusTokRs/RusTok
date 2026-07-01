@@ -17,11 +17,11 @@ use rustok_ai_product::{
     validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
     GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG, PRODUCT_COPY_TOOL_NAME,
 };
-use rustok_api::context::infer_user_role_from_permissions;
-use rustok_api::loco::transactional_event_bus_from_context;
 use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
+use rustok_core::infer_user_role_from_permissions;
 use rustok_mcp::alloy_tools::{alloy_validate_script, AlloyMcpState, ValidateScriptRequest};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
 use rustok_product::CatalogService;
 use rustok_storage::StorageService;

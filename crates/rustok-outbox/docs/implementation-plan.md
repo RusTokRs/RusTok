@@ -6,11 +6,11 @@ manifest/doc contract.
 ## Execution checkpoint
 
 - Current phase: fba_write_policy_alignment
-- Last checkpoint: OutboxRelayPort использует canonical `rustok_core::ports` primitives без dependency cycle через `rustok-api`; relay control enforce-ит `PortCallPolicy::write()` через module-local policy helper, а relay-owned request/projection DTOs остались локальными.
+- Last checkpoint: `OutboxRelayPort` использует canonical `rustok_api::ports` primitives; outbox-specific Loco helper перенесён в owner crate под feature `loco-adapter`, поэтому dependency graph остаётся направленным и без цикла.
 - Next step: Расширить relay/backlog/DLQ evidence без долгой full-workspace компиляции и затем добавить targeted runtime contract/fallback smoke, когда компиляции снова разрешены.
 - Open blockers: None.
 - Hand-off notes for next agent: Сохранять read-only admin UI поверх module-owned transport facade; не переносить relay/runtime ownership в host UI.
-- Last updated at (UTC): 2026-06-22T00:00:00Z
+- Last updated at (UTC): 2026-07-01T00:00:00Z
 
 ## FFA/FBA status block
 
@@ -18,13 +18,13 @@ manifest/doc contract.
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence / notes:
-  - пакетный owner gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`: canonical `rustok_core::ports` write policy helper, deadline/idempotency error mapping, relay invocation до metrics projection и fallback/degraded parity; registry/manifest metadata исправлены с устаревшего `rustok_api::*` на фактический `rustok_core::ports::*`, статус остаётся `in_progress` до live relay execution;
+  - пакетный owner gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`: canonical `rustok_api::ports` write policy helper, deadline/idempotency error mapping, relay invocation до metrics projection и fallback/degraded parity; registry/manifest metadata переведены со старого `rustok_api::ports::*` на единственный `rustok_api::ports::*` contract, статус остаётся `in_progress` до live relay execution;
   - admin UI имеет явный FFA split: `admin/src/lib.rs` только wiring/re-export, `admin/src/core.rs` содержит Leptos-free DTO/view-model helpers, `admin/src/transport/` владеет native server-function facade, `admin/src/ui/leptos.rs` владеет Leptos rendering;
   - GraphQL/REST fallback не добавлялся в этом срезе, потому что legacy outbox admin surface был native-only read-only bootstrap; это temporary single-adapter state до появления headless parity requirement для operator UI;
   - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build), `node scripts/verify/verify-outbox-admin-boundary.mjs`, `node scripts/verify/verify-outbox-admin-boundary.test.mjs`;
   - fast evidence: `cargo check -p rustok-outbox-admin --lib` (25.04s, без full-workspace build);
   - compile-free FFA evidence: `npm run verify:outbox:admin-boundary` validates that UI uses only the module-owned transport facade, `core.rs` remains Leptos/server-function free, generated native server functions stay private to `transport/native_server_adapter.rs`, and host-provided `UiRouteContext.locale` remains the locale source;
-  - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with canonical `rustok_core::ports::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
+  - FBA provider slice: `crates/rustok-outbox/contracts/outbox-fba-registry.json` + `crates/rustok-outbox/src/ports.rs` declare `OutboxRelayPort` / `outbox.relay_control.v1` for relay worker control with canonical `rustok_api::ports::PortContext`/`PortError`, `PortCallPolicy::write()` deadline/idempotency semantics and static evidence packet `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` verified by `npm run verify:outbox:fba`; status remains below `boundary_ready` until executable runtime contract/fallback smoke lands.
 
 ## Область работ
 

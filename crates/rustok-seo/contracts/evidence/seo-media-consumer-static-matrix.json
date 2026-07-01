@@ -85,10 +85,12 @@
       ]
     },
     {
-      "name": "seo targets consume media descriptor alias only",
+      "name": "seo targets own an independent image descriptor",
       "path": "crates/rustok-seo-targets/src/lib.rs",
       "must_contain": [
-        "pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor",
+        "pub struct SeoTargetImageRecord",
+        "impl SeoTargetImageRecord",
+        "pub fn from_parts",
         "image_alt",
         "image_width",
         "image_height",

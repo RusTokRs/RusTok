@@ -41,9 +41,9 @@ pub fn build_registry() -> ModuleRegistry {
 #[cfg(test)]
 mod contract_tests {
     use super::{build_registry, ManifestManager};
+    use rustok_api::Permission;
+    use rustok_api::{Action, Resource};
     use rustok_auth::AUTH_USER_PERMISSIONS;
-    use rustok_core::permissions::{Action, Resource};
-    use rustok_core::Permission;
 
     const AUTH_README: &str = include_str!("../../../../crates/rustok-auth/README.md");
     const CACHE_README: &str = include_str!("../../../../crates/rustok-cache/README.md");

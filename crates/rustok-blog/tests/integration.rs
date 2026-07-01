@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::Permission;
 use rustok_blog::dto::CreateCommentInput;
 use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
@@ -16,7 +17,7 @@ use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
 use rustok_comments::{CommentsError, CommentsModule};
 use rustok_core::{
-    DomainEvent, EventTransport, MemoryTransport, MigrationSource, Permission, ReliabilityLevel,
+    DomainEvent, EventTransport, MemoryTransport, MigrationSource, ReliabilityLevel,
     SecurityContext, UserRole,
 };
 use rustok_events::EventEnvelope;

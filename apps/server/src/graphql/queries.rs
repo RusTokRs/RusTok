@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use chrono::{Duration, Utc};
-use rustok_core::{ModuleRegistry, Permission};
+use rustok_api::Permission;
+use rustok_core::ModuleRegistry;
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
@@ -1364,7 +1365,7 @@ impl RootQuery {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &rustok_core::Permission::USERS_READ,
+            &rustok_api::Permission::USERS_READ,
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -1401,7 +1402,7 @@ impl RootQuery {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &rustok_core::Permission::USERS_LIST,
+            &rustok_api::Permission::USERS_LIST,
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;

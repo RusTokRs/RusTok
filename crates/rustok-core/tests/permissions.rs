@@ -1,4 +1,4 @@
-use rustok_core::{Action, Permission, Resource};
+use rustok_api::{Action, Permission, Resource};
 use std::str::FromStr;
 
 #[test]

@@ -1,10 +1,10 @@
 use async_trait::async_trait;
+use rustok_api::Permission;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateOAuthAppCommand, CreateUserCommand,
     OAuthAdminMutationPort, OAuthAppMutationRecord, OAuthAppSecretResult, UpdateOAuthAppCommand,
     UpdateUserCommand, UserAdminMutationPort, UserMutationRecord,
 };
-use rustok_core::Permission;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
@@ -83,7 +83,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let locale = context
             .locale
             .as_deref()
-            .unwrap_or(rustok_core::PLATFORM_FALLBACK_LOCALE);
+            .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
         let prepared = FlexAttachedValuesService::prepare_create(
             &self.db,
             context.tenant_id,
@@ -174,7 +174,7 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let locale = context
             .locale
             .as_deref()
-            .unwrap_or(rustok_core::PLATFORM_FALLBACK_LOCALE);
+            .unwrap_or(rustok_api::PLATFORM_FALLBACK_LOCALE);
         let prepared = FlexAttachedValuesService::prepare_update(
             &self.db,
             context.tenant_id,

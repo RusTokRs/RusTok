@@ -16,11 +16,11 @@ struct PostTranslationUpsertInput {
     now: chrono::DateTime<chrono::Utc>,
 }
 
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
-    PLATFORM_FALLBACK_LOCALE,
 };
-use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
+use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
@@ -1459,10 +1459,11 @@ mod tests {
     use std::sync::Arc;
 
     use rustok_core::MigrationSource;
-    use rustok_core::{MemoryTransport, SecurityContext, UserRole};
+    use rustok_core::{SecurityContext, UserRole};
+    use rustok_outbox::{OutboxTransport, SysEventsMigration};
     use rustok_taxonomy::TaxonomyModule;
     use sea_orm::{ConnectOptions, Database, DatabaseConnection};
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     async fn setup_test_db() -> DatabaseConnection {
         let db_url = format!(
@@ -1481,6 +1482,10 @@ mod tests {
 
     async fn ensure_blog_schema(db: &DatabaseConnection) {
         let manager = SchemaManager::new(db);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
         for migration in TaxonomyModule.migrations() {
             migration
                 .up(&manager)
@@ -1542,8 +1547,7 @@ mod tests {
         let db = setup_test_db().await;
         ensure_blog_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let post_service = PostService::new(db.clone(), event_bus);
 
@@ -1601,8 +1605,7 @@ mod tests {
         let db = setup_test_db().await;
         ensure_blog_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let post_service = PostService::new(db.clone(), event_bus);
 
@@ -1688,8 +1691,7 @@ mod tests {
         let db = setup_test_db().await;
         ensure_blog_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let post_service = PostService::new(db.clone(), event_bus);
 
@@ -1784,8 +1786,7 @@ mod tests {
         let db = setup_test_db().await;
         ensure_blog_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
         let post_service = PostService::new(db.clone(), event_bus);
 

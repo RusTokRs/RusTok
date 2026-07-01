@@ -14,10 +14,10 @@ use serde_json::{Map, Value as JsonValue};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use rustok_core::{
-    build_locale_candidates,
-    field_schema::{CustomFieldsSchema, FlexError},
-    locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
+use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
+
+use rustok_api::{
+    build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
 };
 
 use crate::models::{

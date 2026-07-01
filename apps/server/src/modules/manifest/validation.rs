@@ -1,5 +1,5 @@
 use super::types::*;
-use rustok_core::normalize_locale_tag;
+use rustok_api::normalize_locale_tag;
 use semver::{Version, VersionReq};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

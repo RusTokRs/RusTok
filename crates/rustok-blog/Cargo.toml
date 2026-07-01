@@ -13,13 +13,13 @@ axum.workspace = true
 chrono.workspace = true
 loco-rs.workspace = true
 proptest = { workspace = true, optional = true }
-rustok-api = { workspace = true, features = ["loco-adapter"] }
+rustok-api = { workspace = true, features = ["server"] }
 rustok-channel.workspace = true
 rustok-comments = { workspace = true, features = ["server"] }
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
-rustok-outbox.workspace = true
+rustok-outbox = { workspace = true, features = ["loco-adapter"] }
 rustok-profiles.workspace = true
 rustok-seo-targets.workspace = true
 rustok-media.workspace = true

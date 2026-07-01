@@ -42,7 +42,7 @@
 
 - reads canonical routing substrate from `rustok-content`
 - reads page/blog/product/forum content from `rustok-pages`, `rustok-blog`, `rustok-product`, and `rustok-forum`
-- consumes `rustok-media::MediaImageDescriptor` as the typed image boundary for OG/Twitter/schema fallback
+- consumes media descriptors at runtime boundaries and maps them into the independent `rustok-seo-targets::SeoTargetImageRecord` DTO for OG/Twitter/schema fallback
 - consumes tenant/module settings from `rustok-tenant`
 - is mounted by `apps/server`, consumed by `apps/storefront`, and shared with `apps/next-frontend`
 - reuses host-provided `RequestContext.channel_slug` on REST/GraphQL/Leptos SSR paths so restricted forum topics only resolve SEO in the matching public channel

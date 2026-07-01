@@ -63,8 +63,8 @@ pub async fn update_customer(
 
 #[cfg(feature = "ssr")]
 fn ensure_permission(
-    permissions: &[rustok_core::Permission],
-    required: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
+    required: &[rustok_api::Permission],
     message: &str,
 ) -> Result<(), ServerFnError> {
     if !rustok_api::has_any_effective_permission(permissions, required) {
@@ -196,8 +196,8 @@ async fn load_customer_detail(
 async fn customer_bootstrap_native() -> Result<CustomerAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -234,8 +234,8 @@ async fn customer_list_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_customer::{CustomerService, ListCustomersInput};
 
         let app_ctx = expect_context::<AppContext>();
@@ -298,8 +298,8 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_customer::CustomerService;
         use rustok_profiles::ProfileService;
 
@@ -345,8 +345,8 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_customer::{CreateCustomerInput, CustomerService};
         use rustok_profiles::ProfileService;
 
@@ -414,8 +414,8 @@ async fn customer_update_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{AuthContext, TenantContext};
-        use rustok_core::Permission;
         use rustok_customer::{CustomerService, UpdateCustomerInput};
         use rustok_profiles::ProfileService;
 

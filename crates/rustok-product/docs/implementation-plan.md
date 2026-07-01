@@ -7,6 +7,7 @@
 
 - Current phase: product_admin_legacy_api_removed
 - Last checkpoint: Product admin GraphQL operations moved from legacy `admin/src/api.rs` to `admin/src/transport/graphql_adapter.rs`; `admin/src/transport.rs` remains the facade consumed by Leptos and the crate root no longer wires `mod api`.
+- Dependency evidence: product storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
 - Next step: Continue FFA-first sequencing only for small result/input/copy/state policy slices that reduce Leptos coupling, or move to parity/evidence hardening for the existing product admin native/GraphQL paths.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.

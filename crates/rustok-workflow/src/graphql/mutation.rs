@@ -1,6 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::graphql::require_module_enabled;
-use rustok_core::Permission;
+use rustok_api::Permission;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use std::sync::Arc;

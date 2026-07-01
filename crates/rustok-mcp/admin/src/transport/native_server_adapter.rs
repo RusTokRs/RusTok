@@ -2,13 +2,13 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{
+use crate::core::{
     ApplyMcpScaffoldDraftPayload, CreateMcpClientPayload, McpAuditEventPayload,
     McpClientDetailsPayload, McpClientPayload, McpScaffoldDraftPayload, McpTokenSecretPayload,
     RotateMcpTokenPayload, StageMcpScaffoldDraftPayload, UpdateMcpPolicyPayload,
 };
 #[cfg(feature = "ssr")]
-use crate::model::{McpPolicyPayload, McpTokenPayload};
+use crate::core::{McpPolicyPayload, McpTokenPayload};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -396,7 +396,7 @@ async fn mcp_native_context(
 
 #[cfg(feature = "ssr")]
 fn ensure_mcp_manage(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> {
-    if rustok_api::has_effective_permission(&auth.permissions, &rustok_core::Permission::MCP_MANAGE)
+    if rustok_api::has_effective_permission(&auth.permissions, &rustok_api::Permission::MCP_MANAGE)
     {
         Ok(())
     } else {
@@ -406,10 +406,10 @@ fn ensure_mcp_manage(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError
 
 #[cfg(feature = "ssr")]
 fn ensure_mcp_read(auth: &rustok_api::AuthContext) -> Result<(), ServerFnError> {
-    if rustok_api::has_effective_permission(&auth.permissions, &rustok_core::Permission::MCP_READ)
+    if rustok_api::has_effective_permission(&auth.permissions, &rustok_api::Permission::MCP_READ)
         || rustok_api::has_effective_permission(
             &auth.permissions,
-            &rustok_core::Permission::MCP_MANAGE,
+            &rustok_api::Permission::MCP_MANAGE,
         )
     {
         Ok(())

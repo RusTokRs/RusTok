@@ -1,7 +1,8 @@
 use async_graphql::{
     dataloader::DataLoader, ComplexObject, Context, Enum, InputObject, Result, SimpleObject,
 };
-use rustok_core::{Permission, UserRole, UserStatus};
+use rustok_api::Permission;
+use rustok_core::{UserRole, UserStatus};
 use std::str::FromStr;
 use uuid::Uuid;
 

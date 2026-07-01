@@ -47,7 +47,7 @@ impl BlogQuery {
         let post = match service
             .get_post_with_locale_fallback(
                 tenant_id,
-                auth_context_to_security(ctx),
+                request_security_context(ctx),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -106,7 +106,7 @@ impl BlogQuery {
         let post = service
             .get_post_by_slug_with_locale_fallback(
                 tenant_id,
-                auth_context_to_security(ctx),
+                request_security_context(ctx),
                 &locale,
                 &slug,
                 Some(tenant.default_locale.as_str()),
@@ -181,7 +181,7 @@ impl BlogQuery {
         let result = service
             .list_posts_with_locale_fallback(
                 tenant_id,
-                auth_context_to_security(ctx),
+                request_security_context(ctx),
                 crate::PostListQuery {
                     status: filter.status.map(Into::into),
                     category_id: None,
@@ -238,10 +238,15 @@ impl BlogQuery {
     }
 }
 
-fn auth_context_to_security(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data::<AuthContext>()
-        .map(|auth| auth.security_context())
-        .unwrap_or_else(|_| SecurityContext::system())
+fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
+    ctx.data_opt::<AuthContext>()
+        .map(|auth| {
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            )
+        })
+        .unwrap_or_else(SecurityContext::public_read)
 }
 
 fn is_public_request(ctx: &Context<'_>) -> bool {

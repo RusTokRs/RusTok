@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_current_user, use_tenant};
 use leptos_router::components::A;
@@ -7,26 +5,10 @@ use leptos_router::hooks::{use_location, use_query_map};
 
 use crate::app::modules::module_navigation_entries;
 use crate::app::providers::enabled_modules::use_enabled_modules;
+use crate::widgets::app_shell::core::{
+    build_module_nav_groups, href_is_active, module_group_icon, NavChild,
+};
 use crate::{t_string, use_i18n};
-
-#[derive(Clone)]
-struct NavChild {
-    href: String,
-    label: String,
-}
-
-#[derive(Clone)]
-struct ModuleNavGroup {
-    key: &'static str,
-    items: Vec<ModuleNavItem>,
-}
-
-#[derive(Clone)]
-struct ModuleNavItem {
-    label: String,
-    order: usize,
-    children: Vec<NavChild>,
-}
 
 #[component]
 pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
@@ -37,57 +19,12 @@ pub fn Sidebar(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
 
     let module_nav_groups = Signal::derive(move || {
         let enabled = enabled_modules.get();
-        let mut grouped = BTreeMap::<&'static str, Vec<ModuleNavItem>>::new();
-
-        for entry in module_navigation_entries()
-            .iter()
-            .filter(|entry| enabled.contains(entry.module_slug))
-        {
-            let mut children = vec![NavChild {
-                href: format!("/modules/{}", entry.route_segment),
-                label: t_string!(i18n, app.nav.overview).to_string(),
-            }];
-
-            children.extend(entry.child_pages.iter().map(|child| NavChild {
-                href: format!("/modules/{}/{}", entry.route_segment, child.subpath),
-                label: child.nav_label.to_string(),
-            }));
-
-            if entry.has_settings {
-                children.push(NavChild {
-                    href: format!("/modules?module_slug={}", entry.module_slug),
-                    label: format!("{} {}", entry.nav_label, t_string!(i18n, app.nav.settings)),
-                });
-            }
-
-            grouped
-                .entry(entry.nav_group)
-                .or_default()
-                .push(ModuleNavItem {
-                    label: entry.nav_label.to_string(),
-                    order: entry.nav_order,
-                    children,
-                });
-        }
-
-        let mut groups = grouped
-            .into_iter()
-            .map(|(key, mut items)| {
-                items.sort_by(|left, right| {
-                    left.order
-                        .cmp(&right.order)
-                        .then_with(|| left.label.cmp(&right.label))
-                });
-                ModuleNavGroup { key, items }
-            })
-            .collect::<Vec<_>>();
-
-        groups.sort_by(|left, right| {
-            module_group_order(left.key)
-                .cmp(&module_group_order(right.key))
-                .then_with(|| left.key.cmp(right.key))
-        });
-        groups
+        build_module_nav_groups(
+            module_navigation_entries(),
+            &enabled,
+            t_string!(i18n, app.nav.overview).as_ref(),
+            t_string!(i18n, app.nav.settings).as_ref(),
+        )
     });
 
     view! {
@@ -406,33 +343,6 @@ fn set_expanded(expanded: RwSignal<bool>, next: bool) {
     expanded.set(next);
 }
 
-fn href_is_active(path: &str, module_query: Option<&str>, href: &str) -> bool {
-    if let Some(module_slug) = href.strip_prefix("/modules?module_slug=") {
-        return path == "/modules" && module_query == Some(module_slug);
-    }
-
-    if href == "/dashboard" {
-        return path == "/dashboard" || path == "/";
-    }
-
-    if href == "/modules" {
-        return path == "/modules" && module_query.is_none();
-    }
-
-    path == href || path.starts_with(&format!("{}/", href.trim_end_matches('/')))
-}
-
-fn module_group_order(group: &str) -> usize {
-    match group {
-        "Content" => 10,
-        "Commerce" => 20,
-        "Runtime" => 30,
-        "Governance" => 40,
-        "Automation" => 50,
-        _ => 90,
-    }
-}
-
 fn module_group_label(group: &str) -> String {
     let i18n = use_i18n();
 
@@ -443,16 +353,5 @@ fn module_group_label(group: &str) -> String {
         "Governance" => t_string!(i18n, app.nav.group.governance).to_string(),
         "Automation" => t_string!(i18n, app.nav.group.automation).to_string(),
         _ => t_string!(i18n, app.nav.group.other).to_string(),
-    }
-}
-
-fn module_group_icon(group: &str) -> &'static str {
-    match group {
-        "Content" => "content",
-        "Commerce" => "commerce",
-        "Runtime" => "runtime",
-        "Governance" => "lock",
-        "Automation" => "activity",
-        _ => "box",
     }
 }

@@ -4,8 +4,8 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
+use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
-use rustok_core::Permission;
 use rustok_telemetry::metrics;
 use serde::Deserialize;
 use std::time::Instant;
@@ -61,7 +61,10 @@ pub async fn list_categories(
     let (categories, _) = service
         .list_paginated_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             &locale,
             pagination.page,
             pagination.limit(),
@@ -124,7 +127,10 @@ pub async fn get_category(
     let category = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             id,
             &locale,
             Some(tenant.default_locale.as_str()),
@@ -160,7 +166,14 @@ pub async fn create_category(
 
     let service = CategoryService::new(ctx.db.clone());
     let category = service
-        .create(tenant.id, auth.security_context(), input)
+        .create(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok((StatusCode::CREATED, Json(category)))
@@ -194,7 +207,15 @@ pub async fn update_category(
 
     let service = CategoryService::new(ctx.db.clone());
     let category = service
-        .update(tenant.id, id, auth.security_context(), input)
+        .update(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(category))
@@ -226,7 +247,14 @@ pub async fn delete_category(
 
     let service = CategoryService::new(ctx.db.clone());
     service
-        .delete(tenant.id, id, auth.security_context())
+        .delete(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -257,14 +285,24 @@ pub async fn subscribe_category(
     )?;
 
     SubscriptionService::new(ctx.db.clone())
-        .set_category_subscription(tenant.id, id, auth.security_context())
+        .set_category_subscription(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let category = CategoryService::new(ctx.db.clone())
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -299,14 +337,24 @@ pub async fn unsubscribe_category(
     )?;
 
     SubscriptionService::new(ctx.db.clone())
-        .clear_category_subscription(tenant.id, id, auth.security_context())
+        .clear_category_subscription(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let category = CategoryService::new(ctx.db.clone())
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),

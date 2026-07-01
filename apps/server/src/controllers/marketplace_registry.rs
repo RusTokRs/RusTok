@@ -2050,7 +2050,7 @@ fn validate_publish_request_payload(
             "Registry publish request must include module.crate_name".to_string(),
         ));
     }
-    if rustok_core::normalize_locale_tag(&request.module.default_locale).is_none() {
+    if rustok_api::normalize_locale_tag(&request.module.default_locale).is_none() {
         return Err(Error::BadRequest(
             "Registry publish request must include module.default_locale as a valid locale tag"
                 .to_string(),

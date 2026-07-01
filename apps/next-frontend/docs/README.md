@@ -6,6 +6,8 @@
 
 `apps/next-frontend` является Next.js storefront host для RusToK. Он даёт React/Next storefront path, работает параллельно с `apps/storefront` и должен сохранять parity с Leptos storefront на уровне transport/auth/i18n/module contracts.
 
+FFA classification: `apps/next-frontend` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять Next storefront route/context/transport parity без переноса module-specific storefront workflows в host.
+
 ## Границы ответственности
 
 - владеть Next.js storefront host и его route composition;

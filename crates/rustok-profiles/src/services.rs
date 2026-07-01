@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rustok_core::normalize_locale_tag;
+use rustok_api::normalize_locale_tag;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,

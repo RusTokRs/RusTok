@@ -32,7 +32,7 @@ impl SettingsMutation {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &rustok_core::Permission::SETTINGS_MANAGE,
+            &rustok_api::Permission::SETTINGS_MANAGE,
         )
         .await
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;

@@ -1,5 +1,6 @@
+use rustok_api::{Action, Permission, Resource};
 use rustok_content::ContentModule;
-use rustok_core::{Action, MigrationSource, Permission, Resource, RusToKModule};
+use rustok_core::{MigrationSource, RusToKModule};
 
 #[test]
 fn module_metadata() {

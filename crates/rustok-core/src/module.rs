@@ -10,7 +10,7 @@ use crate::migrations::MigrationDependencyDescriptor;
 use serde_json::Value;
 
 use crate::events::EventHandler;
-use crate::permissions::Permission;
+use rustok_api::Permission;
 
 pub struct ModuleContext<'a> {
     pub db: &'a DatabaseConnection,

@@ -9,7 +9,7 @@ description.workspace = true
 async-graphql.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
-rustok-outbox.workspace = true
+rustok-outbox = { workspace = true, features = ["loco-adapter"] }
 rustok-commerce-foundation.workspace = true
 rustok-cart.workspace = true
 rustok-customer.workspace = true
@@ -27,7 +27,7 @@ sea-orm.workspace = true
 sea-orm-migration.workspace = true
 chrono.workspace = true
 loco-rs.workspace = true
-rustok-api = { workspace = true, features = ["loco-adapter"] }
+rustok-api = { workspace = true, features = ["server"] }
 rustok-channel.workspace = true
 rustok-telemetry.workspace = true
 serde.workspace = true

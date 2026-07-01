@@ -11,10 +11,10 @@
 pub mod context;
 #[cfg(feature = "server")]
 pub mod graphql;
-#[cfg(feature = "loco-adapter")]
-pub mod loco;
+pub mod locale;
 pub mod manifest_hash;
 pub mod module_registry_contract;
+pub mod permissions;
 pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
@@ -24,15 +24,21 @@ pub mod write_path_feedback;
 
 #[cfg(feature = "server")]
 pub use context::{
-    has_any_effective_permission, has_effective_permission, infer_user_role_from_permissions,
-    scope_matches, AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
-    OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
-    TenantContextExtension, TenantError,
+    has_any_effective_permission, has_effective_permission, scope_matches, AuthContext,
+    AuthContextExtension, ChannelContextExt, ChannelContextExtension, OptionalAuthContext,
+    OptionalChannel, OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension,
+    TenantError,
 };
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
     ChannelResolutionTraceStep,
 };
+pub use locale::{
+    build_locale_candidates, extract_locale_tag_from_header, is_valid_locale_tag,
+    locale_primary_language, locale_tags_match, normalize_locale_tag, push_locale_candidate,
+    PLATFORM_FALLBACK_LOCALE,
+};
+pub use permissions::{Action, Permission, Resource};
 pub use ports::{
     PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
     PortOperationKind,

@@ -4,7 +4,9 @@ use sea_orm::{
     sea_query::OnConflict, ActiveValue, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
 
-use rustok_core::{Permission, Rbac, UserRole};
+use rustok_core::{Rbac, UserRole};
+
+use rustok_api::Permission;
 use rustok_telemetry::metrics;
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles};

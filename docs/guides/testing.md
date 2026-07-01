@@ -22,6 +22,17 @@ These guidelines capture what we should take from the shared rules to keep tests
 2. **Integration**: uses DB/services, but no external network. Validate migrations, repositories, and service wiring.  
 3. **Contract/Golden**: a small set of end-to-end checks for the most critical business flows and API compatibility.  
 
+## Browser E2E
+
+- Next.js browser tests live inside the owning app and use the Node Playwright runner:
+  - `apps/next-admin`: `npm --prefix apps/next-admin run test:e2e`
+  - `apps/next-frontend`: `npm --prefix apps/next-frontend run test:e2e`
+- Rust/Leptos browser tests live in the workspace crate `tests/e2e-rust` and use `playwright-rs`:
+  - `cargo test -p rustok-e2e-rust --test leptos_admin_smoke -- --nocapture`
+- Root orchestration uses `npm run test:e2e`, which runs the Next admin, Next storefront, and Rust/Leptos smoke suites.
+- The Rust/Leptos suite expects a live Leptos admin URL in `RUSTOK_LEPTOS_ADMIN_E2E_URL`; when unset it uses `http://127.0.0.1:8080`.
+- Keep browser tests as owner-owned surface checks. A module smoke may navigate through a host route, but assertions must target the module's own UI contract and must not require another module's private UI.
+
 ## Async tests
 - Avoid `sleep()` as a synchronization mechanism.  
 - Prefer polling with timeouts (retry until state/event observed).  
@@ -34,6 +45,11 @@ These guidelines capture what we should take from the shared rules to keep tests
 ## Mocking boundaries
 - Mock **ports** (e.g., `PricingPort`, `InventoryPort`, `TaxPort`) when unit testing services.  
 - Avoid mocking internal persistence layers (e.g., SeaORM models) unless the test explicitly targets that integration boundary.  
+
+## Public read authority
+- Public/storefront read tests must exercise `SecurityContext::public_read()` or a missing-auth public GraphQL request, not `SecurityContext::system()`.
+- Coverage for anonymous reads must assert the same published/channel-visible filters as authenticated reads.
+- `SecurityContext::system()` fixtures are allowed only in test-only trusted runtime scenarios, not as a public read shortcut.
 
 > **Статус документа:** Актуальный. Расширенные примеры — в [`docs/guides/testing-integration.md`](./testing-integration.md) и [`docs/guides/testing-property.md`](./testing-property.md).
 

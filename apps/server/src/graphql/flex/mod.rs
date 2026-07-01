@@ -2,8 +2,8 @@
 #![allow(clippy::items_after_test_module)]
 
 use async_graphql::{Context, FieldError, Result};
+use rustok_api::Permission;
 use rustok_core::field_schema::is_valid_field_key;
-use rustok_core::Permission;
 
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;

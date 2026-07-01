@@ -1,7 +1,7 @@
-use crate::locale::locale_primary_language;
 use crate::model::{
     SeoControlPlaneWidgetStateKind, SeoEventDeliveryStatus, SeoRecommendation, SeoRemediationAction,
 };
+use rustok_api::locale_primary_language;
 
 pub(crate) fn tr(locale: Option<&str>, en: &str, ru: &str) -> String {
     if is_russian(locale) {

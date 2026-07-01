@@ -1,5 +1,5 @@
 use crate::services::permission_normalization::normalize_permissions;
-use rustok_core::{Action, Permission};
+use rustok_api::{Action, Permission};
 use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,7 +149,7 @@ mod tests {
         check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
         has_effective_permission_in_set, missing_permissions, DeniedReasonKind,
     };
-    use rustok_core::{Action, Permission, Resource};
+    use rustok_api::{Action, Permission, Resource};
 
     #[test]
     fn effective_permission_supports_manage_wildcard() {

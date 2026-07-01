@@ -156,7 +156,7 @@ impl CartService {
         let locale = match cart
             .locale_code
             .as_deref()
-            .and_then(rustok_core::normalize_locale_tag)
+            .and_then(rustok_api::normalize_locale_tag)
         {
             Some(locale) => locale,
             None => load_tenant_default_locale(&txn, tenant_id).await?,

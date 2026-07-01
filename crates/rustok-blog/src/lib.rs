@@ -40,7 +40,7 @@
 //! ```
 
 use async_trait::async_trait;
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
@@ -52,6 +52,7 @@ pub mod error;
 pub mod graphql;
 pub mod locale;
 pub mod migrations;
+pub mod openapi;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;
@@ -129,7 +130,7 @@ impl MigrationSource for BlogModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_core::permissions::{Action, Resource};
+    use rustok_api::{Action, Resource};
 
     #[test]
     fn module_metadata() {

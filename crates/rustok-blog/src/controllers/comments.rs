@@ -3,10 +3,9 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
-use rustok_api::{
-    loco::transactional_event_bus_from_context, AuthContext, RequestContext, TenantContext,
-};
-use rustok_core::Permission;
+use rustok_api::Permission;
+use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use uuid::Uuid;
 
 use super::posts::ensure_blog_permission;
@@ -56,7 +55,10 @@ pub async fn moderate_comment(
         .moderate_comment(
             tenant.id,
             id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             input,
             Some(tenant.default_locale.as_str()),
         )

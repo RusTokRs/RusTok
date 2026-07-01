@@ -68,7 +68,10 @@ async fn comments_threads_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
-        let security = auth.security_context();
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
         let (items, total) = service
             .list_threads(
                 tenant.id,
@@ -112,7 +115,10 @@ async fn comments_thread_detail_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
-        let security = auth.security_context();
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
         let thread_id = uuid::Uuid::parse_str(&thread_id).map_err(ServerFnError::new)?;
         service
             .get_thread_detail(
@@ -154,7 +160,10 @@ async fn comments_set_thread_status_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
-        let security = auth.security_context();
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
         let thread_id = uuid::Uuid::parse_str(&thread_id).map_err(ServerFnError::new)?;
         service
             .set_thread_status(tenant.id, security, thread_id, status)
@@ -189,7 +198,10 @@ async fn comments_set_comment_status_native(
             .await
             .map_err(ServerFnError::new)?;
         let service = rustok_comments::CommentsService::new(app_ctx.db.clone());
-        let security = auth.security_context();
+        let security = rustok_core::SecurityContext::from_permission_snapshot(
+            Some(auth.user_id),
+            &auth.permissions,
+        );
         let comment_id = uuid::Uuid::parse_str(&comment_id).map_err(ServerFnError::new)?;
         service
             .set_comment_status(

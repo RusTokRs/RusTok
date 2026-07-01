@@ -1,6 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::app::AppContext;
-use rustok_core::{Permission, Rbac, UserRole};
+use rustok_api::Permission;
+use rustok_core::{Rbac, UserRole};
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;

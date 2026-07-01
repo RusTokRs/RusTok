@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::{AdminQueryKey, UiRouteContext};
+use rustok_api::{locale_tags_match, AdminQueryKey, UiRouteContext};
 
 use crate::core::{
     apply_variant_quantity_update, apply_variant_reservation_release_update,
@@ -23,12 +23,6 @@ where
     T: 'static,
 {
     LocalResource::new(move || fetcher(source()))
-}
-
-fn locale_tags_match(left: &str, right: &str) -> bool {
-    left.trim()
-        .replace('_', "-")
-        .eq_ignore_ascii_case(&right.trim().replace('_', "-"))
 }
 
 #[component]

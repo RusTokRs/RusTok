@@ -79,7 +79,7 @@ pub async fn read_storefront_order_refunds(
         .get_customer_by_user(tenant.id, auth.user_id)
         .await
         .map_err(runtime_error)?;
-    let event_bus = rustok_api::loco::transactional_event_bus_from_context(app_ctx);
+    let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(app_ctx);
     let order = match rustok_order::OrderService::new(app_ctx.db.clone(), event_bus)
         .get_order_with_locale_fallback(
             tenant.id,
@@ -265,7 +265,7 @@ pub async fn complete_storefront_checkout(
         .map(|auth| auth.user_id)
         .unwrap_or_else(Uuid::nil);
 
-    let event_bus = rustok_api::loco::transactional_event_bus_from_context(app_ctx);
+    let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(app_ctx);
     crate::CheckoutService::new(
         app_ctx.db.clone(),
         event_bus.clone(),
@@ -372,7 +372,7 @@ async fn reprice_storefront_cart_line_items(
 
     let pricing_service = rustok_pricing::PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
     let channel_id = cart
         .channel_id

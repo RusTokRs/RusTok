@@ -47,10 +47,11 @@
   ],
   "source_assertions": [
     {
-      "name": "typed image alias",
+      "name": "independent typed image boundary",
       "path": "crates/rustok-seo-targets/src/lib.rs",
       "markers": [
-        "pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor",
+        "pub struct SeoTargetImageRecord",
+        "impl SeoTargetImageRecord",
         "pub struct SeoTargetOpenGraphRecord",
         "images: Vec<SeoTargetImageRecord>"
       ]

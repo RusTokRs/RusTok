@@ -1,18 +1,25 @@
 use rustok_core::{MigrationSource, SecurityContext};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::dto::{
     BlockType, CreateBlockInput, CreatePageInput, PageBodyInput, PageTranslationInput,
     UpdatePageInput,
 };
 use rustok_pages::services::PageService;
 use rustok_pages::PagesModule;
-use rustok_test_utils::{db::setup_test_db, helpers::admin_context, mock_transactional_event_bus};
-use sea_orm_migration::SchemaManager;
+use rustok_test_utils::{db::setup_test_db, helpers::admin_context};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use std::sync::Arc;
 use uuid::Uuid;
 
 async fn setup() -> (PageService, Uuid, SecurityContext) {
     let db = setup_test_db().await;
     let module = PagesModule;
     let schema = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema)
+        .await
+        .expect("failed to apply outbox migrations");
     for migration in module.migrations() {
         migration
             .up(&schema)
@@ -20,12 +27,58 @@ async fn setup() -> (PageService, Uuid, SecurityContext) {
             .expect("failed to apply pages migrations");
     }
 
-    let event_bus = mock_transactional_event_bus();
-    (
-        PageService::new(db, event_bus),
-        Uuid::new_v4(),
-        admin_context(),
-    )
+    let tenant_id = Uuid::new_v4();
+    ensure_tenant_modules_table(&db).await;
+    enable_pages_builder_module(&db, tenant_id).await;
+
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    (PageService::new(db, event_bus), tenant_id, admin_context())
+}
+
+async fn ensure_tenant_modules_table(db: &DatabaseConnection) {
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
+        "CREATE TABLE IF NOT EXISTS tenant_modules (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create tenant_modules table");
+}
+
+async fn enable_pages_builder_module(db: &DatabaseConnection, tenant_id: Uuid) {
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        r#"
+        INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)
+        VALUES (?, ?, 'pages', TRUE, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        "#,
+        [
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            serde_json::json!({
+                "builder_enabled": true,
+                "features": {
+                    "builder": {
+                        "enabled": true,
+                        "preview": true,
+                        "properties": true,
+                        "publish": true
+                    }
+                }
+            })
+            .into(),
+        ],
+    ))
+    .await
+    .expect("failed to seed pages builder module settings");
 }
 
 fn grapes_project(locale: &str, label: &str) -> serde_json::Value {

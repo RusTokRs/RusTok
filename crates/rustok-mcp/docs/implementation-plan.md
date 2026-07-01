@@ -15,11 +15,13 @@ identity/audit и Alloy-related control plane до platform-grade уровня.
 
 ## FFA/FBA status
 
-- Статус FFA: `in_progress`.
-- Статус FBA: `in_progress`.
+- Structural shape: `core_transport_ui`
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
 - Подтверждения:
   - Next owner surface `apps/next-admin/packages/rustok-mcp` владеет UI ревью MCP/Alloy scaffold drafts, audit events, clients/policies/tokens и management mutations; host route только монтирует `McpAdminPage`.
-  - Leptos FFA surface `crates/rustok-mcp/admin` содержит `model`, `transport::{native_server_adapter,graphql_adapter}` и явный `ui` adapter.
+  - Leptos FFA surface `crates/rustok-mcp/admin` содержит Leptos-free `core.rs`, `transport::{native_server_adapter,graphql_adapter}` и явный `ui/leptos.rs` adapter.
   - Leptos host `apps/admin` подключает owner crate через тонкий маршрут `/mcp`; CSR, hydrate WASM и SSR feature profiles компилируются.
   - Native `#[server]` functions являются основным внутренним data layer Leptos; mutations получают `McpManagementMutationRuntime` из `ModuleRuntimeExtensions`, а server provider делегирует client/policy/token/scaffold writes `McpManagementService`. GraphQL operation documents параллельно остаются в `transport/graphql_adapter.rs`.
   - Boundary guardrail `scripts/verify/verify-mcp-admin-boundary.mjs` проверяет owner placement, требует stage/apply delegation через mutation port, запрещает scaffold persistence/audit SQL в UI adapter и запрещает MCP draft UI внутри `rustok-ai`.

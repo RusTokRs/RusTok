@@ -1,4 +1,4 @@
-use rustok_core::{Action, Permission};
+use rustok_api::{Action, Permission};
 use std::collections::HashSet;
 use std::fmt::Write;
 
@@ -85,7 +85,7 @@ mod tests {
         build_tenant_policy_csv, build_tenant_policy_enforcer, default_tenant_policy_model,
         resolved_permissions_subject,
     };
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     #[test]
     fn model_contains_core_sections() {

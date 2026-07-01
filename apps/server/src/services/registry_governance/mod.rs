@@ -2,7 +2,7 @@
 
 use anyhow::{anyhow, Context};
 use chrono::{Duration, Utc};
-use rustok_core::{
+use rustok_api::{
     build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
 };
 use rustok_storage::StorageService;

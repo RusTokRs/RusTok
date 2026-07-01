@@ -5,7 +5,7 @@ mod types;
 use async_graphql::{Context, FieldError, Result};
 use loco_rs::app::AppContext;
 use rustok_api::{graphql::GraphQLError, has_any_effective_permission, AuthContext, TenantContext};
-use rustok_core::{permissions::Action, Permission, Resource};
+use rustok_api::{Action, Permission, Resource};
 
 pub use mutation::AlloyMutation;
 pub use query::{AlloyQuery, EXECUTION_HISTORY_GRAPHQL_FIELDS};

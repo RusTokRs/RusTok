@@ -1,4 +1,5 @@
 use rustok_core::{MigrationSource, SecurityContext};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::dto::{
     BlockType, CreateBlockInput, CreateMenuInput, CreatePageInput, ListPagesFilter, MenuLocation,
     PageTranslationInput, UpdatePageInput,
@@ -9,15 +10,19 @@ use rustok_pages::PagesModule;
 use rustok_test_utils::{
     db::setup_test_db,
     helpers::{admin_context, customer_context, manager_context},
-    mock_transactional_event_bus,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use std::sync::Arc;
 use uuid::Uuid;
 
 async fn setup() -> (PageService, BlockService, MenuService, Uuid) {
     let db = setup_test_db().await;
     let module = PagesModule;
     let schema = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema)
+        .await
+        .expect("failed to apply outbox migrations");
     for migration in module.migrations() {
         migration
             .up(&schema)
@@ -25,7 +30,7 @@ async fn setup() -> (PageService, BlockService, MenuService, Uuid) {
             .expect("failed to apply pages migrations");
     }
 
-    let event_bus = mock_transactional_event_bus();
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (
         PageService::new(db.clone(), event_bus.clone()),
         BlockService::new(db.clone(), event_bus.clone()),

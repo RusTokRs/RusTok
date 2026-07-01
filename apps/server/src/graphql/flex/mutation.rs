@@ -6,7 +6,9 @@
 use async_graphql::{Context, Object, Result};
 use uuid::Uuid;
 
-use rustok_core::{field_schema::FieldType, Permission};
+use rustok_core::field_schema::FieldType;
+
+use rustok_api::Permission;
 use rustok_events::EventEnvelope;
 
 use crate::context::TenantContext;
@@ -442,7 +444,7 @@ mod tests {
         storage::{self, Storage},
         tests_cfg::config::test_config,
     };
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_test_utils::db::setup_test_db;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Set};
     use sea_orm_migration::SchemaManager;

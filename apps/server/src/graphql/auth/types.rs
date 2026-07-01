@@ -1,5 +1,5 @@
 use async_graphql::{InputObject, SimpleObject};
-use rustok_core::Permission;
+use rustok_api::Permission;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, InputObject)]

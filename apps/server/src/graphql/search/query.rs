@@ -516,7 +516,7 @@ async fn ensure_settings_read_permission(ctx: &Context<'_>) -> Result<()> {
         &app_ctx.db,
         &tenant.id,
         &auth.user_id,
-        &rustok_core::Permission::SETTINGS_READ,
+        &rustok_api::Permission::SETTINGS_READ,
     )
     .await
     .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;

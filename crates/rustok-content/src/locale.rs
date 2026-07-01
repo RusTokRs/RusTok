@@ -1,4 +1,4 @@
-use rustok_core::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 
 pub struct ResolvedLocale<'a, T> {
     pub item: Option<&'a T>,

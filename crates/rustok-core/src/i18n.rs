@@ -12,7 +12,7 @@
 /// 3. For Phase 2+ and pluralization support, migrate to Fluent `.ftl` files.
 ///
 /// Supported locales
-use crate::locale::normalize_locale_tag;
+use rustok_api::extract_locale_tag_from_header;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Locale {
@@ -309,37 +309,6 @@ pub fn translate(locale: Locale, key: &str) -> String {
         .or_else(|| translate_inner(Locale::En, key))
         .unwrap_or(key)
         .to_string()
-}
-
-pub fn extract_locale_tag_from_header(accept_language: Option<&str>) -> Option<String> {
-    let header = accept_language?;
-    let mut candidates = header
-        .split(',')
-        .filter_map(|entry| {
-            let mut parts = entry.trim().split(';');
-            let locale = normalize_locale_tag(parts.next()?);
-            let quality = parts
-                .find_map(|part| {
-                    let (key, value) = part.trim().split_once('=')?;
-                    (key.eq_ignore_ascii_case("q")).then_some(value)
-                })
-                .and_then(|value| value.parse::<f32>().ok())
-                .unwrap_or(1.0);
-            locale.map(|locale| (locale, quality))
-        })
-        .collect::<Vec<_>>();
-
-    candidates.sort_by(|left, right| {
-        right
-            .1
-            .partial_cmp(&left.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    candidates
-        .into_iter()
-        .find(|(_, quality)| *quality > 0.0)
-        .map(|(locale, _)| locale)
 }
 
 /// Extract the best `Locale` from an `Accept-Language` HTTP header value.

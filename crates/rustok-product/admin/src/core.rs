@@ -1,16 +1,10 @@
-use rustok_api::AdminQueryKey;
+use rustok_api::{locale_tags_match, AdminQueryKey};
 
 use crate::i18n::t;
 use crate::model::{
     ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductListItem,
     ProductPricingDetail, ProductTranslation, ShippingProfile, ShippingProfileList,
 };
-
-fn locale_tags_match(left: &str, right: &str) -> bool {
-    left.trim()
-        .replace('_', "-")
-        .eq_ignore_ascii_case(&right.trim().replace('_', "-"))
-}
 
 pub(crate) fn translation_for_locale(
     translations: &[ProductTranslation],

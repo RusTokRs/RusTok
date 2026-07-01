@@ -140,7 +140,7 @@ fn server_error(message: impl Into<String>) -> ServerFnError {
 
 #[cfg(feature = "ssr")]
 async fn workflow_server_context(
-    required: &[rustok_core::Permission],
+    required: &[rustok_api::Permission],
     permission_error: &'static str,
 ) -> Result<
     (
@@ -365,8 +365,8 @@ async fn list_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnError> 
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -400,8 +400,8 @@ async fn workflow_native(id: String) -> Result<Option<WorkflowDetail>, ServerFnE
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -443,8 +443,8 @@ async fn workflow_executions_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -535,7 +535,7 @@ pub async fn fetch_workflow_executions(
 async fn create_workflow_native(input: CreateWorkflowInput) -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_CREATE], "workflows:create required")
@@ -569,7 +569,7 @@ async fn create_workflow_native(input: CreateWorkflowInput) -> Result<String, Se
 async fn delete_workflow_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, _auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_DELETE], "workflows:delete required")
@@ -594,7 +594,7 @@ async fn delete_workflow_native(id: String) -> Result<(), ServerFnError> {
 async fn activate_workflow_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
@@ -627,7 +627,7 @@ async fn activate_workflow_native(id: String) -> Result<(), ServerFnError> {
 async fn pause_workflow_native(id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
@@ -663,7 +663,7 @@ async fn add_step_native(
 ) -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, _auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
@@ -701,7 +701,7 @@ async fn add_step_native(
 async fn delete_step_native(workflow_id: String, step_id: String) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, _auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")
@@ -966,7 +966,7 @@ async fn create_from_template_native(
 ) -> Result<String, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_CREATE], "workflows:create required")
@@ -1018,8 +1018,8 @@ async fn workflow_versions_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -1064,7 +1064,7 @@ async fn workflow_versions_native(
 async fn restore_version_native(workflow_id: String, version: i32) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_core::Permission;
+        use rustok_api::Permission;
 
         let (db, auth, tenant) =
             workflow_server_context(&[Permission::WORKFLOWS_UPDATE], "workflows:update required")

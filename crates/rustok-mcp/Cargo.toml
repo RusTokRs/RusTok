@@ -7,6 +7,7 @@ license.workspace = true
 description = "MCP adapter server for RusToK modules"
 
 [dependencies]
+rustok-api.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 rmcp = { version = "2.0.0", features = ["macros", "server", "transport-io"] }

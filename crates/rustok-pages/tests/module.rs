@@ -1,4 +1,4 @@
-use rustok_core::permissions::{Action, Resource};
+use rustok_api::{Action, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use rustok_pages::PagesModule;
 

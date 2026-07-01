@@ -1,7 +1,7 @@
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_core::SecurityContext;
-use rustok_media::MediaImageDescriptor;
+use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     builtin_slug, populate_image_template_fields, schema, SeoBulkSummaryRecord,
     SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord, SeoTargetAlternateRoute,
@@ -606,12 +606,12 @@ fn map_topic_response(topic: TopicResponse) -> SeoLoadedTargetRecord {
 fn category_image_descriptor(
     category: &CategoryResponse,
     fallback_alt: &str,
-) -> Option<MediaImageDescriptor> {
+) -> Option<SeoTargetImageRecord> {
     let icon = category.icon.as_deref()?.trim();
     if icon.is_empty() || (!icon.starts_with('/') && !icon.contains("://")) {
         return None;
     }
-    MediaImageDescriptor::from_parts(
+    SeoTargetImageRecord::from_parts(
         icon.to_string(),
         Some(fallback_alt.to_string()),
         None,
@@ -623,7 +623,7 @@ fn category_image_descriptor(
 fn topic_image_descriptor(
     topic: &TopicResponse,
     fallback_alt: &str,
-) -> Option<MediaImageDescriptor> {
+) -> Option<SeoTargetImageRecord> {
     image_descriptor_from_metadata(topic.metadata.get("featured_image"), fallback_alt)
         .or_else(|| {
             image_descriptor_from_metadata(topic.metadata.get("featured_image_url"), fallback_alt)
@@ -635,10 +635,10 @@ fn topic_image_descriptor(
 fn image_descriptor_from_metadata(
     value: Option<&serde_json::Value>,
     fallback_alt: &str,
-) -> Option<MediaImageDescriptor> {
+) -> Option<SeoTargetImageRecord> {
     let value = value?;
     if let Some(url) = value.as_str() {
-        return MediaImageDescriptor::from_parts(
+        return SeoTargetImageRecord::from_parts(
             url.to_string(),
             Some(fallback_alt.to_string()),
             None,
@@ -678,10 +678,10 @@ fn image_descriptor_from_metadata(
                 .map(ToOwned::to_owned)
         });
 
-    MediaImageDescriptor::from_parts(url.to_string(), alt, width, height, mime_type)
+    SeoTargetImageRecord::from_parts(url.to_string(), alt, width, height, mime_type)
 }
 
-fn first_markdown_image_descriptor(body: &str, fallback_alt: &str) -> Option<MediaImageDescriptor> {
+fn first_markdown_image_descriptor(body: &str, fallback_alt: &str) -> Option<SeoTargetImageRecord> {
     let start = body.find("![")?;
     let alt_start = start + 2;
     let alt_end = body[alt_start..].find(']')? + alt_start;
@@ -692,7 +692,7 @@ fn first_markdown_image_descriptor(body: &str, fallback_alt: &str) -> Option<Med
 
     let alt = body[alt_start..alt_end].trim();
     let url = body[path_start..path_end].trim();
-    MediaImageDescriptor::from_parts(
+    SeoTargetImageRecord::from_parts(
         url.to_string(),
         if alt.is_empty() {
             Some(fallback_alt.to_string())
@@ -759,7 +759,7 @@ fn matches_module_path(parsed: &Url, module: &str) -> bool {
     if segments.len() > 2
         && segments
             .first()
-            .and_then(|item| rustok_core::normalize_locale_tag(item))
+            .and_then(|item| rustok_api::normalize_locale_tag(item))
             .is_some()
         && segments.get(1) == Some(&"modules")
     {

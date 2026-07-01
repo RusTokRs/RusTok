@@ -72,8 +72,8 @@ async fn admin_global_search_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
         use std::time::Instant;
 
         let app_ctx = expect_context::<AppContext>();

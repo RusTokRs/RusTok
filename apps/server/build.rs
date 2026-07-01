@@ -89,13 +89,10 @@ fn generate_module_code() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed={}", manifest_path.display());
 
     let workspace_root = workspace_root();
-    let server_src_root = workspace_root.join("apps").join("server").join("src");
     let modules: ModulesManifest = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
     let mut optional_modules = Vec::new();
     for (slug, spec) in modules.modules {
-        if let Some(entry) =
-            build_optional_module_entry(&workspace_root, &server_src_root, slug, spec)?
-        {
+        if let Some(entry) = build_optional_module_entry(&workspace_root, slug, spec)? {
             optional_modules.push(entry);
         }
     }
@@ -139,7 +136,6 @@ fn workspace_root() -> PathBuf {
 
 fn build_optional_module_entry(
     workspace_root: &Path,
-    server_src_root: &Path,
     slug: String,
     spec: ModuleSpec,
 ) -> Result<Option<OptionalModuleEntry>, Box<dyn std::error::Error>> {
@@ -196,7 +192,7 @@ fn build_optional_module_entry(
             crate_root
                 .as_ref()
                 .filter(|root| has_any(root, &["src/controllers/mod.rs", "src/controllers.rs"]))
-                .map(|_| route_expression(server_src_root, &crate_ident, &slug))
+                .map(|_| format!("{crate_ident}::controllers::routes()"))
         });
 
     let mut extra_route_exprs = Vec::new();
@@ -205,22 +201,8 @@ fn build_optional_module_entry(
     } else if let Some(root) = crate_root.as_ref() {
         let crate_controller_mod =
             first_existing(root, &["src/controllers/mod.rs", "src/controllers.rs"]);
-        let server_controller_mod = first_existing(
-            server_src_root,
-            &[
-                &format!("controllers/{slug}/mod.rs"),
-                &format!("controllers/{slug}.rs"),
-            ],
-        );
-
-        if file_contains_any(&crate_controller_mod, "pub fn webhook_routes")
-            || file_contains_any(&server_controller_mod, "pub fn webhook_routes")
-        {
-            extra_route_exprs.push(webhook_route_expression(
-                server_src_root,
-                &crate_ident,
-                &slug,
-            ));
+        if file_contains_any(&crate_controller_mod, "pub fn webhook_routes") {
+            extra_route_exprs.push(format!("{crate_ident}::controllers::webhook_routes()"));
         }
     }
 
@@ -232,36 +214,6 @@ fn build_optional_module_entry(
         routes_expr,
         extra_route_exprs,
     }))
-}
-
-fn route_expression(server_src_root: &Path, crate_ident: &str, slug: &str) -> String {
-    let server_mod = first_existing(
-        server_src_root,
-        &[
-            &format!("controllers/{slug}/mod.rs"),
-            &format!("controllers/{slug}.rs"),
-        ],
-    );
-    if server_mod.is_some() {
-        format!("crate::controllers::{slug}::routes()")
-    } else {
-        format!("{crate_ident}::controllers::routes()")
-    }
-}
-
-fn webhook_route_expression(server_src_root: &Path, crate_ident: &str, slug: &str) -> String {
-    let server_mod = first_existing(
-        server_src_root,
-        &[
-            &format!("controllers/{slug}/mod.rs"),
-            &format!("controllers/{slug}.rs"),
-        ],
-    );
-    if server_mod.is_some() {
-        format!("crate::controllers::{slug}::webhook_routes()")
-    } else {
-        format!("{crate_ident}::controllers::webhook_routes()")
-    }
 }
 
 fn apply_module_package_manifest(

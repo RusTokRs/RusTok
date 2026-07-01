@@ -7,8 +7,9 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use rustok_api::normalize_locale_tag;
 use rustok_commerce_foundation::entities;
-use rustok_core::{generate_id, normalize_locale_tag};
+use rustok_core::generate_id;
 
 use crate::dto::{
     CreateRegionInput, RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,

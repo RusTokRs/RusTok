@@ -10,11 +10,12 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, controller::Routes};
+use rustok_api::Permission;
 use rustok_api::{
-    graphql::ErrorCode, has_any_effective_permission, loco::transactional_event_bus_from_context,
-    AuthContext, RequestContext, TenantContext,
+    graphql::ErrorCode, has_any_effective_permission, AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::{ModuleRuntimeExtensions, Permission};
+use rustok_core::ModuleRuntimeExtensions;
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

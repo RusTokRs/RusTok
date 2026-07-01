@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use rustok_core::registry::ModuleRegistry;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

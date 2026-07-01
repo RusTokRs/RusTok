@@ -17,6 +17,8 @@
 
 RusToK сейчас представляет собой Rust-first modular monolith для мультитенантных продуктов, где сочетаются контент, commerce, workflow и интеграции. Текущий центр платформы — `apps/server` как composition root, сборка модулей через manifest, событийное разделение путей записи и чтения и две стратегии UI-host'ов: Leptos как основной интегрированный путь и Next.js как headless или экспериментальный контур.
 
+![RusTok Platform Overview](assets/rustok-platform-overview.png)
+
 <a id="table-of-contents"></a>
 
 ## Оглавление
@@ -71,6 +73,18 @@ RusToK сейчас представляет собой Rust-first modular monol
 | **Монолит** | Сервер плюс интегрированные Leptos admin/storefront hosts | Серверные сессии и общий runtime context | Self-hosted сайт, встроенный backoffice и storefront |
 | **Headless** | `apps/server` отдаёт API, а frontend живёт отдельно | OAuth2, sessions или смешанный контракт в зависимости от клиента | Мобильные приложения, внешние фронтенды, интеграции |
 | **Смешанный** | Интегрированные Leptos hosts и внешние клиенты поверх одного рантайма | Оба | Встроенная админка плюс внешние приложения и интеграции |
+
+![RusTok Deployment Profiles](assets/deployment-profiles-overview.svg)
+
+![RusTok Monolith Deployment](assets/deployment-profile-monolith.svg)
+
+![RusTok Embedded Admin and External Storefront Deployment](assets/deployment-profile-embedded-admin-external-storefront.svg)
+
+![RusTok All Separate Deployment](assets/deployment-profile-all-separate.svg)
+
+![RusTok Pure Headless Deployment](assets/deployment-profile-pure-headless.svg)
+
+![RusTok Multi-Frontend Deployment](assets/deployment-profile-multi-frontend.svg)
 
 ### Матрица возможностей
 

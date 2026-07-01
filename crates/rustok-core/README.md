@@ -3,11 +3,13 @@
 ## Purpose
 
 `rustok-core` owns the minimal platform-wide runtime contracts used across RusToK.
+Transport-neutral module port contracts are owned by `rustok-api`; `rustok-core`
+does not define or re-export `Port*` types.
 
 ## Responsibilities
 
 - Define the base module traits and registry-facing contracts.
-- Define shared permission, identity, ID, and error primitives.
+- Define runtime identity, RBAC, security-context, ID, and error primitives; permission DTOs are consumed from `rustok-api`.
 - Provide flex/custom-fields schema contracts and content-format helpers used by multiple domains.
 - Keep compatibility re-exports for foundational runtime contracts that are being split into dedicated crates.
 - Expose event foundation contracts, including EventBus stats, in-memory transport reliability, and backpressure observability controls, dispatcher retry semantics, and dispatch latency hooks.
@@ -18,7 +20,7 @@
 
 - `RusToKModule`
 - `ModuleRegistry`
-- `Permission`
+- `Rbac` / `SecurityContext`
 - `generate_id`
 - `EventBus` / `MemoryTransport`
 - `BackpressureController`

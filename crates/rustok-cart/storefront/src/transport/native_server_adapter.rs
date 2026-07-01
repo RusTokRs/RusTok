@@ -641,7 +641,7 @@ async fn reprice_storefront_cart_line_items(
 
     let pricing_service = rustok_pricing::PricingService::new(
         app_ctx.db.clone(),
-        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
     );
     let channel_id = cart
         .channel_id
@@ -754,7 +754,7 @@ async fn storefront_cart_decrement_line_item(
             };
             let pricing_service = PricingService::new(
                 app_ctx.db.clone(),
-                rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+                rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
             );
             let variant_id = line_item
                 .variant_id

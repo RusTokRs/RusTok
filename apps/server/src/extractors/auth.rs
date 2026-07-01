@@ -15,7 +15,8 @@ use axum_extra::{
     TypedHeader,
 };
 use loco_rs::app::AppContext;
-use rustok_core::{Permission, UserRole};
+use rustok_api::Permission;
+use rustok_core::UserRole;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
 
@@ -240,7 +241,8 @@ mod tests {
         tests_cfg::config::test_config,
     };
     use migration::Migrator;
-    use rustok_core::{Permission, UserRole, UserStatus};
+    use rustok_api::Permission;
+    use rustok_core::{UserRole, UserStatus};
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Schema, Set};
     use sea_orm_migration::SchemaManager;

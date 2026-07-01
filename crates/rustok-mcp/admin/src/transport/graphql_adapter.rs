@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{
+use crate::core::{
     ApplyMcpScaffoldDraftPayload, CreateMcpClientPayload, RotateMcpTokenPayload,
     StageMcpScaffoldDraftPayload, UpdateMcpPolicyPayload,
 };

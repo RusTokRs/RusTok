@@ -351,7 +351,7 @@ mod tests {
         ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContext,
         TenantContextExtension,
     };
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     #[cfg(feature = "mod-seo")]
     use rustok_core::{events::EventTransport, MemoryTransport, ModuleRuntimeExtensions};
     #[cfg(feature = "mod-seo")]

@@ -4,11 +4,9 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
-use rustok_api::{
-    has_any_effective_permission, loco::transactional_event_bus_from_context, AuthContext,
-    RequestContext, TenantContext,
-};
-use rustok_core::Permission;
+use rustok_api::Permission;
+use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_telemetry::metrics;
 use serde::Deserialize;
 use std::time::Instant;
@@ -88,7 +86,10 @@ pub async fn list_topics(
     let (topics, _) = service
         .list_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             filter,
             Some(tenant.default_locale.as_str()),
         )
@@ -170,7 +171,10 @@ pub async fn get_topic(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             id,
             &locale,
             Some(tenant.default_locale.as_str()),
@@ -206,7 +210,14 @@ pub async fn create_topic(
 
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let topic = service
-        .create(tenant.id, auth.security_context(), input)
+        .create(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok((StatusCode::CREATED, Json(topic)))
@@ -240,7 +251,15 @@ pub async fn update_topic(
 
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let topic = service
-        .update(tenant.id, id, auth.security_context(), input)
+        .update(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(topic))
@@ -272,7 +291,14 @@ pub async fn delete_topic(
 
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .delete(tenant.id, id, auth.security_context())
+        .delete(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -311,7 +337,15 @@ pub async fn mark_topic_solution(
     let event_bus = transactional_event_bus_from_context(&ctx);
     let moderation = ModerationService::new(ctx.db.clone(), event_bus.clone());
     moderation
-        .mark_solution(tenant.id, topic_id, reply_id, auth.security_context())
+        .mark_solution(
+            tenant.id,
+            topic_id,
+            reply_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -319,7 +353,10 @@ pub async fn mark_topic_solution(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -359,7 +396,14 @@ pub async fn clear_topic_solution(
     let event_bus = transactional_event_bus_from_context(&ctx);
     let moderation = ModerationService::new(ctx.db.clone(), event_bus.clone());
     moderation
-        .clear_solution(tenant.id, topic_id, auth.security_context())
+        .clear_solution(
+            tenant.id,
+            topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -367,7 +411,10 @@ pub async fn clear_topic_solution(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -405,7 +452,15 @@ pub async fn set_topic_vote(
     )?;
 
     VoteService::new(ctx.db.clone())
-        .set_topic_vote(tenant.id, topic_id, auth.security_context(), value)
+        .set_topic_vote(
+            tenant.id,
+            topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            value,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -413,7 +468,10 @@ pub async fn set_topic_vote(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -448,7 +506,14 @@ pub async fn clear_topic_vote(
     )?;
 
     VoteService::new(ctx.db.clone())
-        .clear_topic_vote(tenant.id, topic_id, auth.security_context())
+        .clear_topic_vote(
+            tenant.id,
+            topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -456,7 +521,10 @@ pub async fn clear_topic_vote(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -491,7 +559,14 @@ pub async fn subscribe_topic(
     )?;
 
     SubscriptionService::new(ctx.db.clone())
-        .set_topic_subscription(tenant.id, topic_id, auth.security_context())
+        .set_topic_subscription(
+            tenant.id,
+            topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -499,7 +574,10 @@ pub async fn subscribe_topic(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -534,7 +612,14 @@ pub async fn unsubscribe_topic(
     )?;
 
     SubscriptionService::new(ctx.db.clone())
-        .clear_topic_subscription(tenant.id, topic_id, auth.security_context())
+        .clear_topic_subscription(
+            tenant.id,
+            topic_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -542,7 +627,10 @@ pub async fn unsubscribe_topic(
     let topic = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),

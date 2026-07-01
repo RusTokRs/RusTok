@@ -8,10 +8,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_content::{
-    normalize_locale_code, resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE,
-};
-use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -629,13 +628,13 @@ mod tests {
         migrations, CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
         ListRepliesFilter, TopicService,
     };
-    use rustok_core::{MemoryTransport, SecurityContext};
-    use rustok_outbox::TransactionalEventBus;
+    use rustok_core::SecurityContext;
+    use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
     use rustok_taxonomy::entities::{
         taxonomy_term, taxonomy_term_alias, taxonomy_term_translation,
     };
     use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-    use sea_orm_migration::SchemaManager;
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -656,6 +655,10 @@ mod tests {
 
     async fn ensure_forum_schema(db: &DatabaseConnection) {
         let manager = SchemaManager::new(db);
+        SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
         for migration in migrations::migrations() {
             migration
                 .up(&manager)
@@ -683,8 +686,7 @@ mod tests {
         let db = setup_forum_test_db().await;
         ensure_forum_schema(&db).await;
 
-        let transport = MemoryTransport::new();
-        let _receiver = transport.subscribe();
+        let transport = OutboxTransport::new(db.clone());
         let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
         let tenant_id = Uuid::new_v4();

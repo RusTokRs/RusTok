@@ -608,7 +608,101 @@ pub struct SeoTargetAlternateRoute {
     pub route: String,
 }
 
-pub type SeoTargetImageRecord = rustok_media::MediaImageDescriptor;
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
+pub struct SeoTargetImageRecord {
+    pub url: String,
+    pub alt: Option<String>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub mime_type: Option<String>,
+}
+
+impl SeoTargetImageRecord {
+    pub fn from_parts(
+        url: impl Into<String>,
+        alt: Option<String>,
+        width: Option<i32>,
+        height: Option<i32>,
+        mime_type: Option<String>,
+    ) -> Option<Self> {
+        let url = normalize_optional_string(Some(url.into()))?;
+        let width = normalize_dimension(width);
+        let height = normalize_dimension(height);
+        let mime_type =
+            normalize_optional_string(mime_type).or_else(|| infer_image_mime_type(url.as_str()));
+
+        Some(Self {
+            url,
+            alt: normalize_optional_string(alt),
+            width,
+            height,
+            mime_type,
+        })
+    }
+
+    pub fn has_alt(&self) -> bool {
+        self.alt
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+    }
+
+    pub fn has_size(&self) -> bool {
+        self.width.is_some() && self.height.is_some()
+    }
+
+    pub fn pixel_count(&self) -> Option<i64> {
+        let width = self.width?;
+        let height = self.height?;
+        Some(i64::from(width) * i64::from(height))
+    }
+
+    pub fn aspect_ratio(&self) -> Option<f64> {
+        let width = f64::from(self.width?);
+        let height = f64::from(self.height?);
+        if height <= 0.0 {
+            return None;
+        }
+        Some(width / height)
+    }
+
+    pub fn file_extension(&self) -> Option<String> {
+        image_file_extension(self.url.as_str())
+    }
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_dimension(value: Option<i32>) -> Option<i32> {
+    value.filter(|value| *value > 0)
+}
+
+fn infer_image_mime_type(url: &str) -> Option<String> {
+    match image_file_extension(url)?.as_str() {
+        "jpg" | "jpeg" => Some("image/jpeg".to_string()),
+        "png" => Some("image/png".to_string()),
+        "webp" => Some("image/webp".to_string()),
+        "gif" => Some("image/gif".to_string()),
+        "avif" => Some("image/avif".to_string()),
+        "svg" => Some("image/svg+xml".to_string()),
+        _ => None,
+    }
+}
+
+fn image_file_extension(url: &str) -> Option<String> {
+    let without_fragment = url.split('#').next().unwrap_or(url);
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
+    let filename = without_query.rsplit('/').next().unwrap_or(without_query);
+    let extension = filename.rsplit_once('.')?.1.trim().to_ascii_lowercase();
+    (!extension.is_empty()).then_some(extension)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct SeoTargetOpenGraphRecord {

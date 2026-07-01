@@ -7,6 +7,7 @@ use axum::{
 };
 use loco_rs::app::AppContext;
 use loco_rs::controller::{format, ErrorDetail, Routes};
+use rustok_api::Permission;
 use rustok_channel::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
     ChannelResolutionPolicySetDetailResponse, ChannelResponse, ChannelService,
@@ -15,7 +16,7 @@ use rustok_channel::{
     ResolutionAction, ResolutionPredicate, TargetSurface, UpdateChannelResolutionRuleInput,
     UpdateChannelTargetInput,
 };
-use rustok_core::{ModuleRegistry, Permission};
+use rustok_core::ModuleRegistry;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

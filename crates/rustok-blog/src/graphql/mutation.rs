@@ -1,9 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result};
+use rustok_api::Permission;
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     has_any_effective_permission, AuthContext, TenantContext,
 };
-use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -38,7 +38,14 @@ impl BlogMutation {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let post_id = service
-            .create_post(tenant_id, auth.security_context(), input.into())
+            .create_post(
+                tenant_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                input.into(),
+            )
             .await?;
 
         Ok(post_id)
@@ -82,7 +89,15 @@ impl BlogMutation {
         };
 
         service
-            .update_post(tenant_id, id, auth.security_context(), domain_input)
+            .update_post(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                domain_input,
+            )
             .await?;
 
         Ok(true)
@@ -107,7 +122,14 @@ impl BlogMutation {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
-            .delete_post(tenant_id, id, auth.security_context())
+            .delete_post(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         Ok(true)
@@ -132,7 +154,14 @@ impl BlogMutation {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
-            .publish_post(tenant_id, id, auth.security_context())
+            .publish_post(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         Ok(true)
@@ -157,7 +186,14 @@ impl BlogMutation {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
-            .unpublish_post(tenant_id, id, auth.security_context())
+            .unpublish_post(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         Ok(true)
@@ -183,7 +219,15 @@ impl BlogMutation {
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
-            .archive_post(tenant_id, id, auth.security_context(), reason)
+            .archive_post(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                reason,
+            )
             .await?;
 
         Ok(true)

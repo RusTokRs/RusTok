@@ -14,7 +14,7 @@ ssr = [
     "dep:loco-rs",
     "dep:rustok-commerce",
     "dep:rustok-payment",
-    "rustok-api/loco-adapter",
+    "rustok-api/server",
 ]
 
 [dependencies]

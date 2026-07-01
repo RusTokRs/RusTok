@@ -10,12 +10,13 @@ use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, Action, Resource, SecurityContext,
-    CONTENT_FORMAT_GRAPESJS_V1, CONTENT_FORMAT_RT_JSON_V1,
+    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_GRAPESJS_V1,
+    CONTENT_FORMAT_RT_JSON_V1,
 };
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -31,8 +32,6 @@ use crate::services::BlockService;
 use rustok_tenant::entities::tenant_module;
 
 const PAGE_KIND: &str = "page";
-const PLATFORM_FALLBACK_LOCALE: &str = "en";
-
 struct PageResponseParts {
     channel_slugs: Vec<String>,
     blocks: Vec<BlockResponse>,

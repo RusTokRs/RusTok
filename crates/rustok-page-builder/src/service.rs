@@ -7,8 +7,8 @@ use crate::dto::{
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
 use async_trait::async_trait;
+use rustok_api::{Action, Permission, Resource};
 use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
-use rustok_core::{Action, Permission, Resource};
 use serde::Serialize;
 
 pub const PAGE_BUILDER_PAGES_READ_PERMISSION: &str = "pages:read";

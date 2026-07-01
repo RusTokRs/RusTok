@@ -14,7 +14,9 @@ use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::{generate_id, PLATFORM_FALLBACK_LOCALE};
+use rustok_core::generate_id;
+
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};

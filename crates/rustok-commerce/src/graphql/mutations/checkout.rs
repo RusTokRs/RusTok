@@ -1,7 +1,7 @@
 use async_graphql::{Context, Object, Result};
+use rustok_api::Permission;
 use rustok_api::{graphql::require_module_enabled, AuthContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
-use rustok_core::Permission;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 

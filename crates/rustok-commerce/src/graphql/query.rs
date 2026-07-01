@@ -1,9 +1,10 @@
 use async_graphql::{Context, FieldError, Object, Result};
+use rustok_api::locale_tags_match;
+use rustok_api::Permission;
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::{locale_tags_match, Permission};
 use rustok_customer::CustomerService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;

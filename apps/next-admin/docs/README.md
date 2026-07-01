@@ -6,6 +6,8 @@
 
 `apps/next-admin` является Next.js admin host для RusToK. Он даёт React/Next-путь для админки, работает параллельно с `apps/admin` и монтирует module-owned/admin-owned пакеты вместо того, чтобы переносить модульный UI внутрь host.
 
+FFA classification: `apps/next-admin` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять Next shell/routing/context composition и parity с Leptos admin без переноса module-specific workflows в host.
+
 ## Границы ответственности
 
 - владеть Next.js admin host, routing и shared integration layer;

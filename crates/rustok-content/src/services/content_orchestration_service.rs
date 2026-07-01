@@ -11,9 +11,10 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use rustok_core::{
-    Action, DomainEvent, InputValidator, PermissionScope, Resource, SecurityContext,
-    ValidationResult,
+    DomainEvent, InputValidator, PermissionScope, SecurityContext, ValidationResult,
 };
+
+use rustok_api::{Action, Resource};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::entities::{canonical_url, orchestration_audit_log, orchestration_operation, url_alias};

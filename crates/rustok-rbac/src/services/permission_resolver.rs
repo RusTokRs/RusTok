@@ -1,6 +1,7 @@
 use crate::{evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission};
 use async_trait::async_trait;
-use rustok_core::{Permission, UserRole};
+use rustok_api::Permission;
+use rustok_core::UserRole;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionResolution {
@@ -80,7 +81,8 @@ pub trait PermissionResolver {
 mod tests {
     use super::{PermissionResolution, PermissionResolver};
     use async_trait::async_trait;
-    use rustok_core::{Permission, UserRole};
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
 
     struct StubResolver {
         permissions: Vec<Permission>,

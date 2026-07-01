@@ -1,37 +1,9 @@
+use crate::{Action, Permission};
 use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
 };
-use rustok_core::{permissions::Action, Permission, Rbac, UserRole};
 use uuid::Uuid;
-
-fn role_matches_permissions(role: UserRole, permissions: &[Permission]) -> bool {
-    let required_permissions = Rbac::permissions_for_role(&role);
-    required_permissions
-        .iter()
-        .all(|permission| permissions.contains(permission))
-}
-
-/// Derives a display/claim role from a resolved permission set.
-///
-/// This helper is kept for compatibility and presentation paths only. Live
-/// authorization must use explicit permissions or a permission-aware
-/// `SecurityContext`.
-pub fn infer_user_role_from_permissions(permissions: &[Permission]) -> UserRole {
-    if role_matches_permissions(UserRole::SuperAdmin, permissions) {
-        return UserRole::SuperAdmin;
-    }
-
-    if role_matches_permissions(UserRole::Admin, permissions) {
-        return UserRole::Admin;
-    }
-
-    if role_matches_permissions(UserRole::Manager, permissions) {
-        return UserRole::Manager;
-    }
-
-    UserRole::Customer
-}
 
 /// Check if a requested scope is allowed by the granted scope list.
 ///
@@ -85,15 +57,6 @@ pub struct AuthContext {
 pub struct AuthContextExtension(pub AuthContext);
 
 impl AuthContext {
-    pub fn security_context(&self) -> rustok_core::SecurityContext {
-        let inferred_role = infer_user_role_from_permissions(&self.permissions);
-        rustok_core::SecurityContext::from_permissions(
-            inferred_role,
-            Some(self.user_id),
-            self.permissions.iter().copied(),
-        )
-    }
-
     /// Check if the current context has the required scope.
     /// For direct grants (embedded/user login), scopes are empty and access is allowed.
     /// For OAuth2 tokens, scopes must include the required scope (with wildcard support).
@@ -152,32 +115,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn infer_role_admin_permissions() {
-        let permissions = Rbac::permissions_for_role(&UserRole::Admin)
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            infer_user_role_from_permissions(&permissions),
-            UserRole::Admin
-        );
-    }
-
-    #[test]
-    fn infer_role_customer_permissions() {
-        let permissions = Rbac::permissions_for_role(&UserRole::Customer)
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            infer_user_role_from_permissions(&permissions),
-            UserRole::Customer
-        );
-    }
 
     fn make_auth_ctx(client_id: Option<Uuid>, scopes: Vec<String>) -> AuthContext {
         AuthContext {

@@ -547,8 +547,8 @@ async fn storefront_pricing_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::loco::transactional_event_bus_from_context;
         use rustok_channel::ChannelService;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
         use rustok_pricing::{PriceResolutionContext, PricingService};
 
         let app_ctx = expect_context::<AppContext>();

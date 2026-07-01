@@ -1,8 +1,8 @@
 use async_graphql::{Context, FieldError, Result};
 use rust_decimal::Decimal;
+use rustok_api::locale_tags_match;
 use rustok_api::{graphql::GraphQLError, AuthContext, RequestContext};
 use rustok_cart::CartService;
-use rustok_core::locale_tags_match;
 use rustok_customer::CustomerService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;

@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1125" viewBox="0 0 1800 1125" role="img" aria-labelledby="title desc">
+  <title id="title">RusToK Deployment Profiles Overview</title>
+  <desc id="desc">Overview of RusToK deployment profiles showing FFA and FBA dimensions.</desc>
+  <defs>
+    <style>
+      .bg{fill:#f8fafc}.panel{fill:#fff;stroke:#d8dee8;stroke-width:2}.soft{fill:#f1f5f9}.server{fill:#e0f2fe;stroke:#0284c7}.frontend{fill:#dcfce7;stroke:#16a34a}.transport{fill:#fef3c7;stroke:#d97706}.module{fill:#eef2ff;stroke:#4f46e5}.infra{fill:#f8fafc;stroke:#64748b}.ffa{fill:#ecfdf5;stroke:#10b981}.fba{fill:#fff7ed;stroke:#f97316}.text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#0f172a}.muted{fill:#475569}.title{font-size:48px;font-weight:800}.subtitle{font-size:24px;font-weight:500}.h{font-size:28px;font-weight:800}.m{font-size:21px;font-weight:700}.s{font-size:18px;font-weight:500}.xs{font-size:15px;font-weight:500}.line{stroke:#334155;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#64748b;stroke-width:3;stroke-dasharray:8 8;fill:none;marker-end:url(#arrow)}.badge{rx:18;ry:18}.shadow{filter:url(#shadow)}
+    </style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity=".12"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#334155"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1800" height="1125"/>
+  <text x="900" y="76" text-anchor="middle" class="text title">RusToK Deployment Profiles</text>
+  <text x="900" y="112" text-anchor="middle" class="text subtitle muted">Five runtime topologies powered by Fluid Frontend Architecture and Fluid Backend Architecture</text>
+
+  <rect x="72" y="155" width="760" height="835" rx="28" class="panel shadow"/>
+  <text x="112" y="210" class="text h">Deployment profiles</text>
+  <text x="112" y="242" class="text s muted">The same platform binary and module contracts can be deployed with different UI and module boundaries.</text>
+
+  <g transform="translate(112 285)">
+    <rect width="680" height="96" rx="22" class="server"/>
+    <text x="30" y="40" class="text m">1. Monolith</text>
+    <text x="30" y="70" class="text s muted">Server, Leptos admin and Leptos storefront in one runtime</text>
+  </g>
+  <g transform="translate(112 405)">
+    <rect width="680" height="96" rx="22" class="server"/>
+    <text x="30" y="40" class="text m">2. Server + embedded admin, external storefront</text>
+    <text x="30" y="70" class="text s muted">Admin stays in-process; storefront can be any separate client</text>
+  </g>
+  <g transform="translate(112 525)">
+    <rect width="680" height="96" rx="22" class="server"/>
+    <text x="30" y="40" class="text m">3. All separate</text>
+    <text x="30" y="70" class="text s muted">Server, admin and storefront deploy independently</text>
+  </g>
+  <g transform="translate(112 645)">
+    <rect width="680" height="96" rx="22" class="server"/>
+    <text x="30" y="40" class="text m">4. Pure headless</text>
+    <text x="30" y="70" class="text s muted">External or custom clients consume GraphQL and REST</text>
+  </g>
+  <g transform="translate(112 765)">
+    <rect width="680" height="96" rx="22" class="server"/>
+    <text x="30" y="40" class="text m">5. Multi-frontend</text>
+    <text x="30" y="70" class="text s muted">Web, mobile, partner portals and backoffice share one runtime</text>
+  </g>
+
+  <rect x="900" y="155" width="828" height="835" rx="28" class="panel shadow"/>
+  <text x="940" y="210" class="text h">Fluid architecture dimensions</text>
+  <text x="940" y="242" class="text s muted">FFA and FBA decide what changes across deployments and what stays stable.</text>
+
+  <g transform="translate(940 290)">
+    <rect width="748" height="235" rx="28" class="ffa"/>
+    <text x="34" y="50" class="text h">FFA - Fluid Frontend Architecture</text>
+    <text x="34" y="88" class="text s muted">One module-owned UI surface can run embedded, standalone or headless-adjacent.</text>
+    <rect x="34" y="122" width="205" height="64" rx="18" class="frontend"/>
+    <text x="136" y="162" text-anchor="middle" class="text s">Same UI identity</text>
+    <rect x="270" y="122" width="205" height="64" rx="18" class="transport"/>
+    <text x="373" y="152" text-anchor="middle" class="text s">Switchable</text>
+    <text x="373" y="174" text-anchor="middle" class="text s">transport</text>
+    <rect x="506" y="122" width="205" height="64" rx="18" class="frontend"/>
+    <text x="609" y="152" text-anchor="middle" class="text s">Same routes,</text>
+    <text x="609" y="174" text-anchor="middle" class="text s">state and UX</text>
+  </g>
+
+  <g transform="translate(940 570)">
+    <rect width="748" height="300" rx="28" class="fba"/>
+    <text x="34" y="50" class="text h">FBA - Fluid Backend Architecture</text>
+    <text x="34" y="88" class="text s muted">One module-owned service contract can run in-process, remote or event-driven.</text>
+    <rect x="34" y="125" width="205" height="68" rx="18" class="module"/>
+    <text x="136" y="154" text-anchor="middle" class="text s">Embedded</text>
+    <text x="136" y="176" text-anchor="middle" class="text s">module service</text>
+    <rect x="270" y="125" width="205" height="68" rx="18" class="transport"/>
+    <text x="373" y="154" text-anchor="middle" class="text s">gRPC / RPC</text>
+    <text x="373" y="176" text-anchor="middle" class="text s">adapter</text>
+    <rect x="506" y="125" width="205" height="68" rx="18" class="module"/>
+    <text x="609" y="154" text-anchor="middle" class="text s">Remote</text>
+    <text x="609" y="176" text-anchor="middle" class="text s">module service</text>
+    <path d="M136 210 C250 252, 470 252, 609 210" class="dash"/>
+    <text x="373" y="260" text-anchor="middle" class="text s muted">Events / outbox for indexing, search, email, analytics and workers</text>
+  </g>
+
+  <path d="M832 445 C870 445, 870 405, 900 405" class="line"/>
+  <path d="M832 700 C870 700, 870 720, 900 720" class="line"/>
+  <text x="900" y="1040" text-anchor="middle" class="text s muted">Deployment topology changes process and network boundaries. FFA/FBA keep UI identity, module ownership and service contracts stable.</text>
+</svg>

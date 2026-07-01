@@ -337,8 +337,9 @@ async fn list_roles_native() -> Result<GraphqlRolesResponse, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos_axum::extract;
+        use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext};
-        use rustok_core::{Permission, Rbac, UserRole};
+        use rustok_core::{Rbac, UserRole};
 
         let auth = extract::<AuthContext>().await.map_err(ServerFnError::new)?;
 

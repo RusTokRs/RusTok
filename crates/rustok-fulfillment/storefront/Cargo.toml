@@ -13,7 +13,7 @@ ssr = [
     "dep:leptos_axum",
     "dep:loco-rs",
     "dep:rustok-commerce",
-    "rustok-api/loco-adapter",
+    "rustok-api/server",
 ]
 
 [dependencies]

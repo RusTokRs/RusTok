@@ -58,6 +58,7 @@
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rustok_api::normalize_locale_tag;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -872,7 +873,7 @@ pub fn is_valid_field_key(key: &str) -> bool {
 
 /// Returns `true` if `key` is a valid normalized BCP 47-style locale tag.
 pub fn is_valid_locale_key(key: &str) -> bool {
-    crate::locale::normalize_locale_tag(key).as_deref() == Some(key)
+    normalize_locale_tag(key).as_deref() == Some(key)
 }
 
 // ---------------------------------------------------------------------------

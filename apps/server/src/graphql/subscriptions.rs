@@ -6,7 +6,8 @@ use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::rbac_service::RbacService;
-use rustok_core::{EventConsumerRuntime, Permission};
+use rustok_api::Permission;
+use rustok_core::EventConsumerRuntime;
 
 #[derive(Default)]
 pub struct BuildSubscription;

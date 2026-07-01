@@ -2,7 +2,9 @@ use crate::error::Result;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use tracing::{debug, warn};
 
-use rustok_core::{Permission, UserRole};
+use rustok_core::UserRole;
+
+use rustok_api::Permission;
 use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
@@ -323,7 +325,8 @@ mod tests {
     use crate::services::rbac_runtime::reset_metrics_for_tests as reset_rbac_metrics_for_tests;
     use chrono::Utc;
     use migration::Migrator;
-    use rustok_core::{Permission, UserRole, UserStatus};
+    use rustok_api::Permission;
+    use rustok_core::{UserRole, UserStatus};
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ConnectionTrait, EntityTrait, Set};
     use serial_test::serial;

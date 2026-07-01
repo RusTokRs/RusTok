@@ -7,8 +7,8 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-use rustok_core::normalize_locale_tag as normalize_core_locale_tag;
-use rustok_core::permissions::{Action, Permission};
+use rustok_api::normalize_locale_tag;
+use rustok_api::{Action, Permission};
 
 use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
@@ -303,8 +303,8 @@ pub async fn resolve_task_locale(
     requested_locale: Option<&str>,
     task_slug: Option<&str>,
 ) -> AiResult<String> {
-    let requested = normalize_locale_tag_opt(requested_locale)?;
-    let preferred = normalize_locale_tag_opt(preferred_locale)?;
+    let requested = validate_locale_tag_opt(requested_locale)?;
+    let preferred = validate_locale_tag_opt(preferred_locale)?;
     let (tenant_default_locale, tenant_enabled_locales) =
         load_tenant_locale_policy(db, tenant_id).await?;
     let tenant_default_locale = tenant_default_locale.unwrap_or_else(|| "en".to_string());
@@ -329,12 +329,12 @@ pub async fn resolve_task_locale(
     Ok(tenant_default_locale)
 }
 
-pub fn normalize_locale_tag_opt(locale: Option<&str>) -> AiResult<Option<String>> {
-    locale.map(normalize_locale_tag).transpose()
+pub fn validate_locale_tag_opt(locale: Option<&str>) -> AiResult<Option<String>> {
+    locale.map(validate_locale_tag).transpose()
 }
 
-pub fn normalize_locale_tag(locale: &str) -> AiResult<String> {
-    normalize_core_locale_tag(locale)
+pub fn validate_locale_tag(locale: &str) -> AiResult<String> {
+    normalize_locale_tag(locale)
         .ok_or_else(|| AiError::Validation(format!("invalid locale `{locale}`")))
 }
 
@@ -363,11 +363,7 @@ pub async fn load_tenant_locale_policy(
     let default_locale = row
         .try_get::<String>("", "default_locale")
         .ok()
-        .and_then(|value| {
-            normalize_locale_tag_opt(Some(value.as_str()))
-                .ok()
-                .flatten()
-        });
+        .and_then(|value| validate_locale_tag_opt(Some(value.as_str())).ok().flatten());
     let settings = row
         .try_get::<serde_json::Value>("", "settings")
         .unwrap_or_else(|_| json!({}));
@@ -390,7 +386,7 @@ pub fn locale_list_from_settings(settings: &serde_json::Value) -> Vec<String> {
         if let Some(values) = settings.get(key).and_then(|value| value.as_array()) {
             for value in values {
                 if let Some(locale) = value.as_str() {
-                    if let Ok(locale) = normalize_locale_tag(locale) {
+                    if let Ok(locale) = validate_locale_tag(locale) {
                         if !locales.contains(&locale) {
                             locales.push(locale);
                         }
@@ -742,22 +738,22 @@ pub async fn session_has_user_messages(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_task_job_user_message, enrich_decision_trace, normalize_locale_tag,
-        runtime_execution_target, task_allows_free_locale,
+        build_task_job_user_message, enrich_decision_trace, runtime_execution_target,
+        task_allows_free_locale, validate_locale_tag,
     };
     use crate::model::{AiRunDecisionTrace, ExecutionMode};
 
     #[test]
-    fn normalize_locale_tag_normalizes_common_bcp47_forms() {
-        assert_eq!(normalize_locale_tag("pt_br").unwrap(), "pt-BR");
-        assert_eq!(normalize_locale_tag("zh-hant").unwrap(), "zh-Hant");
-        assert_eq!(normalize_locale_tag("es-419").unwrap(), "es-419");
+    fn validate_locale_tag_normalizes_common_bcp47_forms() {
+        assert_eq!(validate_locale_tag("pt_br").unwrap(), "pt-BR");
+        assert_eq!(validate_locale_tag("zh-hant").unwrap(), "zh-Hant");
+        assert_eq!(validate_locale_tag("es-419").unwrap(), "es-419");
     }
 
     #[test]
-    fn normalize_locale_tag_rejects_invalid_values() {
-        assert!(normalize_locale_tag("").is_err());
-        assert!(normalize_locale_tag("en-*").is_err());
+    fn validate_locale_tag_rejects_invalid_values() {
+        assert!(validate_locale_tag("").is_err());
+        assert!(validate_locale_tag("en-*").is_err());
     }
 
     #[test]

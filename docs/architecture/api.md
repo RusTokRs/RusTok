@@ -53,6 +53,13 @@ GraphQL остаётся canonical UI-facing contract для:
 GraphQL должен собирать domain data через module/service layer, а не обходить
 ownership модулей через host-specific shortcuts. Auth bootstrap для headless/mobile hosts использует `me.permissions` как UI-facing RBAC snapshot; server-side enforcement остаётся обязательным для самих mutations/queries.
 
+Public storefront/read GraphQL queries не должны превращать отсутствие
+`AuthContext` в `SecurityContext::system()`. Anonymous read flow использует
+`SecurityContext::public_read()` (`SecurityActorKind::Public`) и обязан сохранять
+module-level published/channel-visible filters рядом с read. `SecurityContext::system()`
+разрешён только trusted platform runtime paths: bootstrap, jobs, migrations,
+batch/internal providers и `PortActorKind::System`.
+
 ## REST-поверхность
 
 REST остаётся обязательным для сценариев, где нужен явный HTTP contract:
@@ -95,6 +102,12 @@ Leptos `#[server]` functions — это internal host/UI contract, а не за�
 
 Эти types не являются application service layer и не должны содержать module-specific
 business logic.
+
+`rustok-api` владеет `Port*`, permission и locale primitives и не зависит от
+`rustok-core` ни в одном feature. Runtime RBAC/security policy принадлежит core,
+который зависит от API contract layer. Runtime-specific adapters также не входят в neutral contract surface:
+outbox Loco wiring принадлежит `rustok-outbox::loco` и включается feature
+`rustok-outbox/loco-adapter`.
 
 ## Безопасность и контракт контекста
 

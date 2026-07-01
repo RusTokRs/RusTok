@@ -1,6 +1,5 @@
 mod components;
 mod i18n;
-mod locale;
 mod model;
 mod panel;
 mod transport;

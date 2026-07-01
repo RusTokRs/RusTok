@@ -20,12 +20,9 @@ pub mod grapesjs;
 pub mod health;
 pub mod i18n;
 pub mod id;
-pub mod locale;
 pub mod metrics;
 pub mod migrations;
 pub mod module;
-pub mod permissions;
-pub mod ports;
 pub mod rbac;
 pub mod registry;
 pub mod resilience;
@@ -79,24 +76,17 @@ pub use health::{
     checks::{DatabaseHealthCheck, FnHealthCheck},
     HealthCheck, HealthRegistry, HealthResult, HealthStatus, OverallHealth,
 };
-pub use i18n::{extract_locale_from_header, extract_locale_tag_from_header, translate, Locale};
+pub use i18n::{extract_locale_from_header, translate, Locale};
 pub use id::{generate_id, parse_id};
-pub use locale::{
-    build_locale_candidates, is_valid_locale_tag, locale_primary_language, locale_tags_match,
-    normalize_locale_tag, push_locale_candidate, PLATFORM_FALLBACK_LOCALE,
-};
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
 pub use migrations::{MigrationDependencyDescriptor, ModuleMigration};
 pub use module::{
     MigrationSource, ModuleContext, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
-pub use permissions::{Action, Permission, Resource};
-pub use ports::{
-    PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
-    PortOperationKind,
+pub use rbac::{
+    infer_user_role_from_permissions, PermissionScope, Rbac, SecurityActorKind, SecurityContext,
 };
-pub use rbac::{PermissionScope, Rbac, SecurityContext};
 pub use registry::ModuleRegistry;
 pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState, RetryPolicy,
@@ -144,12 +134,7 @@ pub mod prelude {
     };
     pub use crate::id::generate_id;
     pub use crate::metrics::{Counter, Gauge, Histogram, MetricsRegistry, Timer};
-    pub use crate::permissions::{Action, Permission, Resource};
-    pub use crate::ports::{
-        PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
-        PortOperationKind,
-    };
-    pub use crate::rbac::{PermissionScope, Rbac, SecurityContext};
+    pub use crate::rbac::{PermissionScope, Rbac, SecurityActorKind, SecurityContext};
     pub use crate::resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
     pub use crate::typed_error::{DomainError, ErrorCode, TypedResult};
     pub use crate::types::{UserRole, UserStatus};
@@ -159,6 +144,7 @@ pub mod prelude {
         AppContext, CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend,
         SearchBackend,
     };
+    pub use rustok_api::{Action, Permission, Resource};
     pub use uuid::Uuid;
 }
 

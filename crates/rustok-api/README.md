@@ -13,6 +13,7 @@
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
 - Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports; `rustok-region` and migrated tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay, and page-builder publish paths use these shared primitives for FBA read/write boundaries.
+- Own neutral permission contracts (`Permission`, `Action`, `Resource`) and platform locale normalization, matching, candidate, fallback, and `Accept-Language` parsing contracts.
 - Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`, `channel_resolution_trace`) from host middleware into module adapters.
 - Keep web-framework-oriented dependencies out of `rustok-core` while still allowing modular reuse.
 - Stay a thin shared host/API layer. It must not absorb module-specific business logic, resolvers, or controllers.
@@ -21,8 +22,9 @@
 ## Interactions
 - Used by `apps/server` as the current composition root.
 - Intended to be used by module crates such as `rustok-blog`, `rustok-content`, `rustok-commerce`, and others when their GraphQL/REST adapters move out of `apps/server`.
-- Depends on `rustok-core` for core security and permission primitives.
-- Depends on `rustok-tenant` and `rustok-content` for tenant-module enablement checks and locale defaults.
+- All feature profiles, including `server`, remain independent from `rustok-core`.
+- `rustok-core` consumes API-owned contracts and adds runtime RBAC/security policy.
+- Runtime-specific composition helpers remain owner-owned; outbox Loco wiring is exposed by `rustok-outbox::loco`, not this crate.
 
 ## Boundary Rules
 - `apps/server` may wire and re-export `rustok-api`, but must not grow a second parallel shared API layer.
@@ -37,7 +39,14 @@
 - `src/route_selection.rs`
 - `src/module_registry_contract.rs`
 - `src/ports.rs`
+- `src/permissions.rs`
+- `src/locale.rs`
 - `src/graphql/`
+
+## Features
+
+- `default = []`: neutral contracts with no core runtime dependency.
+- `server`: server-side auth/request/GraphQL adapters without a core dependency.
 
 ## Docs
 

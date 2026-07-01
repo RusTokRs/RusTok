@@ -9,6 +9,7 @@ rule и scope write paths, а полный promotions engine и остально
 
 - Current phase: ffa_admin_variant_editor_copy_defaults_slice
 - Last checkpoint: Admin variant price editor copy/count/default-currency policy вынесена из Leptos adapter в Leptos-free `admin/src/core/presentation.rs`: `format_variant_price_editor_title`, `format_variant_count_label` и `default_variant_price_editor_currency` теперь централизуют повторяемые labels/defaults для variant price editor с pure-core unit-test evidence.
+- Dependency evidence: pricing storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
 - Next step: Продолжать маленькие FFA-срезы только там, где они сокращают Leptos-owned presentation/state policy; transport/native-first + GraphQL fallback contract не менять.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.

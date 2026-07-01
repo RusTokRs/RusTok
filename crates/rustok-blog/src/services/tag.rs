@@ -9,10 +9,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_content::{
-    normalize_locale_code, resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE,
-};
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_core::SecurityContext;
 use rustok_taxonomy::{
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,

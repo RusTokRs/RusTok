@@ -1,4 +1,4 @@
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PermissionCheck<'a> {

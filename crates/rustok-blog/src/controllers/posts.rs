@@ -4,11 +4,9 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
-use rustok_api::{
-    has_any_effective_permission, loco::transactional_event_bus_from_context, AuthContext,
-    RequestContext, TenantContext,
-};
-use rustok_core::Permission;
+use rustok_api::Permission;
+use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_telemetry::metrics;
 use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
@@ -48,7 +46,10 @@ pub async fn list_posts(
     let result = service
         .list_posts_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             query,
             Some(tenant.default_locale.as_str()),
         )
@@ -111,7 +112,10 @@ pub async fn get_post(
     let post = service
         .get_post_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             id,
             locale,
             Some(tenant.default_locale.as_str()),
@@ -148,7 +152,14 @@ pub async fn create_post(
 
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let post_id = service
-        .create_post(tenant.id, auth.security_context(), input)
+        .create_post(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok((StatusCode::CREATED, Json(post_id)))
@@ -185,7 +196,15 @@ pub async fn update_post(
 
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .update_post(tenant.id, id, auth.security_context(), input)
+        .update_post(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(())
@@ -220,7 +239,14 @@ pub async fn delete_post(
 
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .delete_post(tenant.id, id, auth.security_context())
+        .delete_post(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -255,7 +281,14 @@ pub async fn publish_post(
 
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .publish_post(tenant.id, id, auth.security_context())
+        .publish_post(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(())
@@ -290,7 +323,14 @@ pub async fn unpublish_post(
 
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .unpublish_post(tenant.id, id, auth.security_context())
+        .unpublish_post(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(())

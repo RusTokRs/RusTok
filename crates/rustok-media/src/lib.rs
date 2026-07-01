@@ -7,7 +7,7 @@ pub mod ports;
 pub mod service;
 
 use async_trait::async_trait;
-use rustok_core::permissions::{Action, Permission, Resource};
+use rustok_api::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 

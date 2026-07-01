@@ -14,8 +14,8 @@ pub use ports::*;
 pub use services::TenantService;
 
 use async_trait::async_trait;
+use rustok_api::Permission;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use rustok_core::permissions::Permission;
 use sea_orm_migration::MigrationTrait;
 
 pub struct TenantModule;

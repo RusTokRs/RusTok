@@ -1,5 +1,5 @@
 use crate::services::permission_normalization::normalize_permissions;
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 #[async_trait::async_trait]
 pub trait RelationPermissionStore {
@@ -105,7 +105,7 @@ mod tests {
         RelationPermissionStore,
     };
     use async_trait::async_trait;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;

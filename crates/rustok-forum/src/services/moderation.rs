@@ -6,7 +6,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_core::SecurityContext;
+
+use rustok_api::{Action, Resource};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 

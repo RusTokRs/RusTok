@@ -6,14 +6,11 @@ use axum::{
 };
 use loco_rs::app::AppContext;
 use loco_rs::{controller::Routes, Result};
-use utoipa::openapi::path::OperationBuilder;
-use utoipa::openapi::request_body::RequestBodyBuilder;
-use utoipa::openapi::response::{ResponseBuilder, ResponsesBuilder};
-use utoipa::openapi::{Content, OpenApi as OpenApiDoc, Ref};
+use utoipa::openapi::OpenApi as OpenApiDoc;
+use utoipa::OpenApi;
 
 use crate::common::settings::RustokSettings;
 use crate::error::Error;
-use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -135,243 +132,6 @@ use utoipa::OpenApi;
 )]
 pub struct ApiDoc;
 
-#[cfg(feature = "mod-blog")]
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        crate::controllers::blog::posts::list_posts,
-        crate::controllers::blog::posts::get_post,
-        crate::controllers::blog::posts::create_post,
-        crate::controllers::blog::posts::update_post,
-        crate::controllers::blog::posts::delete_post,
-        crate::controllers::blog::posts::publish_post,
-        crate::controllers::blog::posts::unpublish_post,
-        crate::controllers::blog::comments::moderate_comment,
-    ),
-    components(
-        schemas(
-            rustok_blog::dto::CreatePostInput,
-            rustok_blog::dto::UpdatePostInput,
-            rustok_blog::dto::PostResponse,
-            rustok_blog::dto::PostSummary,
-            rustok_blog::dto::PostListQuery,
-            rustok_blog::dto::PostListResponse,
-            rustok_blog::dto::CommentResponse,
-            rustok_blog::dto::ModerateCommentInput,
-            rustok_blog::dto::ModerateCommentStatus,
-            rustok_blog::state_machine::BlogPostStatus,
-        )
-    ),
-    tags((name = "blog", description = "Blog endpoints"))
-)]
-pub struct BlogApiDoc;
-
-#[cfg(feature = "mod-forum")]
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        crate::controllers::forum::categories::list_categories,
-        crate::controllers::forum::categories::get_category,
-        crate::controllers::forum::categories::create_category,
-        crate::controllers::forum::categories::update_category,
-        crate::controllers::forum::categories::delete_category,
-        crate::controllers::forum::topics::list_topics,
-        crate::controllers::forum::topics::get_topic,
-        crate::controllers::forum::topics::create_topic,
-        crate::controllers::forum::topics::update_topic,
-        crate::controllers::forum::topics::delete_topic,
-        crate::controllers::forum::replies::list_replies,
-        crate::controllers::forum::replies::get_reply,
-        crate::controllers::forum::replies::create_reply,
-        crate::controllers::forum::replies::update_reply,
-        crate::controllers::forum::replies::delete_reply,
-    ),
-    components(
-        schemas(
-            rustok_forum::CreateCategoryInput,
-            rustok_forum::UpdateCategoryInput,
-            rustok_forum::CategoryResponse,
-            rustok_forum::CategoryListItem,
-            rustok_forum::CreateTopicInput,
-            rustok_forum::UpdateTopicInput,
-            rustok_forum::ListTopicsFilter,
-            rustok_forum::TopicResponse,
-            rustok_forum::TopicListItem,
-            rustok_forum::CreateReplyInput,
-            rustok_forum::UpdateReplyInput,
-            rustok_forum::ListRepliesFilter,
-            rustok_forum::ReplyResponse,
-            rustok_forum::ReplyListItem,
-        )
-    ),
-    tags((name = "forum", description = "Forum endpoints"))
-)]
-pub struct ForumApiDoc;
-
-#[cfg(feature = "mod-pages")]
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        crate::controllers::pages::get_page,
-        crate::controllers::pages::create_page,
-        crate::controllers::pages::update_page,
-        crate::controllers::pages::delete_page,
-        crate::controllers::pages::create_block,
-        crate::controllers::pages::update_block,
-        crate::controllers::pages::delete_block,
-        crate::controllers::pages::reorder_blocks,
-    ),
-    components(
-        schemas(
-            rustok_pages::CreatePageInput,
-            rustok_pages::UpdatePageInput,
-            rustok_pages::CreateBlockInput,
-            rustok_pages::UpdateBlockInput,
-            rustok_pages::BlockResponse,
-            rustok_pages::PageResponse,
-            crate::controllers::pages::GetPageParams,
-            crate::controllers::pages::ReorderBlocksInput,
-        )
-    ),
-    tags((name = "pages", description = "Pages endpoints"))
-)]
-pub struct PagesApiDoc;
-
-#[cfg(feature = "mod-commerce")]
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        crate::controllers::commerce::store::list_products,
-        crate::controllers::commerce::store::show_product,
-        crate::controllers::commerce::store::list_regions,
-        crate::controllers::commerce::store::list_shipping_options,
-        crate::controllers::commerce::store::create_cart,
-        crate::controllers::commerce::store::get_cart,
-        crate::controllers::commerce::store::add_cart_line_item,
-        crate::controllers::commerce::store::update_cart_line_item,
-        crate::controllers::commerce::store::remove_cart_line_item,
-        crate::controllers::commerce::store::create_payment_collection,
-        crate::controllers::commerce::store::complete_cart_checkout,
-        crate::controllers::commerce::store::get_order,
-        crate::controllers::commerce::store::get_me,
-        crate::controllers::commerce::admin::list_products,
-        crate::controllers::commerce::admin::create_product,
-        crate::controllers::commerce::admin::show_product,
-        crate::controllers::commerce::admin::update_product,
-        crate::controllers::commerce::admin::delete_product,
-        crate::controllers::commerce::admin::publish_product,
-        crate::controllers::commerce::admin::unpublish_product,
-        crate::controllers::commerce::admin::list_orders,
-        crate::controllers::commerce::admin::show_order,
-        crate::controllers::commerce::admin::mark_order_paid,
-        crate::controllers::commerce::admin::ship_order,
-        crate::controllers::commerce::admin::deliver_order,
-        crate::controllers::commerce::admin::cancel_order,
-        crate::controllers::commerce::admin::create_order_return,
-        crate::controllers::commerce::admin::create_order_return_decision,
-        crate::controllers::commerce::admin::create_order_change,
-        crate::controllers::commerce::admin::list_order_changes,
-        crate::controllers::commerce::admin::show_order_change,
-        crate::controllers::commerce::admin::apply_order_change,
-        crate::controllers::commerce::admin::cancel_order_change,
-        crate::controllers::commerce::admin::list_order_returns,
-        crate::controllers::commerce::admin::show_order_return,
-        crate::controllers::commerce::admin::complete_order_return,
-        crate::controllers::commerce::admin::cancel_order_return,
-        crate::controllers::commerce::admin::list_payment_collections,
-        crate::controllers::commerce::admin::show_payment_collection,
-        crate::controllers::commerce::admin::authorize_payment_collection,
-        crate::controllers::commerce::admin::capture_payment_collection,
-        crate::controllers::commerce::admin::cancel_payment_collection,
-        crate::controllers::commerce::admin::create_refund,
-        crate::controllers::commerce::admin::list_refunds,
-        crate::controllers::commerce::admin::show_refund,
-        crate::controllers::commerce::admin::complete_refund,
-        crate::controllers::commerce::admin::cancel_refund,
-        crate::controllers::commerce::admin::list_fulfillments,
-        crate::controllers::commerce::admin::show_fulfillment,
-        crate::controllers::commerce::admin::ship_fulfillment,
-        crate::controllers::commerce::admin::deliver_fulfillment,
-        crate::controllers::commerce::admin::reopen_fulfillment,
-        crate::controllers::commerce::admin::reship_fulfillment,
-        crate::controllers::commerce::admin::cancel_fulfillment,
-    ),
-    components(
-        schemas(
-            rustok_product::dto::CreateProductInput,
-            rustok_product::dto::UpdateProductInput,
-            rustok_product::dto::ProductResponse,
-            rustok_product::dto::ProductTranslationInput,
-            rustok_product::dto::ProductOptionInput,
-            rustok_product::dto::ProductTranslationResponse,
-            rustok_product::dto::ProductOptionResponse,
-            rustok_product::dto::ProductImageResponse,
-            rustok_product::dto::PriceResponse,
-            rustok_product::entities::product::ProductStatus,
-            crate::controllers::commerce::products::ListProductsParams,
-            crate::controllers::commerce::products::ProductListItem,
-            crate::controllers::commerce::store::StoreListProductsParams,
-            crate::controllers::commerce::store::StoreContextQuery,
-            crate::controllers::commerce::store::StoreCreateCartInput,
-            crate::controllers::commerce::store::StoreCartResponse,
-            crate::controllers::commerce::store::StoreUpdateCartInput,
-            crate::controllers::commerce::store::StoreAddCartLineItemInput,
-            crate::controllers::commerce::store::StoreUpdateCartLineItemInput,
-            crate::controllers::commerce::store::StoreCreatePaymentCollectionInput,
-            crate::controllers::commerce::store::StoreCompleteCartInput,
-            rustok_cart::dto::CartResponse,
-            rustok_cart::dto::CartLineItemResponse,
-            rustok_region::dto::RegionResponse,
-            rustok_customer::dto::CustomerResponse,
-            rustok_fulfillment::dto::ShippingOptionResponse,
-            rustok_payment::dto::PaymentCollectionResponse,
-            rustok_payment::dto::PaymentResponse,
-            rustok_order::dto::OrderResponse,
-            rustok_order::dto::OrderLineItemResponse,
-            rustok_order::dto::MarkPaidOrderInput,
-            rustok_order::dto::ShipOrderInput,
-            rustok_order::dto::DeliverOrderInput,
-            rustok_order::dto::CancelOrderInput,
-            rustok_order::dto::CreateOrderReturnInput,
-            rustok_commerce::CreateReturnDecisionInput,
-            rustok_commerce::ReturnDecisionResponse,
-            rustok_order::dto::CreateOrderChangeInput,
-            rustok_order::dto::ApplyOrderChangeInput,
-            rustok_order::dto::CancelOrderChangeInput,
-            rustok_order::dto::OrderChangeResponse,
-            rustok_order::dto::CompleteOrderReturnInput,
-            rustok_order::dto::CancelOrderReturnInput,
-            rustok_order::dto::OrderReturnResponse,
-            rustok_payment::dto::AuthorizePaymentInput,
-            rustok_payment::dto::CapturePaymentInput,
-            rustok_payment::dto::CancelPaymentInput,
-            rustok_payment::dto::CreateRefundInput,
-            rustok_payment::dto::CompleteRefundInput,
-            rustok_payment::dto::CancelRefundInput,
-            rustok_payment::dto::RefundResponse,
-            crate::controllers::commerce::admin::ListPaymentCollectionsParams,
-            crate::controllers::commerce::admin::ListRefundsParams,
-            crate::controllers::commerce::admin::ListOrderChangesParams,
-            crate::controllers::commerce::admin::ListOrderReturnsParams,
-            rustok_fulfillment::dto::FulfillmentResponse,
-            rustok_fulfillment::dto::ShipFulfillmentInput,
-            rustok_fulfillment::dto::DeliverFulfillmentInput,
-            rustok_fulfillment::dto::CancelFulfillmentInput,
-            crate::controllers::commerce::admin::ListFulfillmentsParams,
-            rustok_commerce::dto::ResolveStoreContextInput,
-            rustok_commerce::dto::StoreContextResponse,
-            rustok_commerce::dto::CompleteCheckoutInput,
-            rustok_commerce::dto::CompleteCheckoutResponse,
-            crate::controllers::commerce::admin::AdminOrderDetailResponse,
-        )
-    ),
-    tags(
-        (name = "commerce", description = "Ecommerce endpoints"),
-        (name = "store", description = "Storefront ecommerce endpoints")
-    )
-)]
-pub struct CommerceApiDoc;
-
 const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
     "/health",
     "/health/live",
@@ -388,13 +148,13 @@ const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
 fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
     let mut openapi = ApiDoc::openapi();
     #[cfg(feature = "mod-blog")]
-    openapi.merge(BlogApiDoc::openapi());
+    openapi.merge(rustok_blog::openapi::openapi_document());
     #[cfg(feature = "mod-forum")]
-    openapi.merge(ForumApiDoc::openapi());
+    openapi.merge(rustok_forum::openapi::openapi_document());
     #[cfg(feature = "mod-pages")]
-    openapi.merge(PagesApiDoc::openapi());
+    openapi.merge(rustok_pages::openapi::openapi_document());
     #[cfg(feature = "mod-commerce")]
-    openapi.merge(CommerceApiDoc::openapi());
+    openapi.merge(rustok_commerce::openapi::openapi_document());
     if settings.runtime.is_registry_only() {
         openapi
             .paths
@@ -458,36 +218,6 @@ pub struct SecurityAddon;
 
 impl utoipa::Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        if let Some(path_item) = openapi.paths.paths.get_mut("/store/carts/{id}") {
-            path_item.post.get_or_insert_with(|| {
-                OperationBuilder::new()
-                    .request_body(Some(
-                        RequestBodyBuilder::new()
-                            .content(
-                                "application/json",
-                                Content::new(Some(Ref::from_schema_name("StoreUpdateCartInput"))),
-                            )
-                            .build(),
-                    ))
-                    .responses(
-                        ResponsesBuilder::new()
-                            .response(
-                                "200",
-                                ResponseBuilder::new()
-                                    .description("Updated cart context")
-                                    .content(
-                                        "application/json",
-                                        Content::new(Some(Ref::from_schema_name(
-                                            "StoreCartResponse",
-                                        ))),
-                                    ),
-                            )
-                            .build(),
-                    )
-                    .build()
-            });
-        }
-
         if let Some(components) = openapi.components.as_mut() {
             components.add_security_scheme(
                 "bearer_auth",

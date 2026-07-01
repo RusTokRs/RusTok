@@ -1,4 +1,5 @@
 use rust_decimal::prelude::ToPrimitive;
+use rustok_api::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_commerce_foundation::dto::{
     ProductOptionTranslationInput, ProductOptionTranslationResponse,
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
@@ -7,7 +8,6 @@ use rustok_commerce_foundation::dto::{
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
-use rustok_core::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };

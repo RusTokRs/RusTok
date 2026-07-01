@@ -13,7 +13,7 @@ fn parse_uuid(value: &str) -> Result<uuid::Uuid, ServerFnError> {
 #[cfg(feature = "ssr")]
 fn require_permission(
     auth: &rustok_api::AuthContext,
-    permission: rustok_core::Permission,
+    permission: rustok_api::Permission,
 ) -> Result<(), ServerFnError> {
     if rustok_api::has_effective_permission(&auth.permissions, &permission) {
         Ok(())
@@ -31,7 +31,7 @@ pub(super) async fn media_library_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_core::{Action, Permission, Resource};
+        use rustok_api::{Action, Permission, Resource};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
@@ -92,7 +92,7 @@ pub(super) async fn media_detail_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_core::{Action, Permission, Resource};
+        use rustok_api::{Action, Permission, Resource};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
@@ -144,7 +144,7 @@ pub(super) async fn media_translations_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_core::{Action, Permission, Resource};
+        use rustok_api::{Action, Permission, Resource};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
@@ -194,7 +194,7 @@ pub(super) async fn media_upsert_translation_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_core::{Action, Permission, Resource};
+        use rustok_api::{Action, Permission, Resource};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
@@ -247,7 +247,7 @@ pub(super) async fn media_delete_native(media_id: String) -> Result<bool, Server
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_core::{Action, Permission, Resource};
+        use rustok_api::{Action, Permission, Resource};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
@@ -284,7 +284,7 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_core::{Action, Permission, Resource};
+        use rustok_api::{Action, Permission, Resource};
         use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect};
 
         let app_ctx = expect_context::<AppContext>();

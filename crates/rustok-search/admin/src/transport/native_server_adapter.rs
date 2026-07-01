@@ -1249,9 +1249,9 @@ async fn update_search_settings_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::loco::transactional_event_bus_from_context;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_events::DomainEvent;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -1317,9 +1317,9 @@ async fn trigger_search_rebuild_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::loco::transactional_event_bus_from_context;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_events::DomainEvent;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -2194,9 +2194,9 @@ fn normalize_limit(value: Option<i32>, default: i32, max: i32) -> usize {
 
 #[cfg(feature = "ssr")]
 fn ensure_settings_read_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(permissions, &rustok_core::Permission::SETTINGS_READ) {
+    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::SETTINGS_READ) {
         return Err(ServerFnError::new("settings:read required"));
     }
     Ok(())
@@ -2204,9 +2204,9 @@ fn ensure_settings_read_permission(
 
 #[cfg(feature = "ssr")]
 fn ensure_settings_manage_permission(
-    permissions: &[rustok_core::Permission],
+    permissions: &[rustok_api::Permission],
 ) -> Result<(), ServerFnError> {
-    if !rustok_api::has_effective_permission(permissions, &rustok_core::Permission::SETTINGS_MANAGE)
+    if !rustok_api::has_effective_permission(permissions, &rustok_api::Permission::SETTINGS_MANAGE)
     {
         return Err(ServerFnError::new("settings:manage required"));
     }

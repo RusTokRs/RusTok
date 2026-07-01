@@ -3,8 +3,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::context::TenantContext;
 use crate::request::RequestContext;
-
-const PLATFORM_FALLBACK_LOCALE: &str = "en";
+use crate::PLATFORM_FALLBACK_LOCALE;
 
 #[derive(SimpleObject, Debug, Clone)]
 pub struct PageInfo {

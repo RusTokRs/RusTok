@@ -3,10 +3,10 @@ mod query;
 mod types;
 
 use async_graphql::{Context, ErrorExtensions, FieldError, Result};
+use rustok_api::Permission;
 use rustok_api::{
     graphql::GraphQLError, has_any_effective_permission, AuthContext, RequestContext,
 };
-use rustok_core::Permission;
 use sea_orm::DatabaseConnection;
 
 use crate::storefront_channel::is_module_enabled_for_request_channel;

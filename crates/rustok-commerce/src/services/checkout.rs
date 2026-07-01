@@ -4,9 +4,9 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_api::PortErrorKind;
+use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_cart::error::CartError;
 use rustok_cart::CartService;
-use rustok_core::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::providers::{
     FulfillmentProviderOperationRequest, FulfillmentProviderRegistry,

@@ -12,6 +12,13 @@
 
 `apps/admin` не должен становиться владельцем бизнес-логики модулей. Если модуль поставляет собственный admin UI, эта поверхность остаётся рядом с модулем и подключается через manifest-driven contract.
 
+FFA classification: `apps/admin` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять shell/routing/context composition и не переносить module-specific workflows из owner packages в host.
+
+Первый host-level FFA срез уже применён к app shell navigation: переносимая sidebar policy
+живёт в `src/widgets/app_shell/core.rs` без Leptos-зависимостей, а `sidebar.rs` остаётся
+Leptos render/bind adapter. Этот split закреплён быстрым verifier-ом
+`npm run verify:frontend:host-ffa-contract`.
+
 ## Границы ответственности
 
 `apps/admin` отвечает за:

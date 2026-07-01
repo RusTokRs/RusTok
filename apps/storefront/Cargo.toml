@@ -21,6 +21,7 @@ ssr = [
   "dep:loco-rs",
   "dep:rustok-content",
   "dep:rustok-core",
+  "dep:rustok-outbox",
   "dep:rustok-seo",
   "dep:rustok-seo-render",
   "dep:rustok-tenant",
@@ -75,6 +76,7 @@ serde_urlencoded.workspace = true
 futures = "0.3"
 rustok-core = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 thiserror.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }

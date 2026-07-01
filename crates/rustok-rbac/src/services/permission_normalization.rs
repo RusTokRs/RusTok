@@ -1,4 +1,4 @@
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 pub(crate) fn normalize_permissions(mut permissions: Vec<Permission>) -> Vec<Permission> {
     permissions.sort_unstable_by_key(|permission| permission.to_string());
@@ -9,7 +9,7 @@ pub(crate) fn normalize_permissions(mut permissions: Vec<Permission>) -> Vec<Per
 #[cfg(test)]
 mod tests {
     use super::normalize_permissions;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     #[test]
     fn normalize_permissions_deduplicates_and_sorts() {

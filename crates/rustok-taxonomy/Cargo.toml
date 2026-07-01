@@ -6,6 +6,7 @@ license.workspace = true
 description = "Scope-aware taxonomy dictionary for shared and module-local terms"
 
 [dependencies]
+rustok-api.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-content.workspace = true

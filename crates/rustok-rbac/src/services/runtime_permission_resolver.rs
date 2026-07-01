@@ -162,7 +162,8 @@ mod tests {
     use super::{RoleAssignmentStore, RuntimePermissionResolver};
     use crate::{PermissionCache, PermissionResolver, RelationPermissionStore};
     use async_trait::async_trait;
-    use rustok_core::{Permission, UserRole};
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;

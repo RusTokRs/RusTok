@@ -1,8 +1,8 @@
+use crate::{extract_locale_tag_from_header, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use axum::{
     extract::FromRequestParts,
     http::{header, request::Parts, HeaderMap, StatusCode},
 };
-use rustok_core::{extract_locale_tag_from_header, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use uuid::Uuid;
 
 use crate::context::{ChannelContextExtension, ChannelResolutionSource, TenantContextExtension};

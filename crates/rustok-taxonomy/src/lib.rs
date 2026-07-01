@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
@@ -61,7 +61,7 @@ impl MigrationSource for TaxonomyModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_core::permissions::{Action, Resource};
+    use rustok_api::{Action, Resource};
 
     #[test]
     fn module_metadata() {

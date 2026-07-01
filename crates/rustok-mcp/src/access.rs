@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

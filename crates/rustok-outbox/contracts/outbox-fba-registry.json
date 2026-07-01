@@ -11,8 +11,8 @@
       "operations": [
         "process_pending_once"
       ],
-      "context": "rustok_core::ports::PortContext",
-      "error": "rustok_core::ports::PortError",
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
       "deadline_required": true
     }

@@ -5,11 +5,11 @@
 ## Execution checkpoint
 
 - Current phase: quality_backlog_hardening
-- Last checkpoint: Added dispatcher retry/backpressure-release contract coverage for retry success, retry exhaustion, no-handler release, and concurrent handler completion release.
+- Last checkpoint: Neutral `Port*`, permission and locale contracts and all compatibility exports were removed from `rustok-core`; core now consumes them from `rustok-api` and owns only runtime RBAC/security policy.
 - Next step: Run the documented module verification gates when compilation is allowed and continue extending targeted coverage around dispatcher latency metric hooks.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-07-01T00:00:00Z
 
 ## Область работ
 
@@ -23,6 +23,8 @@
 - shared typed contracts и foundation helpers являются частью live surface;
 - другие модули строят свои integration contracts поверх `rustok-core`, не размазывая базовые типы по workspace;
 - **boundary hardening**: auth module (user entity, repository, service, migrations) удалён из `rustok-core` — canonical auth lifecycle живёт в `rustok-auth`;
+- **port boundary hardening**: `PortContext`/`PortError`/`PortCallPolicy` удалены из core и его prelude; canonical contract живёт только в `rustok-api`;
+- **shared API boundary**: `Permission`/`Action`/`Resource` и locale helpers удалены из core; `SecurityContext::try_from_port_context` строго валидирует non-system actors, `SecurityActorKind` разделяет `System`/`User`/`Service`/`Public`, а anonymous storefront reads используют `SecurityContext::public_read()` вместо trusted runtime authority;
 - **contract sync**: `CRATE_API.md`, `README.md`, `docs/README.md` синхронизированы с актуальным public surface;
 - **deps cleanup**: удалены `jsonwebtoken` и `argon2` из `Cargo.toml` (больше не нужны после удаления auth);
 - **targeted tests**: добавлен `tests/foundation_primitives.rs` с coverage для `UserRole`/`UserStatus` (display, parse, serde), `generate_id`/`parse_id`, locale normalization и field-schema guardrails;

@@ -284,8 +284,8 @@ async fn event_settings_native() -> Result<PlatformSettingsResponse, ServerFnErr
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await

@@ -5,9 +5,14 @@ edition.workspace = true
 license.workspace = true
 description.workspace = true
 
+[features]
+default = []
+loco-adapter = ["dep:loco-rs"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+loco-rs = { workspace = true, optional = true }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
@@ -16,6 +21,7 @@ uuid.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 
+rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 

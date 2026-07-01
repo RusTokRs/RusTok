@@ -1,4 +1,4 @@
-use rustok_core::locale_tags_match;
+use rustok_api::locale_tags_match;
 
 use crate::i18n::t;
 use crate::model::{

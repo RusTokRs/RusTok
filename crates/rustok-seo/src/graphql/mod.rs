@@ -3,11 +3,12 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use rustok_api::Permission;
 use rustok_api::{
     graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
     has_any_effective_permission, AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::{ModuleRuntimeExtensions, Permission};
+use rustok_core::ModuleRuntimeExtensions;
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTargetSlug};
 
@@ -429,8 +430,9 @@ fn map_seo_error(error: SeoError) -> async_graphql::Error {
 mod tests {
     use super::SeoQuery;
     use async_graphql::{EmptyMutation, EmptySubscription, Request, Schema};
+    use rustok_api::Permission;
     use rustok_api::{AuthContext, RequestContext, TenantContext};
-    use rustok_core::{MemoryTransport, ModuleRuntimeExtensions, Permission, RusToKModule};
+    use rustok_core::{MemoryTransport, ModuleRuntimeExtensions, RusToKModule};
     use rustok_forum::{
         migrations as forum_migrations, CategoryService, CreateCategoryInput, CreateTopicInput,
         TopicService,

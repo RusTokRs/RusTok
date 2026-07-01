@@ -7,7 +7,9 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use rustok_core::{Action, Permission, Resource, UserRole};
+use rustok_core::UserRole;
+
+use rustok_api::{Action, Permission, Resource};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
     invalidate_cached_permissions, AuthorizationDecision, DeniedReasonKind, PermissionCache,

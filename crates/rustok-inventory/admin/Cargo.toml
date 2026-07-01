@@ -13,11 +13,12 @@ default = []
 hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",
-  "rustok-api/loco-adapter",
+  "rustok-api/server",
   "dep:leptos_axum",
   "dep:loco-rs",
   "dep:rustok-core",
   "dep:rustok-inventory",
+  "dep:rustok-outbox",
   "dep:uuid",
 ]
 
@@ -28,8 +29,8 @@ loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 leptos-ui-routing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid = { workspace = true, optional = true }
-

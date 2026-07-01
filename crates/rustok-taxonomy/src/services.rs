@@ -9,11 +9,11 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
-    PLATFORM_FALLBACK_LOCALE,
 };
-use rustok_core::{Action, PermissionScope, Resource, SecurityContext};
+use rustok_core::{PermissionScope, SecurityContext};
 
 use crate::dto::{
     CreateTaxonomyTermInput, ListTaxonomyTermsFilter, TaxonomyScopeType, TaxonomyTermKind,

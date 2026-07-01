@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1125" viewBox="0 0 1800 1125" role="img" aria-labelledby="title desc">
+  <title id="title">RusToK Pure Headless Deployment</title>
+  <desc id="desc">Pure headless deployment with external clients consuming GraphQL and REST, showing FFA and FBA constraints.</desc>
+  <defs>
+    <style>.bg{fill:#f8fafc}.panel{fill:#fff;stroke:#d8dee8;stroke-width:2}.client{fill:#dcfce7;stroke:#16a34a;stroke-width:2}.server{fill:#e0f2fe;stroke:#0284c7;stroke-width:3}.transport{fill:#fef3c7;stroke:#d97706;stroke-width:2}.mod{fill:#eef2ff;stroke:#4f46e5;stroke-width:2}.infra{fill:#f1f5f9;stroke:#64748b;stroke-width:2}.ffa{fill:#ecfdf5;stroke:#10b981;stroke-width:2}.fba{fill:#fff7ed;stroke:#f97316;stroke-width:2}.text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#0f172a}.title{font-size:48px;font-weight:800}.sub{font-size:24px;fill:#475569}.h{font-size:28px;font-weight:800}.m{font-size:21px;font-weight:700}.s{font-size:18px;font-weight:500}.xs{font-size:15px;font-weight:500;fill:#475569}.line{stroke:#334155;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#64748b;stroke-width:3;stroke-dasharray:8 8;fill:none;marker-end:url(#arrow)}.shadow{filter:url(#shadow)}</style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#334155"/></marker>
+  </defs>
+  <rect class="bg" width="1800" height="1125"/>
+  <text x="900" y="76" text-anchor="middle" class="text title">Deployment Profile 4: Pure Headless</text>
+  <text x="900" y="112" text-anchor="middle" class="sub">RusToK exposes platform contracts while every UI is external or custom</text>
+
+  <rect x="90" y="175" width="455" height="520" rx="34" class="panel shadow"/>
+  <text x="130" y="230" class="text h">External clients</text>
+  <rect x="140" y="285" width="355" height="80" rx="20" class="client"/>
+  <text x="318" y="335" text-anchor="middle" class="text s">Custom web frontend</text>
+  <rect x="140" y="395" width="355" height="80" rx="20" class="client"/>
+  <text x="318" y="445" text-anchor="middle" class="text s">Mobile app</text>
+  <rect x="140" y="505" width="355" height="80" rx="20" class="client"/>
+  <text x="318" y="555" text-anchor="middle" class="text s">Partner / integration UI</text>
+
+  <rect x="675" y="225" width="450" height="240" rx="30" class="transport shadow"/>
+  <text x="900" y="285" text-anchor="middle" class="text h">Public API boundary</text>
+  <text x="900" y="330" text-anchor="middle" class="text s">GraphQL</text>
+  <text x="900" y="365" text-anchor="middle" class="text s">REST for uploads, webhooks and ops</text>
+  <text x="900" y="400" text-anchor="middle" class="xs">No Leptos UI host is required</text>
+
+  <rect x="1255" y="175" width="455" height="520" rx="34" class="server shadow"/>
+  <text x="1482" y="230" text-anchor="middle" class="text h">apps/server</text>
+  <text x="1482" y="270" text-anchor="middle" class="text s">composition root</text>
+  <text x="1482" y="305" text-anchor="middle" class="text s">auth / RBAC / tenant / locale</text>
+  <rect x="1305" y="365" width="355" height="95" rx="22" class="mod"/>
+  <text x="1482" y="405" text-anchor="middle" class="text s">Module-owned</text>
+  <text x="1482" y="430" text-anchor="middle" class="text s">domain services</text>
+  <rect x="1305" y="505" width="355" height="95" rx="22" class="mod"/>
+  <text x="1482" y="545" text-anchor="middle" class="text s">Events, read models,</text>
+  <text x="1482" y="570" text-anchor="middle" class="text s">search and indexing</text>
+
+  <rect x="250" y="760" width="1300" height="90" rx="26" class="infra"/>
+  <text x="900" y="815" text-anchor="middle" class="text s">PostgreSQL | Redis / Cache | Meilisearch | Iggy Streaming | Object Storage | Telemetry</text>
+
+  <path d="M545 435 L675 345" class="line"/>
+  <path d="M1125 345 L1255 435" class="line"/>
+  <path d="M1482 695 L1482 760" class="line"/>
+  <path d="M900 465 C1010 570, 1170 620, 1305 552" class="dash"/>
+
+  <rect x="90" y="910" width="760" height="120" rx="26" class="ffa"/>
+  <text x="130" y="958" class="text m">FFA boundary</text>
+  <text x="130" y="992" class="text s">Headless is a topology. UI-facing contracts stay canonical so future module-owned clients do not require backend-specific APIs.</text>
+  <rect x="950" y="910" width="760" height="120" rx="26" class="fba"/>
+  <text x="990" y="958" class="text m">FBA boundary</text>
+  <text x="990" y="992" class="text s">Backend modules may remain embedded or move remote; GraphQL/REST contracts still call the same module-owned service contract.</text>
+</svg>

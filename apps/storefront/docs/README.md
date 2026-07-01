@@ -6,6 +6,12 @@
 
 `apps/storefront` является Rust-first SSR-first storefront host для RusToK. Приложение рендерит shell, домашнюю страницу, generic module pages и монтирует module-owned storefront UI через manifest-driven wiring.
 
+FFA classification: `apps/storefront` является `FFA-compatible composition host`, а не module-owned UI package. Его FFA-обязанность — сохранять storefront shell/routing/context composition и не переносить module-specific storefront workflows из owner packages в host.
+
+Первый host-level FFA срез уже применён к storefront header: route/link policy живёт в
+`src/widgets/header/core.rs` без Leptos-зависимостей, а `header/mod.rs` остаётся Leptos
+render adapter. Этот split закреплён быстрым verifier-ом `npm run verify:frontend:host-ffa-contract`.
+
 ## Границы ответственности
 
 - владеть Leptos storefront host и его SSR/runtime wiring;

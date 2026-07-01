@@ -8,7 +8,7 @@ description = "Leptos storefront UI package for the rustok-commerce module"
 [features]
 default = []
 hydrate = ["leptos/hydrate"]
-ssr = ["leptos/ssr", "dep:leptos_axum", "dep:loco-rs", "dep:rustok-cart", "dep:rustok-commerce", "dep:rustok-customer", "dep:rustok-inventory", "dep:rustok-pricing", "dep:rustok-region", "rustok-api/loco-adapter"]
+ssr = ["leptos/ssr", "dep:leptos_axum", "dep:loco-rs", "dep:rustok-cart", "dep:rustok-commerce", "dep:rustok-customer", "dep:rustok-inventory", "dep:rustok-pricing", "dep:rustok-region", "rustok-api/server"]
 
 [dependencies]
 leptos.workspace = true

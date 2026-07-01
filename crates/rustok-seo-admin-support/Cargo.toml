@@ -12,6 +12,7 @@ crate-type = ["rlib"]
 leptos.workspace = true
 leptos-auth.workspace = true
 leptos-graphql.workspace = true
+rustok-api = { workspace = true, default-features = false }
 rustok-seo-targets = { path = "../rustok-seo-targets", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

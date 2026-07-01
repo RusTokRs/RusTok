@@ -1,6 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::graphql::require_module_enabled;
-use rustok_core::Permission;
+use rustok_api::Permission;
 use uuid::Uuid;
 
 use rustok_product::CatalogService;

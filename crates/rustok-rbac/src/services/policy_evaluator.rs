@@ -1,5 +1,5 @@
 use crate::{build_tenant_policy_enforcer, resolved_permissions_subject};
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 use super::permission_check::PermissionCheck;
 
@@ -36,7 +36,7 @@ fn enforce_permission(
 mod tests {
     use super::evaluate_policy_permissions;
     use crate::services::permission_check::PermissionCheck;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     #[tokio::test]
     async fn policy_evaluator_allows_single_matching_permission() {

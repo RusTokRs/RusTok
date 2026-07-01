@@ -7,10 +7,11 @@ use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_api::{Action, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_core::SecurityContext;
 
 use crate::dto::{CategoryListItem, CategoryResponse, CreateCategoryInput, UpdateCategoryInput};
 use crate::entities::{forum_category, forum_category_translation};

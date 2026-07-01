@@ -76,6 +76,7 @@ status: verified
 - [База данных](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
 - [ADR гибридного установщика](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
 - [ADR lifecycle hook phases/retry contract](../DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) — `validated/running/committed/failed`, explicit `pre/post` hooks и retryable post-hook failures без частичного rollback
+- [ADR владения shared API contracts](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission и locale contracts в `rustok-api`, односторонний граф `rustok-core -> rustok-api` и owner-owned Loco adapter в `rustok-outbox`
 - [Каналы](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
 - [Контракт event flow](./architecture/event-flow-contract.md)

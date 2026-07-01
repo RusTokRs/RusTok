@@ -11,7 +11,7 @@ use super::{configured_tenant_slug, ApiError};
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "blog";
 #[cfg(feature = "ssr")]
-const PLATFORM_FALLBACK_LOCALE: &str = "en";
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
@@ -39,10 +39,10 @@ async fn storefront_blog_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::loco::transactional_event_bus_from_context;
         use rustok_blog::{BlogPostStatus, PostListQuery, PostService};
         use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
         use rustok_tenant::TenantService;
 
         let app_ctx = expect_context::<AppContext>();
@@ -111,7 +111,7 @@ async fn storefront_blog_native(
         let selected_post = service
             .get_post_by_slug_with_locale_fallback(
                 tenant_id,
-                SecurityContext::system(),
+                SecurityContext::public_read(),
                 requested_locale.as_str(),
                 post_slug.as_str(),
                 Some(fallback_locale.as_str()),

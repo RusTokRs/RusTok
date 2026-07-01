@@ -199,7 +199,7 @@ fn build_seo_head(context: &ResolvedSeoPageContext) -> String {
 
 #[cfg(feature = "ssr")]
 fn normalize_storefront_locale(raw: &str) -> Option<String> {
-    rustok_core::normalize_locale_tag(raw)
+    rustok_api::normalize_locale_tag(raw)
 }
 
 #[cfg(feature = "ssr")]

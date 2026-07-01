@@ -43,6 +43,7 @@ Primary owner для outbox/event delivery — Platform foundation on-call. Esca
 
 - используется `apps/server` для migrations, runtime relay bootstrap и event transport wiring;
 - зависит от `rustok-core` для module contracts и event transport abstractions, а от `rustok-api` — для shared `PortContext`/`PortError` и write-policy primitives;
+- владеет outbox-specific Loco composition adapter в `rustok_outbox::loco`; adapter включается feature `loco-adapter` и не создаёт обратную зависимость из `rustok-api`;
 - может форвардить доставку в downstream transports вроде `rustok-iggy`, не владея provider-specific delivery semantics;
 - остаётся `Core` module независимо от того, что часть bootstrap wiring живёт в host runtime.
 - module-level `health()` возвращает `Degraded`, потому что без host `AppContext` модуль не может проверить `sys_events`, relay worker state, backlog, lag и DLQ; конкретные checks находятся в `/health/ready`.

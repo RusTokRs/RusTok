@@ -2,7 +2,7 @@ use crate::services::permission_policy::{
     check_all_permissions, check_any_permission, check_permission, DeniedReasonKind,
     PermissionCheckOutcome,
 };
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermissionEvaluation {
@@ -60,7 +60,7 @@ pub fn evaluate_all_permissions(
 mod tests {
     use super::{evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission};
     use crate::DeniedReasonKind;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     #[test]
     fn evaluate_single_permission_returns_denied_reason() {

@@ -3,8 +3,8 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
+use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-use rustok_core::Permission;
 use uuid::Uuid;
 
 use crate::{ForumUserStatsResponse, UserStatsService};
@@ -33,7 +33,14 @@ pub async fn get_user_stats(
     )?;
 
     let stats = UserStatsService::new(ctx.db.clone())
-        .get(tenant.id, auth.security_context(), user_id)
+        .get(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            user_id,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(stats))

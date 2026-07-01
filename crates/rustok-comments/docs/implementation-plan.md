@@ -5,7 +5,7 @@
 ## Execution checkpoint
 
 - Current phase: FBA provider baseline for generic comment threads
-- Last checkpoint: owner FBA batch закрепил canonical shared policy: comment create/update/delete вызывают `PortCallPolicy::write()` до tenant parsing/service invocation, а policy внутри `rustok-core` уже обеспечивает deadline + idempotency; отдельный дублирующий `require_write_semantics()` не нужен. Read paths остаются на `PortCallPolicy::read()`.
+- Last checkpoint: comments port применяет canonical `PortCallPolicy`, затем строит `SecurityContext` через строгий `try_from_port_context`; system authority доступен только `PortActorKind::System`, а user/service actors требуют валидные UUID, roles и permission claims.
 - Next step: Закрыть runtime contract execution/fallback smoke для `CommentsThreadPort` и подтвердить blog embedded/native compatibility snapshots; для FFA — не расширять native-only admin transport без нового legacy/headless contract, а поддерживать parity/evidence guardrails.
 - Open blockers: отсутствуют; native-only comments admin exception зафиксирован, потому что у модуля не было legacy GraphQL/REST admin surface.
 - Hand-off notes for next agent: После каждого FFA/FBA инкремента обновлять этот блок, локальный FFA/FBA status block и central readiness board в одном PR.

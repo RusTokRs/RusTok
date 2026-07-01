@@ -1,5 +1,6 @@
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::{MigrationSource, SecurityContext};
+use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::dto::{
     BlockType, CreateBlockInput, CreatePageInput, PageBodyInput, PageTranslationInput,
     UpdatePageInput,
@@ -14,13 +15,13 @@ use rustok_tenant::entities::tenant_module;
 use rustok_test_utils::{
     db::setup_test_db,
     helpers::{admin_context, customer_context},
-    mock_transactional_event_bus,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, Statement,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
+use std::sync::Arc;
 use uuid::Uuid;
 
 async fn ensure_tenant_modules_table(db: &DatabaseConnection) {
@@ -51,6 +52,10 @@ async fn setup() -> (
     let db = setup_test_db().await;
     let module = PagesModule;
     let schema = SchemaManager::new(&db);
+    SysEventsMigration
+        .up(&schema)
+        .await
+        .expect("failed to apply outbox migrations");
     for migration in module.migrations() {
         migration
             .up(&schema)
@@ -59,7 +64,7 @@ async fn setup() -> (
     }
     ensure_tenant_modules_table(&db).await;
 
-    let event_bus = mock_transactional_event_bus();
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let page_service = PageService::new(db.clone(), event_bus.clone());
     let block_service = BlockService::new(db.clone(), event_bus);
 

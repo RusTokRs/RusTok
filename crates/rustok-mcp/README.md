@@ -168,7 +168,7 @@ let server = RusToKMcpServer::with_alloy(registry, alloy);
 To attach an MCP identity and permission-aware tool policy:
 
 ```rust
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use rustok_mcp::{McpAccessContext, McpAccessPolicy, McpActorType, McpIdentity, McpServerConfig};
 
 let config = McpServerConfig::new(registry).with_access_context(McpAccessContext {

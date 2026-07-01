@@ -6,6 +6,7 @@ license.workspace = true
 description.workspace = true
 
 [dependencies]
+rustok-api.workspace = true
 sea-orm.workspace = true
 uuid.workspace = true
 ulid.workspace = true

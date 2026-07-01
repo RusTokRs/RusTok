@@ -15,8 +15,10 @@ ssr = [
   "dep:rustok-channel",
   "dep:rustok-content",
   "dep:rustok-core",
+  "dep:rustok-outbox",
+  "dep:rustok-pages",
   "dep:rustok-tenant",
-  "rustok-api/loco-adapter",
+  "rustok-api/server",
 ]
 
 [dependencies]
@@ -31,5 +33,6 @@ rustok-api = { workspace = true, default-features = false }
 rustok-channel = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
-rustok-pages.workspace = true
+rustok-pages = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-tenant = { workspace = true, optional = true }

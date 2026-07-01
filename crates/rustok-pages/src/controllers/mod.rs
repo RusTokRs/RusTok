@@ -4,11 +4,9 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, controller::Routes, Error, Result};
-use rustok_api::{
-    has_any_effective_permission, loco::transactional_event_bus_from_context, AuthContext,
-    RequestContext, TenantContext,
-};
-use rustok_core::{Action, Permission, Resource};
+use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
+use rustok_api::{Action, Permission, Resource};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -59,7 +57,10 @@ pub async fn get_page(
     let page = service
         .get_by_slug_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             &locale,
             &slug,
             Some(tenant.default_locale.as_str()),
@@ -98,7 +99,14 @@ pub async fn create_page(
 
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service
-        .create(tenant.id, auth.security_context(), input)
+        .create(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok((StatusCode::CREATED, Json(page)))
@@ -131,7 +139,15 @@ pub async fn update_page(
 
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service
-        .update(tenant.id, auth.security_context(), id, input)
+        .update(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            id,
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(page))
@@ -158,7 +174,14 @@ pub async fn delete_page(
 
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .delete(tenant.id, auth.security_context(), id)
+        .delete(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            id,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -188,7 +211,15 @@ pub async fn create_block(
 
     let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let block = service
-        .create(tenant.id, auth.security_context(), id, input)
+        .create(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            id,
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok((StatusCode::CREATED, Json(block)))
@@ -222,7 +253,15 @@ pub async fn update_block(
     let (_, block_id) = path;
     let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let block = service
-        .update(tenant.id, auth.security_context(), block_id, input)
+        .update(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            block_id,
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(block))
@@ -253,7 +292,14 @@ pub async fn delete_block(
     let (_, block_id) = path;
     let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .delete(tenant.id, auth.security_context(), block_id)
+        .delete(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            block_id,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -283,7 +329,15 @@ pub async fn reorder_blocks(
 
     let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .reorder(tenant.id, auth.security_context(), id, input.block_ids)
+        .reorder(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            id,
+            input.block_ids,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)

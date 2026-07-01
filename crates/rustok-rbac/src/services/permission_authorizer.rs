@@ -1,5 +1,5 @@
 use crate::{denied_reason_for_denial, missing_permissions, AuthzEngine, PermissionResolver};
-use rustok_core::Permission;
+use rustok_api::Permission;
 
 use super::{permission_check::PermissionCheck, policy_evaluator::evaluate_policy_permissions};
 
@@ -134,7 +134,8 @@ mod tests {
     use super::{authorize_all_permissions, authorize_any_permission, authorize_permission};
     use crate::{AuthzEngine, PermissionResolution, PermissionResolver};
     use async_trait::async_trait;
-    use rustok_core::{Permission, UserRole};
+    use rustok_api::Permission;
+    use rustok_core::UserRole;
 
     struct StubResolver {
         permissions: Vec<Permission>,

@@ -1,9 +1,10 @@
 use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
+use rustok_api::Permission;
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     has_any_effective_permission, AuthContext, TenantContext,
 };
-use rustok_core::{Permission, CONTENT_FORMAT_MARKDOWN};
+use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
     graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
@@ -46,7 +47,10 @@ impl ForumMutation {
         let topic = service
             .create(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 crate::CreateTopicInput {
                     locale: input.locale,
                     category_id: input.category_id,
@@ -98,7 +102,10 @@ impl ForumMutation {
             .update(
                 tenant_id,
                 id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 crate::UpdateTopicInput {
                     locale: input.locale,
                     title: input.title,
@@ -142,7 +149,14 @@ impl ForumMutation {
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let service = TopicService::new(db.clone(), event_bus.clone());
         service
-            .delete(tenant_id, id, auth.security_context())
+            .delete(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         Ok(true)
@@ -163,14 +177,24 @@ impl ForumMutation {
         )?;
 
         SubscriptionService::new(db.clone())
-            .set_category_subscription(tenant_id, category_id, auth.security_context())
+            .set_category_subscription(
+                tenant_id,
+                category_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let category = CategoryService::new(db.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 category_id,
                 tenant.default_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -195,14 +219,24 @@ impl ForumMutation {
         )?;
 
         SubscriptionService::new(db.clone())
-            .clear_category_subscription(tenant_id, category_id, auth.security_context())
+            .clear_category_subscription(
+                tenant_id,
+                category_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let category = CategoryService::new(db.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 category_id,
                 tenant.default_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -231,13 +265,23 @@ impl ForumMutation {
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         SubscriptionService::new(db.clone())
-            .set_topic_subscription(tenant_id, topic_id, auth.security_context())
+            .set_topic_subscription(
+                tenant_id,
+                topic_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -274,13 +318,23 @@ impl ForumMutation {
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         SubscriptionService::new(db.clone())
-            .clear_topic_subscription(tenant_id, topic_id, auth.security_context())
+            .clear_topic_subscription(
+                tenant_id,
+                topic_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -318,7 +372,10 @@ impl ForumMutation {
         let reply = service
             .create(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 crate::CreateReplyInput {
                     locale: input.locale,
@@ -380,13 +437,24 @@ impl ForumMutation {
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         VoteService::new(db.clone())
-            .set_topic_vote(tenant_id, topic_id, auth.security_context(), value)
+            .set_topic_vote(
+                tenant_id,
+                topic_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                value,
+            )
             .await?;
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -423,13 +491,23 @@ impl ForumMutation {
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         VoteService::new(db.clone())
-            .clear_topic_vote(tenant_id, topic_id, auth.security_context())
+            .clear_topic_vote(
+                tenant_id,
+                topic_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -467,13 +545,24 @@ impl ForumMutation {
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         VoteService::new(db.clone())
-            .set_reply_vote(tenant_id, reply_id, auth.security_context(), value)
+            .set_reply_vote(
+                tenant_id,
+                reply_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+                value,
+            )
             .await?;
 
         let reply = ReplyService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 reply_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -527,13 +616,23 @@ impl ForumMutation {
         let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
 
         VoteService::new(db.clone())
-            .clear_reply_vote(tenant_id, reply_id, auth.security_context())
+            .clear_reply_vote(
+                tenant_id,
+                reply_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let reply = ReplyService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 reply_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -592,13 +691,24 @@ impl ForumMutation {
 
         let moderation = crate::ModerationService::new(db.clone(), event_bus.clone());
         moderation
-            .mark_solution(tenant_id, topic_id, reply_id, auth.security_context())
+            .mark_solution(
+                tenant_id,
+                topic_id,
+                reply_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -639,13 +749,23 @@ impl ForumMutation {
 
         let moderation = crate::ModerationService::new(db.clone(), event_bus.clone());
         moderation
-            .clear_solution(tenant_id, topic_id, auth.security_context())
+            .clear_solution(
+                tenant_id,
+                topic_id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .get_with_locale_fallback(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 topic_id,
                 resolved_locale.as_str(),
                 Some(tenant.default_locale.as_str()),
@@ -683,7 +803,10 @@ impl ForumMutation {
         let category = service
             .create(
                 tenant_id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 crate::CreateCategoryInput {
                     locale: input.locale,
                     name: input.name,
@@ -722,7 +845,10 @@ impl ForumMutation {
             .update(
                 tenant_id,
                 id,
-                auth.security_context(),
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
                 crate::UpdateCategoryInput {
                     locale: input.locale,
                     name: input.name,
@@ -756,7 +882,14 @@ impl ForumMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         CategoryService::new(db.clone())
-            .delete(tenant_id, id, auth.security_context())
+            .delete(
+                tenant_id,
+                id,
+                rustok_core::SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                ),
+            )
             .await?;
 
         Ok(true)

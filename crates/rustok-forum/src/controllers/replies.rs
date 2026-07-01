@@ -4,11 +4,9 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
-use rustok_api::{
-    has_any_effective_permission, loco::transactional_event_bus_from_context, AuthContext,
-    RequestContext, TenantContext,
-};
-use rustok_core::Permission;
+use rustok_api::Permission;
+use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_telemetry::metrics;
 use std::time::Instant;
 use uuid::Uuid;
@@ -59,7 +57,10 @@ pub async fn list_replies(
     let (replies, _) = service
         .list_for_topic_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             topic_id,
             filter,
             Some(tenant.default_locale.as_str()),
@@ -133,7 +134,10 @@ pub async fn get_reply(
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             id,
             &locale,
             Some(tenant.default_locale.as_str()),
@@ -171,7 +175,15 @@ pub async fn create_reply(
 
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let reply = service
-        .create(tenant.id, auth.security_context(), topic_id, input)
+        .create(
+            tenant.id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            topic_id,
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok((StatusCode::CREATED, Json(reply)))
@@ -205,7 +217,15 @@ pub async fn update_reply(
 
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let reply = service
-        .update(tenant.id, id, auth.security_context(), input)
+        .update(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            input,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(reply))
@@ -237,7 +257,14 @@ pub async fn delete_reply(
 
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .delete(tenant.id, id, auth.security_context())
+        .delete(
+            tenant.id,
+            id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
@@ -271,7 +298,15 @@ pub async fn set_reply_vote(
     )?;
 
     VoteService::new(ctx.db.clone())
-        .set_reply_vote(tenant.id, reply_id, auth.security_context(), value)
+        .set_reply_vote(
+            tenant.id,
+            reply_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+            value,
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -279,7 +314,10 @@ pub async fn set_reply_vote(
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             reply_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
@@ -314,7 +352,14 @@ pub async fn clear_reply_vote(
     )?;
 
     VoteService::new(ctx.db.clone())
-        .clear_reply_vote(tenant.id, reply_id, auth.security_context())
+        .clear_reply_vote(
+            tenant.id,
+            reply_id,
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -322,7 +367,10 @@ pub async fn clear_reply_vote(
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
-            auth.security_context(),
+            rustok_core::SecurityContext::from_permission_snapshot(
+                Some(auth.user_id),
+                &auth.permissions,
+            ),
             reply_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),

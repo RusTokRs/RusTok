@@ -19,6 +19,7 @@ contracts, ошибки, security primitives, content helpers и прочие и
 - flex/custom-fields schema contracts (`field_schema`);
 - compatibility re-exports и shared API surface для foundation layer;
 - отсутствие domain-owned runtime orchestration и transport-specific logic.
+- отсутствие neutral module-port DTO/error contracts: `Port*` принадлежат `rustok-api` и не реэкспортируются из core/prelude.
 
 ## Интеграция
 

@@ -19,8 +19,9 @@ use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use rustok_api::normalize_locale_tag;
 use rustok_content::normalize_locale_code;
-use rustok_core::{normalize_locale_tag, ModuleRuntimeExtensions};
+use rustok_core::ModuleRuntimeExtensions;
 #[cfg(test)]
 use rustok_core::{MemoryTransport, RusToKModule};
 use rustok_outbox::TransactionalEventBus;

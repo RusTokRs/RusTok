@@ -1,7 +1,7 @@
 //! GraphQL queries for Flex field definitions.
 
 use async_graphql::{Context, Object, Result};
-use rustok_core::Permission;
+use rustok_api::Permission;
 use uuid::Uuid;
 
 use crate::context::TenantContext;

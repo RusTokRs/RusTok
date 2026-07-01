@@ -34,7 +34,7 @@ impl PagesQuery {
         require_public_pages_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -80,7 +80,7 @@ impl PagesQuery {
         require_public_pages_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -119,7 +119,7 @@ impl PagesQuery {
         require_public_pages_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let security = request_security_context(ctx);
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
 
@@ -182,10 +182,12 @@ impl PagesQuery {
     }
 }
 
-fn auth_context_to_security(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data::<AuthContext>()
-        .map(|a| a.security_context())
-        .unwrap_or_else(|_| SecurityContext::system())
+fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
+    ctx.data_opt::<AuthContext>()
+        .map(|a| {
+            rustok_core::SecurityContext::from_permission_snapshot(Some(a.user_id), &a.permissions)
+        })
+        .unwrap_or_else(SecurityContext::public_read)
 }
 
 fn is_public_request(ctx: &Context<'_>) -> bool {

@@ -1,13 +1,7 @@
 pub mod admin_events;
 pub mod auth;
-#[cfg(feature = "mod-blog")]
-pub mod blog;
 pub mod channel;
-#[cfg(feature = "mod-commerce")]
-pub mod commerce;
 pub mod flex;
-#[cfg(feature = "mod-forum")]
-pub mod forum;
 pub mod graphql;
 pub mod health;
 pub mod installer;
@@ -18,8 +12,6 @@ pub mod media;
 pub mod metrics;
 pub mod oauth;
 pub mod oauth_metadata;
-#[cfg(feature = "mod-pages")]
-pub mod pages;
 pub mod swagger;
 pub mod users;
 #[cfg(feature = "mod-workflow")]

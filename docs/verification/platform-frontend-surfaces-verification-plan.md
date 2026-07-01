@@ -20,6 +20,7 @@ status: verified
 
 - UI остаётся module-owned
 - hosts только монтируют surfaces
+- frontend hosts имеют статус `FFA-compatible composition host`, а не module FFA status
 - internal Leptos data layer использует `#[server]`
 - GraphQL остаётся параллельным transport contract
 - effective locale приходит из host/runtime layer
@@ -33,6 +34,7 @@ status: verified
 - `apps/admin/docs/README.md`
 
 - [ ] `apps/admin` остаётся host application, а не owner module UI.
+- [ ] `apps/admin` документирован как `FFA-compatible composition host`.
 - [ ] Module routing и registry отражают текущий manifest-driven contract.
 - [ ] `#[server]` path и GraphQL path сосуществуют без дрейфа контрактов.
 - [ ] Effective locale прокидывается через host/runtime context.
@@ -44,6 +46,7 @@ status: verified
 - `apps/storefront/docs/README.md`
 
 - [ ] `apps/storefront` остаётся host application для module-owned storefront surfaces.
+- [ ] `apps/storefront` документирован как `FFA-compatible composition host`.
 - [ ] Routing, locale path и host wiring совпадают с `docs/UI/storefront.md`.
 - [ ] Нет app-local business logic, подменяющей ownership module packages.
 
@@ -52,12 +55,14 @@ status: verified
 ### 2.1 `apps/next-admin`
 
 - [ ] Next admin host монтирует module-owned или capability-owned surfaces без дрейфа ownership.
+- [ ] `apps/next-admin` документирован как `FFA-compatible composition host`.
 - [ ] Locale/runtime contract совпадает с общим i18n policy.
 - [ ] Frontend build/type/lint path остаётся воспроизводимым.
 
 ### 2.2 `apps/next-frontend`
 
 - [ ] Next storefront host использует host/runtime locale contract.
+- [ ] `apps/next-frontend` документирован как `FFA-compatible composition host`.
 - [ ] Storefront routing согласован с общим route contract.
 - [ ] Host-only код не дублирует module-owned domain logic.
 
@@ -89,6 +94,7 @@ status: verified
 - [ ] `npm run verify:i18n:ui`
 - [ ] `npm run verify:i18n:contract`
 - [ ] `npm.cmd run verify:storefront:routes`
+- [ ] `npm run verify:frontend:host-ffa-contract`
 
 Если менялся host wiring или UI contract, эти проверки считаются обязательными.
 

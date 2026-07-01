@@ -35,8 +35,9 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::{ModuleRegistry, Permission};
+        use rustok_core::ModuleRegistry;
         use rustok_tenant::TenantService;
 
         let app_ctx = expect_context::<AppContext>();

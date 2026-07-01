@@ -4,10 +4,10 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
-use rustok_api::{
-    loco::transactional_event_bus_from_context, AuthContext, RequestContext, TenantContext,
-};
-use rustok_core::{locale_tags_match, Permission};
+use rustok_api::locale_tags_match;
+use rustok_api::Permission;
+use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::{
     entities::{product, product_translation},
     CatalogService,

@@ -19,8 +19,9 @@ ssr = [
   "dep:rustok-commerce-foundation",
   "dep:rustok-core",
   "dep:rustok-pricing",
+  "dep:rustok-outbox",
   "dep:sea-orm",
-  "rustok-api/loco-adapter",
+  "rustok-api/server",
 ]
 
 [dependencies]
@@ -35,6 +36,7 @@ rustok-channel = { workspace = true, optional = true }
 rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 sea-orm = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

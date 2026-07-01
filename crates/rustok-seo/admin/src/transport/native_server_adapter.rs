@@ -28,7 +28,7 @@ const MODULE_SLUG: &str = "seo";
 #[cfg(feature = "ssr")]
 fn require_permission(
     auth: &rustok_api::AuthContext,
-    required: &[rustok_core::Permission],
+    required: &[rustok_api::Permission],
     message: &str,
 ) -> Result<(), ServerFnError> {
     if rustok_api::has_any_effective_permission(&auth.permissions, required) {
@@ -96,7 +96,7 @@ pub(super) async fn seo_service_from_context() -> Result<
 
     Ok((
         {
-            let event_bus = rustok_api::loco::transactional_event_bus_from_context(&app_ctx);
+            let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx);
             let extensions = app_ctx
                 .shared_store
                 .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
@@ -120,7 +120,7 @@ pub(super) async fn seo_redirects_native() -> Result<Vec<SeoRedirectRecord>, Ser
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_READ],
+            &[rustok_api::Permission::SEO_READ],
             "seo:read required",
         )?;
 
@@ -146,7 +146,7 @@ pub(super) async fn seo_upsert_redirect_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_UPDATE],
+            &[rustok_api::Permission::SEO_UPDATE],
             "seo:update required",
         )?;
 
@@ -172,8 +172,8 @@ pub(super) async fn seo_sitemap_status_native() -> Result<SeoSitemapStatusRecord
         require_permission(
             &auth,
             &[
-                rustok_core::Permission::SEO_READ,
-                rustok_core::Permission::SEO_GENERATE,
+                rustok_api::Permission::SEO_READ,
+                rustok_api::Permission::SEO_GENERATE,
             ],
             "seo:read or seo:generate required",
         )?;
@@ -199,7 +199,7 @@ pub(super) async fn seo_generate_sitemaps_native() -> Result<SeoSitemapStatusRec
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_GENERATE],
+            &[rustok_api::Permission::SEO_GENERATE],
             "seo:generate required",
         )?;
 
@@ -223,7 +223,7 @@ pub(super) async fn seo_settings_native() -> Result<SeoModuleSettings, ServerFnE
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_READ],
+            &[rustok_api::Permission::SEO_READ],
             "seo:read required",
         )?;
 
@@ -253,7 +253,7 @@ pub(super) async fn seo_save_settings_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_UPDATE],
+            &[rustok_api::Permission::SEO_UPDATE],
             "seo:update required",
         )?;
 
@@ -280,7 +280,7 @@ pub(super) async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_READ],
+            &[rustok_api::Permission::SEO_READ],
             "seo:read required",
         )?;
 
@@ -307,8 +307,8 @@ pub(super) async fn seo_diagnostics_native(
         require_permission(
             &auth,
             &[
-                rustok_core::Permission::SEO_READ,
-                rustok_core::Permission::SEO_MANAGE,
+                rustok_api::Permission::SEO_READ,
+                rustok_api::Permission::SEO_MANAGE,
             ],
             "seo:read or seo:manage required",
         )?;
@@ -336,7 +336,7 @@ pub(super) async fn seo_bulk_items_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -362,7 +362,7 @@ pub(super) async fn seo_bulk_targets_native() -> Result<Vec<SeoTargetRegistryEnt
         let (service, auth, _tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -385,7 +385,7 @@ pub(super) async fn seo_bulk_selection_preview_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -413,7 +413,7 @@ pub(super) async fn seo_bulk_jobs_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -444,7 +444,7 @@ pub(super) async fn seo_bulk_job_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
         let job_id =
@@ -471,18 +471,18 @@ fn require_bulk_write_permissions(
 ) -> Result<(), ServerFnError> {
     require_permission(
         auth,
-        &[rustok_core::Permission::SEO_MANAGE],
+        &[rustok_api::Permission::SEO_MANAGE],
         "seo:manage required",
     )?;
     require_permission(
         auth,
-        &[rustok_core::Permission::SEO_UPDATE],
+        &[rustok_api::Permission::SEO_UPDATE],
         "seo:update required",
     )?;
     if publish_after_write {
         require_permission(
             auth,
-            &[rustok_core::Permission::SEO_PUBLISH],
+            &[rustok_api::Permission::SEO_PUBLISH],
             "seo:publish required",
         )?;
     }
@@ -499,7 +499,7 @@ pub(super) async fn seo_queue_bulk_apply_native(
         if input.apply_mode == SeoBulkApplyMode::PreviewOnly {
             require_permission(
                 &auth,
-                &[rustok_core::Permission::SEO_MANAGE],
+                &[rustok_api::Permission::SEO_MANAGE],
                 "seo:manage required",
             )?;
         } else {
@@ -552,7 +552,7 @@ pub(super) async fn seo_queue_bulk_export_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -579,7 +579,7 @@ pub(super) async fn seo_index_tracking_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -606,7 +606,7 @@ pub(super) async fn seo_index_repair_replay_native(
         let (service, auth, tenant) = seo_service_from_context().await?;
         require_permission(
             &auth,
-            &[rustok_core::Permission::SEO_MANAGE],
+            &[rustok_api::Permission::SEO_MANAGE],
             "seo:manage required",
         )?;
 
@@ -633,7 +633,7 @@ pub(super) async fn seo_index_repair_replay_native(
 mod tests {
     use super::{persist_seo_settings, require_permission, MODULE_SLUG};
     use rustok_api::AuthContext;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
     use rustok_seo::{SeoIndexRepairReplayInput, SeoModuleSettings};
     use rustok_tenant::entities::tenant_module;
     use sea_orm::prelude::Uuid;

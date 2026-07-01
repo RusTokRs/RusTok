@@ -38,8 +38,8 @@ pub use services::relation_permission_resolver::{
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
 
 use async_trait::async_trait;
+use rustok_api::Permission;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
-use rustok_core::permissions::Permission;
 use sea_orm_migration::MigrationTrait;
 
 pub struct RbacModule;

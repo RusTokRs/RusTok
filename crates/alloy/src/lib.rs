@@ -1,7 +1,8 @@
 extern crate rhai_full as rhai;
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, Permission, RusToKModule};
+use rustok_api::Permission;
+use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod api;

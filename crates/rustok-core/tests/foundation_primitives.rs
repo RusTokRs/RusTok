@@ -99,7 +99,7 @@ fn parse_id_rejects_invalid() {
 
 #[test]
 fn normalize_locale_tag_basic_cases() {
-    use rustok_core::locale::normalize_locale_tag;
+    use rustok_api::normalize_locale_tag;
 
     assert_eq!(normalize_locale_tag("en"), Some("en".to_string()));
     assert_eq!(normalize_locale_tag("ru-RU"), Some("ru-RU".to_string()));
@@ -108,7 +108,7 @@ fn normalize_locale_tag_basic_cases() {
 
 #[test]
 fn normalize_locale_tag_rejects_invalid() {
-    use rustok_core::locale::normalize_locale_tag;
+    use rustok_api::normalize_locale_tag;
 
     assert_eq!(normalize_locale_tag(""), None);
     assert_eq!(normalize_locale_tag("!!!"), None);

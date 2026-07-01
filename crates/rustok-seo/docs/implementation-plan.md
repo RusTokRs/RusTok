@@ -11,7 +11,7 @@
   - Для D8 остаётся получить живой CI/runtime evidence packet против поднятого backend.
   - Для D9 остаётся дополнить runbooks live incident evidence и получить owner sign-off по seeded checklist.
 - Hand-off notes for next agent:
-  - Не обходить boundary `MediaImageDescriptor` и existing `SeoPageContext` contract.
+  - Не обходить независимый `SeoTargetImageRecord` boundary и existing `SeoPageContext` contract; media descriptors преобразуются на owner/provider границе.
   - REST/GraphQL расширять только additive-изменениями в стабильном `v1`.
   - Для delivery tracker держать invariant: один idempotency key = один фактический state transition.
   - Для replay mode сохранять forward-only semantics (`not_started -> repair_only -> replay_requested -> replaying -> replay_completed`) без backward transitions.
@@ -28,7 +28,7 @@
   - `cargo check -p rustok-seo-admin --config profile.dev.debug=0` *(pass, 2026-06-07)*
   - `cargo test -p rustok-seo-admin --lib --config profile.dev.debug=0` *(pass, 2026-06-07; 12 pure-core tests)*
 - Scope note: module-owned UI остаётся infrastructure control-plane (`rustok-seo-admin` + owner-side SEO panels в `pages/product/blog/forum`); `rustok-seo-admin` теперь имеет явный `core/transport/ui` FFA split: `admin/src/core.rs` owns tab/busy/form policy plus effective-settings snapshot mapping via `SeoSettingsSnapshotItem` / `build_seo_settings_snapshot_items`, `admin/src/transport/mod.rs` является facade, `admin/src/transport/native_server_adapter.rs` владеет native server functions и SSR host context extraction, а `scripts/verify/verify-seo-admin-boundary.mjs` фиксирует fast boundary; transport boundary продолжает развиваться через GraphQL + REST `/api/seo/page-context`, `/api/seo/cross-link-suggestions`, control-plane parity endpoints и унифицированный GraphQL-compatible REST error envelope в рамках Phase D.
-- FBA evidence: `crates/rustok-seo/contracts/seo-fba-registry.json` declares the `seo_image_descriptor` consumer profile for `MediaAssetReadPort` / `media.asset_read.v1`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json` is `source_locked_pending_consumer_runtime` and mirrors consumer cases, degraded modes (`omit_image_metadata`, `keep_existing_seo_image`, `proxy_storage_relative_url`), provider fallback-smoke source, static source assertions, runtime closeout requirements, consumer runtime artifact template and drill matrix; `crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json` plus `scripts/verify/verify-consumer-fba-runtime-order.mjs` lock media read-policy -> tenant parse -> descriptor construction order and `SeoTargetImageRecord = MediaImageDescriptor` template-field mapping without compilation; `scripts/verify/verify-seo-fba.mjs` checks drift against `crates/rustok-media/contracts/media-fba-registry.json` and `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json` without long compilation; status remains below `boundary_ready` until consumer runtime contract execution/fallback smoke lands.
+- FBA evidence: `crates/rustok-seo/contracts/seo-fba-registry.json` declares the `seo_image_descriptor` consumer profile for `MediaAssetReadPort` / `media.asset_read.v1`, `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json` is `source_locked_pending_consumer_runtime` and mirrors consumer cases, degraded modes (`omit_image_metadata`, `keep_existing_seo_image`, `proxy_storage_relative_url`), provider fallback-smoke source, static source assertions, runtime closeout requirements, consumer runtime artifact template and drill matrix; `crates/rustok-seo/contracts/evidence/seo-media-consumer-runtime-order-smoke.json` plus `scripts/verify/verify-consumer-fba-runtime-order.mjs` lock media read-policy -> tenant parse -> owner `SeoTargetImageRecord` construction order without coupling `rustok-seo-targets` to media; status remains below `boundary_ready` until consumer runtime contract execution/fallback smoke lands.
 
 ## Область работ
 
@@ -52,7 +52,7 @@
 - tenant templates и diagnostics уже first-class read/control-plane слой; diagnostics покрывает issue aggregates, canonical redirect chains/loops, hreflang gaps, `cross_link_gap`, `missing_image_alt`, `missing_image_size`;
 - read-only cross-link contract добавлен (`seoCrossLinkSuggestions` + `/api/seo/cross-link-suggestions`) с tenant/RBAC parity;
 - `SeoDocument.structured_data_blocks` больше не raw JSON passthrough: JSON-LD нормализуется в typed schema blocks (`schema_kind`, `schema_type`, legacy `kind`, `source`, payload);
-- boundary contract C3 закреплён через `rustok-media::MediaImageDescriptor` -> `rustok-seo-targets::SeoTargetImageRecord`;
+- boundary contract C3 закреплён через явное преобразование media/domain descriptors в owner DTO `rustok-seo-targets::SeoTargetImageRecord`;
 - **open productionization gaps (Phase D):**
   - D2 закрыт: typed SEO event model и delivery/idempotency tracking live (`seo_event_deliveries` + outbox envelope linkage + duplicate guard);
   - D3 закрыт: SEO->index adapter seam live (`Seo*` events -> `index.reindex_requested`), tenant/kind-scoped triggers и bounded retry/dead-letter tracking в `seo_index_deliveries`;

@@ -4,10 +4,11 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, Error, Result};
-use rustok_api::{loco::transactional_event_bus_from_context, RequestContext, TenantContext};
+use rustok_api::{RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::CustomerService;
 use rustok_order::OrderService;
+use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 

@@ -7,7 +7,7 @@ use async_graphql::{FieldError, Result};
 
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
-use rustok_core::Permission;
+use rustok_api::Permission;
 use rustok_rbac::has_effective_permission_in_set;
 
 fn ensure_permission(auth: &AuthContext, permission: &Permission, message: &str) -> Result<()> {

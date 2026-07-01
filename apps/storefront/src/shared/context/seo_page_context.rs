@@ -363,7 +363,7 @@ async fn resolve_seo_page_context(
             .await
             .map_err(ServerFnError::new)?;
 
-        let event_bus = rustok_api::loco::transactional_event_bus_from_context(&ctx);
+        let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(&ctx);
         let extensions = ctx
             .shared_store
             .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
@@ -380,7 +380,7 @@ async fn resolve_seo_page_context(
             .get("default_locale")
             .and_then(|value| value.as_str())
             .map(ToOwned::to_owned)
-            .unwrap_or_else(|| rustok_core::PLATFORM_FALLBACK_LOCALE.to_string());
+            .unwrap_or_else(|| rustok_api::PLATFORM_FALLBACK_LOCALE.to_string());
         let resolved = service
             .resolve_page_context_for_channel(
                 &rustok_api::TenantContext {

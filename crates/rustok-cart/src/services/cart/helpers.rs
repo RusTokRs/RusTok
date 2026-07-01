@@ -8,8 +8,9 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use uuid::Uuid;
 
+use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
-use rustok_core::{generate_id, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_core::generate_id;
 use rustok_fulfillment::entities::shipping_option;
 use rustok_tax::{
     TaxCalculationInput, TaxPolicyCountryRule, TaxPolicySnapshot, TaxService, TaxableAmount,

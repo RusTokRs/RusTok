@@ -18,9 +18,10 @@ ssr = [
     "dep:rustok-cart",
     "dep:rustok-core",
     "dep:rustok-order",
+    "dep:rustok-outbox",
     "dep:rust_decimal",
     "dep:uuid",
-    "rustok-api/loco-adapter",
+    "rustok-api/server",
 ]
 
 [dependencies]
@@ -34,6 +35,7 @@ rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-core = { workspace = true, optional = true }
 rustok-order = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 rust_decimal = { workspace = true, optional = true }

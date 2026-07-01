@@ -8,8 +8,8 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -69,8 +69,8 @@ pub async fn create_from_template_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await

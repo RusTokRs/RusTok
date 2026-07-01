@@ -15,7 +15,7 @@ use crate::services::event_transport_factory::{
 use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::release_backend::ReleaseDeploymentService;
 #[cfg(feature = "mod-seo")]
-use rustok_api::loco::transactional_event_bus_from_context;
+use rustok_outbox::loco::transactional_event_bus_from_context;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::SeoService;
 

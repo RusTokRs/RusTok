@@ -3,9 +3,9 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrde
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use rustok_api::normalize_locale_tag;
 use rustok_api::TenantContext;
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
-use rustok_core::normalize_locale_tag;
 use rustok_seo_targets::SeoTargetSlug;
 
 use crate::dto::{

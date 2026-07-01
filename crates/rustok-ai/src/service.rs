@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 
 use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::entities::{

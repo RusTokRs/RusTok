@@ -1,7 +1,7 @@
 //! Module metadata tests
 
+use rustok_api::{Action, Resource};
 use rustok_blog::BlogModule;
-use rustok_core::permissions::{Action, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 
 #[test]

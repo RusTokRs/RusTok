@@ -68,14 +68,14 @@ async fn list_users(
         &ctx.db,
         &tenant.id,
         &current.user.id,
-        &rustok_core::Permission::USERS_LIST,
+        &rustok_api::Permission::USERS_LIST,
     )
     .await
     .map_err(|error| {
         tracing::error!(
             tenant_id = %tenant.id,
             user_id = %current.user.id,
-            permission = %rustok_core::Permission::USERS_LIST,
+            permission = %rustok_api::Permission::USERS_LIST,
             %error,
             "Failed to evaluate RBAC permission for list_users"
         );
@@ -137,14 +137,14 @@ async fn get_user(
         &ctx.db,
         &tenant.id,
         &current.user.id,
-        &rustok_core::Permission::USERS_READ,
+        &rustok_api::Permission::USERS_READ,
     )
     .await
     .map_err(|error| {
         tracing::error!(
             tenant_id = %tenant.id,
             user_id = %current.user.id,
-            permission = %rustok_core::Permission::USERS_READ,
+            permission = %rustok_api::Permission::USERS_READ,
             %error,
             "Failed to evaluate RBAC permission for get_user"
         );

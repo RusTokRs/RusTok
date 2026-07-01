@@ -446,7 +446,7 @@ async fn storefront_products_native(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::loco::transactional_event_bus_from_context;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
         use rustok_pricing::{PriceResolutionContext, PricingService};
         use rustok_product::CatalogService;
         use uuid::Uuid;

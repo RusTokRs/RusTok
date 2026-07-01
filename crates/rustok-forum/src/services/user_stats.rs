@@ -5,7 +5,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_core::SecurityContext;
+
+use rustok_api::{Action, Resource};
 
 use crate::dto::ForumUserStatsResponse;
 use crate::entities::forum_user_stat;

@@ -6,6 +6,7 @@ license.workspace = true
 description = "Flex attached-mode contracts and orchestration primitives for RusToK"
 
 [dependencies]
+rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 sea-orm.workspace = true

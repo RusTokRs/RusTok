@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use rustok_api::locale_tags_match;
 use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::CommerceResult;
 
@@ -406,19 +407,6 @@ fn select_variant_title(
         })
 }
 
-fn locale_tags_match(left: &str, right: &str) -> bool {
-    let left = left.trim().replace('_', "-").to_ascii_lowercase();
-    let right = right.trim().replace('_', "-").to_ascii_lowercase();
-
-    left == right
-        || left
-            .split('-')
-            .next()
-            .zip(right.split('-').next())
-            .map(|(left_language, right_language)| left_language == right_language)
-            .unwrap_or(false)
-}
-
 fn fallback_variant_title(variant: &entities::product_variant::Model) -> String {
     variant
         .sku
@@ -564,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn locale_tags_match_accepts_underscore_and_language_only_fallback() {
+    fn api_locale_match_accepts_underscore_and_language_only_fallback() {
         assert!(locale_tags_match("en_US", "en-US"));
         assert!(locale_tags_match("pt-BR", "pt"));
         assert!(!locale_tags_match("en", "ru"));

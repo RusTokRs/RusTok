@@ -1,5 +1,5 @@
-mod model;
+pub mod core;
 pub mod transport;
-mod ui;
+pub mod ui;
 
 pub use ui::McpAdmin;

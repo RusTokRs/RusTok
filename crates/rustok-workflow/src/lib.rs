@@ -19,7 +19,7 @@
 //! - Basic steps: `action`, `emit_event`, `condition`
 
 use async_trait::async_trait;
-use rustok_core::permissions::{Action, Permission, Resource};
+use rustok_api::{Action, Permission, Resource};
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,
 };

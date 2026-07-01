@@ -45,6 +45,13 @@ Shared foundation / support crates:
 - `flex` standalone schemas/entries сейчас публикуются через `/api/graphql` и `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
+- Optional module REST/GraphQL surfaces монтируются только из owner-owned crate entrypoints,
+  объявленных в `rustok-module.toml` (`provides.http`, `provides.graphql`) и `modules.toml`.
+  OpenAPI fragments для optional modules также живут в owner crates и merge-ятся сервером
+  как готовые documents, без перечисления module-owned handlers/DTO в `apps/server`.
+  `apps/server/src/controllers/<module>` и `apps/server/src/graphql/<module>` не являются
+  valid composition points для optional modules; source guard `module_surface_boundary_guard`
+  блокирует возврат server-owned shims.
 - Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле.
 - Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
 - Server migrator является backend composition root для module-owned schema: content-family модули (`blog`, `pages`, `comments`) и search обязаны подключаться здесь через `crates/rustok-*/src/migrations`, иначе внешние Next/Leptos admin surfaces получают рабочий route shell без нужных таблиц.

@@ -30,7 +30,7 @@ impl SettingsQuery {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &rustok_core::Permission::SETTINGS_READ,
+            &rustok_api::Permission::SETTINGS_READ,
         )
         .await
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
@@ -67,7 +67,7 @@ impl SettingsQuery {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &rustok_core::Permission::SETTINGS_READ,
+            &rustok_api::Permission::SETTINGS_READ,
         )
         .await
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;

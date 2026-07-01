@@ -8,7 +8,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_core::{Action, Resource, SecurityContext};
+use rustok_core::SecurityContext;
+
+use rustok_api::{Action, Resource};
 
 use crate::constants::{reply_status, topic_status};
 use crate::entities::{forum_reply, forum_reply_vote, forum_topic, forum_topic_vote};

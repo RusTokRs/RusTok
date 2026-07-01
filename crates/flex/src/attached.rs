@@ -7,10 +7,10 @@ use sea_orm::{
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FlexError};
-use rustok_core::{
+use rustok_api::{
     build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
 };
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FlexError};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "flex_attached_localized_values")]

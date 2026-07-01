@@ -177,8 +177,8 @@ pub async fn modules_server_context() -> Result<
     use leptos::prelude::expect_context;
     use leptos_axum::extract;
     use loco_rs::app::AppContext;
+    use rustok_api::Permission;
     use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-    use rustok_core::Permission;
 
     let app_ctx = expect_context::<AppContext>();
     let auth = extract::<AuthContext>()
@@ -1621,8 +1621,9 @@ pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError>
         use leptos::prelude::expect_context;
         use leptos_axum::extract;
         use loco_rs::app::AppContext;
+        use rustok_api::Permission;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::{ModuleRegistry, Permission};
+        use rustok_core::ModuleRegistry;
 
         let app_ctx = expect_context::<AppContext>();
         let auth = extract::<AuthContext>().await.map_err(ServerFnError::new)?;
@@ -2183,7 +2184,8 @@ pub async fn update_module_settings_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::has_any_effective_permission;
-        use rustok_core::{ModuleRegistry, Permission};
+        use rustok_api::Permission;
+        use rustok_core::ModuleRegistry;
         use rustok_tenant::entities::tenant_module;
         use rustok_tenant::entities::tenant_module::Entity as TenantModuleEntity;
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -2273,7 +2275,7 @@ pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerF
     #[cfg(feature = "ssr")]
     {
         use rustok_api::has_any_effective_permission;
-        use rustok_core::Permission;
+        use rustok_api::Permission;
         use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 
         let (app_ctx, auth, _tenant) = modules_server_context().await?;

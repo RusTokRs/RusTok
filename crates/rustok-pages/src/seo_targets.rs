@@ -2,7 +2,7 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
-use rustok_media::MediaImageDescriptor;
+use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
     builtin_slug, populate_image_template_fields, schema, SeoBulkSummaryRecord,
     SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord, SeoTargetAlternateRoute,
@@ -335,7 +335,7 @@ fn map_page_response(page: PageResponse, requested_locale: &str) -> SeoLoadedTar
 fn page_primary_image_descriptor(
     page: &PageResponse,
     fallback_alt: &str,
-) -> Option<MediaImageDescriptor> {
+) -> Option<SeoTargetImageRecord> {
     let fallback_alt = normalize_image_text(Some(fallback_alt.to_string()));
 
     for block in &page.blocks {
@@ -345,9 +345,9 @@ fn page_primary_image_descriptor(
         };
         let descriptor = match payload {
             BlockPayload::Hero(data) => data.background_image_url.and_then(|url| {
-                MediaImageDescriptor::from_parts(url, fallback_alt.clone(), None, None, None)
+                SeoTargetImageRecord::from_parts(url, fallback_alt.clone(), None, None, None)
             }),
-            BlockPayload::Image(data) => MediaImageDescriptor::from_parts(
+            BlockPayload::Image(data) => SeoTargetImageRecord::from_parts(
                 data.src,
                 normalize_image_text(data.alt)
                     .or_else(|| normalize_image_text(data.caption))
@@ -357,7 +357,7 @@ fn page_primary_image_descriptor(
                 None,
             ),
             BlockPayload::Gallery(data) => data.images.into_iter().find_map(|image| {
-                MediaImageDescriptor::from_parts(
+                SeoTargetImageRecord::from_parts(
                     image.src,
                     normalize_image_text(image.alt)
                         .or_else(|| normalize_image_text(image.caption))
@@ -440,7 +440,7 @@ fn matches_module_path(parsed: &Url, module: &str) -> bool {
     if segments.len() > 2
         && segments
             .first()
-            .and_then(|item| rustok_core::normalize_locale_tag(item))
+            .and_then(|item| rustok_api::normalize_locale_tag(item))
             .is_some()
         && segments.get(1) == Some(&"modules")
     {

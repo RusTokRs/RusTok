@@ -16,8 +16,10 @@ ssr = [
     "dep:leptos_axum",
     "dep:loco-rs",
     "dep:rustok-core",
+    "dep:rustok-outbox",
     "dep:rustok-tenant",
     "dep:sea-orm",
+    "rustok-api/server",
 ]
 
 [dependencies]
@@ -29,6 +31,7 @@ leptos_axum = { workspace = true, optional = true }
 loco-rs = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-seo = { path = "..", default-features = false }
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 rustok-tenant = { workspace = true, optional = true }

@@ -6,6 +6,7 @@ license = "BUSL-1.1"
 description.workspace = true
 
 [dependencies]
+rustok-api.workspace = true
 sea-orm-migration.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

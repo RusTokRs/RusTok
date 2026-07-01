@@ -47,6 +47,7 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
+pub mod openapi;
 mod seo_targets;
 pub mod services;
 
@@ -57,7 +58,7 @@ pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{BlockService, MenuService, PageService};
 
 use async_trait::async_trait;
-use rustok_core::permissions::{Action, Permission, Resource};
+use rustok_api::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;

@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
-use rustok_core::{Action, PermissionScope, Resource, SecurityContext, UserRole};
+use rustok_core::{PermissionScope, SecurityContext, UserRole};
+
+use rustok_api::{Action, Resource};
 
 use crate::error::{BlogError, BlogResult};
 

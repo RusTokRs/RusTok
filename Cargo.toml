@@ -45,6 +45,7 @@ members = [
     "crates/rustok-rbac/admin",
     "crates/rustok-workflow/admin",
     "crates/*",
+    "tests/e2e-rust",
     "UI/leptos",
     "ops/benches",
     "xtask",
@@ -57,7 +58,7 @@ leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "BUSL-1.1"
 description = "High-performance, modular headless CMS and e-commerce platform built with Rust"
 repository = "https://github.com/RusTokRs/RusTok"
@@ -115,6 +116,7 @@ criterion = { version = "0.8", features = ["html_reports"] }
 
 # Property-based testing
 proptest = "1.11"
+playwright-rs = "0.14"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }

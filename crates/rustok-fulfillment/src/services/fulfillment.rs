@@ -10,7 +10,9 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::{generate_id, normalize_locale_tag};
+use rustok_core::generate_id;
+
+use rustok_api::normalize_locale_tag;
 
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,

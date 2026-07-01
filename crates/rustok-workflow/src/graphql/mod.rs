@@ -3,8 +3,8 @@ mod query;
 mod types;
 
 use async_graphql::{Context, FieldError, Result};
+use rustok_api::Permission;
 use rustok_api::{graphql::GraphQLError, has_any_effective_permission, AuthContext};
-use rustok_core::Permission;
 
 pub use mutation::WorkflowMutation;
 pub use query::WorkflowQuery;

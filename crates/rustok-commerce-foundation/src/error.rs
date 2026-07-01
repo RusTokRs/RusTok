@@ -48,13 +48,19 @@ pub enum CommerceError {
     CannotDeletePublished,
 
     #[error("Rich error: {0}")]
-    Rich(#[from] RichError),
+    Rich(#[source] Box<RichError>),
 
     #[error("Core error: {0}")]
     Core(#[from] CoreError),
 }
 
 pub type CommerceResult<T> = Result<T, CommerceError>;
+
+impl From<RichError> for CommerceError {
+    fn from(error: RichError) -> Self {
+        Self::Rich(Box::new(error))
+    }
+}
 
 // Conversion from CommerceError to RichError for API responses
 impl From<CommerceError> for RichError {
@@ -143,7 +149,7 @@ impl From<CommerceError> for RichError {
                     )
                     .with_error_code("CANNOT_DELETE_PUBLISHED")
             }
-            CommerceError::Rich(rich) => rich,
+            CommerceError::Rich(rich) => *rich,
             CommerceError::Core(core) => core.into(),
         }
     }

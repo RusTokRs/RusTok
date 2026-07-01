@@ -19,6 +19,13 @@ use loco_rs::app::AppContext;
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
 use rustok_blog::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 #[cfg(all(
     feature = "mod-content",
@@ -45,7 +52,6 @@ use rustok_content::{
     ContentOrchestrationBridge, ContentOrchestrationService, ContentResult, DemotePostToTopicInput,
     DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput, PromoteTopicToPostInput,
     PromoteTopicToPostOutput, RetiredCanonicalTarget, SplitTopicInput, SplitTopicOutput,
-    PLATFORM_FALLBACK_LOCALE,
 };
 #[cfg(all(
     feature = "mod-content",

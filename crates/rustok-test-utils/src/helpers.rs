@@ -268,7 +268,7 @@ pub fn json_payload<T: serde::Serialize>(data: T) -> serde_json::Value {
 ///
 /// ```rust
 /// use rustok_test_utils::assert_permission_scope;
-/// use rustok_core::PermissionScope;
+/// use rustok_api::PermissionScope;
 ///
 /// let scope = PermissionScope::All;
 /// assert_permission_scope!(scope, All);

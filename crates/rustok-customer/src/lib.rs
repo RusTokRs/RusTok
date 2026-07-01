@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_core::permissions::Permission;
+use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
