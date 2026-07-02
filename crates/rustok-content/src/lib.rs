@@ -13,6 +13,7 @@ use rustok_api::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod analytics;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -26,6 +27,7 @@ pub mod state_machine;
 #[cfg(test)]
 mod state_machine_proptest;
 
+pub use analytics::{load_post_stats_snapshot, ContentCountSnapshot};
 pub use dto::*;
 pub use entities::{
     Body, CanonicalUrl, Category, CategoryTranslation, Node, NodeTranslation, UrlAlias,

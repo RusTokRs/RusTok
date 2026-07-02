@@ -22,6 +22,7 @@
 
 - Uses `apps/server` through GraphQL and Leptos `#[server]` transport paths.
 - Mounts module-owned Leptos admin packages from `crates/rustok-*/admin`.
+- Composes cross-module workflows only through public owner contracts; the search page uses product-owned catalog metadata through `SearchAdminComposition` without moving product or search logic into the host.
 - Provides route query sanitization/writer policy to `leptos-ui-routing` while `rustok-api` owns the typed admin query schema.
 - Stays in functional parity work with `apps/next-admin`, but remains the primary auto-deploy admin stack.
 

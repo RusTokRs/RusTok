@@ -266,6 +266,18 @@ pub struct CatalogCategorySummary {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductCatalogSearchOption {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct ProductCatalogSearchOptions {
+    pub category_options: Vec<ProductCatalogSearchOption>,
+    pub attribute_options: Vec<ProductCatalogSearchOption>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductAttributeSchemaList {
     pub items: Vec<ProductAttributeSchemaSummary>,
     pub total: u64,

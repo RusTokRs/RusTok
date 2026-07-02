@@ -9,6 +9,7 @@ const files = commerceDomainModules.flatMap((module) => [
   `crates/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,
   `crates/rustok-${module}/src/ports.rs`,
 ]).concat([
+  'crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json',
   'crates/rustok-commerce/contracts/commerce-fba-registry.json',
   'crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json',
   'crates/rustok-commerce/src/fba.rs',

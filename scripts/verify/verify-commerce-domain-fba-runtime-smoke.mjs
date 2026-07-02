@@ -88,6 +88,9 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     const smokePath = `crates/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`;
     const registry = json(registryPath);
     const smoke = json(smokePath);
+    const runtimeFallbackSmoke = module === 'product' && registry.evidence?.runtime_fallback_smoke
+      ? json(registry.evidence.runtime_fallback_smoke)
+      : null;
     const ports = read(`crates/rustok-${module}/src/ports.rs`);
     const traceEntry = trace.modules.find((entry) => entry.provider_module === module);
 
@@ -102,7 +105,12 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     if (!sameSet(traceEntry.fallback_profiles, smoke.fallback_profiles)) fail(`${module} invocation trace fallback profile drift`);
     if (!sameSet(traceEntry.degraded_modes, smoke.degraded_modes)) fail(`${module} invocation trace degraded mode drift`);
 
-    if (registry.status !== 'in_progress') fail(`${module} registry must remain in_progress before live runtime execution`);
+    const allowedRegistryStatuses = module === 'product' && runtimeFallbackSmoke
+      ? ['in_progress', 'boundary_ready']
+      : ['in_progress'];
+    if (!allowedRegistryStatuses.includes(registry.status)) {
+      fail(`${module} registry must remain ${allowedRegistryStatuses.join(' or ')} before live runtime execution`);
+    }
     if (smoke.status !== 'executable_no_compile') fail(`${module} runtime smoke status drift`);
     if (smoke.generated_from !== registryPath) fail(`${module} runtime smoke source drift`);
     if (smoke.runner !== 'scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs') fail(`${module} runtime smoke runner drift`);
@@ -110,7 +118,12 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     if (registry.evidence?.runtime_contract_smoke !== smokePath) fail(`${module} registry runtime evidence path drift`);
     if (registry.evidence?.runtime_contract_smoke_runner !== smoke.runner) fail(`${module} registry runtime runner drift`);
     if (registry.contract_tests.status !== 'planned_cases_locked') fail(`${module} contract test status drift`);
-    if (registry.contract_tests.fallback_smoke.status !== 'planned') fail(`${module} fallback smoke must remain planned before live runtime execution`);
+    const expectedFallbackStatus = module === 'product' && runtimeFallbackSmoke
+      ? 'planned_runtime_pending'
+      : 'planned';
+    if (registry.contract_tests.fallback_smoke.status !== expectedFallbackStatus) {
+      fail(`${module} fallback smoke must remain ${expectedFallbackStatus} before live runtime execution`);
+    }
     if (!sameSet(smoke.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) fail(`${module} fallback profile drift`);
     if (!sameSet(smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) fail(`${module} degraded mode drift`);
     if (!sameSet(traceEntry.fallback_profiles, registry.contract_tests.fallback_smoke.profiles)) {
@@ -118,6 +131,19 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     }
     if (!sameSet(traceEntry.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes)) {
       fail(`${module} invocation trace degraded mode does not mirror planned fallback smoke`);
+    }
+    if (runtimeFallbackSmoke) {
+      if (runtimeFallbackSmoke.status !== 'no_compile_executable_runtime_fallback_smoke') {
+        fail(`${module} runtime fallback smoke status drift`);
+      }
+      if (!sameSet(runtimeFallbackSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) {
+        fail(`${module} runtime fallback smoke profile drift`);
+      }
+      for (const profile of registry.contract_tests.fallback_smoke.profiles) {
+        if (!runtimeFallbackSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'no_compile_executable_locked')) {
+          fail(`${module} runtime fallback smoke missing executable no-compile profile ${profile}`);
+        }
+      }
     }
 
     const registryConsumer = registry.consumers.find((consumer) => consumer.module === traceEntry.consumer_module);

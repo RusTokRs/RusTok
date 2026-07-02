@@ -43,7 +43,7 @@ Shared foundation / support crates:
 - Commerce surface больше не является compile-time baseline для любого server build: `controllers::commerce`, commerce-specific error mapping и commerce fragment в OpenAPI живут только при `mod-commerce`, так что reduced/headless host может собираться без ecommerce transport слоя.
 - Content REST/OpenAPI surface для `blog`, `forum` и `pages` тоже больше не считается unconditional частью host binary: соответствующие server controllers и OpenAPI fragments подключаются только при `mod-blog`, `mod-forum` и `mod-pages`, так что module-sliced build не обязан тянуть чужие content transport-зависимости.
 - Maintenance binary `migrate_legacy_richtext` принадлежит content storage migration path и собирается только при `mod-content`; headless server profiles без content module не должны линковать этот инструмент.
-- `flex` standalone schemas/entries сейчас публикуются через `/api/graphql` и `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates.
+- `flex` attached field-definition и standalone schemas/entries GraphQL публикуются через `/api/graphql`, а standalone REST остаётся на `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle и DTO принадлежат `flex::graphql`; roots входят в schema через `[provides.graphql]` manifest codegen, а server builder регистрирует только `FlexGraphqlRuntime` поверх concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter. REST пока остаётся server adapter.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
 - Optional module REST/GraphQL surfaces монтируются только из owner-owned crate entrypoints,
@@ -131,6 +131,22 @@ Shared foundation / support crates:
 
 - transport adapters, middleware, request/runtime context и host wiring;
 - общий GraphQL schema surface и Leptos server-function entrypoints;
+- композицию owner-owned AI GraphQL roots из `rustok-ai` и узкий RBAC persistence adapter
+  `AiGraphqlRoleSlugProvider`; AI resolver/DTO surface в `apps/server` не размещается;
+- композицию `rustok-media::MediaQuery`, включая owner-owned `mediaUsage`; media resolver/DTO
+  не размещаются в server `SystemQuery`;
+- композицию dashboard order statistics через `rustok-order::load_order_stats_snapshot` при
+  включённом `mod-order`; SQL и DTO для order analytics принадлежат `rustok-order`, а не
+  `apps/server::RootQuery`;
+- композицию dashboard post statistics через `rustok-content::load_post_stats_snapshot` при
+  включённом `mod-content`; SQL и DTO для content analytics принадлежат `rustok-content`,
+  а не `apps/server::RootQuery`;
+- host-level user dashboard statistics и recent user activity через
+  `services::dashboard_user_activity`; `RootQuery` только мапит service DTO в GraphQL DTO и не
+  содержит SQL/read-model логику для этих dashboard виджетов;
+- manifest-driven композицию owner-owned `flex::graphql::FlexQuery` / `flex::graphql::FlexMutation` и
+  регистрацию concrete persistence adapter в `FlexGraphqlRuntime`; standalone Flex
+  и attached field-definition resolver/DTO/error/RBAC/event mapping в `apps/server` не размещается;
 - bootstrap общего module-owned event runtime через `ModuleRegistry` и `EventDispatcher`;
 - health/runtime guardrails, build/release orchestration и operator control-plane endpoints;
 - installer HTTP/CLI adapters поверх `rustok-installer`, install locks и

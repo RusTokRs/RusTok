@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: catalog_projection_search_connected
-- Last checkpoint: PostgreSQL search now consumes product highload projections: `categoryIds` filter through `index_product_categories` including materialized virtual category assignments, `attributeFilters`/`sortAttributeCode` use channel-scoped `index_product_attribute_values`, effective filterable attributes produce dynamic `attr:<code>` facets, and facet buckets expose stable `value` plus optional localized `label`. `verify-search-ui-boundary.mjs` now source-locks these GraphQL/query/engine markers and has fixture coverage for missing catalog projection markers.
-- Next step: Подключить storefront/admin UI controls к новым optional catalog filters/sort fields; следующий блокер перед повышением FBA выше `boundary_ready` остаётся live runtime contract execution с реальным provider invocation.
+- Current phase: catalog_projection_next_storefront_metadata_connected
+- Last checkpoint: Next storefront host теперь использует host-owned `src/features/search` composition. Host передаёт route locale, tenant slug и enabled modules в registry render context, проверяет включённость `product`, вызывает product-owned `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions` поверх public GraphQL `storefrontCatalogSearchOptions(locale: String!)` и маппит safe options в `SearchStorefrontPage`; search package не импортирует product internals.
+- Next step: следующий блокер перед повышением FBA выше `boundary_ready` остаётся live runtime contract execution с реальным provider invocation.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central readiness board.
-- Last updated at (UTC): 2026-06-29T00:00:00Z
+- Last updated at (UTC): 2026-07-02T00:00:00Z
 
 
 ## FFA/FBA status
@@ -52,7 +52,8 @@
   - Slice #41 evidence hardening добавил `verify-search-ui-boundary.mjs` и fixture tests, проверяющие admin/storefront crate-root wiring, Leptos-free core helpers, запрет raw `api::*`/adapter calls из UI, storefront native-first + GraphQL fallback split и отсутствие legacy storefront `api.rs`; latest update also forbids legacy admin `api.rs` and pins `admin/src/transport/native_server_adapter.rs`.
   - Catalog projection search slice подключил `PgSearchEngine` к product-owned highload projections без зависимости от Rust-типов `rustok-index`: category filters используют `index_product_categories`, virtual categories участвуют как materialized assignments, attribute filters/sorts/facets используют `index_product_attribute_values` с явным `channel_id` scope, detached rows исключаются, а facet buckets сохраняют stable key и optional localized label.
   - Catalog projection guardrail slice расширил `scripts/verify/verify-search-ui-boundary.mjs`: source-lock проверяет `SearchQuery`/GraphQL optional catalog fields, `SearchAttributeFilter`, facet `label`, чтение `index_product_categories`/`index_product_attribute_values`, explicit channel scope, dynamic `attr:<code>` facets и pinned-rule skip при catalog filters; `npm run test:verify:search:ui-boundary` покрывает missing catalog markers.
-- Last verified at (UTC): 2026-06-29T00:00:00Z
+  - UI transport parity slice расширил Leptos admin/storefront DTO всеми optional catalog filters/sort полями, провёл их через admin native `#[server]` и parallel GraphQL adapters, добавил route mapping для storefront category/channel/sort параметров и локализованный facet label с fallback на stable value. `verify-search-ui-boundary.mjs` source-locks новый контракт без package-local locale fallback.
+- Last verified at (UTC): 2026-07-02T00:00:00Z
 - Owner: `rustok-search` module team
 
 ## Область работ
@@ -89,7 +90,7 @@
 - [ ] довести richer sorting/profile controls и advanced storefront UX polish;
 - [x] Подключить PostgreSQL search к channel-scoped normalized product facets/sorts и materialized virtual category assignments.
 - [x] Закрепить projection-search contract быстрым source/schema guardrail.
-- [ ] Подключить UI controls и route/query contract к optional catalog filters/sort fields.
+- [x] Подключить UI controls и route/query contract к optional catalog filters/sort fields.
 - [ ] развить retry/DLQ strategy для ingestion/rebuild pipeline;
 - [ ] завершить admin dashboards и production-grade analytics presentation.
 
@@ -170,6 +171,22 @@
 
 - [x] Slice 41: parity/evidence hardening добавил fast boundary guardrail `scripts/verify/verify-search-ui-boundary.mjs` и fixture suite `scripts/verify/verify-search-ui-boundary.test.mjs`; aggregate `verify:ffa:ui:migration`/`test:verify:ffa:ui:migration` теперь запускают search UI boundary без компиляции.
 - [x] Slice 42: admin legacy `api.rs` удалён; native/GraphQL fallback adapter перенесён в `admin/src/transport/native_server_adapter.rs`, а `verify-search-ui-boundary.mjs` запрещает возврат `admin/src/api.rs` и `mod api`.
+
+- [x] Slice 43: Leptos admin/storefront transport DTO синхронизированы с catalog search contract; native `#[server]` и GraphQL передают channel/category/attribute/sort inputs, а facet UI использует host-locale projection label с fallback на stable value.
+
+- [x] Slice 44: Leptos admin playground, Leptos storefront route UI, Next admin и Next storefront получили видимые catalog filter/sort controls поверх того же `channelId`/`categoryIds`/`attributeFilters`/`sortAttributeCode` контракта; storefront route keys остаются typed `snake_case`, Next surfaces передают optional поля без пустых category arrays, а `verify-search-ui-boundary.mjs` source-locks Leptos controls, route keys и Next GraphQL/UI parity.
+
+- [x] Slice 45: Search UI получил picker-ready host metadata contract: Leptos `SearchAdmin`/`SearchView` и Next admin/storefront packages принимают optional category/attribute option lists, рендерят datalist-подсказки для category/attribute/sort controls и не импортируют `rustok-product`; `verify-search-ui-boundary.mjs` source-locks этот boundary и запрещает прямую product dependency в search UI packages.
+
+- [x] Slice 46: Next admin host composition подключил реальные product-owned metadata options для search playground: `apps/next-admin/src/app/dashboard/search/page.tsx` берёт category ids и filterable/sortable attribute codes через `packages/rustok-product` GraphQL helpers, передаёт host effective locale через `getLocale` и graceful-degrades к пустым подсказкам без блокировки search surface. Guardrail фиксирует product-owned metadata helpers и host composition markers.
+
+- [x] Slice 47: `rustok-product-admin` добавил публичный Leptos metadata helper и нейтральные category/attribute option DTO для будущей host composition. Helper требует host effective locale, переиспользует native-first/GraphQL-parallel product transport, а search boundary guardrail и fixture regression запрещают потерю owner-owned helper или прямой импорт product internals в search UI.
+
+- [x] Slice 48: `apps/admin` добавил `SearchAdminComposition` и generated search page renderer использует его вместо прямого mount. Host передаёт locale/auth/tenant, учитывает tenant module enablement и соединяет публичные product/search DTO; product helper получил current-tenant native `#[server]` endpoint и параллельный GraphQL fallback. Guardrail фиксирует весь flow, включая отсутствие package-local locale fallback.
+
+- [x] Slice 49: `rustok-product-storefront` добавил public-safe category/attribute option DTO и native-first/GraphQL-parallel `fetch_catalog_search_options`; GraphQL field `storefrontCatalogSearchOptions(locale: String!)` использует tenant/channel guards без admin permission. `apps/storefront::SearchStorefrontComposition` подключён в generated search renderer, учитывает product enablement и host locale. Search boundary guardrail и fixture regression фиксируют полный storefront flow.
+
+- [x] Slice 50: `apps/next-frontend` добавил host-owned search composition и product-owned storefront metadata helper. Registry render context передаёт route locale, tenant slug и enabled modules, `SearchSection` вызывает `fetchCatalogSearchOptions` только при включённом `product`, а `SearchStorefrontPage` получает category/attribute options как host props. `verify-search-ui-boundary.mjs` и fixture suite фиксируют Next storefront flow без package-local locale fallback.
 
 - [x] FBA slice #1: provider metadata и нейтральные read ports (`SearchQueryPort`, `SearchSuggestionPort`) зафиксированы в `search-fba-registry.json`; static evidence matrix и `npm run verify:search:fba` проверяют deadline/error/locale fallback markers без долгой компиляции.
 

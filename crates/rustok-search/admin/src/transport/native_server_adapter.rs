@@ -7,7 +7,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
-    SearchConsistencyIssuePayload, SearchDictionaryMutationPayload,
+    SearchAttributeFilter, SearchConsistencyIssuePayload, SearchDictionaryMutationPayload,
     SearchDictionarySnapshotPayload, SearchFilterPresetPayload, SearchPreviewFilters,
     SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
     TriggerSearchRebuildPayload,
@@ -49,10 +49,12 @@ const MAX_FILTER_VALUES: usize = 10;
 #[cfg(feature = "ssr")]
 const MAX_FILTER_VALUE_LEN: usize = 64;
 #[cfg(feature = "ssr")]
+const MAX_ATTRIBUTE_FILTERS: usize = 10;
+#[cfg(feature = "ssr")]
 const MAX_LOCALE_LEN: usize = 16;
 
 const SEARCH_ADMIN_BOOTSTRAP_QUERY: &str = "query SearchAdminBootstrap { availableSearchEngines { kind label providedBy enabled defaultEngine } searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt } searchDiagnostics { tenantId totalDocuments publicDocuments contentDocuments productDocuments staleDocuments missingDocuments orphanedDocuments newestIndexedAt oldestIndexedAt maxLagSeconds state } }";
-const SEARCH_PREVIEW_QUERY: &str = "query SearchPreview($input: SearchPreviewInput!) { searchPreview(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const SEARCH_PREVIEW_QUERY: &str = "query SearchPreview($input: SearchPreviewInput!) { searchPreview(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 const SEARCH_FILTER_PRESETS_QUERY: &str = "query SearchFilterPresets($input: SearchFilterPresetsInput!) { searchFilterPresets(input: $input) { key label entityTypes sourceModules statuses rankingProfile } }";
 const SEARCH_LAGGING_DOCUMENTS_QUERY: &str = "query SearchLaggingDocuments($limit: Int) { searchLaggingDocuments(limit: $limit) { documentKey documentId sourceModule entityType locale status isPublic title updatedAt indexedAt lagSeconds } }";
 const SEARCH_CONSISTENCY_ISSUES_QUERY: &str = "query SearchConsistencyIssues($limit: Int) { searchConsistencyIssues(limit: $limit) { issueKind documentKey documentId sourceModule entityType locale status title updatedAt indexedAt } }";
@@ -214,6 +216,8 @@ struct UpdateSearchSettingsEnvelope {
 struct SearchPreviewInput {
     query: String,
     locale: Option<String>,
+    #[serde(rename = "channelId")]
+    channel_id: Option<String>,
     #[serde(rename = "tenantId")]
     tenant_id: Option<String>,
     limit: Option<i32>,
@@ -227,6 +231,23 @@ struct SearchPreviewInput {
     #[serde(rename = "sourceModules")]
     source_modules: Option<Vec<String>>,
     statuses: Option<Vec<String>>,
+    #[serde(rename = "categoryIds")]
+    category_ids: Option<Vec<String>>,
+    #[serde(rename = "attributeFilters")]
+    attribute_filters: Option<Vec<SearchAttributeFilterInput>>,
+    #[serde(rename = "sortAttributeCode")]
+    sort_attribute_code: Option<String>,
+    #[serde(rename = "sortDesc")]
+    sort_desc: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct SearchAttributeFilterInput {
+    #[serde(rename = "attributeCode")]
+    attribute_code: String,
+    values: Option<Vec<String>>,
+    min: Option<String>,
+    max: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -389,6 +410,20 @@ where
     .map_err(ApiError::from)
 }
 
+fn search_attribute_filter_inputs(
+    filters: Vec<SearchAttributeFilter>,
+) -> Vec<SearchAttributeFilterInput> {
+    filters
+        .into_iter()
+        .map(|filter| SearchAttributeFilterInput {
+            attribute_code: filter.attribute_code,
+            values: (!filter.values.is_empty()).then_some(filter.values),
+            min: filter.min,
+            max: filter.max,
+        })
+        .collect()
+}
+
 pub async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -433,6 +468,7 @@ pub async fn fetch_search_preview(
                     input: SearchPreviewInput {
                         query,
                         locale,
+                        channel_id: filters.channel_id,
                         tenant_id: None,
                         limit: Some(12),
                         offset: Some(0),
@@ -443,6 +479,12 @@ pub async fn fetch_search_preview(
                         source_modules: (!filters.source_modules.is_empty())
                             .then_some(filters.source_modules),
                         statuses: (!filters.statuses.is_empty()).then_some(filters.statuses),
+                        category_ids: (!filters.category_ids.is_empty())
+                            .then_some(filters.category_ids),
+                        attribute_filters: (!filters.attribute_filters.is_empty())
+                            .then_some(search_attribute_filter_inputs(filters.attribute_filters)),
+                        sort_attribute_code: filters.sort_attribute_code,
+                        sort_desc: filters.sort_desc.then_some(true),
                     },
                 }),
                 token,
@@ -916,6 +958,7 @@ async fn search_admin_preview_native(
         let input = normalize_search_preview_input(SearchPreviewInput {
             query,
             locale,
+            channel_id: filters.channel_id,
             tenant_id: None,
             limit: Some(12),
             offset: Some(0),
@@ -924,6 +967,10 @@ async fn search_admin_preview_native(
             entity_types: Some(filters.entity_types),
             source_modules: Some(filters.source_modules),
             statuses: Some(filters.statuses),
+            category_ids: Some(filters.category_ids),
+            attribute_filters: Some(search_attribute_filter_inputs(filters.attribute_filters)),
+            sort_attribute_code: filters.sort_attribute_code,
+            sort_desc: Some(filters.sort_desc),
         })?;
         let transform = rustok_search::SearchDictionaryService::transform_query(
             &app_ctx.db,
@@ -949,7 +996,7 @@ async fn search_admin_preview_native(
         let search_query = rustok_search::SearchQuery {
             tenant_id: Some(tenant.id),
             locale: input.locale,
-            channel_id: None,
+            channel_id: parse_optional_uuid(input.channel_id.as_deref())?,
             original_query: transform.original_query,
             query: transform.effective_query,
             ranking_profile: resolved.ranking_profile,
@@ -960,10 +1007,10 @@ async fn search_admin_preview_native(
             entity_types: resolved.entity_types,
             source_modules: resolved.source_modules,
             statuses: resolved.statuses,
-            category_ids: Vec::new(),
-            attribute_filters: Vec::new(),
-            sort_attribute_code: None,
-            sort_desc: false,
+            category_ids: normalize_uuid_values("category_ids", input.category_ids)?,
+            attribute_filters: normalize_attribute_filters(input.attribute_filters)?,
+            sort_attribute_code: normalize_attribute_code(input.sort_attribute_code)?,
+            sort_desc: input.sort_desc.unwrap_or(false),
         };
         let engine = rustok_search::PgSearchEngine::new(app_ctx.db.clone());
         let started_at = Instant::now();
@@ -1644,6 +1691,7 @@ fn normalize_search_preview_input(
     Ok(SearchPreviewInput {
         query: normalize_query(&input.query)?,
         locale: normalize_locale(input.locale.as_deref())?,
+        channel_id: input.channel_id,
         tenant_id: input.tenant_id,
         limit: input.limit,
         offset: input.offset,
@@ -1655,6 +1703,10 @@ fn normalize_search_preview_input(
             input.source_modules,
         )?),
         statuses: Some(normalize_filter_values("statuses", input.statuses)?),
+        category_ids: input.category_ids,
+        attribute_filters: input.attribute_filters,
+        sort_attribute_code: input.sort_attribute_code,
+        sort_desc: input.sort_desc,
     })
 }
 
@@ -1726,6 +1778,104 @@ fn normalize_filter_values(
             Ok(normalized)
         })
         .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn normalize_uuid_values(
+    field_name: &str,
+    values: Option<Vec<String>>,
+) -> Result<Vec<uuid::Uuid>, ServerFnError> {
+    let values = values.unwrap_or_default();
+    if values.len() > MAX_FILTER_VALUES {
+        return Err(ServerFnError::new(format!(
+            "{field_name} exceeds the maximum size of {MAX_FILTER_VALUES} values"
+        )));
+    }
+
+    values
+        .into_iter()
+        .map(|value| {
+            uuid::Uuid::parse_str(value.trim())
+                .map_err(|_| ServerFnError::new(format!("{field_name} contains an invalid UUID")))
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn normalize_attribute_code(value: Option<String>) -> Result<Option<String>, ServerFnError> {
+    let Some(value) = value
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    validate_attribute_code("sort_attribute_code", &value)?;
+    Ok(Some(value))
+}
+
+#[cfg(feature = "ssr")]
+fn normalize_attribute_filters(
+    filters: Option<Vec<SearchAttributeFilterInput>>,
+) -> Result<Vec<rustok_search::SearchAttributeFilter>, ServerFnError> {
+    let filters = filters.unwrap_or_default();
+    if filters.len() > MAX_ATTRIBUTE_FILTERS {
+        return Err(ServerFnError::new(format!(
+            "attribute_filters exceeds the maximum size of {MAX_ATTRIBUTE_FILTERS} filters"
+        )));
+    }
+
+    filters
+        .into_iter()
+        .map(|filter| {
+            let attribute_code = filter.attribute_code.trim().to_ascii_lowercase();
+            validate_attribute_code("attribute_code", &attribute_code)?;
+            let values = normalize_filter_values("attribute_filter.values", filter.values)?;
+            Ok(rustok_search::SearchAttributeFilter {
+                attribute_code,
+                values,
+                min: normalize_attribute_bound("attribute_filter.min", filter.min)?,
+                max: normalize_attribute_bound("attribute_filter.max", filter.max)?,
+            })
+        })
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn validate_attribute_code(field_name: &str, value: &str) -> Result<(), ServerFnError> {
+    if value.is_empty()
+        || value.len() > MAX_FILTER_VALUE_LEN
+        || !value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    {
+        return Err(ServerFnError::new(format!(
+            "{field_name} contains an invalid value"
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
+fn normalize_attribute_bound(
+    field_name: &str,
+    value: Option<String>,
+) -> Result<Option<String>, ServerFnError> {
+    let Some(value) = value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    if value.len() > MAX_FILTER_VALUE_LEN || value.chars().any(|ch| ch.is_control()) {
+        return Err(ServerFnError::new(format!(
+            "{field_name} contains an invalid value"
+        )));
+    }
+
+    Ok(Some(value))
 }
 
 #[cfg(feature = "ssr")]
@@ -1982,6 +2132,7 @@ fn map_search_preview_payload(
                     .into_iter()
                     .map(|bucket| crate::model::SearchFacetBucket {
                         value: bucket.value,
+                        label: bucket.label,
                         count: bucket.count,
                     })
                     .collect(),
@@ -2222,6 +2373,16 @@ fn ensure_settings_manage_permission(
 fn parse_required_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
     uuid::Uuid::parse_str(value.trim())
         .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+}
+
+#[cfg(feature = "ssr")]
+fn parse_optional_uuid(value: Option<&str>) -> Result<Option<uuid::Uuid>, ServerFnError> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid UUID"))
+        })
+        .transpose()
 }
 
 #[cfg(feature = "ssr")]

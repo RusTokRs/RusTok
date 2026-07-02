@@ -6,6 +6,12 @@
 
 ## Улучшения
 
+### Host composition update (2026-07-02)
+
+- [x] Generated search page использует host-owned `SearchAdminComposition`, который соединяет публичные product metadata DTO/helper и search option props без импорта owner internals.
+- [x] Host передаёт effective locale из `UiRouteContext`, auth token и tenant slug, проверяет tenant enablement модуля `product`; package-local locale fallback отсутствует.
+- [x] Product transport сохраняет native `#[server]` как основной Leptos path и GraphQL как параллельный контракт; быстрый search boundary guardrail фиксирует wiring без долгой Rust-компиляции.
+
 ### Архитектурные долги
 
 - Удалить остаточные compatibility paths после верификации сборки (`src/components/`, `src/api/`, `src/providers/`, `src/i18n.rs`, `src/modules/`, `src/app.rs`), чтобы live API совпадал с текущей FSD-структурой.

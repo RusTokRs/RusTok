@@ -46,6 +46,13 @@ pub struct GqlMediaList {
 }
 
 #[derive(SimpleObject, Clone, Debug)]
+pub struct MediaUsageStats {
+    pub tenant_id: Uuid,
+    pub file_count: i64,
+    pub total_bytes: i64,
+}
+
+#[derive(SimpleObject, Clone, Debug)]
 pub struct GqlMediaTranslation {
     pub id: Uuid,
     pub media_id: Uuid,

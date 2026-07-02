@@ -40,6 +40,12 @@
 
 - Любая feature для админки/витрины планируется, декомпозируется и трекается сразу для обеих реализаций (Leptos и Next.js) в одном цикле поставки.
 
+### Storefront search metadata update (2026-07-02)
+
+- [x] `src/features/search` зарегистрирован как host-owned composition для `search` storefront module.
+- [x] Product-owned `packages/rustok-product::fetchCatalogSearchOptions` читает public GraphQL `storefrontCatalogSearchOptions(locale: String!)`.
+- [x] Route locale, tenant slug и enabled modules передаются через registry render context; search package получает только category/attribute option props.
+
 ### Checklist готовности фичи
 
 - [ ] Реализовано в Leptos-варианте.
@@ -53,4 +59,3 @@
 - **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-

@@ -46,5 +46,6 @@
 
 ## Заметки по host boundary
 
-- `load_media_usage_snapshot` даёт host/system statistics без прямых media entity imports в `apps/server`.
-- System GraphQL в `apps/server` должен потреблять media usage только через owner API.
+- `load_media_usage_snapshot` остаётся owner service API для usage statistics.
+- GraphQL-поле `mediaUsage` и DTO `MediaUsageStats` принадлежат `rustok-media::graphql::MediaQuery`;
+  `apps/server::SystemQuery` не импортирует media API и только участвует в общей schema composition.

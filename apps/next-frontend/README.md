@@ -23,6 +23,7 @@
 - Works in parallel with `apps/storefront` for storefront parity at the contract level.
 - Reuses shared frontend contracts instead of duplicating auth and transport logic per page.
 - Consumes the canonical SEO contract from `rustok-seo` through a Next Metadata adapter while Rust hosts use `rustok-seo-render`.
+- Composes search storefront controls through host-owned `src/features/search`: product-owned catalog metadata is loaded via `packages/rustok-product` and passed to the search package as safe option props with the route locale.
 
 ## Docs
 

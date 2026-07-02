@@ -3,7 +3,10 @@ import { CheckCircle2, Rocket, Sparkles } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 
 import { getModulesForSlot } from "@/modules";
-import { fetchEnabledModules } from "@/shared/api/modules";
+import {
+  fetchEnabledModules,
+  getStorefrontTenantSlug,
+} from "@/shared/api/modules";
 import {
   buildSeoMetadata,
   buildSeoStructuredDataScripts,
@@ -46,7 +49,8 @@ export default async function StorefrontHome({
   const t = await getTranslations("Storefront");
   const features = t.raw("features") as string[];
   const chips = t.raw("chips") as string[];
-  const enabledModules = await fetchEnabledModules();
+  const tenantSlug = getStorefrontTenantSlug();
+  const enabledModules = await fetchEnabledModules(tenantSlug);
   const moduleSections = getModulesForSlot("home:afterHero", enabledModules);
   const seoResolution = await resolveHomeSeoContext(locale);
   const structuredDataScripts = buildSeoStructuredDataScripts(
@@ -142,7 +146,7 @@ export default async function StorefrontHome({
         </section>
         {moduleSections.map((module) => (
           <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
-            {module.render()}
+            {module.render({ locale, enabledModules, tenantSlug })}
           </section>
         ))}
       </main>

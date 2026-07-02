@@ -92,6 +92,30 @@ export type ProductDetail = {
   variants: ProductVariant[];
 };
 
+export type ProductCatalogSearchOption = {
+  value: string;
+  label: string;
+};
+
+type ProductAttributeSummary = {
+  id: string;
+  code: string;
+  valueType: string;
+  isFilterable: boolean;
+  isSortable: boolean;
+  label: string;
+};
+
+type CatalogCategorySummary = {
+  id: string;
+  parentId: string | null;
+  code: string;
+  slug: string;
+  path: string;
+  kind: string;
+  name: string;
+};
+
 type GqlOpts = {
   token?: string | null;
   tenantSlug?: string | null;
@@ -160,6 +184,35 @@ query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) {
   }
 }`;
 
+const PRODUCT_ATTRIBUTES_QUERY = `
+query ProductCatalogSearchAttributes($tenantId: UUID!, $locale: String!) {
+  productAttributes(tenantId: $tenantId, locale: $locale) {
+    items {
+      id
+      code
+      valueType
+      isFilterable
+      isSortable
+      label
+    }
+  }
+}`;
+
+const CATALOG_CATEGORIES_QUERY = `
+query ProductCatalogSearchCategories($tenantId: UUID!, $locale: String!) {
+  catalogCategories(tenantId: $tenantId, locale: $locale) {
+    items {
+      id
+      parentId
+      code
+      slug
+      path
+      kind
+      name
+    }
+  }
+}`;
+
 type ProductsResponse = {
   products: {
     total: number;
@@ -172,6 +225,18 @@ type ProductsResponse = {
 
 type ProductResponse = {
   product: ProductDetail | null;
+};
+
+type ProductAttributesResponse = {
+  productAttributes: {
+    items: ProductAttributeSummary[];
+  };
+};
+
+type CatalogCategoriesResponse = {
+  catalogCategories: {
+    items: CatalogCategorySummary[];
+  };
 };
 
 export async function listProducts(
@@ -220,4 +285,54 @@ export async function getProduct(opts: GqlOpts, id: string, locale?: string) {
   );
 
   return data.product;
+}
+
+export async function listCatalogCategorySearchOptions(
+  opts: GqlOpts,
+  locale: string
+): Promise<ProductCatalogSearchOption[]> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    return [];
+  }
+
+  const data = await graphqlRequest<
+    { tenantId: string; locale: string },
+    CatalogCategoriesResponse
+  >(
+    CATALOG_CATEGORIES_QUERY,
+    { tenantId: opts.tenantId, locale },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.catalogCategories.items.map((category) => ({
+    value: category.id,
+    label: category.path || category.name || category.code
+  }));
+}
+
+export async function listCatalogAttributeSearchOptions(
+  opts: GqlOpts,
+  locale: string
+): Promise<ProductCatalogSearchOption[]> {
+  if (!opts.token || !opts.tenantSlug || !opts.tenantId) {
+    return [];
+  }
+
+  const data = await graphqlRequest<
+    { tenantId: string; locale: string },
+    ProductAttributesResponse
+  >(
+    PRODUCT_ATTRIBUTES_QUERY,
+    { tenantId: opts.tenantId, locale },
+    opts.token,
+    opts.tenantSlug
+  );
+
+  return data.productAttributes.items
+    .filter((attribute) => attribute.isFilterable || attribute.isSortable)
+    .map((attribute) => ({
+      value: attribute.code,
+      label: `${attribute.label || attribute.code} (${attribute.code})`
+    }));
 }

@@ -14,6 +14,12 @@ use crate::model::{
 };
 use crate::{core, transport};
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchCatalogFilterOption {
+    pub value: String,
+    pub label: String,
+}
+
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
     fetcher: impl Fn(S) -> Fut + 'static,
@@ -27,7 +33,10 @@ where
 }
 
 #[component]
-pub fn SearchAdmin() -> impl IntoView {
+pub fn SearchAdmin(
+    #[prop(optional)] category_options: Vec<SearchCatalogFilterOption>,
+    #[prop(optional)] attribute_options: Vec<SearchCatalogFilterOption>,
+) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let route_segment = route_context
@@ -96,9 +105,17 @@ pub fn SearchAdmin() -> impl IntoView {
     let tenant = leptos_auth::hooks::use_tenant();
 
     let (query, set_query) = signal(initial_query);
+    let (channel_id, set_channel_id) = signal(String::new());
     let (entity_types, set_entity_types) = signal(String::new());
     let (source_modules, set_source_modules) = signal(String::new());
     let (statuses, set_statuses) = signal(String::new());
+    let (category_ids, set_category_ids) = signal(String::new());
+    let (attribute_code, set_attribute_code) = signal(String::new());
+    let (attribute_values, set_attribute_values) = signal(String::new());
+    let (attribute_min, set_attribute_min) = signal(String::new());
+    let (attribute_max, set_attribute_max) = signal(String::new());
+    let (sort_attribute_code, set_sort_attribute_code) = signal(String::new());
+    let (sort_desc, set_sort_desc) = signal(false);
     let (ranking_profile, set_ranking_profile) = signal(String::new());
     let (preset_key, set_preset_key) = signal(String::new());
     let (preview, set_preview) = signal(Option::<SearchPreviewPayload>::None);
@@ -201,16 +218,31 @@ pub fn SearchAdmin() -> impl IntoView {
         set_preview_error.set(None);
         set_busy.set(true);
         let query_value = query.get_untracked();
+        let channel_id_value = channel_id.get_untracked();
         let entity_types_value = entity_types.get_untracked();
         let source_modules_value = source_modules.get_untracked();
         let statuses_value = statuses.get_untracked();
+        let category_ids_value = category_ids.get_untracked();
+        let attribute_code_value = attribute_code.get_untracked();
+        let attribute_values_value = attribute_values.get_untracked();
+        let attribute_min_value = attribute_min.get_untracked();
+        let attribute_max_value = attribute_max.get_untracked();
+        let sort_attribute_code_value = sort_attribute_code.get_untracked();
         let ranking_profile_value = ranking_profile.get_untracked();
         let preset_key_value = preset_key.get_untracked();
         let preview_request = core::build_search_preview_request(core::SearchPreviewFormInput {
             query: &query_value,
+            channel_id: &channel_id_value,
             entity_types: &entity_types_value,
             source_modules: &source_modules_value,
             statuses: &statuses_value,
+            category_ids: &category_ids_value,
+            attribute_code: &attribute_code_value,
+            attribute_values: &attribute_values_value,
+            attribute_min: &attribute_min_value,
+            attribute_max: &attribute_max_value,
+            sort_attribute_code: &sort_attribute_code_value,
+            sort_desc: sort_desc.get_untracked(),
             ranking_profile: &ranking_profile_value,
             preset_key: &preset_key_value,
             locale: initial_locale.clone(),
@@ -317,12 +349,30 @@ pub fn SearchAdmin() -> impl IntoView {
                                     ui_locale.clone(),
                                     query,
                                     set_query,
+                                    channel_id,
+                                    set_channel_id,
                                     entity_types,
                                     set_entity_types,
                                     source_modules,
                                     set_source_modules,
                                     statuses,
                                     set_statuses,
+                                    category_ids,
+                                    set_category_ids,
+                                    category_options.clone(),
+                                    attribute_code,
+                                    set_attribute_code,
+                                    attribute_options.clone(),
+                                    attribute_values,
+                                    set_attribute_values,
+                                    attribute_min,
+                                    set_attribute_min,
+                                    attribute_max,
+                                    set_attribute_max,
+                                    sort_attribute_code,
+                                    set_sort_attribute_code,
+                                    sort_desc,
+                                    set_sort_desc,
                                     ranking_profile,
                                     set_ranking_profile,
                                     preset_key,
@@ -752,12 +802,30 @@ fn playground_view(
     ui_locale: Option<String>,
     query: ReadSignal<String>,
     set_query: WriteSignal<String>,
+    channel_id: ReadSignal<String>,
+    set_channel_id: WriteSignal<String>,
     entity_types: ReadSignal<String>,
     set_entity_types: WriteSignal<String>,
     source_modules: ReadSignal<String>,
     set_source_modules: WriteSignal<String>,
     statuses: ReadSignal<String>,
     set_statuses: WriteSignal<String>,
+    category_ids: ReadSignal<String>,
+    set_category_ids: WriteSignal<String>,
+    category_options: Vec<SearchCatalogFilterOption>,
+    attribute_code: ReadSignal<String>,
+    set_attribute_code: WriteSignal<String>,
+    attribute_options: Vec<SearchCatalogFilterOption>,
+    attribute_values: ReadSignal<String>,
+    set_attribute_values: WriteSignal<String>,
+    attribute_min: ReadSignal<String>,
+    set_attribute_min: WriteSignal<String>,
+    attribute_max: ReadSignal<String>,
+    set_attribute_max: WriteSignal<String>,
+    sort_attribute_code: ReadSignal<String>,
+    set_sort_attribute_code: WriteSignal<String>,
+    sort_desc: ReadSignal<bool>,
+    set_sort_desc: WriteSignal<bool>,
     ranking_profile: ReadSignal<String>,
     set_ranking_profile: WriteSignal<String>,
     preset_key: ReadSignal<String>,
@@ -813,6 +881,30 @@ fn playground_view(
         "Source modules (CSV)",
     );
     let statuses_label = t(locale_ref, "search.playground.statuses", "Statuses (CSV)");
+    let channel_id_label = t(locale_ref, "search.playground.channelId", "Channel ID");
+    let category_ids_label = t(
+        locale_ref,
+        "search.playground.categoryIds",
+        "Category IDs (CSV)",
+    );
+    let attribute_code_label = t(
+        locale_ref,
+        "search.playground.attributeCode",
+        "Attribute code",
+    );
+    let attribute_values_label = t(
+        locale_ref,
+        "search.playground.attributeValues",
+        "Attribute values (CSV)",
+    );
+    let attribute_min_label = t(locale_ref, "search.playground.attributeMin", "Minimum");
+    let attribute_max_label = t(locale_ref, "search.playground.attributeMax", "Maximum");
+    let sort_attribute_label = t(
+        locale_ref,
+        "search.playground.sortAttribute",
+        "Sort attribute code",
+    );
+    let sort_desc_label = t(locale_ref, "search.playground.sortDesc", "Descending order");
     let empty_label = t(
         locale_ref,
         "search.playground.empty",
@@ -845,6 +937,7 @@ fn playground_view(
         <form class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm" on:submit=move |ev| run_preview.run(ev)>
             <div class="space-y-1"><h2 class="text-lg font-semibold text-card-foreground">{title_label}</h2><p class="text-sm text-muted-foreground">{subtitle_label}</p></div>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{query_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=query on:input=move |ev| set_query.set(event_target_value(&ev)) /></label>
+            <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{channel_id_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=channel_id on:input=move |ev| set_channel_id.set(event_target_value(&ev)) /></label>
             <label class="block space-y-2">
                 <span class="text-sm font-medium text-card-foreground">{filter_preset_label}</span>
                 <Suspense fallback=move || view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> }>
@@ -873,6 +966,19 @@ fn playground_view(
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{entity_types_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=entity_types on:input=move |ev| set_entity_types.set(event_target_value(&ev)) /></label>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{source_modules_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=source_modules on:input=move |ev| set_source_modules.set(event_target_value(&ev)) /></label>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{statuses_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=statuses on:input=move |ev| set_statuses.set(event_target_value(&ev)) /></label>
+            <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{category_ids_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=category_ids list=(!category_options.is_empty()).then_some("search-admin-category-options") on:input=move |ev| set_category_ids.set(event_target_value(&ev)) /><CatalogFilterOptions id="search-admin-category-options" options=category_options.clone() /></label>
+            <div class="rounded-lg border border-border bg-muted/20 p-3">
+                <div class="grid gap-3">
+                    <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{attribute_code_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=attribute_code list=(!attribute_options.is_empty()).then_some("search-admin-attribute-options") on:input=move |ev| set_attribute_code.set(event_target_value(&ev)) /><CatalogFilterOptions id="search-admin-attribute-options" options=attribute_options.clone() /></label>
+                    <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{attribute_values_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=attribute_values on:input=move |ev| set_attribute_values.set(event_target_value(&ev)) /></label>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{attribute_min_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=attribute_min on:input=move |ev| set_attribute_min.set(event_target_value(&ev)) /></label>
+                        <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{attribute_max_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=attribute_max on:input=move |ev| set_attribute_max.set(event_target_value(&ev)) /></label>
+                    </div>
+                </div>
+            </div>
+            <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">{sort_attribute_label}</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=sort_attribute_code list=(!attribute_options.is_empty()).then_some("search-admin-sort-attribute-options") on:input=move |ev| set_sort_attribute_code.set(event_target_value(&ev)) /><CatalogFilterOptions id="search-admin-sort-attribute-options" options=attribute_options.clone() /></label>
+            <label class="flex items-center gap-2 text-sm font-medium text-card-foreground"><input type="checkbox" prop:checked=sort_desc on:change=move |ev| set_sort_desc.set(event_target_checked(&ev)) /><span>{sort_desc_label}</span></label>
             <Show when=move || preview_error.get().is_some()><div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{move || preview_error.get().unwrap_or_default()}</div></Show>
             <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>{move || if busy.get() { running_label.clone() } else { run_preview_label.clone() }}</button>
         </form>
@@ -887,6 +993,25 @@ fn playground_view(
             </Show>
         </div>
     </section> }
+}
+
+#[component]
+fn CatalogFilterOptions(
+    id: &'static str,
+    options: Vec<SearchCatalogFilterOption>,
+) -> impl IntoView {
+    let option_nodes = if options.is_empty() {
+        ().into_any()
+    } else {
+        view! {
+            <datalist id=id>
+                {options.into_iter().map(|option| view! { <option value=option.value>{option.label}</option> }).collect_view()}
+            </datalist>
+        }
+        .into_any()
+    };
+
+    view! { {option_nodes} }
 }
 
 fn analytics_view(
@@ -1861,5 +1986,5 @@ where
 
 #[component]
 fn FacetCard(facet: SearchFacetGroup) -> impl IntoView {
-    view! { <article class="rounded-xl border border-border bg-background p-4"><div class="text-sm font-semibold capitalize text-card-foreground">{core::facet_display_name(&facet.name)}</div><div class="mt-3 flex flex-wrap gap-2">{facet.buckets.into_iter().map(|bucket| view! { <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">{core::facet_bucket_label(&bucket.value, bucket.count)}</span> }).collect_view()}</div></article> }
+    view! { <article class="rounded-xl border border-border bg-background p-4"><div class="text-sm font-semibold capitalize text-card-foreground">{core::facet_display_name(&facet.name)}</div><div class="mt-3 flex flex-wrap gap-2">{facet.buckets.into_iter().map(|bucket| view! { <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">{core::facet_bucket_display_label(&bucket.value, bucket.label.as_deref(), bucket.count)}</span> }).collect_view()}</div></article> }
 }

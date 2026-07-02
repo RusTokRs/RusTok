@@ -9,3 +9,7 @@ ui_classification = "capability_only"
 
 [crate]
 entry_type = "FlexModule"
+
+[provides.graphql]
+query = "graphql::FlexQuery"
+mutation = "graphql::FlexMutation"

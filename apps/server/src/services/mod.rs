@@ -1,3 +1,4 @@
+pub mod ai_graphql_role_provider;
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
@@ -6,6 +7,7 @@ pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
 pub mod build_event_hub;
 pub mod build_executor;
+pub mod dashboard_user_activity;
 pub mod effective_module_policy;
 pub mod email;
 pub mod event_bus;

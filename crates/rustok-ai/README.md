@@ -20,7 +20,9 @@ Current implementation includes:
   through `AiManagementService::recent_stream_events(...)` and the server-side
   `aiRecentRunStreamEvents` query
 - bounded recent run history for diagnostics through `AiManagementService::list_recent_runs(...)`
-  and the server-side `aiRecentRuns` query
+  and the owner-owned `aiRecentRuns` query
+- owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
+  host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
 - bounded runtime observability via `AiManagementService::metrics_snapshot()` plus Prometheus
   module/span telemetry for router decisions and direct/MCP run outcomes
 - large operator/admin surfaces for both Leptos and Next.js hosts
@@ -68,9 +70,10 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
   `alloy_code` for Alloy Script Assist, `image_asset` for image generation + media persistence,
   `product_copy` for tenant-locale-bound commerce translation updates, and `blog_draft` for
   tenant-locale-bound blog draft creation/update.
-- Uses `apps/server` as the persisted control plane for provider profiles, tool profiles, sessions,
-  task profiles, runs, traces, and approvals.
-- Uses the shared GraphQL WebSocket surface in `apps/server` for live AI run streaming.
+- Uses the database connection composed by `apps/server` for provider profiles, tool profiles,
+  sessions, task profiles, runs, traces, and approvals.
+- Owns AI GraphQL resolvers and uses the shared GraphQL/WebSocket host in `apps/server` only for
+  schema composition and transport.
 - Ships a large Leptos operator/admin UI package in `crates/rustok-ai/admin`.
 - Ships a large Next.js operator/admin UI package through `apps/next-admin/packages/rustok-ai`.
 
@@ -89,6 +92,8 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
 - `ToolTrace`
 - `ApprovalRequest`, `ApprovalDecision`
 - `AiManagementService` (`server` feature)
+- `graphql::{AiQuery, AiMutation, AiSubscription}` (`graphql` feature)
+- `AiGraphqlRoleSlugProvider`, `AiGraphqlRoleSlugProviderHandle` (`graphql` feature)
 
 ## Docs
 

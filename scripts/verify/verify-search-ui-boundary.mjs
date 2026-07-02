@@ -249,9 +249,492 @@ function assertSearchCatalogProjectionContract() {
   }
 }
 
+function assertSearchUiCatalogTransportContract() {
+  const adminCorePath = "crates/rustok-search/admin/src/core.rs";
+  const adminModelPath = "crates/rustok-search/admin/src/model.rs";
+  const adminUiPath = "crates/rustok-search/admin/src/ui/leptos.rs";
+  const adminNativePath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
+  const storefrontModelPath = "crates/rustok-search/storefront/src/model.rs";
+  const storefrontCorePath = "crates/rustok-search/storefront/src/core.rs";
+  const storefrontUiPath = "crates/rustok-search/storefront/src/ui/leptos.rs";
+  const storefrontGraphqlPath = "crates/rustok-search/storefront/src/transport/graphql_adapter.rs";
+  const nextAdminPath = "apps/next-admin/packages/search/src/index.tsx";
+  const nextStorefrontPath = "apps/next-frontend/packages/search/src/index.tsx";
+  const nextProductPath = "apps/next-admin/packages/rustok-product/src/index.ts";
+  const nextStorefrontProductPath = "apps/next-frontend/packages/rustok-product/src/index.ts";
+  const nextSearchPagePath = "apps/next-admin/src/app/dashboard/search/page.tsx";
+  const nextStorefrontSearchFeaturePath = "apps/next-frontend/src/features/search/components/search-section.tsx";
+  const nextStorefrontModulesPath = "apps/next-frontend/src/modules/index.ts";
+  const nextStorefrontHomePath = "apps/next-frontend/src/app/[locale]/page.tsx";
+  const productAdminLibPath = "crates/rustok-product/admin/src/lib.rs";
+  const productAdminModelPath = "crates/rustok-product/admin/src/model.rs";
+  const productAdminTransportPath = "crates/rustok-product/admin/src/transport.rs";
+  const productAdminNativePath = "crates/rustok-product/admin/src/transport/native_server_adapter.rs";
+  const adminBuildPath = "apps/admin/build.rs";
+  const adminCompositionPath = "apps/admin/src/app/modules/search_composition.rs";
+  const productStorefrontLibPath = "crates/rustok-product/storefront/src/lib.rs";
+  const productStorefrontModelPath = "crates/rustok-product/storefront/src/model.rs";
+  const productStorefrontTransportPath = "crates/rustok-product/storefront/src/transport/mod.rs";
+  const productStorefrontNativePath = "crates/rustok-product/storefront/src/transport/native_server_adapter.rs";
+  const productStorefrontGraphqlPath = "crates/rustok-product/storefront/src/transport/graphql_adapter.rs";
+  const searchStorefrontLibPath = "crates/rustok-search/storefront/src/lib.rs";
+  const storefrontBuildPath = "apps/storefront/build.rs";
+  const storefrontCompositionPath = "apps/storefront/src/modules/search_composition.rs";
+  const commerceQueryPath = "crates/rustok-commerce/src/graphql/query.rs";
+  const commerceTypesPath = "crates/rustok-commerce/src/graphql/types.rs";
+
+  for (const checkedPath of [
+    adminCorePath,
+    adminModelPath,
+    adminUiPath,
+    adminNativePath,
+    storefrontModelPath,
+    storefrontCorePath,
+    storefrontUiPath,
+    storefrontGraphqlPath,
+    nextAdminPath,
+    nextStorefrontPath,
+    nextProductPath,
+    nextStorefrontProductPath,
+    nextSearchPagePath,
+    nextStorefrontSearchFeaturePath,
+    nextStorefrontModulesPath,
+    nextStorefrontHomePath,
+    productAdminLibPath,
+    productAdminModelPath,
+    productAdminTransportPath,
+    productAdminNativePath,
+    adminBuildPath,
+    adminCompositionPath,
+    productStorefrontLibPath,
+    productStorefrontModelPath,
+    productStorefrontTransportPath,
+    productStorefrontNativePath,
+    productStorefrontGraphqlPath,
+    searchStorefrontLibPath,
+    storefrontBuildPath,
+    storefrontCompositionPath,
+    commerceQueryPath,
+    commerceTypesPath,
+  ]) {
+    assertExists(checkedPath, `${checkedPath}: expected search UI catalog transport file`);
+  }
+
+  const adminCore = readRepo(adminCorePath);
+  const adminModel = readRepo(adminModelPath);
+  const adminUi = readRepo(adminUiPath);
+  const adminNative = readRepo(adminNativePath);
+  const storefrontModel = readRepo(storefrontModelPath);
+  const storefrontCore = readRepo(storefrontCorePath);
+  const storefrontUi = readRepo(storefrontUiPath);
+  const storefrontGraphql = readRepo(storefrontGraphqlPath);
+  const nextAdmin = readRepo(nextAdminPath);
+  const nextStorefront = readRepo(nextStorefrontPath);
+  const nextProduct = readRepo(nextProductPath);
+  const nextStorefrontProduct = readRepo(nextStorefrontProductPath);
+  const nextSearchPage = readRepo(nextSearchPagePath);
+  const nextStorefrontSearchFeature = readRepo(nextStorefrontSearchFeaturePath);
+  const nextStorefrontModules = readRepo(nextStorefrontModulesPath);
+  const nextStorefrontHome = readRepo(nextStorefrontHomePath);
+  const productAdminLib = readRepo(productAdminLibPath);
+  const productAdminModel = readRepo(productAdminModelPath);
+  const productAdminTransport = readRepo(productAdminTransportPath);
+  const productAdminNative = readRepo(productAdminNativePath);
+  const adminBuild = readRepo(adminBuildPath);
+  const adminComposition = readRepo(adminCompositionPath);
+  const productStorefrontLib = readRepo(productStorefrontLibPath);
+  const productStorefrontModel = readRepo(productStorefrontModelPath);
+  const productStorefrontTransport = readRepo(productStorefrontTransportPath);
+  const productStorefrontNative = readRepo(productStorefrontNativePath);
+  const productStorefrontGraphql = readRepo(productStorefrontGraphqlPath);
+  const searchStorefrontLib = readRepo(searchStorefrontLibPath);
+  const storefrontBuild = readRepo(storefrontBuildPath);
+  const storefrontComposition = readRepo(storefrontCompositionPath);
+  const commerceQuery = readRepo(commerceQueryPath);
+  const commerceTypes = readRepo(commerceTypesPath);
+
+  for (const [checkedPath, model] of [
+    [adminModelPath, adminModel],
+    [storefrontModelPath, storefrontModel],
+  ]) {
+    for (const marker of [
+      "pub label: Option<String>",
+      "pub struct SearchAttributeFilter",
+      "pub channel_id: Option<String>",
+      "pub category_ids: Vec<String>",
+      "pub attribute_filters: Vec<SearchAttributeFilter>",
+      "pub sort_attribute_code: Option<String>",
+      "pub sort_desc: bool",
+    ]) {
+      assertContains(model, marker, `${checkedPath}: UI DTO catalog transport marker missing ${marker}`);
+    }
+  }
+
+  for (const marker of [
+    "pub channel_id: &'a str",
+    "pub category_ids: &'a str",
+    "pub attribute_code: &'a str",
+    "pub attribute_values: &'a str",
+    "pub sort_attribute_code: &'a str",
+    "optional_text(input.attribute_code)",
+    "category_ids: parse_csv(input.category_ids)",
+    "sort_attribute_code: optional_text(input.sort_attribute_code)",
+  ]) {
+    assertContains(adminCore, marker, `${adminCorePath}: admin core visible catalog form marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub struct SearchCatalogFilterOption",
+    "category_options: Vec<SearchCatalogFilterOption>",
+    "attribute_options: Vec<SearchCatalogFilterOption>",
+    "search.playground.channelId",
+    "search.playground.categoryIds",
+    "search.playground.attributeCode",
+    "search.playground.attributeValues",
+    "search.playground.attributeMin",
+    "search.playground.attributeMax",
+    "search.playground.sortAttribute",
+    "search.playground.sortDesc",
+    "set_channel_id",
+    "set_category_ids",
+    "set_attribute_code",
+    "set_sort_attribute_code",
+    "CatalogFilterOptions",
+    "search-admin-category-options",
+    "search-admin-sort-attribute-options",
+  ]) {
+    assertContains(adminUi, marker, `${adminUiPath}: admin Leptos catalog controls marker missing ${marker}`);
+  }
+  assertNotContains(adminUi, "rustok_product", `${adminUiPath}: search admin UI must consume host-provided catalog metadata, not product internals`);
+
+  for (const marker of [
+    "facet_bucket_display_label",
+    "channel_id: route_filters.channel_id",
+    "category_ids: route_filters.category_ids",
+    "attribute_code: Option<String>",
+    "attribute_values: Vec<String>",
+    "attribute_code: optional_text(attribute_code.unwrap_or_default())",
+    "values: route_filters.attribute_values",
+    "attribute_filters",
+    "sort_attribute_code: route_filters.sort_attribute_code",
+    "sort_desc: route_filters.sort_desc",
+  ]) {
+    assertContains(storefrontCore, marker, `${storefrontCorePath}: storefront core catalog route marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub struct SearchCatalogFilterOption",
+    "category_options: Vec<SearchCatalogFilterOption>",
+    "attribute_options: Vec<SearchCatalogFilterOption>",
+    'read_route_query_value(&route_context, "channel_id")',
+    'read_route_query_value(&route_context, "category_ids")',
+    'read_route_query_value(&route_context, "attribute_code")',
+    'read_route_query_value(&route_context, "attribute_values")',
+    'read_route_query_value(&route_context, "sort_attribute_code")',
+    "search.filters.title",
+    "search.filters.attributeCode",
+    "CatalogFilterField",
+    "datalist id=list_id",
+    "search-storefront-category-options",
+    "search-storefront-sort-attribute-options",
+    "navigate_to_catalog_search",
+    '("attribute_code", attribute_code)',
+    '("sort_attribute_code", sort_attribute_code)',
+  ]) {
+    assertContains(storefrontUi, marker, `${storefrontUiPath}: storefront Leptos catalog route/control marker missing ${marker}`);
+  }
+  assertNotContains(storefrontUi, "rustok_product", `${storefrontUiPath}: search storefront UI must consume host-provided catalog metadata, not product internals`);
+
+  for (const marker of [
+    "value label count",
+    "channel_id: filters.channel_id",
+    "category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids)",
+    "attribute_filters: (!filters.attribute_filters.is_empty())",
+    "sort_attribute_code: filters.sort_attribute_code",
+    "sort_desc: filters.sort_desc.then_some(true)",
+    "SearchAttributeFilterInput",
+  ]) {
+    assertContains(storefrontGraphql, marker, `${storefrontGraphqlPath}: storefront GraphQL catalog transport marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "value label count",
+    "channel_id: filters.channel_id",
+    "parse_optional_uuid(input.channel_id.as_deref())",
+    "normalize_uuid_values(\"category_ids\", input.category_ids)",
+    "normalize_attribute_filters(input.attribute_filters)",
+    "normalize_attribute_code(input.sort_attribute_code)",
+    "sort_desc: input.sort_desc.unwrap_or(false)",
+    "label: bucket.label",
+    "SearchAttributeFilterInput",
+  ]) {
+    assertContains(adminNative, marker, `${adminNativePath}: admin native catalog transport marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "export type SearchCatalogFilterOption",
+    "categoryOptions?: SearchCatalogFilterOption[]",
+    "attributeOptions?: SearchCatalogFilterOption[]",
+    "type SearchPreviewFiltersInput =",
+    "channelId?: string",
+    "categoryIds: string[]",
+    "attributeFilters: Array<",
+    "sortAttributeCode?: string",
+    "facets { name buckets { value label count } }",
+    "channelId: optionalText(channelId)",
+    "categoryIds: parseCsv(categoryIds)",
+    "sortAttributeCode: optionalText(sortAttributeCode)",
+    "CatalogOptionDatalist",
+    "search-admin-category-options",
+    "search-admin-attribute-options",
+    "bucket.label || bucket.value",
+  ]) {
+    assertContains(nextAdmin, marker, `${nextAdminPath}: Next admin catalog UI/GraphQL marker missing ${marker}`);
+  }
+  assertNotContains(nextAdmin, "rustok-product", `${nextAdminPath}: Next admin search package must consume host-provided catalog metadata, not product internals`);
+
+  for (const marker of [
+    "export type SearchCatalogFilterOption",
+    "categoryOptions?: SearchCatalogFilterOption[]",
+    "attributeOptions?: SearchCatalogFilterOption[]",
+    "export type SearchCatalogFilters =",
+    "initialFilters?: Partial<SearchCatalogFilters>",
+    "facets {",
+    "label",
+    "channelId: filters.channelId.trim() || undefined",
+    "categoryIds: categoryIds.length ? categoryIds : undefined",
+    "attributeFilters: filters.attributeCode.trim()",
+    "sortAttributeCode: filters.sortAttributeCode.trim() || undefined",
+    "options?: SearchCatalogFilterOption[]",
+    "React.useId()",
+    "<datalist id={listId}>",
+    "bucket.label || bucket.value",
+    "CatalogField",
+  ]) {
+    assertContains(nextStorefront, marker, `${nextStorefrontPath}: Next storefront catalog UI/GraphQL marker missing ${marker}`);
+  }
+  assertNotContains(nextStorefront, "rustok-product", `${nextStorefrontPath}: Next storefront search package must consume host-provided catalog metadata, not product internals`);
+
+  for (const marker of [
+    "export type ProductCatalogSearchOption",
+    "listCatalogCategorySearchOptions",
+    "listCatalogAttributeSearchOptions",
+    "productAttributes(tenantId: $tenantId, locale: $locale)",
+    "catalogCategories(tenantId: $tenantId, locale: $locale)",
+    "attribute.isFilterable || attribute.isSortable",
+  ]) {
+    assertContains(nextProduct, marker, `${nextProductPath}: product-owned search metadata marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "export type ProductCatalogSearchOption",
+    "export type ProductCatalogSearchOptions",
+    "fetchCatalogSearchOptions",
+    "StorefrontCatalogSearchOptions($locale: String!)",
+    "storefrontCatalogSearchOptions(locale: $locale)",
+    "categoryOptions { value label }",
+    "attributeOptions { value label }",
+    "request.locale.trim()",
+    "tenant: request.tenantSlug",
+  ]) {
+    assertContains(nextStorefrontProduct, marker, `${nextStorefrontProductPath}: Next storefront product-owned metadata marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "getLocale",
+    "listCatalogCategorySearchOptions",
+    "listCatalogAttributeSearchOptions",
+    "loadCatalogSearchOptions",
+    "locale",
+    "categoryOptions={categoryOptions}",
+    "attributeOptions={attributeOptions}",
+  ]) {
+    assertContains(nextSearchPage, marker, `${nextSearchPagePath}: Next host search composition marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "SearchStorefrontPage",
+    "SearchCatalogFilterOption",
+    "fetchCatalogSearchOptions",
+    "enabledModules.includes(\"product\")",
+    "locale.trim()",
+    "tenantSlug",
+    "categoryOptions={categoryOptions}",
+    "attributeOptions={attributeOptions}",
+  ]) {
+    assertContains(nextStorefrontSearchFeature, marker, `${nextStorefrontSearchFeaturePath}: Next storefront host catalog composition marker missing ${marker}`);
+  }
+  assertNotContains(nextStorefrontSearchFeature, '|| "en"', `${nextStorefrontSearchFeaturePath}: Next storefront host composition must not invent a locale fallback`);
+  assertNotContains(nextStorefrontSearchFeature, "catalogCategories(", `${nextStorefrontSearchFeaturePath}: Next storefront host composition must use product-owned metadata helper`);
+  assertContains(nextStorefrontModules, "@/features/search", `${nextStorefrontModulesPath}: Next storefront host must register search feature composition`);
+  for (const marker of [
+    "getStorefrontTenantSlug",
+    "fetchEnabledModules(tenantSlug)",
+    "module.render({ locale, enabledModules, tenantSlug })",
+  ]) {
+    assertContains(nextStorefrontHome, marker, `${nextStorefrontHomePath}: Next storefront home render context marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub struct ProductCatalogSearchOption",
+    "pub struct ProductCatalogSearchOptions",
+    "pub category_options: Vec<ProductCatalogSearchOption>",
+    "pub attribute_options: Vec<ProductCatalogSearchOption>",
+  ]) {
+    assertContains(productAdminModel, marker, `${productAdminModelPath}: product Leptos metadata model marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub async fn fetch_catalog_search_options",
+    "native_server_adapter::fetch_catalog_search_options(locale.clone())",
+    "graphql_adapter::fetch_bootstrap",
+    "bootstrap.current_tenant.id",
+    "graphql_adapter::fetch_catalog_categories",
+    "locale.clone()",
+    "graphql_adapter::fetch_product_attributes",
+    "attribute.is_filterable || attribute.is_sortable",
+    "ProductCatalogSearchOption",
+    "ProductCatalogSearchOptions",
+  ]) {
+    assertContains(productAdminTransport, marker, `${productAdminTransportPath}: product Leptos metadata helper marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions}",
+    "pub use transport::fetch_catalog_search_options",
+  ]) {
+    assertContains(productAdminLib, marker, `${productAdminLibPath}: product Leptos metadata export marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub async fn fetch_catalog_search_options",
+    "product_admin_catalog_search_options_native(locale)",
+    'endpoint = "product/admin/catalog-search-options"',
+    "native_context().await?",
+    "Permission::PRODUCTS_READ",
+    "list_categories(tenant.id, locale.trim())",
+    "list_attributes(tenant.id, locale.trim())",
+    "attribute.is_filterable || attribute.is_sortable",
+  ]) {
+    assertContains(productAdminNative, marker, `${productAdminNativePath}: product native catalog metadata marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "fetch_catalog_search_options",
+    "SearchAdmin",
+    "SearchCatalogFilterOption",
+    'use_is_module_enabled("product")',
+    "UiRouteContext",
+    "use_token()",
+    "use_tenant()",
+    "locale.trim().is_empty()",
+    "category_options=category_options",
+    "attribute_options=attribute_options",
+  ]) {
+    assertContains(adminComposition, marker, `${adminCompositionPath}: Leptos host catalog composition marker missing ${marker}`);
+  }
+  assertNotContains(adminComposition, 'unwrap_or_else(|| "en"', `${adminCompositionPath}: host composition must not invent a locale fallback`);
+
+  for (const marker of ['entry.slug == "search"', "crate::app::modules::SearchAdminComposition"]) {
+    assertContains(adminBuild, marker, `${adminBuildPath}: generated search host composition marker missing ${marker}`);
+  }
+
+  assertContains(
+    readRepo("crates/rustok-search/admin/src/lib.rs"),
+    "SearchCatalogFilterOption",
+    "crates/rustok-search/admin/src/lib.rs: host-facing search option DTO must be public",
+  );
+
+  for (const marker of [
+    "pub struct ProductCatalogSearchOption",
+    "pub struct ProductCatalogSearchOptions",
+    "pub category_options: Vec<ProductCatalogSearchOption>",
+    "pub attribute_options: Vec<ProductCatalogSearchOption>",
+  ]) {
+    assertContains(productStorefrontModel, marker, `${productStorefrontModelPath}: product storefront metadata model marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub async fn fetch_catalog_search_options",
+    "native_server_adapter::fetch_catalog_search_options(locale.clone())",
+    "graphql_adapter::fetch_catalog_search_options(locale)",
+    "ProductTransportError::fallback_failed",
+  ]) {
+    assertContains(productStorefrontTransport, marker, `${productStorefrontTransportPath}: product storefront metadata transport marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub async fn fetch_catalog_search_options",
+    "storefront_catalog_search_options_native(locale)",
+    'endpoint = "product/storefront/catalog-search-options"',
+    "TenantContext",
+    "ProductCatalogSchemaService",
+    'locale.trim().is_empty()',
+    '"locale is required"',
+    "list_categories(tenant.id, locale.trim())",
+    "list_attributes(tenant.id, locale.trim())",
+    "attribute.is_filterable || attribute.is_sortable",
+  ]) {
+    assertContains(productStorefrontNative, marker, `${productStorefrontNativePath}: product storefront native metadata marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "StorefrontCatalogSearchOptions($locale: String!)",
+    "storefrontCatalogSearchOptions(locale: $locale)",
+    "categoryOptions { value label }",
+    "attributeOptions { value label }",
+    "pub async fn fetch_catalog_search_options",
+  ]) {
+    assertContains(productStorefrontGraphql, marker, `${productStorefrontGraphqlPath}: product storefront GraphQL metadata marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions}",
+    "pub use transport::fetch_catalog_search_options",
+  ]) {
+    assertContains(productStorefrontLib, marker, `${productStorefrontLibPath}: product storefront metadata export marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "async fn storefront_catalog_search_options",
+    'require_module_enabled(ctx, "product")',
+    "require_storefront_channel_enabled",
+    "locale.trim().is_empty()",
+    '"locale is required"',
+    "ctx.data::<TenantContext>()",
+    "list_categories(tenant.id, locale.trim())",
+    "list_attributes(tenant.id, locale.trim())",
+    "attribute.is_filterable || attribute.is_sortable",
+  ]) {
+    assertContains(commerceQuery, marker, `${commerceQueryPath}: public storefront catalog metadata GraphQL marker missing ${marker}`);
+  }
+  for (const marker of ["GqlProductCatalogSearchOption", "GqlProductCatalogSearchOptions"]) {
+    assertContains(commerceTypes, marker, `${commerceTypesPath}: public storefront catalog metadata payload marker missing ${marker}`);
+  }
+
+  for (const marker of [
+    "fetch_catalog_search_options",
+    "SearchView",
+    "SearchCatalogFilterOption",
+    'use_is_module_enabled("product")',
+    "UiRouteContext",
+    "locale.trim().is_empty()",
+    "category_options=category_options",
+    "attribute_options=attribute_options",
+  ]) {
+    assertContains(storefrontComposition, marker, `${storefrontCompositionPath}: storefront host catalog composition marker missing ${marker}`);
+  }
+  assertNotContains(storefrontComposition, 'unwrap_or_else(|| "en"', `${storefrontCompositionPath}: storefront host composition must not invent a locale fallback`);
+  for (const marker of ['entry.slug == "search"', "crate::modules::SearchStorefrontComposition"]) {
+    assertContains(storefrontBuild, marker, `${storefrontBuildPath}: generated storefront search composition marker missing ${marker}`);
+  }
+  assertContains(searchStorefrontLib, "SearchCatalogFilterOption", `${searchStorefrontLibPath}: host-facing storefront search option DTO must be public`);
+}
+
 assertSearchAdminBoundary();
 assertSearchStorefrontBoundary();
 assertSearchCatalogProjectionContract();
+assertSearchUiCatalogTransportContract();
 
 if (failures.length > 0) {
   console.error("search UI boundary verification failed:");

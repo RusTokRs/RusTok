@@ -108,7 +108,7 @@ rustok-search = { workspace = true, features = ["graphql"] }
 rustok-tenant.workspace = true
 rustok-rbac = { workspace = true, features = ["graphql"] }
 rustok-mcp = { workspace = true, features = ["graphql"] }
-rustok-ai = { workspace = true, features = ["server"] }
+rustok-ai = { workspace = true, features = ["graphql"] }
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox = { workspace = true, features = ["loco-adapter"] }

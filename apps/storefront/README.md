@@ -20,6 +20,7 @@
 ## Interactions
 
 - Uses `apps/server` through GraphQL and Leptos `#[server]` transport paths.
+- Composes cross-module storefront workflows only through public owner contracts; `SearchStorefrontComposition` connects product-owned public catalog options to search-owned UI props.
 - Mounts module-owned storefront packages from `crates/rustok-*/storefront`.
 - Consumes tenant-aware SEO runtime from `rustok-seo` through the shared Rust renderer `rustok-seo-render`.
 - Stays in architectural parity with `apps/next-frontend` while remaining the Rust-first storefront host.

@@ -6,8 +6,7 @@ use rustok_api::Permission;
 use rustok_core::ModuleRegistry;
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Statement,
+    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use semver::{Version, VersionReq};
 use std::time::Instant;
@@ -28,6 +27,7 @@ use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, R
 use crate::models::users;
 use crate::modules::ManifestManager;
 use crate::services::build_service::BuildService;
+use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
@@ -58,179 +58,6 @@ fn clamp_collection_limit(limit: Option<i32>) -> usize {
 
 fn requested_collection_limit(limit: Option<i32>) -> Option<u64> {
     limit.map(|value| value.max(0) as u64)
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct OrderStatsSnapshot {
-    total_orders: i64,
-    total_revenue: i64,
-    current_orders: i64,
-    previous_orders: i64,
-    current_revenue: i64,
-    previous_revenue: i64,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct PeriodCountSnapshot {
-    total_count: i64,
-    current_count: i64,
-    previous_count: i64,
-}
-
-async fn load_period_count_snapshot(
-    db: &sea_orm::DatabaseConnection,
-    table: &str,
-    tenant_id: uuid::Uuid,
-    current_period_start: chrono::DateTime<Utc>,
-    previous_period_start: chrono::DateTime<Utc>,
-    extra_filter_sql: Option<&str>,
-    extra_value: Option<&str>,
-) -> std::result::Result<PeriodCountSnapshot, sea_orm::DbErr> {
-    let backend = db.get_database_backend();
-    let filter_sql = extra_filter_sql.unwrap_or("");
-
-    let statement = match backend {
-        DbBackend::Sqlite => {
-            let sql = format!(
-                r#"
-                SELECT
-                    CAST(COUNT(*) AS INTEGER) AS total_count,
-                    CAST(COALESCE(SUM(CASE WHEN created_at >= ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS current_count,
-                    CAST(COALESCE(SUM(CASE WHEN created_at >= ?3 AND created_at < ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS previous_count
-                FROM {table}
-                WHERE tenant_id = ?1{filter_sql}
-                "#
-            );
-
-            let mut values = vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ];
-            if let Some(extra_value) = extra_value {
-                values.push(extra_value.into());
-            }
-
-            Statement::from_sql_and_values(backend, sql, values)
-        }
-        _ => {
-            let sql = format!(
-                r#"
-                SELECT
-                    COUNT(*)::bigint AS total_count,
-                    COALESCE(SUM(CASE WHEN created_at >= $2 THEN 1 ELSE 0 END), 0)::bigint AS current_count,
-                    COALESCE(SUM(CASE WHEN created_at >= $3 AND created_at < $2 THEN 1 ELSE 0 END), 0)::bigint AS previous_count
-                FROM {table}
-                WHERE tenant_id = $1{filter_sql}
-                "#
-            );
-
-            let mut values = vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ];
-            if let Some(extra_value) = extra_value {
-                values.push(extra_value.into());
-            }
-
-            Statement::from_sql_and_values(backend, sql, values)
-        }
-    };
-
-    let Some(row) = db.query_one(statement).await? else {
-        return Ok(PeriodCountSnapshot::default());
-    };
-
-    Ok(PeriodCountSnapshot {
-        total_count: row.try_get("", "total_count")?,
-        current_count: row.try_get("", "current_count")?,
-        previous_count: row.try_get("", "previous_count")?,
-    })
-}
-
-async fn load_order_stats_snapshot(
-    db: &sea_orm::DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    current_period_start: chrono::DateTime<Utc>,
-    previous_period_start: chrono::DateTime<Utc>,
-) -> std::result::Result<OrderStatsSnapshot, sea_orm::DbErr> {
-    let backend = db.get_database_backend();
-    let tenant_id = tenant_id.to_string();
-
-    let statement = match backend {
-        DbBackend::Sqlite => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT
-                CAST(COUNT(*) AS INTEGER) AS total_orders,
-                CAST(COALESCE(SUM(COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)), 0) AS INTEGER) AS total_revenue,
-                CAST(COALESCE(SUM(CASE WHEN created_at >= ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS current_orders,
-                CAST(COALESCE(SUM(CASE WHEN created_at >= ?3 AND created_at < ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS previous_orders,
-                CAST(COALESCE(SUM(CASE
-                    WHEN created_at >= ?2 THEN COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)
-                    ELSE 0
-                END), 0) AS INTEGER) AS current_revenue,
-                CAST(COALESCE(SUM(CASE
-                    WHEN created_at >= ?3 AND created_at < ?2 THEN COALESCE(CAST(json_extract(payload, '$.event.data.total') AS INTEGER), 0)
-                    ELSE 0
-                END), 0) AS INTEGER) AS previous_revenue
-            FROM sys_events
-            WHERE event_type = 'order.placed'
-              AND (
-                  json_extract(payload, '$.tenant_id') = ?1
-                  OR json_extract(payload, '$.event.tenant_id') = ?1
-              )
-            "#,
-            vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ],
-        ),
-        _ => Statement::from_sql_and_values(
-            backend,
-            r#"
-            SELECT
-                COUNT(*)::bigint AS total_orders,
-                COALESCE(SUM(COALESCE((payload->'event'->'data'->>'total')::bigint, 0)), 0)::bigint AS total_revenue,
-                COALESCE(SUM(CASE WHEN created_at >= $2 THEN 1 ELSE 0 END), 0)::bigint AS current_orders,
-                COALESCE(SUM(CASE WHEN created_at >= $3 AND created_at < $2 THEN 1 ELSE 0 END), 0)::bigint AS previous_orders,
-                COALESCE(SUM(CASE
-                    WHEN created_at >= $2 THEN COALESCE((payload->'event'->'data'->>'total')::bigint, 0)
-                    ELSE 0
-                END), 0)::bigint AS current_revenue,
-                COALESCE(SUM(CASE
-                    WHEN created_at >= $3 AND created_at < $2 THEN COALESCE((payload->'event'->'data'->>'total')::bigint, 0)
-                    ELSE 0
-                END), 0)::bigint AS previous_revenue
-            FROM sys_events
-            WHERE event_type = 'order.placed'
-              AND (
-                  payload->>'tenant_id' = $1
-                  OR payload->'event'->>'tenant_id' = $1
-              )
-            "#,
-            vec![
-                tenant_id.into(),
-                current_period_start.into(),
-                previous_period_start.into(),
-            ],
-        ),
-    };
-
-    let Some(row) = db.query_one(statement).await? else {
-        return Ok(OrderStatsSnapshot::default());
-    };
-
-    Ok(OrderStatsSnapshot {
-        total_orders: row.try_get("", "total_orders")?,
-        total_revenue: row.try_get("", "total_revenue")?,
-        current_orders: row.try_get("", "current_orders")?,
-        previous_orders: row.try_get("", "previous_orders")?,
-        current_revenue: row.try_get("", "current_revenue")?,
-        previous_revenue: row.try_get("", "previous_revenue")?,
-    })
 }
 
 fn humanize_slug(slug: &str) -> String {
@@ -1450,14 +1277,11 @@ impl RootQuery {
         let previous_period_start = current_period_start - Duration::days(30);
 
         let user_stats_started_at = Instant::now();
-        let user_stats = load_period_count_snapshot(
+        let user_stats = dashboard_user_activity::load_user_stats_snapshot(
             &app_ctx.db,
-            "users",
             tenant.id,
             current_period_start,
             previous_period_start,
-            None,
-            None,
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -1469,67 +1293,89 @@ impl RootQuery {
             user_stats.total_count.max(0) as u64,
         );
 
-        let post_stats_started_at = Instant::now();
-        let post_stats = load_period_count_snapshot(
-            &app_ctx.db,
-            "nodes",
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-            Some(match app_ctx.db.get_database_backend() {
-                DbBackend::Sqlite => " AND kind = ?4",
-                _ => " AND kind = $4",
-            }),
-            Some("post"),
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        metrics::record_read_path_query(
-            "graphql",
-            "root.dashboard_stats",
-            "posts_snapshot",
-            post_stats_started_at.elapsed().as_secs_f64(),
-            post_stats.total_count.max(0) as u64,
-        );
+        #[cfg(feature = "mod-content")]
+        let (total_posts, current_posts, previous_posts) = {
+            let post_stats_started_at = Instant::now();
+            let post_stats = rustok_content::load_post_stats_snapshot(
+                &app_ctx.db,
+                tenant.id,
+                current_period_start,
+                previous_period_start,
+            )
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            metrics::record_read_path_query(
+                "graphql",
+                "root.dashboard_stats",
+                "posts_snapshot",
+                post_stats_started_at.elapsed().as_secs_f64(),
+                post_stats.total_count.max(0) as u64,
+            );
+            (
+                post_stats.total_count,
+                post_stats.current_count,
+                post_stats.previous_count,
+            )
+        };
+        #[cfg(not(feature = "mod-content"))]
+        let (total_posts, current_posts, previous_posts) = (0, 0, 0);
 
-        let order_stats_started_at = Instant::now();
-        let order_stats = load_order_stats_snapshot(
-            &app_ctx.db,
-            tenant.id,
-            current_period_start,
-            previous_period_start,
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        metrics::record_read_path_query(
-            "graphql",
-            "root.dashboard_stats",
-            "orders_snapshot",
-            order_stats_started_at.elapsed().as_secs_f64(),
-            order_stats.total_orders.max(0) as u64,
-        );
+        #[cfg(feature = "mod-order")]
+        let (
+            total_orders,
+            total_revenue,
+            current_orders,
+            previous_orders,
+            current_revenue,
+            previous_revenue,
+        ) = {
+            let order_stats_started_at = Instant::now();
+            let order_stats = rustok_order::load_order_stats_snapshot(
+                &app_ctx.db,
+                tenant.id,
+                current_period_start,
+                previous_period_start,
+            )
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            metrics::record_read_path_query(
+                "graphql",
+                "root.dashboard_stats",
+                "orders_snapshot",
+                order_stats_started_at.elapsed().as_secs_f64(),
+                order_stats.total_orders.max(0) as u64,
+            );
+            (
+                order_stats.total_orders,
+                order_stats.total_revenue,
+                order_stats.current_orders,
+                order_stats.previous_orders,
+                order_stats.current_revenue,
+                order_stats.previous_revenue,
+            )
+        };
+        #[cfg(not(feature = "mod-order"))]
+        let (
+            total_orders,
+            total_revenue,
+            current_orders,
+            previous_orders,
+            current_revenue,
+            previous_revenue,
+        ) = (0, 0, 0, 0, 0, 0);
 
         Ok(DashboardStats {
             total_users: user_stats.total_count,
-            total_posts: post_stats.total_count,
-            total_orders: order_stats.total_orders,
-            total_revenue: order_stats.total_revenue,
+            total_posts,
+            total_orders,
+            total_revenue,
             users_change: calculate_percent_change(
                 user_stats.current_count,
                 user_stats.previous_count,
             ),
-            posts_change: calculate_percent_change(
-                post_stats.current_count,
-                post_stats.previous_count,
-            ),
-            orders_change: calculate_percent_change(
-                order_stats.current_orders,
-                order_stats.previous_orders,
-            ),
-            revenue_change: calculate_percent_change(
-                order_stats.current_revenue,
-                order_stats.previous_revenue,
-            ),
+            posts_change: calculate_percent_change(current_posts, previous_posts),
+            orders_change: calculate_percent_change(current_orders, previous_orders),
+            revenue_change: calculate_percent_change(current_revenue, previous_revenue),
         })
     }
 
@@ -1545,13 +1391,13 @@ impl RootQuery {
         let limit = limit.clamp(1, 50);
 
         let recent_users_started_at = Instant::now();
-        let recent_users = users::Entity::find()
-            .filter(UsersColumn::TenantId.eq(tenant.id))
-            .order_by_desc(UsersColumn::CreatedAt)
-            .limit(limit as u64)
-            .all(&app_ctx.db)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let recent_users = dashboard_user_activity::load_recent_user_activity(
+            &app_ctx.db,
+            tenant.id,
+            limit as u64,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         metrics::record_read_path_query(
             "graphql",
             "root.recent_activity",

@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::core::ProductStorefrontFetchRequest;
-use crate::model::StorefrontProductsData;
+use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
 use native_server_adapter::ApiError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +80,21 @@ pub async fn fetch_products(
     match native_server_adapter::fetch_products(request.clone()).await {
         Ok(data) => Ok(data),
         Err(native_error) => match graphql_adapter::fetch_products(request).await {
+            Ok(data) => Ok(data),
+            Err(graphql_error) => Err(ProductTransportError::fallback_failed(
+                native_error,
+                graphql_error,
+            )),
+        },
+    }
+}
+
+pub async fn fetch_catalog_search_options(
+    locale: String,
+) -> TransportResult<ProductCatalogSearchOptions> {
+    match native_server_adapter::fetch_catalog_search_options(locale.clone()).await {
+        Ok(data) => Ok(data),
+        Err(native_error) => match graphql_adapter::fetch_catalog_search_options(locale).await {
             Ok(data) => Ok(data),
             Err(graphql_error) => Err(ProductTransportError::fallback_failed(
                 native_error,

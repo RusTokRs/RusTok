@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "module": "product",
+  "status": "no_compile_executable_runtime_fallback_smoke",
+  "generated_from": "crates/rustok-product/contracts/product-fba-registry.json",
+  "runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs",
+  "contract_version": "product.catalog_read.v1",
+  "profiles": [
+    "embedded_native",
+    "graphql_checkout_compat",
+    "graphql_storefront_compat"
+  ],
+  "execution_note": "No Rust compilation is required for this packet; the dedicated Node verifier locks product catalog read fallback behavior against source markers, shared read policy usage, typed PortError mapping, bounded pagination validation, locale fallback and in-process CatalogService provider seams while live persistence-backed execution remains pending before transport_verified.",
+  "smoke_cases": [
+    {
+      "profile": "embedded_native",
+      "operation": "read_product_projection",
+      "execution_status": "no_compile_executable_locked",
+      "assertions": [
+        "read_policy_required_before_lookup",
+        "tenant_scope_validated_from_port_context",
+        "locale_defaults_to_context_locale",
+        "fallback_locale_preserved",
+        "catalog_service_projection_lookup_used",
+        "typed_product_error_mapping_applied"
+      ]
+    },
+    {
+      "profile": "embedded_native",
+      "operation": "list_published_products",
+      "execution_status": "no_compile_executable_locked",
+      "assertions": [
+        "read_policy_required_before_list",
+        "bounded_page_validation_before_lookup",
+        "tenant_scope_validated_from_port_context",
+        "locale_defaults_to_context_locale",
+        "public_channel_slug_preserved",
+        "typed_product_error_mapping_applied"
+      ]
+    },
+    {
+      "profile": "graphql_checkout_compat",
+      "operation": "read_product_projection",
+      "execution_status": "no_compile_executable_locked",
+      "assertions": [
+        "commerce_consumer_profile_locked",
+        "cart_snapshot_degraded_mode_available",
+        "product_refresh_degraded_mode_available",
+        "fallback_profile_mirrors_provider_registry"
+      ]
+    },
+    {
+      "profile": "graphql_storefront_compat",
+      "operation": "list_published_products",
+      "execution_status": "no_compile_executable_locked",
+      "assertions": [
+        "commerce_consumer_profile_locked",
+        "storefront_compat_fallback_profile_available",
+        "bounded_per_page_policy_locked",
+        "fallback_profile_mirrors_provider_registry"
+      ]
+    }
+  ]
+}

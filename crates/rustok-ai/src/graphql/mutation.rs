@@ -1,12 +1,11 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::app::AppContext;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::common::RequestContext;
-use crate::context::AuthContext;
-use crate::models::_entities::{roles, user_roles};
+use crate::AiGraphqlRoleSlugProviderHandle;
 use rustok_api::graphql::GraphQLError;
+use rustok_api::{AuthContext, RequestContext};
 
 use super::{
     ensure_ai_approval_resolve, ensure_ai_provider_manage, ensure_ai_run_cancel,
@@ -28,37 +27,22 @@ fn require_auth_context<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())
 }
 
-async fn load_role_slugs(db: &DatabaseConnection, auth: &AuthContext) -> Result<Vec<String>> {
-    let assignments = user_roles::Entity::find()
-        .filter(user_roles::Column::UserId.eq(auth.user_id))
-        .all(db)
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-    if assignments.is_empty() {
-        return Ok(Vec::new());
-    }
-    roles::Entity::find()
-        .filter(roles::Column::TenantId.eq(auth.tenant_id))
-        .filter(roles::Column::Id.is_in(assignments.into_iter().map(|item| item.role_id)))
-        .all(db)
-        .await
-        .map(|items| items.into_iter().map(|item| item.slug).collect())
-        .map_err(|err| async_graphql::Error::new(err.to_string()))
-}
-
 async fn operator_context(
     ctx: &Context<'_>,
-    db: &DatabaseConnection,
     auth: &AuthContext,
-) -> Result<rustok_ai::AiOperatorContext> {
+) -> Result<crate::AiOperatorContext> {
     let preferred_locale = ctx
         .data_opt::<RequestContext>()
         .map(|request_context| request_context.locale.clone());
-    Ok(rustok_ai::AiOperatorContext {
+    Ok(crate::AiOperatorContext {
         tenant_id: auth.tenant_id,
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
-        role_slugs: load_role_slugs(db, auth).await?,
+        role_slugs: ctx
+            .data::<AiGraphqlRoleSlugProviderHandle>()?
+            .load_role_slugs(auth.tenant_id, auth.user_id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?,
         preferred_locale,
     })
 }
@@ -73,17 +57,17 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let provider_kind: rustok_ai::ProviderKind = input.provider_kind.into();
+        let operator = operator_context(ctx, auth).await?;
+        let provider_kind: crate::ProviderKind = input.provider_kind.into();
         let capabilities = if input.capabilities.is_empty() {
             default_capabilities_for_kind(provider_kind)
         } else {
             input.capabilities.into_iter().map(Into::into).collect()
         };
-        let item = rustok_ai::AiManagementService::create_provider_profile(
+        let item = crate::AiManagementService::create_provider_profile(
             db,
             &operator,
-            rustok_ai::CreateAiProviderProfileInput {
+            crate::CreateAiProviderProfileInput {
                 slug: input.slug,
                 display_name: input.display_name,
                 provider_kind,
@@ -111,13 +95,13 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
+        let operator = operator_context(ctx, auth).await?;
         let capabilities = input.capabilities.into_iter().map(Into::into).collect();
-        let item = rustok_ai::AiManagementService::update_provider_profile(
+        let item = crate::AiManagementService::update_provider_profile(
             db,
             &operator,
             id,
-            rustok_ai::UpdateAiProviderProfileInput {
+            crate::UpdateAiProviderProfileInput {
                 display_name: input.display_name,
                 base_url: input.base_url,
                 model: input.model,
@@ -143,11 +127,10 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item =
-            rustok_ai::AiManagementService::rotate_provider_secret(db, &operator, id, secret)
-                .await
-                .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::rotate_provider_secret(db, &operator, id, secret)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())
     }
 
@@ -159,7 +142,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let item = rustok_ai::AiManagementService::test_provider_profile(db, auth.tenant_id, id)
+        let item = crate::AiManagementService::test_provider_profile(db, auth.tenant_id, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())
@@ -173,8 +156,8 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::deactivate_provider_profile(db, &operator, id)
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::deactivate_provider_profile(db, &operator, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())
@@ -188,11 +171,11 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::create_tool_profile(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::create_tool_profile(
             db,
             &operator,
-            rustok_ai::CreateAiToolProfileInput {
+            crate::CreateAiToolProfileInput {
                 slug: input.slug,
                 display_name: input.display_name,
                 description: input.description,
@@ -215,11 +198,11 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::create_task_profile(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::create_task_profile(
             db,
             &operator,
-            rustok_ai::CreateAiTaskProfileInput {
+            crate::CreateAiTaskProfileInput {
                 slug: input.slug,
                 display_name: input.display_name,
                 description: input.description,
@@ -250,12 +233,12 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::update_tool_profile(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::update_tool_profile(
             db,
             &operator,
             id,
-            rustok_ai::UpdateAiToolProfileInput {
+            crate::UpdateAiToolProfileInput {
                 display_name: input.display_name,
                 description: input.description,
                 allowed_tools: input.allowed_tools,
@@ -279,12 +262,12 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_manage(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::update_task_profile(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::update_task_profile(
             db,
             &operator,
             id,
-            rustok_ai::UpdateAiTaskProfileInput {
+            crate::UpdateAiTaskProfileInput {
                 display_name: input.display_name,
                 description: input.description,
                 target_capability: input.target_capability.into(),
@@ -315,17 +298,17 @@ impl AiMutation {
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::start_chat_session(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::start_chat_session(
             app_ctx,
             &operator,
-            rustok_ai::StartAiChatSessionInput {
+            crate::StartAiChatSessionInput {
                 title: input.title,
                 provider_profile_id: input.provider_profile_id,
                 task_profile_id: input.task_profile_id,
                 tool_profile_id: input.tool_profile_id,
                 execution_mode: None,
-                override_config: rustok_ai::ExecutionOverride::default(),
+                override_config: crate::ExecutionOverride::default(),
                 locale: input.locale,
                 initial_message: input.initial_message,
                 metadata: parse_metadata(input.metadata)?,
@@ -349,12 +332,12 @@ impl AiMutation {
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::send_chat_message(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::send_chat_message(
             app_ctx,
             &operator,
             session_id,
-            rustok_ai::SendAiChatMessageInput { content },
+            crate::SendAiChatMessageInput { content },
         )
         .await
         .map_err(|err| async_graphql::Error::new(err.to_string()))?;
@@ -374,12 +357,12 @@ impl AiMutation {
         ensure_ai_approval_resolve(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::resume_approval(
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::resume_approval(
             app_ctx,
             &operator,
             approval_id,
-            rustok_ai::ResumeAiApprovalInput {
+            crate::ResumeAiApprovalInput {
                 approved: input.approved,
                 reason: input.reason,
             },
@@ -396,8 +379,8 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_run_cancel(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
-        let item = rustok_ai::AiManagementService::cancel_run(db, &operator, run_id)
+        let operator = operator_context(ctx, auth).await?;
+        let item = crate::AiManagementService::cancel_run(db, &operator, run_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.into())
@@ -412,13 +395,13 @@ impl AiMutation {
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let operator = operator_context(ctx, db, auth).await?;
+        let operator = operator_context(ctx, auth).await?;
         let task_input_json = serde_json::from_str(&input.task_input_json)
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-        let item = rustok_ai::AiManagementService::run_task_job(
+        let item = crate::AiManagementService::run_task_job(
             app_ctx,
             &operator,
-            rustok_ai::RunAiTaskJobInput {
+            crate::RunAiTaskJobInput {
                 title: input.title,
                 provider_profile_id: input.provider_profile_id,
                 task_profile_id: input.task_profile_id,
@@ -438,24 +421,24 @@ impl AiMutation {
 }
 
 fn default_capabilities_for_kind(
-    provider_kind: rustok_ai::ProviderKind,
-) -> Vec<rustok_ai::ProviderCapability> {
+    provider_kind: crate::ProviderKind,
+) -> Vec<crate::ProviderCapability> {
     match provider_kind {
-        rustok_ai::ProviderKind::OpenAiCompatible => vec![
-            rustok_ai::ProviderCapability::TextGeneration,
-            rustok_ai::ProviderCapability::StructuredGeneration,
-            rustok_ai::ProviderCapability::ImageGeneration,
-            rustok_ai::ProviderCapability::CodeGeneration,
+        crate::ProviderKind::OpenAiCompatible => vec![
+            crate::ProviderCapability::TextGeneration,
+            crate::ProviderCapability::StructuredGeneration,
+            crate::ProviderCapability::ImageGeneration,
+            crate::ProviderCapability::CodeGeneration,
         ],
-        rustok_ai::ProviderKind::Anthropic => vec![
-            rustok_ai::ProviderCapability::TextGeneration,
-            rustok_ai::ProviderCapability::CodeGeneration,
-            rustok_ai::ProviderCapability::AlloyAssist,
+        crate::ProviderKind::Anthropic => vec![
+            crate::ProviderCapability::TextGeneration,
+            crate::ProviderCapability::CodeGeneration,
+            crate::ProviderCapability::AlloyAssist,
         ],
-        rustok_ai::ProviderKind::Gemini => vec![
-            rustok_ai::ProviderCapability::TextGeneration,
-            rustok_ai::ProviderCapability::ImageGeneration,
-            rustok_ai::ProviderCapability::MultimodalUnderstanding,
+        crate::ProviderKind::Gemini => vec![
+            crate::ProviderCapability::TextGeneration,
+            crate::ProviderCapability::ImageGeneration,
+            crate::ProviderCapability::MultimodalUnderstanding,
         ],
     }
 }

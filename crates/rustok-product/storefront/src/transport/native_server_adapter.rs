@@ -11,8 +11,9 @@ use crate::core::{resolve_requested_locale, sanitize_channel_slug, sanitize_uuid
 
 #[allow(unused_imports)]
 use crate::model::{
-    ProductDetail, ProductEffectivePrice, ProductList, ProductListItem, ProductPricingContext,
-    ProductPricingDetail, ProductPricingVariant, ProductScopedPrice, StorefrontProductsData,
+    ProductCatalogSearchOption, ProductCatalogSearchOptions, ProductDetail, ProductEffectivePrice,
+    ProductList, ProductListItem, ProductPricingContext, ProductPricingDetail,
+    ProductPricingVariant, ProductScopedPrice, StorefrontProductsData,
 };
 #[cfg(feature = "ssr")]
 use crate::model::{ProductPrice, ProductTranslation, ProductVariant};
@@ -147,7 +148,7 @@ fn graphql_url() -> String {
     }
 }
 
-async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
+pub(super) async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -201,6 +202,14 @@ pub async fn fetch_products(
         request.quantity,
     )
     .await
+}
+
+pub async fn fetch_catalog_search_options(
+    locale: String,
+) -> Result<ProductCatalogSearchOptions, ApiError> {
+    storefront_catalog_search_options_native(locale)
+        .await
+        .map_err(ApiError::from)
 }
 
 pub async fn fetch_storefront_products_graphql(
@@ -428,6 +437,77 @@ fn map_effective_price(value: rustok_pricing::ResolvedPrice) -> ProductEffective
         price_list_id: value.price_list_id.map(|item| item.to_string()),
         channel_id: value.channel_id.map(|item| item.to_string()),
         channel_slug: value.channel_slug,
+    }
+}
+
+fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
+    values
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_default()
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "product/storefront/catalog-search-options"
+)]
+async fn storefront_catalog_search_options_native(
+    locale: String,
+) -> Result<ProductCatalogSearchOptions, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use loco_rs::app::AppContext;
+        use rustok_outbox::loco::transactional_event_bus_from_context;
+        use rustok_product::ProductCatalogSchemaService;
+
+        if locale.trim().is_empty() {
+            return Err(ServerFnError::new("locale is required"));
+        }
+        let app_ctx = expect_context::<AppContext>();
+        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let service = ProductCatalogSchemaService::new(
+            app_ctx.db.clone(),
+            transactional_event_bus_from_context(&app_ctx),
+        );
+        let category_options = service
+            .list_categories(tenant.id, locale.trim())
+            .await
+            .map_err(ServerFnError::new)?
+            .into_iter()
+            .map(|category| ProductCatalogSearchOption {
+                value: category.id.to_string(),
+                label: first_non_empty([category.path, category.name, category.code]),
+            })
+            .collect();
+        let attribute_options = service
+            .list_attributes(tenant.id, locale.trim())
+            .await
+            .map_err(ServerFnError::new)?
+            .into_iter()
+            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
+            .map(|attribute| {
+                let label = first_non_empty([attribute.label, attribute.code.clone()]);
+                ProductCatalogSearchOption {
+                    value: attribute.code.clone(),
+                    label: format!("{label} ({})", attribute.code),
+                }
+            })
+            .collect();
+
+        Ok(ProductCatalogSearchOptions {
+            category_options,
+            attribute_options,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = locale;
+        Err(ServerFnError::new(
+            "product/storefront/catalog-search-options requires the `ssr` feature",
+        ))
     }
 }
 

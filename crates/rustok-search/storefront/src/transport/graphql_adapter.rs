@@ -1,13 +1,13 @@
 use crate::model::{
-    SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload, SearchSuggestion,
-    TrackSearchClickPayload,
+    SearchAttributeFilter, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
+    SearchSuggestion, TrackSearchClickPayload,
 };
 use leptos_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use super::{configured_tenant_slug, ApiError};
 
-const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 const STOREFRONT_FILTER_PRESETS_QUERY: &str = "query StorefrontSearchFilterPresets { storefrontSearchFilterPresets { key label entityTypes sourceModules statuses rankingProfile } }";
 const STOREFRONT_SEARCH_SUGGESTIONS_QUERY: &str = "query StorefrontSearchSuggestions($input: SearchSuggestionsInput!) { storefrontSearchSuggestions(input: $input) { text kind documentId entityType sourceModule locale url score } }";
 const TRACK_SEARCH_CLICK_MUTATION: &str = "mutation TrackSearchClick($input: TrackSearchClickInput!) { trackSearchClick(input: $input) { success tracked } }";
@@ -55,6 +55,8 @@ struct TrackSearchClickVariables {
 struct SearchPreviewInput {
     query: String,
     locale: Option<String>,
+    #[serde(rename = "channelId")]
+    channel_id: Option<String>,
     limit: Option<i32>,
     offset: Option<i32>,
     #[serde(rename = "presetKey")]
@@ -64,6 +66,23 @@ struct SearchPreviewInput {
     #[serde(rename = "sourceModules")]
     source_modules: Option<Vec<String>>,
     statuses: Option<Vec<String>>,
+    #[serde(rename = "categoryIds")]
+    category_ids: Option<Vec<String>>,
+    #[serde(rename = "attributeFilters")]
+    attribute_filters: Option<Vec<SearchAttributeFilterInput>>,
+    #[serde(rename = "sortAttributeCode")]
+    sort_attribute_code: Option<String>,
+    #[serde(rename = "sortDesc")]
+    sort_desc: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SearchAttributeFilterInput {
+    #[serde(rename = "attributeCode")]
+    attribute_code: String,
+    values: Option<Vec<String>>,
+    min: Option<String>,
+    max: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +159,7 @@ async fn fetch_storefront_search_graphql(
             input: SearchPreviewInput {
                 query,
                 locale,
+                channel_id: filters.channel_id,
                 limit: Some(12),
                 offset: Some(0),
                 preset_key,
@@ -147,12 +167,31 @@ async fn fetch_storefront_search_graphql(
                 source_modules: (!filters.source_modules.is_empty())
                     .then_some(filters.source_modules),
                 statuses: (!filters.statuses.is_empty()).then_some(filters.statuses),
+                category_ids: (!filters.category_ids.is_empty()).then_some(filters.category_ids),
+                attribute_filters: (!filters.attribute_filters.is_empty())
+                    .then_some(search_attribute_filter_inputs(filters.attribute_filters)),
+                sort_attribute_code: filters.sort_attribute_code,
+                sort_desc: filters.sort_desc.then_some(true),
             },
         },
     )
     .await?;
 
     Ok(response.storefront_search)
+}
+
+fn search_attribute_filter_inputs(
+    filters: Vec<SearchAttributeFilter>,
+) -> Vec<SearchAttributeFilterInput> {
+    filters
+        .into_iter()
+        .map(|filter| SearchAttributeFilterInput {
+            attribute_code: filter.attribute_code,
+            values: (!filter.values.is_empty()).then_some(filter.values),
+            min: filter.min,
+            max: filter.max,
+        })
+        .collect()
 }
 
 pub async fn fetch_suggestions(

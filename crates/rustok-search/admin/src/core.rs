@@ -4,9 +4,9 @@ use rustok_api::{
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAnalyticsInsightRowPayload, SearchAnalyticsQueryRowPayload,
-    SearchAnalyticsSummaryPayload, SearchConsistencyIssuePayload, SearchDiagnosticsPayload,
-    SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload, SearchQueryRulePayload,
-    SearchStopWordPayload, SearchSynonymPayload,
+    SearchAnalyticsSummaryPayload, SearchAttributeFilter, SearchConsistencyIssuePayload,
+    SearchDiagnosticsPayload, SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload,
+    SearchQueryRulePayload, SearchStopWordPayload, SearchSynonymPayload,
 };
 
 pub fn parse_csv(value: &str) -> Vec<String> {
@@ -23,6 +23,13 @@ pub fn facet_display_name(raw_name: &str) -> String {
 
 pub fn facet_bucket_label(value: &str, count: u64) -> String {
     format!("{} ({})", value, count)
+}
+
+pub fn facet_bucket_display_label(value: &str, label: Option<&str>, count: u64) -> String {
+    facet_bucket_label(
+        label.filter(|label| !label.is_empty()).unwrap_or(value),
+        count,
+    )
 }
 
 pub fn snippet_or_fallback(snippet: Option<String>, fallback: &str) -> String {
@@ -104,9 +111,17 @@ pub fn build_search_preview_view_model(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchPreviewFormInput<'a> {
     pub query: &'a str,
+    pub channel_id: &'a str,
     pub entity_types: &'a str,
     pub source_modules: &'a str,
     pub statuses: &'a str,
+    pub category_ids: &'a str,
+    pub attribute_code: &'a str,
+    pub attribute_values: &'a str,
+    pub attribute_min: &'a str,
+    pub attribute_max: &'a str,
+    pub sort_attribute_code: &'a str,
+    pub sort_desc: bool,
     pub ranking_profile: &'a str,
     pub preset_key: &'a str,
     pub locale: Option<String>,
@@ -127,15 +142,31 @@ pub fn route_query_update(query: &str) -> RouteQueryUpdate {
 }
 
 pub fn build_search_preview_request(input: SearchPreviewFormInput<'_>) -> SearchPreviewRequest {
+    let attribute_filters = optional_text(input.attribute_code)
+        .map(|attribute_code| {
+            vec![SearchAttributeFilter {
+                attribute_code,
+                values: parse_csv(input.attribute_values),
+                min: optional_text(input.attribute_min),
+                max: optional_text(input.attribute_max),
+            }]
+        })
+        .unwrap_or_default();
+
     SearchPreviewRequest {
         query: input.query.to_string(),
         locale: input.locale,
         ranking_profile: optional_text(input.ranking_profile),
         preset_key: optional_text(input.preset_key),
         filters: SearchPreviewFilters {
+            channel_id: optional_text(input.channel_id),
             entity_types: parse_csv(input.entity_types),
             source_modules: parse_csv(input.source_modules),
             statuses: parse_csv(input.statuses),
+            category_ids: parse_csv(input.category_ids),
+            attribute_filters,
+            sort_attribute_code: optional_text(input.sort_attribute_code),
+            sort_desc: input.sort_desc,
         },
         route_query_update: route_query_update(input.query),
     }
@@ -274,9 +305,17 @@ mod tests {
     fn search_preview_request_normalizes_form_state_without_ui_runtime() {
         let request = build_search_preview_request(SearchPreviewFormInput {
             query: " botas ",
+            channel_id: " 23da77fd-6cd5-49c7-a188-60db852d70a1 ",
             entity_types: " product, blog ,, ",
             source_modules: " catalog, cms ",
             statuses: "published, draft",
+            category_ids: "2fc8574b-9eb8-4e93-9cb2-711982f67c46",
+            attribute_code: " color ",
+            attribute_values: "red, blue",
+            attribute_min: "",
+            attribute_max: "",
+            sort_attribute_code: " price ",
+            sort_desc: true,
             ranking_profile: " balanced ",
             preset_key: "  ",
             locale: Some("ru".to_string()),
@@ -302,6 +341,22 @@ mod tests {
             request.filters.statuses,
             vec!["published".to_string(), "draft".to_string()]
         );
+        assert_eq!(
+            request.filters.channel_id.as_deref(),
+            Some("23da77fd-6cd5-49c7-a188-60db852d70a1")
+        );
+        assert_eq!(request.filters.category_ids.len(), 1);
+        assert_eq!(request.filters.attribute_filters.len(), 1);
+        assert_eq!(request.filters.attribute_filters[0].attribute_code, "color");
+        assert_eq!(
+            request.filters.attribute_filters[0].values,
+            vec!["red".to_string(), "blue".to_string()]
+        );
+        assert_eq!(
+            request.filters.sort_attribute_code.as_deref(),
+            Some("price")
+        );
+        assert!(request.filters.sort_desc);
     }
 
     #[test]

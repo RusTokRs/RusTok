@@ -25,6 +25,7 @@ Leptos render/bind adapter. Этот split закреплён быстрым ver
 
 - host routing, layout, navigation shell и глобальные UI capabilities;
 - wiring module-owned admin pages через generated registry;
+- cross-module composition через отдельные host adapters и публичные owner contracts; `SearchAdminComposition` соединяет product-owned catalog option transport с search-owned UI props, передаёт `UiRouteContext.locale` и учитывает tenant module enablement без переноса domain logic в host;
 - host-level locale propagation, auth/session UX и permission-gated navigation;
 - интеграцию host-owned операторских сценариев, которые не принадлежат отдельному модулю.
 

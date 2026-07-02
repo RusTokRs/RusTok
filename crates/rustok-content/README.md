@@ -10,6 +10,8 @@
 - Own shared content entities, shared migrations, and orchestration state.
 - Provide shared locale, slug, and rich-text helpers used by domain modules.
 - Own orchestration state, idempotency, audit records, and canonical URL/alias mappings for cross-domain flows.
+- Own content dashboard post analytics snapshots (`ContentCountSnapshot` and
+  `load_post_stats_snapshot`) so host GraphQL does not embed `nodes` SQL.
 - Expose a port-based `ContentOrchestrationService` that delegates domain work through `ContentOrchestrationBridge`.
 - Publish only orchestration-facing RBAC for `forum_topics:*` and `blog_posts:*`.
 
@@ -29,7 +31,8 @@
   shared helper layer and implement `ContentOrchestrationBridge`.
 - `rustok-content-orchestration` owns the runtime bridge implementation and its
   live GraphQL mutations for `topic ↔ post`, `split_topic`, and `merge_topics`.
-- `apps/server` only composes the owner-provided GraphQL roots.
+- `apps/server` only composes the owner-provided GraphQL roots, dataloaders,
+  and dashboard post analytics helper.
 
 - Conversion flows persist typed redirect/canonical state in
   `content_canonical_urls` and `content_url_aliases` and publish
@@ -40,6 +43,8 @@
 - `ContentModule`
 - `ContentOrchestrationService`
 - `ContentOrchestrationBridge`
+- `load_post_stats_snapshot`
+- `ContentCountSnapshot`
 - `graphql::ContentQuery` (feature `graphql`)
 - `graphql::{NodeLoader, NodeTranslationLoader, NodeBodyLoader}` (feature `graphql`)
 - `CategoryService`

@@ -6,8 +6,6 @@ use axum::{
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use rustok_events::EventEnvelope;
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::Result;
@@ -22,69 +20,10 @@ use crate::extractors::{
 };
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct CreateFlexSchemaRequest {
-    pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub fields_config: serde_json::Value,
-    pub settings: Option<serde_json::Value>,
-    pub is_active: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct UpdateFlexSchemaRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub fields_config: Option<serde_json::Value>,
-    pub settings: Option<serde_json::Value>,
-    pub is_active: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct CreateFlexEntryRequest {
-    pub entity_type: Option<String>,
-    pub entity_id: Option<Uuid>,
-    pub data: serde_json::Value,
-    pub status: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct UpdateFlexEntryRequest {
-    pub data: Option<serde_json::Value>,
-    pub status: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FlexSchemaResponse {
-    pub id: Uuid,
-    pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub fields_config: serde_json::Value,
-    pub settings: serde_json::Value,
-    pub is_active: bool,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FlexEntryResponse {
-    pub id: Uuid,
-    pub schema_id: Uuid,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<Uuid>,
-    pub data: serde_json::Value,
-    pub status: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct DeleteFlexResponse {
-    pub success: bool,
-}
+use flex::rest::{
+    CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
+    FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
+};
 
 #[utoipa::path(
     get,
@@ -106,7 +45,7 @@ async fn list_schemas(
     let rows = flex::list_schemas(&service, tenant.id)
         .await
         .map_err(map_flex_rest_error)?;
-    Ok(Json(rows.into_iter().map(map_schema).collect()))
+    Ok(Json(rows.into_iter().map(FlexSchemaResponse::from).collect()))
 }
 
 #[utoipa::path(
@@ -133,7 +72,7 @@ async fn get_schema(
         .await
         .map_err(map_flex_rest_error)?
         .ok_or(crate::error::Error::NotFound)?;
-    Ok(Json(map_schema(row)))
+    Ok(Json(FlexSchemaResponse::from(row)))
 }
 
 #[utoipa::path(
@@ -172,7 +111,7 @@ async fn create_schema(
     .map_err(map_flex_rest_error)?;
 
     publish_event(&ctx, event);
-    Ok(Json(map_schema(row)))
+    Ok(Json(FlexSchemaResponse::from(row)))
 }
 
 #[utoipa::path(
@@ -214,7 +153,7 @@ async fn update_schema(
     .map_err(map_flex_rest_error)?;
 
     publish_event(&ctx, event);
-    Ok(Json(map_schema(row)))
+    Ok(Json(FlexSchemaResponse::from(row)))
 }
 
 #[utoipa::path(
@@ -267,7 +206,7 @@ async fn list_entries(
     let rows = flex::list_entries(&service, tenant.id, schema_id)
         .await
         .map_err(map_flex_rest_error)?;
-    Ok(Json(rows.into_iter().map(map_entry).collect()))
+    Ok(Json(rows.into_iter().map(FlexEntryResponse::from).collect()))
 }
 
 #[utoipa::path(
@@ -297,7 +236,7 @@ async fn get_entry(
         .await
         .map_err(map_flex_rest_error)?
         .ok_or(crate::error::Error::NotFound)?;
-    Ok(Json(map_entry(row)))
+    Ok(Json(FlexEntryResponse::from(row)))
 }
 
 #[utoipa::path(
@@ -337,7 +276,7 @@ async fn create_entry(
     .map_err(map_flex_rest_error)?;
 
     publish_event(&ctx, event);
-    Ok(Json(map_entry(row)))
+    Ok(Json(FlexEntryResponse::from(row)))
 }
 
 #[utoipa::path(
@@ -380,7 +319,7 @@ async fn update_entry(
     .map_err(map_flex_rest_error)?;
 
     publish_event(&ctx, event);
-    Ok(Json(map_entry(row)))
+    Ok(Json(FlexEntryResponse::from(row)))
 }
 
 #[utoipa::path(
@@ -434,34 +373,6 @@ fn publish_event(ctx: &AppContext, event: EventEnvelope) {
     let bus = event_bus_from_context(ctx);
     if let Err(error) = bus.publish_envelope(event) {
         tracing::warn!(error = %error, "Failed to publish flex standalone REST event");
-    }
-}
-
-fn map_schema(view: flex::FlexSchemaView) -> FlexSchemaResponse {
-    FlexSchemaResponse {
-        id: view.id,
-        slug: view.slug,
-        name: view.name,
-        description: view.description,
-        fields_config: serde_json::to_value(view.fields_config)
-            .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
-        settings: view.settings,
-        is_active: view.is_active,
-        created_at: view.created_at,
-        updated_at: view.updated_at,
-    }
-}
-
-fn map_entry(view: flex::FlexEntryView) -> FlexEntryResponse {
-    FlexEntryResponse {
-        id: view.id,
-        schema_id: view.schema_id,
-        entity_type: view.entity_type,
-        entity_id: view.entity_id,
-        data: view.data,
-        status: view.status,
-        created_at: view.created_at,
-        updated_at: view.updated_at,
     }
 }
 

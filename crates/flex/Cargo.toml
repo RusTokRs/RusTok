@@ -6,15 +6,19 @@ license.workspace = true
 description = "Flex attached-mode contracts and orchestration primitives for RusToK"
 
 [dependencies]
-rustok-api.workspace = true
+async-graphql.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+utoipa = { workspace = true, features = ["uuid"] }
 uuid.workspace = true
 async-trait.workspace = true
 regex = "1"
+tracing.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

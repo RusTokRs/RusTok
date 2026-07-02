@@ -17,8 +17,6 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
-use super::ai::{AiMutation, AiQuery, AiSubscription};
-use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::TenantNameLoader;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
@@ -30,6 +28,9 @@ use super::system::SystemQuery;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
+use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
+use flex::graphql::FlexGraphqlRuntime;
+use rustok_ai::graphql::{AiMutation, AiQuery, AiSubscription};
 use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
 #[cfg(feature = "mod-content")]
 use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
@@ -59,7 +60,6 @@ pub struct Query(
     RbacQuery,
     SettingsQuery,
     SystemQuery,
-    FlexQuery,
     schema_codegen::OptionalModuleQuery,
 );
 
@@ -80,7 +80,6 @@ pub struct Mutation(
     McpMutation,
     RbacMutation,
     SettingsMutation,
-    FlexMutation,
     schema_codegen::OptionalModuleMutation,
 );
 
@@ -103,6 +102,15 @@ pub fn build_schema(
     search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
+    let ai_role_slug_provider = rustok_ai::AiGraphqlRoleSlugProviderHandle::new(Arc::new(
+        crate::services::ai_graphql_role_provider::ServerAiGraphqlRoleSlugProvider::new(db.clone()),
+    ));
+    let flex_runtime = FlexGraphqlRuntime::new(
+        Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
+        db.clone(),
+        build_field_def_registry(),
+        Arc::new(field_definition_cache),
+    );
     let builder = Schema::build(
         Query::default(),
         Mutation::default(),
@@ -138,12 +146,12 @@ pub fn build_schema(
     ));
 
     let builder = builder
+        .data(ai_role_slug_provider)
         .data(db)
         .data(event_bus)
         .data(transactional_event_bus)
         .data(build_event_hub)
-        .data(build_field_def_registry())
-        .data(field_definition_cache)
+        .data(flex_runtime)
         .data(runtime_extensions)
         .data(rbac_role_writer);
 

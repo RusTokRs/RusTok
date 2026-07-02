@@ -17,6 +17,7 @@
 ## Зона ответственности
 
 - transport-agnostic field definition contracts и registry/orchestration helpers;
+- owner-owned attached field-definition и standalone GraphQL query/mutation roots, runtime handle и input/output DTO без server dependencies;
 - multilingual storage/runtime contract для attached и standalone Flex payload;
 - capability-only module metadata для `modules.toml` / `rustok-module.toml` / `ModuleRegistry`;
 - правила, по которым donor persistence ownership остаётся у модулей-потребителей.
@@ -25,7 +26,7 @@
 
 - `rustok-core::field_schema` поставляет базовые типы, validation rules и migration helpers;
 - `crates/flex` держит shared attached/standalone contracts и runtime metadata через `FlexModule`;
-- `apps/server` остаётся adapter-слоем для SeaORM, GraphQL, REST, RBAC, bootstrap и event emission;
+- `apps/server` остаётся adapter/composition-слоем для SeaORM, REST и bootstrap; attached field-definition и standalone GraphQL roots/runtime/DTO/RBAC/error/event mapping живут в `flex::graphql`, roots подключаются через `[provides.graphql]`, а host передаёт concrete standalone service, registry/cache и DB handle через `FlexGraphqlRuntime`;
 - donor write/read paths сейчас живые для `user`, `product`, `order` и `topic`.
 
 ## Проверка
@@ -50,8 +51,8 @@
 Текущая архитектура разделена на три слоя:
 
 - `rustok-core::field_schema` хранит базовые типы, валидаторы и migration helpers для attached mode;
-- `crates/flex` хранит transport-agnostic orchestration, registry и standalone contracts;
-- `apps/server` держит adapter/wiring слой: SeaORM, GraphQL, cache/RBAC gates, event emission и bootstrap.
+- `crates/flex` хранит transport-agnostic orchestration, registry, standalone contracts и attached/standalone GraphQL roots/runtime/DTO;
+- `apps/server` держит adapter/wiring слой: SeaORM, REST, cache/bootstrap и schema runtime registration. Owner roots входят через manifest codegen; concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter создаются/передаются только в composition root через `FlexGraphqlRuntime`.
 
 Attached mode считается рабочим production contract. Standalone mode уже имеет live GraphQL и REST API surfaces в `apps/server`; rollout/governance policy для этого surface теперь тоже зафиксирован, а незакрытым остаётся именно полный integration verification.
 
@@ -529,12 +530,12 @@ pub enum FlexError {
 - Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command` теперь проверяют форму JSON-object для payload, нормализованные identifiers/statuses/schema names, лимит 50 fields per schema и DB-column length caps для schema slugs/names, а также entry `entity_type`/`status`.
 - Orchestration helpers: `list/find/create/update/delete` для schemas и entries
 - SeaORM adapter `FlexStandaloneSeaOrmService`
-- GraphQL queries/mutations в `apps/server` для schemas и entries с отдельными `flex_schemas:*` и `flex_entries:*` permission gates
+- GraphQL queries/mutations в `crates/flex/src/graphql` для schemas и entries с shared `AuthContext` / `TenantContext` и отдельными `flex_schemas:*` / `flex_entries:*` permission gates
 - REST endpoints в `apps/server`: `/api/v1/flex/schemas*` и `/api/v1/flex/schemas/{schema_id}/entries*` с теми же tenant-scoped RBAC gates
 
 Для standalone surface уже действует live rollout/governance contract:
 
-- transport остаётся server-owned adapter layer в `apps/server`, а не module-owned surface в `crates/flex`;
+- attached field-definition и standalone GraphQL transport принадлежат `crates/flex`, roots подключаются через manifest codegen, а server регистрирует только runtime и concrete persistence/registry/cache adapters; REST остаётся server-owned adapter layer;
 - `flex` зарегистрирован в `modules.toml` как `capability_only` ghost module с `rustok-module.toml` и runtime `FlexModule`;
 - capability wiring проверяется через `cargo xtask validate-manifest` и `cargo xtask module validate flex`;
 - multilingual DB/runtime drift проверяется через `node scripts/verify/verify-flex-multilingual-contract.mjs`;

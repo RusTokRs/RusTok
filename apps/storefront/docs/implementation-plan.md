@@ -1,5 +1,11 @@
 # Storefront App (Leptos SSR) — Implementation Plan
 
+## Host composition update (2026-07-02)
+
+- [x] Generated search renderer использует `SearchStorefrontComposition`, соединяющий публичные product catalog option DTO/helper и search-owned props.
+- [x] Host проверяет tenant enablement модуля `product` и передаёт только effective locale из `UiRouteContext`; локальный locale fallback отсутствует.
+- [x] Product storefront metadata использует native `#[server]` first и параллельный public GraphQL `storefrontCatalogSearchOptions(locale: String!)`; fast boundary guardrails фиксируют wiring без долгой Rust-компиляции.
+
 ## Фокус
 
 Развивать `apps/storefront` как стабильную SSR-витрину с предсказуемой производительностью, безопасной обработкой пользовательского ввода и едиными контрактами с backend.
@@ -53,4 +59,3 @@
 - **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
-

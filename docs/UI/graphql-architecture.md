@@ -64,6 +64,9 @@ UI component
 
 Storefront payment reads соблюдают тот же dual-path contract: module-owned `rustok-payment-storefront` публикует native endpoint-ы `payment/payment-collection` / `payment/refund-summary` и параллельные GraphQL reads `storefrontPaymentCollection(cartId)` / `storefrontRefunds(orderId, filter)`. Collection read проверяет tenant/cart customer access, refund read — tenant/order customer ownership; DTO и decimal-safe refund aggregation принадлежат payment package. Aggregate commerce UI только композирует owner transport result и не владеет отдельным payment read contract.
 
+Product/search picker metadata соблюдает тот же контракт: `rustok-product-storefront` публикует native endpoint `product/storefront/catalog-search-options` и параллельный GraphQL read `storefrontCatalogSearchOptions(locale: String!)`. Public payload ограничен category ids/labels и filterable/sortable attribute codes/labels, использует tenant/channel guards и host effective locale без admin permission или package-local locale fallback; `apps/storefront` только маппит owner DTO в search-owned UI props.
+Next storefront повторяет этот boundary через host composition: `apps/next-frontend/src/features/search` передаёт route locale, tenant slug и enabled modules в product-owned `packages/rustok-product::fetchCatalogSearchOptions`, а `packages/search` получает только безопасные category/attribute option props.
+
 GraphQL остаётся:
 
 - публичным backend contract;

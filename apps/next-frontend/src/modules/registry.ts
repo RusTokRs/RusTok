@@ -2,12 +2,18 @@
 
 export type StorefrontSlot = "home:afterHero";
 
+export type StorefrontRenderContext = {
+  locale: string;
+  enabledModules: string[];
+  tenantSlug: string | null;
+};
+
 export type StorefrontModule = {
   id: string;
   moduleSlug?: string;
   slot: StorefrontSlot;
   order?: number;
-  render: () => ReactNode;
+  render: (context: StorefrontRenderContext) => ReactNode;
 };
 
 const registry = new Map<string, StorefrontModule>();

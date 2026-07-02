@@ -104,6 +104,36 @@ expectContains(
   "validate_update_entry_command(&input)?;",
   "direct SeaORM entry update validation",
 );
+expectContains(
+  "crates/flex/src/rest.rs",
+  "pub struct CreateFlexSchemaRequest",
+  "owner-owned standalone REST request DTOs",
+);
+expectContains(
+  "crates/flex/src/rest.rs",
+  "impl From<FlexSchemaView> for FlexSchemaResponse",
+  "owner-owned standalone REST schema response mapping",
+);
+expectContains(
+  "crates/flex/src/rest.rs",
+  "impl From<FlexEntryView> for FlexEntryResponse",
+  "owner-owned standalone REST entry response mapping",
+);
+expectNotContains(
+  "apps/server/src/controllers/flex.rs",
+  "pub struct FlexSchemaResponse",
+  "server-owned standalone REST response DTO",
+);
+expectNotContains(
+  "apps/server/src/controllers/flex.rs",
+  "fn map_schema(",
+  "server-owned standalone REST schema response mapping",
+);
+expectContains(
+  "apps/server/src/controllers/swagger.rs",
+  "flex::rest::FlexSchemaResponse",
+  "OpenAPI schema registration uses owner-owned Flex REST DTOs",
+);
 expectNotContains(
   "crates/flex/src/standalone.rs",
   ".update_schema(tenant_id, actor_id, schema_id, input)\n        .update_schema(",

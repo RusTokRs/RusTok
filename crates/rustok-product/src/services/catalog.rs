@@ -1047,7 +1047,11 @@ impl CatalogService {
                     &txn,
                     tenant_id,
                     Some(actor_id),
-                    DomainEvent::ProductPrimaryCategoryChanged { product_id },
+                    DomainEvent::ProductPrimaryCategoryChanged {
+                        product_id,
+                        old_category_id: existing_product.primary_category_id,
+                        new_category_id: input.primary_category_id,
+                    },
                 )
                 .await?;
         }

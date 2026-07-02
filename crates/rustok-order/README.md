@@ -11,6 +11,8 @@
 - Persist item-level return lines in `order_return_items` with order-owned quantity and line-item validation, plus resolution links (`resolution_type`, `refund_id`, `order_change_id`) that let refund/exchange/claim orchestration attach without moving payment logic into order storage.
 - Persist `order_changes` draft/edit skeletons with preview/apply/cancel lifecycle metadata before transport orchestration is added.
 - Persist typed order adjustments as language-neutral promotion/discount snapshots.
+- Own dashboard order analytics snapshots (`OrderStatsSnapshot` and
+  `load_order_stats_snapshot`) so host GraphQL does not embed order event SQL.
 - Persist discounted order pricing as `base/compare-at` line-item prices plus
   typed `order_adjustments`, instead of collapsing sale savings into a second
   implicit price field.
@@ -48,6 +50,8 @@
   path.
 - Exposes returns as order-owned records with optional item-level lines and resolution references while refund/exchange/claim execution remains outside the order write model.
 - Exposes order-change preview/apply/cancel service primitives as an order-owned skeleton; cross-domain transport and payment/fulfillment side effects remain outside this module.
+- Exposes order dashboard statistics as an owner-owned read helper consumed by
+  `apps/server` only for root dashboard composition.
 - `apps/admin` consumes `rustok-order-admin` through manifest-driven composition,
   while GraphQL/REST order transport remains in `rustok-commerce`.
 
@@ -55,6 +59,8 @@
 
 - `OrderModule`
 - `OrderService`
+- `load_order_stats_snapshot`
+- `OrderStatsSnapshot`
 - `rustok-order-admin`
 - `dto::*`
 - `entities::*`

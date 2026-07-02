@@ -137,6 +137,9 @@ fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError
         AuthLifecycleMutationError::InvalidResetToken => {
             unauthenticated_auth_error(&t("auth.invalid_reset_token"))
         }
+        AuthLifecycleMutationError::InvalidInviteToken => {
+            FieldError::new(t("auth.invalid_invite_token"))
+        }
         AuthLifecycleMutationError::Validation(message) => {
             <FieldError as GraphQLError>::bad_user_input(&message)
         }

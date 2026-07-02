@@ -1,51 +1,33 @@
-//! GraphQL queries for Flex field definitions.
-
 use async_graphql::{Context, Object, Result};
-use rustok_api::Permission;
+use rustok_api::{graphql::PaginationInput, Permission};
 use uuid::Uuid;
 
-use crate::context::TenantContext;
-use crate::services::field_definition_cache::FieldDefinitionCache;
-use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
-use flex::{FieldDefRegistry, FieldDefinitionView};
-use rustok_api::graphql::PaginationInput;
-
 use super::{
-    map_flex_error, require_permission, resolve_entity_type,
-    types::{FieldDefinitionObject, FlexEntryObject, FlexSchemaObject},
+    map_flex_error, require_access, resolve_entity_type, runtime::runtime, FieldDefinitionObject,
+    FlexEntryObject, FlexSchemaObject,
 };
+use crate::FieldDefinitionView;
 
-/// Queries for field definitions.
-///
-/// Routed by `entity_type` through `FieldDefRegistry`.
-/// For backward-compatibility, omitted `entity_type` defaults to `"user"`.
 #[derive(Default)]
 pub struct FlexQuery;
 
 #[Object]
 impl FlexQuery {
-    /// List all field definitions for the authenticated tenant.
-    ///
-    /// `entity_type` routes the query to a module-specific service.
-    /// When omitted, defaults to `"user"` for backward-compatibility.
+    /// List attached field definitions for the authenticated tenant.
     async fn field_definitions(
         &self,
         ctx: &Context<'_>,
         entity_type: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<Vec<FieldDefinitionObject>> {
-        require_permission(ctx, Permission::FLEX_SCHEMAS_LIST)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
-        let cache = ctx.data::<FieldDefinitionCache>()?;
-        let registry = ctx.data::<FieldDefRegistry>()?;
-
-        let rows = flex::list_field_definitions_with_cache(
-            registry,
-            &app_ctx.db,
-            cache,
+        let rows = crate::list_field_definitions_with_cache(
+            runtime.field_registry(),
+            runtime.db(),
+            runtime.field_definition_cache(),
             tenant.id,
             &entity_type,
         )
@@ -55,34 +37,35 @@ impl FlexQuery {
         paginate_rows(rows, &pagination)
     }
 
-    /// Find a single field definition by id for the requested entity type.
+    /// Find one attached field definition by id for the requested entity type.
     async fn field_definition(
         &self,
         ctx: &Context<'_>,
         entity_type: Option<String>,
         id: Uuid,
     ) -> Result<Option<FieldDefinitionObject>> {
-        require_permission(ctx, Permission::FLEX_SCHEMAS_READ)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_READ)?;
+        let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
-        let registry = ctx.data::<FieldDefRegistry>()?;
-
-        flex::find_field_definition(registry, &app_ctx.db, tenant.id, &entity_type, id)
-            .await
-            .map(|row| row.map(FieldDefinitionObject::from))
-            .map_err(map_flex_error)
+        crate::find_field_definition(
+            runtime.field_registry(),
+            runtime.db(),
+            tenant.id,
+            &entity_type,
+            id,
+        )
+        .await
+        .map(|row| row.map(FieldDefinitionObject::from))
+        .map_err(map_flex_error)
     }
 
     /// List standalone Flex schemas for the authenticated tenant.
     async fn flex_schemas(&self, ctx: &Context<'_>) -> Result<Vec<FlexSchemaObject>> {
-        require_permission(ctx, Permission::FLEX_SCHEMAS_LIST)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
-        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let service = runtime(ctx)?.standalone_service();
 
-        flex::list_schemas(&service, tenant.id)
+        crate::list_schemas(service.as_ref(), tenant.id)
             .await
             .map(|rows| rows.into_iter().map(FlexSchemaObject::from).collect())
             .map_err(map_flex_error)
@@ -90,12 +73,10 @@ impl FlexQuery {
 
     /// Find a single standalone Flex schema by id.
     async fn flex_schema(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<FlexSchemaObject>> {
-        require_permission(ctx, Permission::FLEX_SCHEMAS_READ)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
-        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_READ)?;
+        let service = runtime(ctx)?.standalone_service();
 
-        flex::find_schema(&service, tenant.id, id)
+        crate::find_schema(service.as_ref(), tenant.id, id)
             .await
             .map(|row| row.map(FlexSchemaObject::from))
             .map_err(map_flex_error)
@@ -107,12 +88,10 @@ impl FlexQuery {
         ctx: &Context<'_>,
         schema_id: Uuid,
     ) -> Result<Vec<FlexEntryObject>> {
-        require_permission(ctx, Permission::FLEX_ENTRIES_LIST)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
-        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_LIST)?;
+        let service = runtime(ctx)?.standalone_service();
 
-        flex::list_entries(&service, tenant.id, schema_id)
+        crate::list_entries(service.as_ref(), tenant.id, schema_id)
             .await
             .map(|rows| rows.into_iter().map(FlexEntryObject::from).collect())
             .map_err(map_flex_error)
@@ -125,12 +104,10 @@ impl FlexQuery {
         schema_id: Uuid,
         id: Uuid,
     ) -> Result<Option<FlexEntryObject>> {
-        require_permission(ctx, Permission::FLEX_ENTRIES_READ)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
-        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ)?;
+        let service = runtime(ctx)?.standalone_service();
 
-        flex::find_entry(&service, tenant.id, schema_id, id)
+        crate::find_entry(service.as_ref(), tenant.id, schema_id, id)
             .await
             .map(|row| row.map(FlexEntryObject::from))
             .map_err(map_flex_error)
@@ -159,7 +136,7 @@ fn paginate_rows(
 #[cfg(test)]
 mod tests {
     use super::paginate_rows;
-    use flex::FieldDefinitionView;
+    use crate::FieldDefinitionView;
     use rustok_api::graphql::PaginationInput;
     use serde_json::json;
     use uuid::Uuid;

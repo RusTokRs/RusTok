@@ -422,15 +422,19 @@ fn render_admin_registry_codegen(
         out.push_str("    .into_any()\n");
         out.push_str("}\n\n");
 
+        let page_component_path = if entry.slug == "search" {
+            "crate::app::modules::SearchAdminComposition".to_string()
+        } else {
+            format!("{}::{}", entry.crate_ident, entry.component_name)
+        };
         out.push_str(&format!(
             "fn {fn_name}() -> AnyView {{\n",
             fn_name = admin_page_render_fn_name(&entry.slug)
         ));
         out.push_str("    view! {\n");
         out.push_str(&format!(
-            "        <{crate_ident}::{component_name} />\n",
-            crate_ident = entry.crate_ident,
-            component_name = entry.component_name,
+            "        <{page_component_path} />\n",
+            page_component_path = page_component_path,
         ));
         out.push_str("    }\n");
         out.push_str("    .into_any()\n");

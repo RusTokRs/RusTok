@@ -2,7 +2,7 @@ use async_graphql::{Context, Result, Subscription};
 use futures_util::stream;
 use uuid::Uuid;
 
-use crate::context::AuthContext;
+use rustok_api::AuthContext;
 
 use super::{ensure_ai_session_read, types::AiRunStreamEventGql};
 
@@ -21,7 +21,7 @@ impl AiSubscription {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let exists =
-            rustok_ai::AiManagementService::chat_session_detail(db, auth.tenant_id, session_id)
+            crate::AiManagementService::chat_session_detail(db, auth.tenant_id, session_id)
                 .await
                 .map_err(|err| async_graphql::Error::new(err.to_string()))?
                 .is_some();
@@ -31,7 +31,7 @@ impl AiSubscription {
             ));
         }
 
-        let receiver = rustok_ai::ai_run_stream_hub().subscribe();
+        let receiver = crate::ai_run_stream_hub().subscribe();
 
         Ok(stream::unfold(receiver, move |mut receiver| async move {
             loop {

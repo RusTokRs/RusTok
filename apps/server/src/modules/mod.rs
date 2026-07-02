@@ -73,7 +73,7 @@ mod contract_tests {
     const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
     const ALLOY_README: &str = include_str!("../../../../crates/alloy/README.md");
     const FLEX_README: &str = include_str!("../../../../crates/flex/README.md");
-    const FLEX_MUTATION: &str = include_str!("../graphql/flex/mutation.rs");
+    const FLEX_MUTATION: &str = include_str!("../../../../crates/flex/src/graphql/mutation.rs");
 
     #[test]
     fn registry_module_readmes_define_interactions_section() {

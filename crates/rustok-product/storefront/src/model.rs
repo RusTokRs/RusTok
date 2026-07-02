@@ -1,6 +1,18 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductCatalogSearchOption {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct ProductCatalogSearchOptions {
+    pub category_options: Vec<ProductCatalogSearchOption>,
+    pub attribute_options: Vec<ProductCatalogSearchOption>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontProductsData {
     pub products: ProductList,
     pub selected_product: Option<ProductDetail>,

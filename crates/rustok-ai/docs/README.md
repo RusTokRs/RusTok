@@ -42,7 +42,8 @@
   - `ai_chat_runs`
   - `ai_tool_traces`
   - `ai_approval_requests`
-- GraphQL query/mutation surface для providers, tool profiles, sessions, traces и approvals;
+- owner-owned GraphQL query/mutation/subscription surface в `crates/rustok-ai/src/graphql` для providers,
+  tool profiles, sessions, traces и approvals;
 - server-side orchestration service `AiManagementService`;
 - `apps/server` хранит секреты, runtime settings и audit trail, а не UI.
 - Runtime observability теперь идёт в двух слоях:
@@ -51,7 +52,7 @@
 - diagnostics snapshot теперь включает breakdown не только по provider/execution target, но и по
   task profile / resolved locale, чтобы оператор видел routing и multilingual срезы без похода в raw traces.
 - bounded streaming layer включает `AiRunStreamHub` в `rustok-ai`, GraphQL subscription
-  `aiSessionEvents(sessionId)` в `apps/server` и live incremental output для operator chat /
+  `aiSessionEvents(sessionId)` в `rustok-ai` и live incremental output для operator chat /
   provider-backed text runs в обоих admin host'ах для `OpenAI-compatible`, `Anthropic` и `Gemini`.
 - direct verticals используют тот же streaming contract, поэтому direct Alloy / content jobs не
   теряют live delta/update surface по сравнению с runtime/MCP path.
@@ -95,6 +96,7 @@
 - direct first-party execution registry;
 - chat/session/approval contracts;
 - server-side management service;
+- GraphQL query/mutation/subscription roots, DTO и permission checks;
 - capability-owned large operator/admin UI packages.
 
 ### Что остаётся в `rustok-mcp`
@@ -106,7 +108,8 @@
 ### Что остаётся в `apps/server`
 
 - persisted control plane;
-- GraphQL contract;
+- общий GraphQL schema/transport composition root;
+- адаптер `AiGraphqlRoleSlugProvider` поверх server-owned RBAC persistence;
 - Leptos `#[server]` integration path;
 - composition root для runtime wiring.
 

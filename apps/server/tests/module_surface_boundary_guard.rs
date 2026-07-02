@@ -227,6 +227,252 @@ fn module_entity_imports_do_not_leak_into_server_graphql() {
 }
 
 #[test]
+fn media_usage_graphql_is_owned_by_media_crate() {
+    let repo = repo_root();
+    let system = std::fs::read_to_string(repo.join("apps/server/src/graphql/system.rs"))
+        .expect("server system GraphQL source should read");
+    for forbidden in ["rustok_media", "MediaUsageStats", "fn media_usage"] {
+        assert!(
+            !system.contains(forbidden),
+            "media usage GraphQL must live in rustok-media, not server SystemQuery: {forbidden}"
+        );
+    }
+
+    let media_query =
+        std::fs::read_to_string(repo.join("crates/rustok-media/src/graphql/query.rs"))
+            .expect("rustok-media GraphQL query should read");
+    let media_types =
+        std::fs::read_to_string(repo.join("crates/rustok-media/src/graphql/types.rs"))
+            .expect("rustok-media GraphQL types should read");
+    assert!(media_query.contains("async fn media_usage"));
+    assert!(media_types.contains("pub struct MediaUsageStats"));
+}
+
+#[test]
+fn order_dashboard_snapshot_is_owned_by_order_crate() {
+    let repo = repo_root();
+    let root_queries = std::fs::read_to_string(repo.join("apps/server/src/graphql/queries.rs"))
+        .expect("server root GraphQL queries source should read");
+    for forbidden in [
+        "struct OrderStatsSnapshot",
+        "fn load_order_stats_snapshot",
+        "event_type = 'order.placed'",
+    ] {
+        assert!(
+            !root_queries.contains(forbidden),
+            "order dashboard snapshot SQL must live in rustok-order, not server RootQuery: {forbidden}"
+        );
+    }
+    assert!(
+        root_queries.contains("rustok_order::load_order_stats_snapshot"),
+        "server RootQuery should compose the order-owned dashboard snapshot helper"
+    );
+
+    let order_analytics =
+        std::fs::read_to_string(repo.join("crates/rustok-order/src/analytics.rs"))
+            .expect("rustok-order analytics source should read");
+    assert!(order_analytics.contains("pub struct OrderStatsSnapshot"));
+    assert!(order_analytics.contains("pub async fn load_order_stats_snapshot"));
+    assert!(order_analytics.contains("event_type = 'order.placed'"));
+}
+
+#[test]
+fn content_dashboard_post_snapshot_is_owned_by_content_crate() {
+    let repo = repo_root();
+    let root_queries = std::fs::read_to_string(repo.join("apps/server/src/graphql/queries.rs"))
+        .expect("server root GraphQL queries source should read");
+    for forbidden in [
+        "fn load_post_stats_snapshot",
+        "FROM nodes",
+        "AND kind = ?4",
+        "AND kind = $4",
+    ] {
+        assert!(
+            !root_queries.contains(forbidden),
+            "post dashboard snapshot SQL must live in rustok-content, not server RootQuery: {forbidden}"
+        );
+    }
+    assert!(
+        root_queries.contains("rustok_content::load_post_stats_snapshot"),
+        "server RootQuery should compose the content-owned post dashboard snapshot helper"
+    );
+
+    let content_analytics =
+        std::fs::read_to_string(repo.join("crates/rustok-content/src/analytics.rs"))
+            .expect("rustok-content analytics source should read");
+    assert!(content_analytics.contains("pub struct ContentCountSnapshot"));
+    assert!(content_analytics.contains("pub async fn load_post_stats_snapshot"));
+    assert!(content_analytics.contains("FROM nodes"));
+    assert!(content_analytics.contains("AND kind = $4"));
+}
+
+#[test]
+fn server_dashboard_user_activity_logic_stays_out_of_graphql_root() {
+    let repo = repo_root();
+    let root_queries = std::fs::read_to_string(repo.join("apps/server/src/graphql/queries.rs"))
+        .expect("server root GraphQL queries source should read");
+    for forbidden in [
+        "struct PeriodCountSnapshot",
+        "fn load_period_count_snapshot",
+        "FROM users",
+        "recent_users = users::Entity::find()",
+    ] {
+        assert!(
+            !root_queries.contains(forbidden),
+            "dashboard user activity read logic must live in server services, not RootQuery: {forbidden}"
+        );
+    }
+    assert!(
+        root_queries.contains("dashboard_user_activity::load_user_stats_snapshot"),
+        "server RootQuery should compose the user stats service helper"
+    );
+    assert!(
+        root_queries.contains("dashboard_user_activity::load_recent_user_activity"),
+        "server RootQuery should compose the recent user activity service helper"
+    );
+
+    let service_source =
+        std::fs::read_to_string(repo.join("apps/server/src/services/dashboard_user_activity.rs"))
+            .expect("dashboard user activity service source should read");
+    assert!(service_source.contains("pub async fn load_user_stats_snapshot"));
+    assert!(service_source.contains("pub async fn load_recent_user_activity"));
+    assert!(service_source.contains("FROM users"));
+}
+
+#[test]
+fn flex_graphql_surface_is_owned_by_flex_crate() {
+    let repo = repo_root();
+    let server_graphql_dir = repo.join("apps/server/src/graphql/flex");
+    assert!(
+        !server_graphql_dir.exists(),
+        "Flex GraphQL query/mutation/types/runtime must live in crates/flex, not apps/server"
+    );
+
+    let owner_graphql_dir = repo.join("crates/flex/src/graphql");
+    let runtime = std::fs::read_to_string(owner_graphql_dir.join("runtime.rs"))
+        .expect("owner Flex GraphQL runtime source should read");
+    assert!(runtime.contains("Arc<dyn FlexStandaloneService>"));
+    assert!(runtime.contains("FieldDefRegistry"));
+    assert!(runtime.contains("FieldDefinitionCachePort"));
+
+    let owner_query = std::fs::read_to_string(owner_graphql_dir.join("query.rs"))
+        .expect("owner Flex GraphQL query should read");
+    let owner_mutation = std::fs::read_to_string(owner_graphql_dir.join("mutation.rs"))
+        .expect("owner Flex GraphQL mutation should read");
+    assert!(owner_query.contains("pub struct FlexQuery"));
+    assert!(owner_query.contains("async fn field_definitions"));
+    assert!(owner_query.contains("async fn field_definition"));
+    assert!(owner_query.contains("async fn flex_schemas"));
+    assert!(owner_query.contains("async fn flex_entries"));
+    assert!(owner_mutation.contains("pub struct FlexMutation"));
+    assert!(owner_mutation.contains("async fn create_field_definition"));
+    assert!(owner_mutation.contains("async fn update_field_definition"));
+    assert!(owner_mutation.contains("async fn delete_field_definition"));
+    assert!(owner_mutation.contains("async fn reorder_field_definitions"));
+    assert!(owner_mutation.contains("async fn create_flex_schema"));
+    assert!(owner_mutation.contains("async fn create_flex_entry"));
+    for forbidden in [
+        "crate::context",
+        "crate::services",
+        "loco_rs",
+        "apps/server",
+    ] {
+        assert!(!owner_query.contains(forbidden));
+        assert!(!owner_mutation.contains(forbidden));
+        assert!(!runtime.contains(forbidden));
+    }
+
+    let owner_types = std::fs::read_to_string(owner_graphql_dir.join("types.rs"))
+        .expect("owner Flex GraphQL types should read");
+    for owner_owned_type in [
+        "struct FieldDefinitionObject",
+        "struct CreateFieldDefinitionInput",
+        "struct UpdateFieldDefinitionInput",
+        "struct DeleteFieldDefinitionPayload",
+        "struct FlexSchemaObject",
+        "struct FlexEntryObject",
+        "struct CreateFlexSchemaInput",
+        "struct UpdateFlexSchemaInput",
+        "struct CreateFlexEntryInput",
+        "struct UpdateFlexEntryInput",
+        "struct DeleteFlexPayload",
+    ] {
+        assert!(
+            owner_types.contains(owner_owned_type),
+            "missing owner-owned standalone Flex GraphQL DTO: {owner_owned_type}"
+        );
+    }
+
+    let schema = std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
+        .expect("server GraphQL schema should read");
+    assert!(schema.contains("flex::graphql::FlexGraphqlRuntime"));
+    assert!(schema.contains("FlexGraphqlRuntime::new"));
+    assert!(!schema.contains("super::flex"));
+    assert!(!schema.contains("FlexQuery"));
+    assert!(!schema.contains("FlexMutation"));
+    assert!(schema.contains(".data(flex_runtime)"));
+
+    let manifest = std::fs::read_to_string(repo.join("crates/flex/rustok-module.toml"))
+        .expect("Flex module manifest should read");
+    assert!(manifest.contains("[provides.graphql]"));
+    assert!(manifest.contains("query = \"graphql::FlexQuery\""));
+    assert!(manifest.contains("mutation = \"graphql::FlexMutation\""));
+}
+
+#[test]
+fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
+    let repo = repo_root();
+    let server_controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/flex.rs"))
+        .expect("server Flex REST controller should read");
+
+    for forbidden in [
+        "pub struct CreateFlexSchemaRequest",
+        "pub struct UpdateFlexSchemaRequest",
+        "pub struct CreateFlexEntryRequest",
+        "pub struct UpdateFlexEntryRequest",
+        "pub struct FlexSchemaResponse",
+        "pub struct FlexEntryResponse",
+        "pub struct DeleteFlexResponse",
+        "fn map_schema(",
+        "fn map_entry(",
+    ] {
+        assert!(
+            !server_controller.contains(forbidden),
+            "Flex REST DTO and view mapping ownership must live in crates/flex, not apps/server: {forbidden}"
+        );
+    }
+    assert!(server_controller.contains("use flex::rest::{"));
+    assert!(server_controller.contains("FlexSchemaResponse::from"));
+    assert!(server_controller.contains("FlexEntryResponse::from"));
+
+    let owner_rest = std::fs::read_to_string(repo.join("crates/flex/src/rest.rs"))
+        .expect("owner Flex REST contract source should read");
+    for owner_owned_type in [
+        "pub struct CreateFlexSchemaRequest",
+        "pub struct UpdateFlexSchemaRequest",
+        "pub struct CreateFlexEntryRequest",
+        "pub struct UpdateFlexEntryRequest",
+        "pub struct FlexSchemaResponse",
+        "pub struct FlexEntryResponse",
+        "pub struct DeleteFlexResponse",
+        "impl From<FlexSchemaView> for FlexSchemaResponse",
+        "impl From<FlexEntryView> for FlexEntryResponse",
+    ] {
+        assert!(
+            owner_rest.contains(owner_owned_type),
+            "missing owner-owned standalone Flex REST contract item: {owner_owned_type}"
+        );
+    }
+
+    let swagger =
+        std::fs::read_to_string(repo.join("apps/server/src/controllers/swagger.rs"))
+            .expect("server swagger controller should be readable");
+    assert!(swagger.contains("flex::rest::CreateFlexSchemaRequest"));
+    assert!(swagger.contains("flex::rest::FlexSchemaResponse"));
+    assert!(!swagger.contains("crate::controllers::flex::FlexSchemaResponse"));
+}
+
+#[test]
 fn search_graphql_surface_is_owned_by_search_crate() {
     let repo = repo_root();
     let server_search_dir = repo.join("apps/server/src/graphql/search");
@@ -269,6 +515,58 @@ fn search_graphql_surface_is_owned_by_search_crate() {
         offenders.is_empty(),
         "rustok-search GraphQL must depend on shared owner/host contracts, not apps/server internals: {offenders:?}"
     );
+}
+
+#[test]
+fn ai_graphql_surface_is_owned_by_ai_crate() {
+    let repo = repo_root();
+    let server_ai_dir = repo.join("apps/server/src/graphql/ai");
+    assert!(
+        !server_ai_dir.exists(),
+        "AI GraphQL query/mutation/subscription/types must live in rustok-ai, not apps/server"
+    );
+
+    let graphql_dir = repo.join("crates/rustok-ai/src/graphql");
+    for file in [
+        "mod.rs",
+        "query.rs",
+        "mutation.rs",
+        "subscription.rs",
+        "types.rs",
+    ] {
+        assert!(graphql_dir.join(file).exists(), "missing AI GraphQL {file}");
+    }
+
+    let forbidden = [
+        "crate::common",
+        "crate::context",
+        "crate::models",
+        "crate::services",
+        "rustok_rbac",
+        "has_effective_permission_in_set",
+        "apps/server",
+    ];
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&graphql_dir).expect("rustok-ai GraphQL dir should read") {
+        let path = entry.expect("rustok-ai GraphQL entry should read").path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).expect("rustok-ai GraphQL source");
+        for symbol in forbidden {
+            if source.contains(symbol) {
+                offenders.push(format!("{} contains {symbol}", path.display()));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "rustok-ai GraphQL must depend on owner/shared contracts: {offenders:?}"
+    );
+
+    let schema = std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
+        .expect("server GraphQL schema should read");
+    assert!(schema.contains("rustok_ai::graphql::{AiMutation, AiQuery, AiSubscription}"));
 }
 
 #[test]

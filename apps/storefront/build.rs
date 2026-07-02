@@ -224,15 +224,19 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
 
     for entry in entries {
         let fn_name = storefront_render_fn_name(&entry.slug);
+        let component_path = if entry.slug == "search" {
+            "crate::modules::SearchStorefrontComposition".to_string()
+        } else {
+            format!("{}::{}", entry.crate_ident, entry.component_name)
+        };
         out.push_str(&format!(
             "fn {fn_name}() -> AnyView {{\n",
             fn_name = fn_name
         ));
         out.push_str("    view! {\n");
         out.push_str(&format!(
-            "        <{crate_ident}::{component_name} />\n",
-            crate_ident = entry.crate_ident,
-            component_name = entry.component_name,
+            "        <{component_path} />\n",
+            component_path = component_path,
         ));
         out.push_str("    }\n");
         out.push_str("    .into_any()\n");

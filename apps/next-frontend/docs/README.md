@@ -27,6 +27,7 @@ FFA classification: `apps/next-frontend` является `FFA-compatible compos
   filter; поддерживаемые locales берутся из host-owned message loaders.
 - query semantics для module-owned storefront surfaces должны оставаться в parity с `apps/storefront`;
   host не inventит отдельную schema/policy поверх backend и Leptos host contract.
+- Search storefront composition живёт в `src/features/search`: host передаёт route locale, tenant slug и enabled modules, product-owned `packages/rustok-product` читает public `storefrontCatalogSearchOptions(locale: String!)`, а `packages/search` получает только host-provided category/attribute option props.
 
 ## Frontend contract
 

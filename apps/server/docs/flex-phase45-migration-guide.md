@@ -19,7 +19,7 @@
 - `use flex::{FieldDefRegistry, FieldDefinitionService, FieldDefinitionView, ...};`
 
 Области применения:
-- GraphQL Flex (`query`, `mutation`, `types`)
+- Flex GraphQL roots/runtime/DTO in `crates/flex/src/graphql`
 - Bootstrap registry (`field_definition_registry_bootstrap`)
 - Field definition cache service
 
@@ -47,7 +47,7 @@ Server-кеш реализует порт:
 ## Проверочный чеклист после миграции
 
 - [ ] В `apps/server/src` нет импортов из `services::field_definition_registry`
-- [ ] GraphQL Flex проходит compile check
+- [ ] Owner-owned Flex GraphQL targeted compile/test check passed (deferred in no-compile slices)
 - [ ] Bootstrap registry использует `flex::FieldDefinitionService`
 - [ ] Документация `crates/flex/docs/implementation-plan.md` синхронизирована
 

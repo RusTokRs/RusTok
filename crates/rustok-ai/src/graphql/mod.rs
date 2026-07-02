@@ -5,13 +5,11 @@ pub mod types;
 
 use async_graphql::{FieldError, Result};
 
-use crate::context::AuthContext;
 use rustok_api::graphql::GraphQLError;
-use rustok_api::Permission;
-use rustok_rbac::has_effective_permission_in_set;
+use rustok_api::{has_effective_permission, AuthContext, Permission};
 
 fn ensure_permission(auth: &AuthContext, permission: &Permission, message: &str) -> Result<()> {
-    if has_effective_permission_in_set(&auth.permissions, permission) {
+    if has_effective_permission(&auth.permissions, permission) {
         Ok(())
     } else {
         Err(<FieldError as GraphQLError>::permission_denied(message))
@@ -83,9 +81,9 @@ pub(super) fn ensure_ai_approval_resolve(auth: &AuthContext) -> Result<()> {
 }
 
 pub(super) fn ensure_ai_overview_read(auth: &AuthContext) -> Result<()> {
-    if has_effective_permission_in_set(&auth.permissions, &Permission::AI_SESSIONS_READ)
-        || has_effective_permission_in_set(&auth.permissions, &Permission::AI_PROVIDERS_READ)
-        || has_effective_permission_in_set(&auth.permissions, &Permission::AI_TASK_PROFILES_READ)
+    if has_effective_permission(&auth.permissions, &Permission::AI_SESSIONS_READ)
+        || has_effective_permission(&auth.permissions, &Permission::AI_PROVIDERS_READ)
+        || has_effective_permission(&auth.permissions, &Permission::AI_TASK_PROFILES_READ)
     {
         Ok(())
     } else {

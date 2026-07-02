@@ -165,6 +165,18 @@ pub struct GqlCatalogCategorySummary {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlProductCatalogSearchOption {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlProductCatalogSearchOptions {
+    pub category_options: Vec<GqlProductCatalogSearchOption>,
+    pub attribute_options: Vec<GqlProductCatalogSearchOption>,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlProductAttributeSchemaList {
     pub items: Vec<GqlProductAttributeSchemaSummary>,
     pub total: u64,

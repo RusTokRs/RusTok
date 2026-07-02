@@ -111,13 +111,13 @@ use crate::error::Error;
             crate::controllers::admin_events::DlqReplayResponse,
 
             // Flex standalone
-            crate::controllers::flex::CreateFlexSchemaRequest,
-            crate::controllers::flex::UpdateFlexSchemaRequest,
-            crate::controllers::flex::CreateFlexEntryRequest,
-            crate::controllers::flex::UpdateFlexEntryRequest,
-            crate::controllers::flex::FlexSchemaResponse,
-            crate::controllers::flex::FlexEntryResponse,
-            crate::controllers::flex::DeleteFlexResponse,
+            flex::rest::CreateFlexSchemaRequest,
+            flex::rest::UpdateFlexSchemaRequest,
+            flex::rest::CreateFlexEntryRequest,
+            flex::rest::UpdateFlexEntryRequest,
+            flex::rest::FlexSchemaResponse,
+            flex::rest::FlexEntryResponse,
+            flex::rest::DeleteFlexResponse,
         )
     ),
     modifiers(&SecurityAddon),

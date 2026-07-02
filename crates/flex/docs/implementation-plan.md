@@ -8,11 +8,11 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_no_compile_verification_handoff
-- Last checkpoint: No-compile hardening for standalone Flex schema ordering: schema create/update validation now rejects duplicate field positions before adapter writes, the source-level standalone verifier locks the guardrail, and pending compile/test evidence remains explicit.
-- Next step: When compilations are allowed, run `cargo test -p flex standalone --lib` first for shared standalone UUID and schema-definition guardrails, then `cargo test -p rustok-server flex_standalone_service --lib` plus Flex-targeted integration scenarios and record evidence here.
+- Last checkpoint: Attached field-definition и standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping и DTO перенесены в `flex::graphql`; aggregate roots `FlexQuery` / `FlexMutation` объявлены через `[provides.graphql]` и входят в generated host composition, server регистрирует только `FlexGraphqlRuntime` с concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter, а source-level boundary guard запрещает возврат `apps/server/src/graphql/flex`.
+- Next step: Убрать оставшиеся Flex transport artifacts из server за пределами REST/SeaORM/bootstrap adapter layer; после разрешения компиляций выполнить узкие Flex tests и зафиксировать evidence.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Verify shared standalone nil tenant/schema/entry/actor UUID guardrails, direct SeaORM adapter validation, PATCH-style standalone entry update merge/preservation semantics, schema-name/description normalization, schema-definition shape validation including regex/options/error-message/unique-position/min-max/locale-map checks, and tenant-scoped localization upsert path with targeted Rust tests once compilation/test execution is allowed. This iteration ran formatting and the source-level standalone contract verifier only; rerun targeted Flex test commands as soon as compilation/checks are allowed.
-- Last updated at (UTC): 2026-06-26T00:00:00Z
+- Hand-off notes for next agent: No compilation was run by explicit request. Flex GraphQL is owner-owned and consumes shared `rustok_api::AuthContext` / `TenantContext`, `rustok_core::EventBus`, and host-provided `FlexGraphqlRuntime`. Server Flex responsibilities are now REST, SeaORM persistence adapters, registry/cache/bootstrap wiring and schema composition data registration. Verify owner root composition and runtime injection with targeted Rust tests once compilation/test execution is allowed.
+- Last updated at (UTC): 2026-07-02T00:00:00Z
 
 ## Область работ
 
@@ -25,6 +25,13 @@
 ## Текущее состояние
 
 `flex` уже имеет live attached-mode contract, live standalone GraphQL/REST surfaces в `apps/server` и формализованный Phase 4.6 module-system wiring как capability-only ghost module.
+
+## FFA/FBA status
+
+- UI surfaces: none.
+- FFA: `not_started` — module-owned UI для capability не заявлен.
+- FBA: `in_progress` — attached field-definition и standalone GraphQL roots/runtime/DTO принадлежат `flex::graphql`, roots подключаются manifest codegen и зависят от host-composed `FlexGraphqlRuntime`; server остаётся adapter/composition layer для REST, SeaORM persistence, registry/cache/bootstrap wiring и DB/runtime injection.
+- Structural shape: `no_ui_boundary`.
 
 ## Текущий статус
 
@@ -153,7 +160,7 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 
 - [ ] Полный integration прогон GraphQL CRUD + cache invalidation
   - Repo-side contract verification проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs` = `OK`.
-  - Targeted `apps/server` Flex GraphQL tests больше не завязаны на полный global migrator: локальный SQLite harness поднимает только `tenants`, `user_field_definitions`, `flex_schemas`, `flex_schema_translations`, `flex_entries` и `flex_entry_localized_values`.
+  - Targeted Flex GraphQL tests должны проверять owner-owned `flex::graphql` roots через host-provided runtime без возврата resolver/DTO в `apps/server/src/graphql/flex`; прежний server-local SQLite harness больше не является целевой точкой ownership.
   - Duplicate registration для `m20260316_000004_create_topic_field_definitions` убран из server migrator; canonical migration продолжает приезжать из `rustok_forum::migrations()`.
   - 2026-06-13 no-compile iteration: product-side metadata update path patched in `crates/rustok-product/src/services/catalog.rs` so existing reserved product metadata survives Flex custom-field PATCH-style updates; targeted helper tests were added, but not executed by request.
 - [x] Синхронизировать docs с реальным registry routing и migrator ownership
@@ -161,7 +168,7 @@ Flex в attached-mode уже умеет хранить field definitions и ма
   - GraphQL contract и RBAC section в README теперь отражают фактические `pagination`, `DeleteFieldDefinitionPayload` и typed `flex_schemas:*` / `flex_entries:*` gates.
 - [x] Оставшееся server-side дублирование выделять в `crates/flex` только если это действительно transport-agnostic контракт, а не adapter concern
   - Дублировавшийся `fields_config` parser для standalone GraphQL/REST вынесен в `crates/flex::parse_field_definitions_config()`.
-  - Adapter-specific pieces (`publish_event`, REST/GraphQL error mapping, response DTO mapping, RBAC extractors) осознанно оставлены в `apps/server`.
+  - Standalone GraphQL-specific `publish_event`, error mapping, response DTO mapping и RBAC checks перенесены в `crates/flex`; server-specific REST extractors и attached field-definition adapters остаются в `apps/server`.
 
 ---
 
@@ -177,9 +184,9 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 - [x] Зафиксировать в manifest и docs семантику ghost module
   - `flex` расширяет donor modules custom contracts.
   - Данные attached-mode остаются в donor tables и donor write-path.
-  - `FlexModule` публикует capability/runtime metadata и RBAC surface, а transport остаётся server-owned adapter-слоем.
+  - `FlexModule` публикует capability/runtime metadata и RBAC surface; attached field-definition и standalone GraphQL являются owner-owned, REST пока остаётся server adapter-слоем.
 - [x] Определить policy для runtime surfaces
-  - Standalone GraphQL/REST уже live в `apps/server`, но в module manifest `flex` не делает вид, что это module-owned transport crate.
+  - Attached field-definition и standalone GraphQL owner-owned в `crates/flex` и объявлены через `[provides.graphql]`; REST остаётся live server adapter, а manifest не приписывает capability ownership donor persistence.
   - Capability-only server feature `mod-flex` нужен для registry/codegen wiring; сам crate при этом может оставаться always-linked support dependency сервера.
 - [~] Прогнать manifest validation flow
   - `cargo xtask validate-manifest` / `cargo xtask module validate flex` стали частью acceptance path для `flex` и проходят на текущем workspace state
@@ -274,9 +281,9 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - entry payload теперь split на `flex_entries.data` (shared) и `flex_entry_localized_values` (locale-aware values)
   - read/write service path уже мерджит parallel localized rows обратно в effective entry payload
   - cleanup/backfill вынесен в follow-up migrations; runtime читает shared payload плюс parallel localized rows
-- [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; `crates/flex` даёт transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, а GraphQL/REST adapters в `apps/server` уже публикуют эти envelopes в event bus)*
+- [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; `crates/flex` даёт transport-agnostic envelope/orchestration helpers и owner GraphQL публикует envelopes через shared `EventBus`, REST adapter публикует их из server)*
 - [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server`, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates)*
-- [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(live в `apps/server`, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates)*
+- [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(owner-owned в `crates/flex/src/graphql`, подключаются через manifest-generated host schema, tenant-scoped и используют отдельные `flex_schemas:*` / `flex_entries:*` permission gates)*
 - [x] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
   - Typed permissions есть в `rustok-core`
   - GraphQL standalone surface использует отдельные `flex_schemas:*` и `flex_entries:*` gates
@@ -296,7 +303,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 - [ ] Тесты: unit + integration
   - `apps/server` уже держит targeted REST roundtrip для standalone schema/entry CRUD и invalid payload rejection.
   - `apps/server` теперь также держит standalone GraphQL roundtrip для schema/entry CRUD и explicit denial-path для `flex_entries:create`.
-  - Flex GraphQL tests в `apps/server` теперь используют isolated SQLite bootstrap вместо полного workspace migrator, чтобы не тянуть посторонние migration slices в flex verification path.
+  - Flex GraphQL verification должна идти через owner-owned `flex::graphql` roots и host-composed runtime; тяжелый workspace migrator не нужен для узкого Flex path.
   - Repo-side multilingual drift gate проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
   - 2026-06-14 no-compile iteration: standalone contract guardrail tests added for untrimmed schema slugs, field keys and `entity_type`; localized entry row loading now includes tenant filtering to keep the parallel storage lookup tenant-scoped.
   - 2026-06-15 no-compile iteration: standalone contract validators now reject non-object schema settings, non-object entry data, untrimmed statuses and schemas with more than 50 fields; localized entry upsert lookup also filters by tenant.

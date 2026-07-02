@@ -18,7 +18,27 @@ export type SearchStorefrontPageProps = {
   token?: string | null;
   tenantSlug?: string | null;
   graphqlUrl?: string;
+  locale?: string;
   initialQuery?: string;
+  initialFilters?: Partial<SearchCatalogFilters>;
+  categoryOptions?: SearchCatalogFilterOption[];
+  attributeOptions?: SearchCatalogFilterOption[];
+};
+
+export type SearchCatalogFilterOption = {
+  value: string;
+  label: string;
+};
+
+export type SearchCatalogFilters = {
+  channelId: string;
+  categoryIds: string;
+  attributeCode: string;
+  attributeValues: string;
+  attributeMin: string;
+  attributeMax: string;
+  sortAttributeCode: string;
+  sortDesc: boolean;
 };
 
 type SearchSuggestion = {
@@ -45,6 +65,7 @@ type SearchFacetGroup = {
   name: string;
   buckets: Array<{
     value: string;
+    label: string | null;
     count: number;
   }>;
 };
@@ -105,6 +126,7 @@ const STOREFRONT_SEARCH_QUERY = `
         name
         buckets {
           value
+          label
           count
         }
       }
@@ -140,14 +162,32 @@ const STOREFRONT_SUGGESTIONS_QUERY = `
 async function fetchStorefrontSearch(
   query: string,
   presetKey: string | null,
+  filters: SearchCatalogFilters,
   props: SearchStorefrontPageProps,
 ): Promise<SearchPreviewPayload> {
+  const categoryIds = parseCsv(filters.categoryIds);
+  const attributeValues = parseCsv(filters.attributeValues);
   const response = await storefrontGraphql<StorefrontSearchResponse, { input: Record<string, unknown> }>({
     query: STOREFRONT_SEARCH_QUERY,
     variables: {
       input: {
         query,
+        locale: props.locale || undefined,
         presetKey: presetKey || undefined,
+        channelId: filters.channelId.trim() || undefined,
+        categoryIds: categoryIds.length ? categoryIds : undefined,
+        attributeFilters: filters.attributeCode.trim()
+          ? [
+              {
+                attributeCode: filters.attributeCode.trim(),
+                values: attributeValues.length ? attributeValues : undefined,
+                min: filters.attributeMin.trim() || undefined,
+                max: filters.attributeMax.trim() || undefined,
+              },
+            ]
+          : undefined,
+        sortAttributeCode: filters.sortAttributeCode.trim() || undefined,
+        sortDesc: filters.sortDesc || undefined,
         limit: 12,
         offset: 0,
       },
@@ -208,6 +248,16 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
   const [suggestions, setSuggestions] = React.useState<SearchSuggestion[]>([]);
   const [presets, setPresets] = React.useState<SearchFilterPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = React.useState('');
+  const [catalogFilters, setCatalogFilters] = React.useState<SearchCatalogFilters>({
+    channelId: props.initialFilters?.channelId ?? '',
+    categoryIds: props.initialFilters?.categoryIds ?? '',
+    attributeCode: props.initialFilters?.attributeCode ?? '',
+    attributeValues: props.initialFilters?.attributeValues ?? '',
+    attributeMin: props.initialFilters?.attributeMin ?? '',
+    attributeMax: props.initialFilters?.attributeMax ?? '',
+    sortAttributeCode: props.initialFilters?.sortAttributeCode ?? '',
+    sortDesc: props.initialFilters?.sortDesc ?? false,
+  });
   const [searchError, setSearchError] = React.useState<string | null>(null);
   const [suggestionsError, setSuggestionsError] = React.useState<string | null>(null);
   const [presetsError, setPresetsError] = React.useState<string | null>(null);
@@ -215,7 +265,11 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
   const [isLoadingSuggestions, startSuggestionsTransition] = React.useTransition();
   const [isLoadingPresets, startPresetsTransition] = React.useTransition();
 
-  const loadResults = React.useEffectEvent(async (nextQuery: string, nextPreset: string | null) => {
+  const loadResults = React.useEffectEvent(async (
+    nextQuery: string,
+    nextPreset: string | null,
+    filters: SearchCatalogFilters,
+  ) => {
     const trimmed = nextQuery.trim();
     if (!trimmed) {
       setResults(null);
@@ -224,7 +278,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
     }
 
     try {
-      const payload = await fetchStorefrontSearch(trimmed, nextPreset, props);
+      const payload = await fetchStorefrontSearch(trimmed, nextPreset, filters, props);
       startResultsTransition(() => {
         setResults(payload);
         setSearchError(null);
@@ -276,7 +330,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
   });
 
   React.useEffect(() => {
-    void loadResults(props.initialQuery ?? '', selectedPreset || null);
+    void loadResults(props.initialQuery ?? '', selectedPreset || null, catalogFilters);
   }, [loadResults, props.initialQuery, selectedPreset]);
 
   React.useEffect(() => {
@@ -303,7 +357,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void loadResults(query, selectedPreset || null);
+          void loadResults(query, selectedPreset || null, catalogFilters);
         }}
         style={{ marginTop: 24, display: 'grid', gap: 12 }}
       >
@@ -355,7 +409,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
                   onClick={() => {
                     const nextPreset = selectedPreset === preset.key ? '' : preset.key;
                     setSelectedPreset(nextPreset);
-                    void loadResults(query, nextPreset || null);
+                    void loadResults(query, nextPreset || null, catalogFilters);
                   }}
                   style={{
                     borderRadius: 999,
@@ -373,6 +427,67 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
             </div>
           )}
         </div>
+
+        <details style={{ border: '1px solid #e4e4e7', padding: 16 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Catalog filters and sorting</summary>
+          <div
+            style={{
+              marginTop: 14,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            <CatalogField
+              label='Channel ID'
+              value={catalogFilters.channelId}
+              onChange={(channelId) => setCatalogFilters((current) => ({ ...current, channelId }))}
+            />
+            <CatalogField
+              label='Category IDs (CSV)'
+              value={catalogFilters.categoryIds}
+              onChange={(categoryIds) => setCatalogFilters((current) => ({ ...current, categoryIds }))}
+              options={props.categoryOptions}
+            />
+            <CatalogField
+              label='Attribute code'
+              value={catalogFilters.attributeCode}
+              onChange={(attributeCode) => setCatalogFilters((current) => ({ ...current, attributeCode }))}
+              options={props.attributeOptions}
+            />
+            <CatalogField
+              label='Attribute values (CSV)'
+              value={catalogFilters.attributeValues}
+              onChange={(attributeValues) => setCatalogFilters((current) => ({ ...current, attributeValues }))}
+            />
+            <CatalogField
+              label='Minimum'
+              value={catalogFilters.attributeMin}
+              onChange={(attributeMin) => setCatalogFilters((current) => ({ ...current, attributeMin }))}
+            />
+            <CatalogField
+              label='Maximum'
+              value={catalogFilters.attributeMax}
+              onChange={(attributeMax) => setCatalogFilters((current) => ({ ...current, attributeMax }))}
+            />
+            <CatalogField
+              label='Sort attribute code'
+              value={catalogFilters.sortAttributeCode}
+              onChange={(sortAttributeCode) => setCatalogFilters((current) => ({ ...current, sortAttributeCode }))}
+              options={props.attributeOptions}
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+              <input
+                type='checkbox'
+                checked={catalogFilters.sortDesc}
+                onChange={(event) =>
+                  setCatalogFilters((current) => ({ ...current, sortDesc: event.target.checked }))
+                }
+              />
+              Descending order
+            </label>
+          </div>
+        </details>
 
         <div style={{ border: '1px solid #e4e4e7', borderRadius: 20, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -398,7 +513,7 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
                       return;
                     }
                     setQuery(suggestion.text);
-                    void loadResults(suggestion.text, selectedPreset || null);
+                    void loadResults(suggestion.text, selectedPreset || null, catalogFilters);
                   }}
                   style={{
                     borderRadius: 16,
@@ -444,6 +559,20 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
               {results.total} results in {results.tookMs} ms
               {results.presetKey ? ` • preset ${results.presetKey}` : ''}
             </div>
+            {results.facets.length ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {results.facets.flatMap((facet) =>
+                  facet.buckets.map((bucket) => (
+                    <span
+                      key={`${facet.name}:${bucket.value}`}
+                      style={{ border: '1px solid #d4d4d8', padding: '6px 9px', fontSize: 12 }}
+                    >
+                      {bucket.label || bucket.value} ({bucket.count})
+                    </span>
+                  )),
+                )}
+              </div>
+            ) : null}
             {results.items.map((item) => (
               <article
                 key={item.id}
@@ -462,6 +591,42 @@ export function SearchStorefrontPage(props: SearchStorefrontPageProps): React.JS
         )}
       </div>
     </section>
+  );
+}
+
+function parseCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function CatalogField(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options?: SearchCatalogFilterOption[];
+}): React.JSX.Element {
+  const listId = React.useId();
+  return (
+    <label style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+      <span>{props.label}</span>
+      <input
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        list={props.options?.length ? listId : undefined}
+        style={{ border: '1px solid #d4d4d8', padding: '10px 12px' }}
+      />
+      {props.options?.length ? (
+        <datalist id={listId}>
+          {props.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </datalist>
+      ) : null}
+    </label>
   );
 }
 

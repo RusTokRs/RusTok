@@ -5,12 +5,12 @@
 
 ## Execution checkpoint
 
-- Current phase: ai_router_policy_evidence_expanded
-- Last checkpoint: Expanded AI router policy evidence with explicit provider candidate statuses, selected/fallback decision trace reasons, unit-test markers and compile-free `scripts/verify/verify-ai-router-policy.mjs` guardrail while keeping executable runtime composition in `rustok-ai`; added no-compile orchestrator runtime-order smoke for AI support-adapter registration and admin transport boundary, and locked the Leptos adapter to host-provided locale without package-local browser storage fallback.
-- Next step: Continue executable targeted router/runtime tests when compilation is allowed and then surface candidate explanations in persisted diagnostics UI without moving executable runtime composition out of `rustok-ai`.
+- Current phase: ai_graphql_owner_boundary
+- Last checkpoint: AI GraphQL query/mutation/subscription roots и DTO перенесены из `apps/server` в `rustok-ai`; host оставляет только schema composition и реализацию `AiGraphqlRoleSlugProvider` для server-owned RBAC persistence. Граница закреплена статическим server boundary guard без компиляции.
+- Next step: Продолжить вынос оставшихся AI-specific host artifacts из `apps/server`, сохраняя там только composition adapters; compile/test evidence выполнить через GitHub Actions.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок и central FFA/FBA readiness board.
-- Last updated at (UTC): 2026-06-30T14:19:18Z
+- Last updated at (UTC): 2026-07-02T00:00:00Z
 
 ## Состояние на 2026-04-04
 
@@ -24,7 +24,8 @@
 - поднят `AiRuntime` с request/response orchestration;
 - добавлен `McpClientAdapter` для вызова RusToK MCP tools;
 - введён persisted control plane в `apps/server`;
-- добавлены GraphQL queries/mutations для providers, tool profiles, sessions, traces и approvals;
+- добавлены owner-owned GraphQL queries/mutations/subscriptions для providers, tool profiles, sessions,
+  traces и approvals в `crates/rustok-ai/src/graphql`;
 - добавлен Leptos admin package `crates/rustok-ai/admin`;
 - добавлен Next.js admin package `apps/next-admin/packages/rustok-ai`;
 - добавлен real direct execution path для first-party verticals без обязательного MCP hop;
@@ -68,6 +69,7 @@
 ### API
 
 - [x] GraphQL surface для headless/Next.js
+- [x] GraphQL roots и DTO принадлежат `rustok-ai`; `apps/server` только собирает schema и host adapters
 - [x] native `#[server]` functions как preferred internal data layer для Leptos UI
 - [x] dual-path contract без удаления GraphQL
 - [x] GraphQL subscription `aiSessionEvents`

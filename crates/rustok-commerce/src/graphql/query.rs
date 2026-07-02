@@ -40,6 +40,13 @@ use super::{require_commerce_permission, types::*, MODULE_SLUG};
 #[derive(Default)]
 pub struct CommerceQuery;
 
+fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
+    values
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_default()
+}
+
 #[Object]
 impl CommerceQuery {
     /// Pricing-authoritative admin product detail.
@@ -1691,6 +1698,52 @@ impl CommerceQuery {
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))
             .map(|items| items.into_iter().map(Into::into).collect())
+    }
+
+    async fn storefront_catalog_search_options(
+        &self,
+        ctx: &Context<'_>,
+        locale: String,
+    ) -> Result<GqlProductCatalogSearchOptions> {
+        require_module_enabled(ctx, "product").await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+        if locale.trim().is_empty() {
+            return Err(async_graphql::Error::new("locale is required"));
+        }
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let service = ProductCatalogSchemaService::new(db.clone(), event_bus.clone());
+        let category_options = service
+            .list_categories(tenant.id, locale.trim())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .map(|category| GqlProductCatalogSearchOption {
+                value: category.id.to_string(),
+                label: first_non_empty([category.path, category.name, category.code]),
+            })
+            .collect();
+        let attribute_options = service
+            .list_attributes(tenant.id, locale.trim())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .into_iter()
+            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
+            .map(|attribute| {
+                let label = first_non_empty([attribute.label, attribute.code.clone()]);
+                GqlProductCatalogSearchOption {
+                    value: attribute.code.clone(),
+                    label: format!("{label} ({})", attribute.code),
+                }
+            })
+            .collect();
+
+        Ok(GqlProductCatalogSearchOptions {
+            category_options,
+            attribute_options,
+        })
     }
 
     /// Catalog-authoritative published product detail.

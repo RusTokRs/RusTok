@@ -27,6 +27,7 @@ render adapter. Этот split закреплён быстрым verifier-ом `
 - CSR/WASM для Leptos storefront packages является compatibility/debug профилем. Если package должен запускаться standalone, он обязан иметь GraphQL/REST fallback и не требовать `/api/fn/*`.
 - Generic storefront routes живут в семействе `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
 - Host сначала пытается использовать native `#[server]` path там, где он есть в SSR/hydrate runtime, и только потом откатывается к GraphQL.
+- Generated search mount использует host-owned `SearchStorefrontComposition`: adapter проверяет tenant enablement модуля `product`, передаёт `UiRouteContext.locale` в public-safe product metadata helper и маппит owner DTO в search props без переноса product/search domain logic в host.
 - Module-owned storefront packages обязаны строить внутренние ссылки через `UiRouteContext::module_route_base()`, а не через hardcoded route strings.
 - Module-owned storefront packages не определяют собственную locale negotiation policy; effective locale приходит из host/runtime contract.
 - Module-owned Leptos storefront packages читают query/state через общий helper слой `leptos-ui-routing`,

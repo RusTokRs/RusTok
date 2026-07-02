@@ -1,8 +1,6 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
-#[cfg(feature = "mod-media")]
-use rustok_media::load_media_usage_snapshot;
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
@@ -25,13 +23,6 @@ pub struct SystemHealthSummary {
     pub overall: String,
     pub components: Vec<ComponentHealth>,
     pub checked_at: DateTime<Utc>,
-}
-
-#[derive(SimpleObject, Clone, Debug)]
-pub struct MediaUsageStats {
-    pub tenant_id: Uuid,
-    pub file_count: i64,
-    pub total_bytes: i64,
 }
 
 #[derive(SimpleObject, Clone, Debug)]
@@ -134,21 +125,6 @@ impl SystemQuery {
             overall: overall.into(),
             components,
             checked_at: Utc::now(),
-        })
-    }
-
-    /// Media usage statistics for a tenant (requires mod-media feature).
-    #[cfg(feature = "mod-media")]
-    async fn media_usage(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<MediaUsageStats> {
-        let db = ctx.data::<DatabaseConnection>()?;
-        let usage = load_media_usage_snapshot(db, tenant_id)
-            .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-
-        Ok(MediaUsageStats {
-            tenant_id: usage.tenant_id,
-            file_count: usage.file_count,
-            total_bytes: usage.total_bytes,
         })
     }
 

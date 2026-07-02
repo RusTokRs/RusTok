@@ -3,6 +3,7 @@ mod generated_ui_codegen {
     include!(concat!(env!("OUT_DIR"), "/module_ui_codegen.rs"));
 }
 mod registry;
+mod search_composition;
 
 use std::sync::OnceLock;
 
@@ -11,6 +12,7 @@ pub use registry::{
     StorefrontComponentRegistration, StorefrontPageLookup, StorefrontPageRegistration,
     StorefrontSlot,
 };
+pub use search_composition::SearchStorefrontComposition;
 
 pub fn init_modules() {
     static INIT: OnceLock<()> = OnceLock::new();

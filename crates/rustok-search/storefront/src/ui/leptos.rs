@@ -9,8 +9,17 @@ use crate::i18n::t;
 use crate::model::{SearchFilterPreset, SearchPreviewPayload, SearchSuggestion};
 use crate::{core, transport};
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SearchCatalogFilterOption {
+    pub value: String,
+    pub label: String,
+}
+
 #[component]
-pub fn SearchView() -> impl IntoView {
+pub fn SearchView(
+    #[prop(optional)] category_options: Vec<SearchCatalogFilterOption>,
+    #[prop(optional)] attribute_options: Vec<SearchCatalogFilterOption>,
+) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let query = read_route_query_value(&route_context, "q").unwrap_or_default();
     let (search_input, set_search_input) = signal(query.clone());
@@ -35,6 +44,11 @@ pub fn SearchView() -> impl IntoView {
         "Search products and published content",
     );
     let submit_label = t(locale.as_deref(), "search.form.submit", "Search");
+    let catalog_filters_label = t(
+        locale.as_deref(),
+        "search.filters.title",
+        "Catalog filters and sorting",
+    );
     let load_presets_error = t(
         locale.as_deref(),
         "search.error.loadPresets",
@@ -78,10 +92,34 @@ pub fn SearchView() -> impl IntoView {
         "Failed to load storefront search results",
     );
     let route_filters = core::parse_search_route_filters(
+        read_route_query_value(&route_context, "channel_id").as_deref(),
         read_route_query_value(&route_context, "entity_types").as_deref(),
         read_route_query_value(&route_context, "source_modules").as_deref(),
         read_route_query_value(&route_context, "statuses").as_deref(),
+        read_route_query_value(&route_context, "category_ids").as_deref(),
+        read_route_query_value(&route_context, "attribute_code").as_deref(),
+        read_route_query_value(&route_context, "attribute_values").as_deref(),
+        read_route_query_value(&route_context, "attribute_min").as_deref(),
+        read_route_query_value(&route_context, "attribute_max").as_deref(),
+        read_route_query_value(&route_context, "sort_attribute_code").as_deref(),
+        read_route_query_value(&route_context, "sort_desc").as_deref(),
     );
+    let (channel_id, set_channel_id) = signal(route_filters.channel_id.clone().unwrap_or_default());
+    let (category_ids, set_category_ids) = signal(route_filters.category_ids.join(","));
+    let (attribute_code, set_attribute_code) =
+        signal(route_filters.attribute_code.clone().unwrap_or_default());
+    let (attribute_values, set_attribute_values) = signal(route_filters.attribute_values.join(","));
+    let (attribute_min, set_attribute_min) =
+        signal(route_filters.attribute_min.clone().unwrap_or_default());
+    let (attribute_max, set_attribute_max) =
+        signal(route_filters.attribute_max.clone().unwrap_or_default());
+    let (sort_attribute_code, set_sort_attribute_code) = signal(
+        route_filters
+            .sort_attribute_code
+            .clone()
+            .unwrap_or_default(),
+    );
+    let (sort_desc, set_sort_desc) = signal(route_filters.sort_desc);
     let filters = core::search_preview_filters_from_route(route_filters);
     let query_for_resource = query.clone();
     let locale_for_resource = locale.clone();
@@ -151,7 +189,19 @@ pub fn SearchView() -> impl IntoView {
             <div class="mt-8 space-y-4">
                 <form
                     class="rounded-2xl border border-border bg-background p-4"
-                    on:submit=move |ev| submit_search(ev, search_input.get(), selected_preset.get())
+                    on:submit=move |ev| submit_search(
+                        ev,
+                        search_input.get(),
+                        selected_preset.get(),
+                        channel_id.get(),
+                        category_ids.get(),
+                        attribute_code.get(),
+                        attribute_values.get(),
+                        attribute_min.get(),
+                        attribute_max.get(),
+                        sort_attribute_code.get(),
+                        sort_desc.get(),
+                    )
                 >
                     <label class="block text-sm font-medium text-card-foreground" for="storefront-search-input">
                         {query_label.clone()}
@@ -171,6 +221,19 @@ pub fn SearchView() -> impl IntoView {
                             {submit_label.clone()}
                         </button>
                     </div>
+                    <details class="mt-3 border border-border bg-muted/10 p-3">
+                        <summary class="cursor-pointer text-sm font-medium text-card-foreground">{catalog_filters_label}</summary>
+                        <div class="mt-3 grid gap-3 md:grid-cols-2">
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.channelId", "Channel ID") value=channel_id set_value=set_channel_id />
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.categoryIds", "Category IDs (CSV)") value=category_ids set_value=set_category_ids options=category_options.clone() list_id="search-storefront-category-options" />
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.attributeCode", "Attribute code") value=attribute_code set_value=set_attribute_code options=attribute_options.clone() list_id="search-storefront-attribute-options" />
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.attributeValues", "Attribute values (CSV)") value=attribute_values set_value=set_attribute_values />
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.minimum", "Minimum") value=attribute_min set_value=set_attribute_min />
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.maximum", "Maximum") value=attribute_max set_value=set_attribute_max />
+                            <CatalogFilterField label=t(locale.as_deref(), "search.filters.sortAttribute", "Sort attribute code") value=sort_attribute_code set_value=set_sort_attribute_code options=attribute_options.clone() list_id="search-storefront-sort-attribute-options" />
+                            <label class="flex items-center gap-2 text-sm font-medium text-card-foreground"><input type="checkbox" prop:checked=sort_desc on:change=move |ev| set_sort_desc.set(event_target_checked(&ev)) /><span>{t(locale.as_deref(), "search.filters.sortDesc", "Descending order")}</span></label>
+                        </div>
+                    </details>
                     <Suspense fallback=|| view! { <div class="mt-3 h-10 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || filter_presets.get().map(|result| match result {
                             Ok(presets) if core::has_items(presets.as_slice()) => view! {
@@ -611,9 +674,117 @@ fn EmptyState(state: core::SearchEmptyStateViewModel) -> impl IntoView {
     }
 }
 
-fn submit_search(ev: SubmitEvent, query: String, preset_key: String) {
+#[component]
+fn CatalogFilterField(
+    label: String,
+    value: ReadSignal<String>,
+    set_value: WriteSignal<String>,
+    #[prop(optional)] options: Vec<SearchCatalogFilterOption>,
+    #[prop(optional)] list_id: &'static str,
+) -> impl IntoView {
+    let list_attr = (!options.is_empty()).then_some(list_id);
+    let option_nodes = if options.is_empty() {
+        ().into_any()
+    } else {
+        view! {
+            <datalist id=list_id>
+                {options.into_iter().map(|option| view! { <option value=option.value>{option.label}</option> }).collect_view()}
+            </datalist>
+        }
+        .into_any()
+    };
+    view! {
+        <label class="grid gap-1 text-sm font-medium text-card-foreground">
+            <span>{label}</span>
+            <input type="text" class="w-full border border-input bg-background px-3 py-2 text-sm" prop:value=value list=list_attr on:input=move |ev| set_value.set(event_target_value(&ev)) />
+            {option_nodes}
+        </label>
+    }
+}
+
+fn submit_search(
+    ev: SubmitEvent,
+    query: String,
+    preset_key: String,
+    channel_id: String,
+    category_ids: String,
+    attribute_code: String,
+    attribute_values: String,
+    attribute_min: String,
+    attribute_max: String,
+    sort_attribute_code: String,
+    sort_desc: bool,
+) {
     ev.prevent_default();
-    navigate_to_search_query(&query, Some(preset_key));
+    navigate_to_catalog_search(
+        &query,
+        &preset_key,
+        &channel_id,
+        &category_ids,
+        &attribute_code,
+        &attribute_values,
+        &attribute_min,
+        &attribute_max,
+        &sort_attribute_code,
+        sort_desc,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn navigate_to_catalog_search(
+    query: &str,
+    preset_key: &str,
+    channel_id: &str,
+    category_ids: &str,
+    attribute_code: &str,
+    attribute_values: &str,
+    attribute_min: &str,
+    attribute_max: &str,
+    sort_attribute_code: &str,
+    sort_desc: bool,
+) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(current_href) = window.location().href() else {
+        return;
+    };
+    let Ok(url) = web_sys::Url::new(&current_href) else {
+        return;
+    };
+    let route_intent = core::build_storefront_search_route_intent(query, Some(preset_key));
+
+    match route_intent.query.as_deref() {
+        Some(query) => url.search_params().set("q", query),
+        None => url.search_params().delete("q"),
+    }
+    match route_intent.preset_key.as_deref() {
+        Some(preset_key) => url.search_params().set("preset", preset_key),
+        None => url.search_params().delete("preset"),
+    }
+
+    for (key, value) in [
+        ("channel_id", channel_id),
+        ("category_ids", category_ids),
+        ("attribute_code", attribute_code),
+        ("attribute_values", attribute_values),
+        ("attribute_min", attribute_min),
+        ("attribute_max", attribute_max),
+        ("sort_attribute_code", sort_attribute_code),
+    ] {
+        if value.trim().is_empty() {
+            url.search_params().delete(key);
+        } else {
+            url.search_params().set(key, value.trim());
+        }
+    }
+    if sort_desc {
+        url.search_params().set("sort_desc", "true");
+    } else {
+        url.search_params().delete("sort_desc");
+    }
+
+    let _ = window.location().set_href(&url.href());
 }
 
 fn navigate_to_search_query(query: &str, preset_key: Option<String>) {

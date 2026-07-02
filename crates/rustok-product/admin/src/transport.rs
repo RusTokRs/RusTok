@@ -6,8 +6,9 @@ use crate::model::{
     CatalogCategoryList, CategoryAttributeGroupDraft, ProductAdminBootstrap, ProductAttributeDraft,
     ProductAttributeList, ProductAttributeOptionDraft, ProductAttributeSchemaDraft,
     ProductAttributeSchemaGroupDraft, ProductAttributeSchemaList, ProductAttributeValueItem,
-    ProductAttributeValuePatchDraft, ProductDetail, ProductDraft, ProductEffectiveForm,
-    ProductList, ProductPricingDetail, SetCategorySchemaModeDraft, ShippingProfileList,
+    ProductAttributeValuePatchDraft, ProductCatalogSearchOption, ProductCatalogSearchOptions,
+    ProductDetail, ProductDraft, ProductEffectiveForm, ProductList, ProductPricingDetail,
+    SetCategorySchemaModeDraft, ShippingProfileList,
 };
 use graphql_adapter::ApiError;
 
@@ -85,6 +86,63 @@ pub(crate) async fn fetch_catalog_categories(
             graphql_adapter::fetch_catalog_categories(token, tenant_slug, tenant_id, locale).await
         }
     }
+}
+
+pub async fn fetch_catalog_search_options(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<ProductCatalogSearchOptions, String> {
+    if let Ok(options) = native_server_adapter::fetch_catalog_search_options(locale.clone()).await {
+        return Ok(options);
+    }
+
+    let bootstrap = graphql_adapter::fetch_bootstrap(token.clone(), tenant_slug.clone())
+        .await
+        .map_err(|err| err.to_string())?;
+    let tenant_id = bootstrap.current_tenant.id;
+    let categories = graphql_adapter::fetch_catalog_categories(
+        token.clone(),
+        tenant_slug.clone(),
+        tenant_id.clone(),
+        locale.clone(),
+    )
+    .await
+    .map_err(|err| err.to_string())?;
+    let attributes =
+        graphql_adapter::fetch_product_attributes(token, tenant_slug, tenant_id, locale)
+            .await
+            .map_err(|err| err.to_string())?;
+
+    Ok(ProductCatalogSearchOptions {
+        category_options: categories
+            .items
+            .into_iter()
+            .map(|category| ProductCatalogSearchOption {
+                value: category.id,
+                label: first_non_empty([category.path, category.name, category.code]),
+            })
+            .collect(),
+        attribute_options: attributes
+            .items
+            .into_iter()
+            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
+            .map(|attribute| {
+                let label = first_non_empty([attribute.label, attribute.code.clone()]);
+                ProductCatalogSearchOption {
+                    value: attribute.code.clone(),
+                    label: format!("{label} ({})", attribute.code),
+                }
+            })
+            .collect(),
+    })
+}
+
+fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
+    values
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_default()
 }
 
 pub(crate) async fn fetch_attribute_schemas(

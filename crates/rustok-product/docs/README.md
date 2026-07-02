@@ -98,6 +98,14 @@
 - transport, GraphQL и UI-поверхности публикуются через `rustok-commerce`, пока для домена не зафиксирован отдельный module-owned surface;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
 
+## Search metadata
+
+- Leptos product admin package экспортирует `fetch_catalog_search_options` и нейтральные option DTO. Helper требует host effective locale, использует current-tenant native `#[server]` endpoint с параллельным GraphQL fallback и уже подключён в `apps/admin` через host-owned `SearchAdminComposition` без прямой зависимости search UI от `rustok-product`.
+- Leptos product storefront package публикует отдельный public-safe `fetch_catalog_search_options`: native `product/storefront/catalog-search-options` является основным путём, GraphQL `storefrontCatalogSearchOptions(locale: String!)` остаётся параллельным. Payload содержит только category ids/labels и filterable/sortable attribute codes/labels; `apps/storefront` подключает его через `SearchStorefrontComposition` с host effective locale.
+- Next storefront имеет зеркальный product-owned helper `apps/next-frontend/packages/rustok-product::fetchCatalogSearchOptions`, который читает тот же public GraphQL contract и отдаёт safe DTO в host search composition без прямой product dependency внутри search package.
+
+- Next admin product package exposes owner-owned search metadata helpers: category options РІРѕР·РІСЂР°С‰Р°СЋС‚ `catalogCategories.id`, attribute options РІРѕР·РІСЂР°С‰Р°СЋС‚ filterable/sortable `productAttributes.code`, labels РёСЃРїРѕР»СЊР·СѓСЋС‚ host effective locale, Р° search UI РїРѕС‚СЂРµР±Р»СЏРµС‚ С‚РѕР»СЊРєРѕ host-provided options Р±РµР· РёРјРїРѕСЂС‚Р° product internals.
+
 ## SEO ownership
 
 - `rustok-product/admin` уже держит owner-side product SEO panel через

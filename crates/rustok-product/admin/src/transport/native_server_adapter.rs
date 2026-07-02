@@ -8,8 +8,9 @@ use crate::model::{
     ProductAttributeDraft, ProductAttributeList, ProductAttributeOptionDraft,
     ProductAttributeOptionSummary, ProductAttributeSchemaDraft, ProductAttributeSchemaGroupDraft,
     ProductAttributeSchemaList, ProductAttributeSchemaSummary, ProductAttributeSummary,
-    ProductAttributeValueItem, ProductAttributeValuePatchDraft, ProductEffectiveForm,
-    ProductEffectiveFormAttribute, SetCategorySchemaModeDraft,
+    ProductAttributeValueItem, ProductAttributeValuePatchDraft, ProductCatalogSearchOption,
+    ProductCatalogSearchOptions, ProductEffectiveForm, ProductEffectiveFormAttribute,
+    SetCategorySchemaModeDraft,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +48,14 @@ pub async fn fetch_catalog_categories(
     locale: String,
 ) -> Result<CatalogCategoryList, ApiError> {
     product_admin_categories_native(tenant_id, locale)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn fetch_catalog_search_options(
+    locale: String,
+) -> Result<ProductCatalogSearchOptions, ApiError> {
+    product_admin_catalog_search_options_native(locale)
         .await
         .map_err(Into::into)
 }
@@ -294,6 +303,13 @@ fn map_category_record(
         name: value.name,
         parent_id: value.parent_id.map(|id| id.to_string()),
     }
+}
+
+fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
+    values
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or_default()
 }
 
 #[cfg(feature = "ssr")]
@@ -559,6 +575,60 @@ async fn product_admin_categories_native(
     {
         Err(ServerFnError::new(
             "product/admin/categories requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "product/admin/catalog-search-options")]
+async fn product_admin_catalog_search_options_native(
+    locale: String,
+) -> Result<ProductCatalogSearchOptions, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let (app_ctx, auth, tenant) = native_context().await?;
+        ensure_permission(
+            &auth.permissions,
+            &[rustok_api::Permission::PRODUCTS_READ],
+            "products:read required",
+        )?;
+        let service = service_from_context(&app_ctx);
+        let categories = service
+            .list_categories(tenant.id, locale.trim())
+            .await
+            .map_err(ServerFnError::new)?
+            .into_iter()
+            .map(map_category_record)
+            .map(|category| ProductCatalogSearchOption {
+                value: category.id,
+                label: first_non_empty([category.path, category.name, category.code]),
+            })
+            .collect();
+        let attributes = service
+            .list_attributes(tenant.id, locale.trim())
+            .await
+            .map_err(ServerFnError::new)?
+            .into_iter()
+            .map(map_attribute_record)
+            .filter(|attribute| attribute.is_filterable || attribute.is_sortable)
+            .map(|attribute| {
+                let label = first_non_empty([attribute.label, attribute.code.clone()]);
+                ProductCatalogSearchOption {
+                    value: attribute.code.clone(),
+                    label: format!("{label} ({})", attribute.code),
+                }
+            })
+            .collect();
+
+        Ok(ProductCatalogSearchOptions {
+            category_options: categories,
+            attribute_options: attributes,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = locale;
+        Err(ServerFnError::new(
+            "product/admin/catalog-search-options requires the `ssr` feature",
         ))
     }
 }

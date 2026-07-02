@@ -2,7 +2,7 @@ use async_graphql::{Enum, InputObject, SimpleObject};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use rustok_ai::{
+use crate::{
     AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
     AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord, AiRecentRunRecord,
     AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot, AiTaskProfileRecord,
@@ -712,8 +712,8 @@ pub struct AiProviderTestResultGql {
     pub message: String,
 }
 
-impl From<rustok_ai::ProviderTestResult> for AiProviderTestResultGql {
-    fn from(value: rustok_ai::ProviderTestResult) -> Self {
+impl From<crate::ProviderTestResult> for AiProviderTestResultGql {
+    fn from(value: crate::ProviderTestResult) -> Self {
         Self {
             ok: value.ok,
             provider: value.provider,

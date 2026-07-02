@@ -2,8 +2,8 @@ use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::context::AuthContext;
 use rustok_api::graphql::GraphQLError;
+use rustok_api::AuthContext;
 
 use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,
@@ -28,7 +28,7 @@ impl AiQuery {
     async fn ai_runtime_metrics(&self, ctx: &Context<'_>) -> Result<AiRuntimeMetricsGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;
-        Ok(rustok_ai::AiManagementService::metrics_snapshot().into())
+        Ok(crate::AiManagementService::metrics_snapshot().into())
     }
 
     async fn ai_recent_run_stream_events(
@@ -41,7 +41,7 @@ impl AiQuery {
         ensure_ai_overview_read(auth)?;
         let limit = limit.unwrap_or(20).max(1) as usize;
         Ok(
-            rustok_ai::AiManagementService::recent_stream_events(session_id, limit)
+            crate::AiManagementService::recent_stream_events(session_id, limit)
                 .into_iter()
                 .map(Into::into)
                 .collect(),
@@ -58,7 +58,7 @@ impl AiQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let limit = limit.unwrap_or(20).max(1) as usize;
         Ok(
-            rustok_ai::AiManagementService::list_recent_runs(db, auth.tenant_id, limit)
+            crate::AiManagementService::list_recent_runs(db, auth.tenant_id, limit)
                 .await
                 .map_err(|err| async_graphql::Error::new(err.to_string()))?
                 .into_iter()
@@ -72,7 +72,7 @@ impl AiQuery {
         ensure_ai_provider_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        let items = rustok_ai::AiManagementService::list_provider_profiles(db, auth.tenant_id)
+        let items = crate::AiManagementService::list_provider_profiles(db, auth.tenant_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(items.into_iter().map(Into::into).collect())
@@ -86,7 +86,7 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_provider_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let item = rustok_ai::AiManagementService::get_provider_profile(db, auth.tenant_id, id)
+        let item = crate::AiManagementService::get_provider_profile(db, auth.tenant_id, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(item.map(Into::into))
@@ -96,7 +96,7 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let items = rustok_ai::AiManagementService::list_tool_profiles(db, auth.tenant_id)
+        let items = crate::AiManagementService::list_tool_profiles(db, auth.tenant_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(items.into_iter().map(Into::into).collect())
@@ -106,7 +106,7 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_task_profile_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let items = rustok_ai::AiManagementService::list_task_profiles(db, auth.tenant_id)
+        let items = crate::AiManagementService::list_task_profiles(db, auth.tenant_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(items.into_iter().map(Into::into).collect())
@@ -116,7 +116,7 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let items = rustok_ai::AiManagementService::list_chat_sessions(db, auth.tenant_id)
+        let items = crate::AiManagementService::list_chat_sessions(db, auth.tenant_id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(items.into_iter().map(Into::into).collect())
@@ -130,7 +130,7 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let item = rustok_ai::AiManagementService::chat_session_detail(db, auth.tenant_id, id)
+        let item = crate::AiManagementService::chat_session_detail(db, auth.tenant_id, id)
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         item.map(TryInto::try_into).transpose()
@@ -145,14 +145,10 @@ impl AiQuery {
         let auth = require_auth_context(ctx)?;
         ensure_ai_overview_read(auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let items = rustok_ai::AiManagementService::list_tool_traces(
-            db,
-            auth.tenant_id,
-            session_id,
-            run_id,
-        )
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let items =
+            crate::AiManagementService::list_tool_traces(db, auth.tenant_id, session_id, run_id)
+                .await
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         Ok(items
             .into_iter()
             .map(super::types::AiToolTraceGql::from_record)

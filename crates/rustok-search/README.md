@@ -86,6 +86,18 @@
   these filters against normalized product projections, so materialized virtual categories
   participate in category filters and effective filterable attributes produce `attr:<code>`
   facet groups. Facet buckets keep stable `value` keys and may include localized `label`.
+- Leptos admin/storefront transport DTOs carry the same catalog filter and sort fields.
+  Admin native `#[server]` maps them into `SearchQuery` while GraphQL remains available
+  in parallel, and facet UI prefers the host-locale projection label with stable-value fallback.
+- Leptos and Next admin/storefront surfaces now expose visible catalog filter/sort controls
+  over the same contract; Leptos storefront persists route state through typed
+  `snake_case` query keys while Next packages consume only host-provided locale props.
+- Search UI surfaces accept optional host-provided category/attribute option lists and render
+  datalist picker hints without importing `rustok-product`; product-owned transport remains
+  the source of those labels/values at host composition time.
+- The Next admin host now composes real product-owned category/attribute option metadata
+  into `SearchAdminPage` through `packages/rustok-product` GraphQL helpers and the
+  host effective locale.
 - Search queries are read-only and no longer trigger bootstrap rebuilds on the request path.
 - PostgreSQL search reads from `search_documents`, not from `rustok-index` tables.
 - Search GraphQL now also exposes `searchDictionarySnapshot` plus admin mutations
@@ -152,6 +164,17 @@
   analytics surface.
 - The Next storefront package now mirrors the same live search and
   suggestions/autocomplete contract for parallel UI development.
+- The product-owned Leptos admin package now exposes neutral catalog search
+  option DTOs and a locale-required native-first/GraphQL-parallel metadata
+  helper. The Leptos admin host composes that public contract into `SearchAdmin`
+  while checking product module enablement; search UI remains product-independent.
+- The Leptos storefront host now composes the public-safe product catalog option
+  contract into `SearchView`, using native server functions first and the
+  locale-required `storefrontCatalogSearchOptions` GraphQL query in parallel.
+- The Next storefront host mirrors that boundary through `src/features/search`:
+  product-owned `packages/rustok-product` reads
+  `storefrontCatalogSearchOptions(locale: String!)`, while the search package
+  still receives only host-provided option props.
 
 ## Docs
 

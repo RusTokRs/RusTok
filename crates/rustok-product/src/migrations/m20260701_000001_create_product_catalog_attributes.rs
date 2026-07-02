@@ -341,6 +341,7 @@ CREATE INDEX IF NOT EXISTS idx_product_variant_attribute_values_lookup ON produc
 "#,
             )
             .await
+            .map(|_| ())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -382,5 +383,6 @@ ALTER TABLE products DROP COLUMN IF EXISTS primary_category_id;
 "#,
             )
             .await
+            .map(|_| ())
     }
 }

@@ -5,12 +5,12 @@ orchestration и rich-text/locale contract layer.
 
 ## Execution checkpoint
 
-- Current phase: owner_owned_graphql_surface
-- Last checkpoint: Добавлены targeted integration сценарии для canonical URL collision и alias-shadow rollback/no-outbox guarantees; compile-free guardrail теперь source-locks эти runtime evidence cases без запуска компиляции.
-- Next step: Закрыть reindex drift evidence и расширить conversion bridge contract coverage без возврата GraphQL resolver/DTO в `apps/server`.
+- Current phase: владение dashboard post analytics в `rustok-content`
+- Last checkpoint: `ContentCountSnapshot` и `load_post_stats_snapshot` перенесены в `rustok-content`; `apps/server::RootQuery::dashboard_stats` только композирует owner helper за feature `mod-content` и больше не содержит SQL по `nodes`/`kind = post`. Граница закреплена `apps/server/tests/module_surface_boundary_guard.rs` без компиляции.
+- Next step: Закрыть reindex drift evidence и расширить conversion bridge contract coverage без возврата GraphQL resolver/DTO и content analytics SQL в `apps/server`.
 - Open blockers: Compile/runtime execution evidence still pending because this iteration intentionally avoided compilation.
 - Hand-off notes for next agent: Поддерживать `npm run verify:content:orchestration` вместе с любым изменением `ContentOrchestrationService`, `CanonicalUrlService`, collision tests, local docs или registry row.
-- Last updated at (UTC): 2026-06-21T00:00:00Z
+- Last updated at (UTC): 2026-07-02T00:00:00Z
 
 ## Область работ
 
@@ -23,6 +23,7 @@ orchestration и rich-text/locale contract layer.
 - blog/forum/pages domain CRUD уже вынесены в собственные модули;
 - `rustok-content` владеет orchestration service, audit/idempotency state и canonical URL mapping;
 - canonical route GraphQL query и content GraphQL dataloaders живут в `rustok-content`, а conversion mutations и DTO — в `rustok-content-orchestration`; host только объединяет roots и регистрирует owner-owned loaders;
+- dashboard post analytics (`ContentCountSnapshot`, `load_post_stats_snapshot`) уже module-owned; server GraphQL не содержит SQL по `nodes`/`kind = post`;
 - shared locale fallback и rich-text validation уже являются каноническим контрактом для publishable content surfaces;
 - module docs и runtime boundary уже отражают post-split роль.
 

@@ -330,10 +330,10 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         let config = auth_config_from_ctx(&self.app_ctx)
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
         let claims = decode_invite_token(&config, &token)
-            .map_err(|_| AuthLifecycleMutationError::InvalidResetToken)?;
+            .map_err(|_| AuthLifecycleMutationError::InvalidInviteToken)?;
 
         if claims.tenant_id != context.tenant_id {
-            return Err(AuthLifecycleMutationError::InvalidResetToken);
+            return Err(AuthLifecycleMutationError::InvalidInviteToken);
         }
 
         let email = claims.sub.clone();

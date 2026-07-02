@@ -6,6 +6,13 @@ const boundaryReadyProviderSpiModules = new Set(['payment', 'fulfillment']);
 
 const expectedEcommerceFbaStatus = ({ module, registry }) => {
   if (boundaryReadyProviderSpiModules.has(module)) return 'boundary_ready';
+  if (
+    module === 'product' &&
+    registry.evidence?.runtime_fallback_smoke ===
+      'crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json'
+  ) {
+    return 'boundary_ready';
+  }
   if (module === 'order' && registry.runtime_evidence?.checkout_completion_owner_path?.status === 'runtime_verified') {
     return 'boundary_ready';
   }
@@ -204,7 +211,11 @@ export function verifyEcommerceFbaRegistries({
     }
 
     const fallbackSmoke = registry.contract_tests.fallback_smoke;
-    if (!fallbackSmoke || fallbackSmoke.status !== 'planned') fail(`${module} fallback smoke status must remain planned until evidence lands`);
+    const expectedFallbackSmokeStatus =
+      module === 'product' && expectedFbaStatus === 'boundary_ready' ? 'planned_runtime_pending' : 'planned';
+    if (!fallbackSmoke || fallbackSmoke.status !== expectedFallbackSmokeStatus) {
+      fail(`${module} fallback smoke status must be ${expectedFallbackSmokeStatus}`);
+    }
     const consumerFallbacks = registry.consumers.flatMap((consumer) => consumer.fallback_profiles || []);
     for (const profile of consumerFallbacks) {
       if (!fallbackSmoke.profiles.includes(profile)) fail(`${module} fallback smoke missing ${profile}`);
@@ -270,6 +281,17 @@ export function verifyEcommerceFbaRegistries({
       }
       if (!central.includes(registry.evidence.runtime_contract_smoke)) {
         fail(`${module} central readiness board lacks runtime contract smoke evidence`);
+      }
+    }
+    if (module === 'product' && registry.evidence?.runtime_fallback_smoke) {
+      if (registry.evidence.runtime_fallback_smoke_runner !== 'scripts/verify/verify-product-runtime-fallback-smoke.mjs') {
+        fail(`${module} runtime fallback smoke runner evidence drift`);
+      }
+      if (!plan.includes(registry.evidence.runtime_fallback_smoke)) {
+        fail(`${module} local plan lacks runtime fallback smoke evidence`);
+      }
+      if (!central.includes(registry.evidence.runtime_fallback_smoke)) {
+        fail(`${module} central readiness board lacks runtime fallback smoke evidence`);
       }
     }
 

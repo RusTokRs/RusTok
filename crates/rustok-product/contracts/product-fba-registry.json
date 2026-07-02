@@ -2,7 +2,7 @@
   "schema_version": 1,
   "module": "product",
   "role": "provider",
-  "status": "in_progress",
+  "status": "boundary_ready",
   "contract_version": "product.catalog_read.v1",
   "ports": [
     {
@@ -60,7 +60,9 @@
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "runtime_contract_smoke": "crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json",
-    "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs"
+    "runtime_contract_smoke_runner": "scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs",
+    "runtime_fallback_smoke": "crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json",
+    "runtime_fallback_smoke_runner": "scripts/verify/verify-product-runtime-fallback-smoke.mjs"
   },
   "in_process_provider_impl": {
     "service": "CatalogService",
@@ -100,7 +102,7 @@
       }
     ],
     "fallback_smoke": {
-      "status": "planned",
+      "status": "planned_runtime_pending",
       "profiles": [
         "embedded_native",
         "graphql_checkout_compat",

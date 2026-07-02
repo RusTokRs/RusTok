@@ -3,6 +3,7 @@ mod generated_ui_codegen {
     include!(concat!(env!("OUT_DIR"), "/module_registry_codegen.rs"));
 }
 mod registry;
+mod search_composition;
 
 use std::cell::Cell;
 
@@ -13,6 +14,7 @@ pub use registry::{
     components_for_slot, page_for_route_segment, register_component, register_page,
     AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot,
 };
+pub use search_composition::SearchAdminComposition;
 
 #[derive(Clone, Copy)]
 pub struct GeneratedModuleRuntimeMetadata {

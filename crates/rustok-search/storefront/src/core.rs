@@ -23,20 +23,51 @@ pub fn optional_text(value: &str) -> Option<String> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchRouteFilters {
+    pub channel_id: Option<String>,
     pub entity_types: Vec<String>,
     pub source_modules: Vec<String>,
     pub statuses: Vec<String>,
+    pub category_ids: Vec<String>,
+    pub attribute_code: Option<String>,
+    pub attribute_values: Vec<String>,
+    pub attribute_min: Option<String>,
+    pub attribute_max: Option<String>,
+    pub sort_attribute_code: Option<String>,
+    pub sort_desc: bool,
 }
 
 pub fn parse_search_route_filters(
+    channel_id: Option<&str>,
     entity_types: Option<&str>,
     source_modules: Option<&str>,
     statuses: Option<&str>,
+    category_ids: Option<&str>,
+    attribute_code: Option<&str>,
+    attribute_values: Option<&str>,
+    attribute_min: Option<&str>,
+    attribute_max: Option<&str>,
+    sort_attribute_code: Option<&str>,
+    sort_desc: Option<&str>,
 ) -> SearchRouteFilters {
     SearchRouteFilters {
+        channel_id: optional_text(channel_id.unwrap_or_default()),
         entity_types: parse_csv(entity_types.unwrap_or_default()),
         source_modules: parse_csv(source_modules.unwrap_or_default()),
         statuses: parse_csv(statuses.unwrap_or_default()),
+        category_ids: parse_csv(category_ids.unwrap_or_default()),
+        attribute_code: optional_text(attribute_code.unwrap_or_default()),
+        attribute_values: parse_csv(attribute_values.unwrap_or_default()),
+        attribute_min: optional_text(attribute_min.unwrap_or_default()),
+        attribute_max: optional_text(attribute_max.unwrap_or_default()),
+        sort_attribute_code: optional_text(sort_attribute_code.unwrap_or_default()),
+        sort_desc: matches!(
+            sort_desc
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+            "1" | "true" | "desc"
+        ),
     }
 }
 
@@ -51,10 +82,27 @@ pub struct StorefrontSearchFetchRequest {
 pub fn search_preview_filters_from_route(
     route_filters: SearchRouteFilters,
 ) -> SearchPreviewFilters {
+    let attribute_filters = route_filters
+        .attribute_code
+        .map(|attribute_code| {
+            vec![crate::model::SearchAttributeFilter {
+                attribute_code,
+                values: route_filters.attribute_values,
+                min: route_filters.attribute_min,
+                max: route_filters.attribute_max,
+            }]
+        })
+        .unwrap_or_default();
+
     SearchPreviewFilters {
+        channel_id: route_filters.channel_id,
         entity_types: route_filters.entity_types,
         source_modules: route_filters.source_modules,
         statuses: route_filters.statuses,
+        category_ids: route_filters.category_ids,
+        attribute_filters,
+        sort_attribute_code: route_filters.sort_attribute_code,
+        sort_desc: route_filters.sort_desc,
     }
 }
 
@@ -78,6 +126,13 @@ pub fn facet_display_name(raw_name: &str) -> String {
 
 pub fn facet_bucket_label(value: &str, count: u64) -> String {
     format!("{} ({})", value, count)
+}
+
+pub fn facet_bucket_display_label(value: &str, label: Option<&str>, count: u64) -> String {
+    facet_bucket_label(
+        label.filter(|label| !label.is_empty()).unwrap_or(value),
+        count,
+    )
 }
 
 pub fn snippet_or_fallback(snippet: Option<String>, fallback: &str) -> String {
@@ -124,6 +179,10 @@ mod tests {
     fn formatting_helpers_are_stable() {
         assert_eq!(facet_display_name("source_module"), "source module");
         assert_eq!(facet_bucket_label("product", 42), "product (42)");
+        assert_eq!(
+            facet_bucket_display_label("product", Some("Товар"), 42),
+            "Товар (42)"
+        );
         assert_eq!(score_label(0.12345), "score 0.123");
         assert_eq!(
             snippet_or_fallback(None, "fallback"),
@@ -138,17 +197,33 @@ mod tests {
     #[test]
     fn parse_search_route_filters_handles_missing_and_csv_values() {
         let parsed = parse_search_route_filters(
+            Some("a0f903ea-7bd8-4e01-ae11-4fc58faac647"),
             Some(" product , pages "),
             None,
             Some(" published, draft ,"),
+            Some("9d76985c-7500-4ad7-a101-860b8f40d5a0"),
+            Some("color"),
+            Some("red,blue"),
+            None,
+            None,
+            Some("price"),
+            Some("desc"),
         );
 
         assert_eq!(
             parsed,
             SearchRouteFilters {
+                channel_id: Some("a0f903ea-7bd8-4e01-ae11-4fc58faac647".to_string()),
                 entity_types: vec!["product".to_string(), "pages".to_string()],
                 source_modules: Vec::new(),
                 statuses: vec!["published".to_string(), "draft".to_string()],
+                category_ids: vec!["9d76985c-7500-4ad7-a101-860b8f40d5a0".to_string()],
+                attribute_code: Some("color".to_string()),
+                attribute_values: vec!["red".to_string(), "blue".to_string()],
+                attribute_min: None,
+                attribute_max: None,
+                sort_attribute_code: Some("price".to_string()),
+                sort_desc: true,
             }
         );
 
@@ -162,6 +237,14 @@ mod tests {
             filters.statuses,
             vec!["published".to_string(), "draft".to_string()]
         );
+        assert_eq!(
+            filters.category_ids,
+            vec!["9d76985c-7500-4ad7-a101-860b8f40d5a0".to_string()]
+        );
+        assert_eq!(filters.sort_attribute_code, Some("price".to_string()));
+        assert!(filters.sort_desc);
+        assert_eq!(filters.attribute_filters.len(), 1);
+        assert_eq!(filters.attribute_filters[0].attribute_code, "color");
     }
 
     #[test]
@@ -170,6 +253,7 @@ mod tests {
             entity_types: vec!["product".to_string()],
             source_modules: Vec::new(),
             statuses: vec!["published".to_string()],
+            ..SearchPreviewFilters::default()
         };
 
         assert_eq!(
@@ -318,6 +402,7 @@ mod tests {
                 name: "entity_type".to_string(),
                 buckets: vec![crate::model::SearchFacetBucket {
                     value: "product".to_string(),
+                    label: None,
                     count: 2,
                 }],
             }],
@@ -482,10 +567,12 @@ mod tests {
             buckets: vec![
                 crate::model::SearchFacetBucket {
                     value: "catalog".to_string(),
+                    label: Some("Каталог".to_string()),
                     count: 7,
                 },
                 crate::model::SearchFacetBucket {
                     value: "pages".to_string(),
+                    label: None,
                     count: 3,
                 },
             ],
@@ -493,7 +580,7 @@ mod tests {
 
         assert_eq!(facets.len(), 1);
         assert_eq!(facets[0].display_name, "source module");
-        assert_eq!(facets[0].buckets[0].label, "catalog (7)");
+        assert_eq!(facets[0].buckets[0].label, "Каталог (7)");
         assert_eq!(facets[0].buckets[1].label, "pages (3)");
     }
 
@@ -817,7 +904,11 @@ pub fn build_search_facet_view_models(
                 .buckets
                 .into_iter()
                 .map(|bucket| SearchFacetBucketViewModel {
-                    label: facet_bucket_label(bucket.value.as_str(), bucket.count),
+                    label: facet_bucket_display_label(
+                        bucket.value.as_str(),
+                        bucket.label.as_deref(),
+                        bucket.count,
+                    ),
                 })
                 .collect(),
         })

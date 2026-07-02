@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SearchFacetBucket {
     pub value: String,
+    #[serde(default)]
+    pub label: Option<String>,
     pub count: u64,
 }
 
@@ -71,11 +73,36 @@ pub struct SearchFilterPreset {
     pub ranking_profile: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SearchAttributeFilter {
+    #[serde(rename = "attributeCode")]
+    pub attribute_code: String,
+    #[serde(default)]
+    pub values: Vec<String>,
+    #[serde(default)]
+    pub min: Option<String>,
+    #[serde(default)]
+    pub max: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SearchPreviewFilters {
+    #[serde(default, rename = "channelId")]
+    pub channel_id: Option<String>,
+    #[serde(default)]
     pub entity_types: Vec<String>,
+    #[serde(default)]
     pub source_modules: Vec<String>,
+    #[serde(default)]
     pub statuses: Vec<String>,
+    #[serde(default, rename = "categoryIds")]
+    pub category_ids: Vec<String>,
+    #[serde(default, rename = "attributeFilters")]
+    pub attribute_filters: Vec<SearchAttributeFilter>,
+    #[serde(default, rename = "sortAttributeCode")]
+    pub sort_attribute_code: Option<String>,
+    #[serde(default, rename = "sortDesc")]
+    pub sort_desc: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

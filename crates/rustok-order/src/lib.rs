@@ -13,6 +13,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod analytics;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -20,6 +21,7 @@ pub mod migrations;
 pub mod ports;
 pub mod services;
 
+pub use analytics::{load_order_stats_snapshot, OrderStatsSnapshot};
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;

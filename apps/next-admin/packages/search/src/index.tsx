@@ -13,6 +13,13 @@ export type SearchAdminPageProps = {
   initialTab?: SearchAdminTab;
   initialQuery?: string;
   laggingLimit?: number;
+  categoryOptions?: SearchCatalogFilterOption[];
+  attributeOptions?: SearchCatalogFilterOption[];
+};
+
+export type SearchCatalogFilterOption = {
+  value: string;
+  label: string;
 };
 
 type SearchAdminBootstrap = {
@@ -65,7 +72,7 @@ type SearchPreviewPayload = {
   }>;
   facets: Array<{
     name: string;
-    buckets: Array<{ value: string; count: number }>;
+    buckets: Array<{ value: string; label: string | null; count: number }>;
   }>;
 };
 
@@ -204,7 +211,7 @@ const SEARCH_PREVIEW_QUERY = `
     searchPreview(input: $input) {
       queryLogId presetKey total tookMs engine rankingProfile
       items { id entityType sourceModule title snippet score locale url payload }
-      facets { name buckets { value count } }
+      facets { name buckets { value label count } }
     }
   }
 `;
@@ -335,9 +342,19 @@ const tabs: Array<{ key: SearchAdminTab; label: string }> = [
 ];
 
 type SearchPreviewFiltersInput = {
+  channelId?: string;
   entityTypes: string[];
   sourceModules: string[];
   statuses: string[];
+  categoryIds: string[];
+  attributeFilters: Array<{
+    attributeCode: string;
+    values?: string[];
+    min?: string;
+    max?: string;
+  }>;
+  sortAttributeCode?: string;
+  sortDesc: boolean;
 };
 
 function parseCsv(value: string): string[] {
@@ -482,7 +499,9 @@ export function SearchAdminPage({
   graphqlUrl,
   initialTab = 'overview',
   initialQuery = '',
-  laggingLimit = 25
+  laggingLimit = 25,
+  categoryOptions,
+  attributeOptions
 }: SearchAdminPageProps = {}): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<SearchAdminTab>(initialTab);
   const [bootstrap, setBootstrap] = React.useState<SearchAdminBootstrap | null>(
@@ -512,9 +531,17 @@ export function SearchAdminPage({
   const [analyticsLoading, setAnalyticsLoading] = React.useState(false);
   const [refreshNonce, setRefreshNonce] = React.useState(0);
   const [query, setQuery] = React.useState(initialQuery);
+  const [channelId, setChannelId] = React.useState('');
   const [entityTypes, setEntityTypes] = React.useState('');
   const [sourceModules, setSourceModules] = React.useState('');
   const [statuses, setStatuses] = React.useState('');
+  const [categoryIds, setCategoryIds] = React.useState('');
+  const [attributeCode, setAttributeCode] = React.useState('');
+  const [attributeValues, setAttributeValues] = React.useState('');
+  const [attributeMin, setAttributeMin] = React.useState('');
+  const [attributeMax, setAttributeMax] = React.useState('');
+  const [sortAttributeCode, setSortAttributeCode] = React.useState('');
+  const [sortDesc, setSortDesc] = React.useState(false);
   const [rankingProfile, setRankingProfile] = React.useState('');
   const [presetKey, setPresetKey] = React.useState('');
   const [filterPresets, setFilterPresets] = React.useState<
@@ -583,13 +610,22 @@ export function SearchAdminPage({
               offset: 0,
               rankingProfile: optionalText(selectedRankingProfile),
               presetKey: optionalText(selectedPresetKey),
+              channelId: filters.channelId,
               entityTypes: filters.entityTypes.length
                 ? filters.entityTypes
                 : undefined,
               sourceModules: filters.sourceModules.length
                 ? filters.sourceModules
                 : undefined,
-              statuses: filters.statuses.length ? filters.statuses : undefined
+              statuses: filters.statuses.length ? filters.statuses : undefined,
+              categoryIds: filters.categoryIds.length
+                ? filters.categoryIds
+                : undefined,
+              attributeFilters: filters.attributeFilters.length
+                ? filters.attributeFilters
+                : undefined,
+              sortAttributeCode: filters.sortAttributeCode,
+              sortDesc: filters.sortDesc || undefined
             }
           },
           { token, tenantSlug, graphqlUrl }
@@ -611,9 +647,14 @@ export function SearchAdminPage({
       void runPreviewRequest(
         initialQuery,
         {
+          channelId: undefined,
           entityTypes: [],
           sourceModules: [],
-          statuses: []
+          statuses: [],
+          categoryIds: [],
+          attributeFilters: [],
+          sortAttributeCode: undefined,
+          sortDesc: false
         },
         rankingProfile,
         presetKey
@@ -858,12 +899,29 @@ export function SearchAdminPage({
     event: React.FormEvent<HTMLFormElement>
   ): Promise<void> {
     event.preventDefault();
+    const previewAttributeValues = parseCsv(attributeValues);
     await runPreviewRequest(
       query,
       {
+        channelId: optionalText(channelId),
         entityTypes: parseCsv(entityTypes),
         sourceModules: parseCsv(sourceModules),
-        statuses: parseCsv(statuses)
+        statuses: parseCsv(statuses),
+        categoryIds: parseCsv(categoryIds),
+        attributeFilters: optionalText(attributeCode)
+          ? [
+              {
+                attributeCode: optionalText(attributeCode)!,
+                values: previewAttributeValues.length
+                  ? previewAttributeValues
+                  : undefined,
+                min: optionalText(attributeMin),
+                max: optionalText(attributeMax)
+              }
+            ]
+          : [],
+        sortAttributeCode: optionalText(sortAttributeCode),
+        sortDesc
       },
       rankingProfile,
       presetKey
@@ -1035,6 +1093,7 @@ export function SearchAdminPage({
       ) : activeTab === 'playground' ? (
         <PlaygroundPanel
           query={query}
+          channelId={channelId}
           presetKey={presetKey}
           filterPresets={filterPresets}
           filterPresetsLoading={filterPresetsLoading}
@@ -1043,6 +1102,15 @@ export function SearchAdminPage({
           entityTypes={entityTypes}
           sourceModules={sourceModules}
           statuses={statuses}
+          categoryIds={categoryIds}
+          categoryOptions={categoryOptions}
+          attributeCode={attributeCode}
+          attributeOptions={attributeOptions}
+          attributeValues={attributeValues}
+          attributeMin={attributeMin}
+          attributeMax={attributeMax}
+          sortAttributeCode={sortAttributeCode}
+          sortDesc={sortDesc}
           preview={preview}
           previewBusy={previewBusy}
           previewError={previewError}
@@ -1050,11 +1118,19 @@ export function SearchAdminPage({
           tenantSlug={tenantSlug}
           graphqlUrl={graphqlUrl}
           onQueryChange={setQuery}
+          onChannelIdChange={setChannelId}
           onPresetKeyChange={setPresetKey}
           onRankingProfileChange={setRankingProfile}
           onEntityTypesChange={setEntityTypes}
           onSourceModulesChange={setSourceModules}
           onStatusesChange={setStatuses}
+          onCategoryIdsChange={setCategoryIds}
+          onAttributeCodeChange={setAttributeCode}
+          onAttributeValuesChange={setAttributeValues}
+          onAttributeMinChange={setAttributeMin}
+          onAttributeMaxChange={setAttributeMax}
+          onSortAttributeCodeChange={setSortAttributeCode}
+          onSortDescChange={setSortDesc}
           onSubmit={(event) => void runPreview(event)}
         />
       ) : activeTab === 'analytics' ? (
@@ -1419,6 +1495,7 @@ function OverviewPanel(props: {
 
 function PlaygroundPanel(props: {
   query: string;
+  channelId: string;
   presetKey: string;
   filterPresets: SearchFilterPresetPayload[];
   filterPresetsLoading: boolean;
@@ -1427,6 +1504,15 @@ function PlaygroundPanel(props: {
   entityTypes: string;
   sourceModules: string;
   statuses: string;
+  categoryIds: string;
+  categoryOptions?: SearchCatalogFilterOption[];
+  attributeCode: string;
+  attributeOptions?: SearchCatalogFilterOption[];
+  attributeValues: string;
+  attributeMin: string;
+  attributeMax: string;
+  sortAttributeCode: string;
+  sortDesc: boolean;
   preview: SearchPreviewPayload | null;
   previewBusy: boolean;
   previewError: string | null;
@@ -1434,11 +1520,19 @@ function PlaygroundPanel(props: {
   tenantSlug: string | null;
   graphqlUrl?: string;
   onQueryChange: (value: string) => void;
+  onChannelIdChange: (value: string) => void;
   onPresetKeyChange: (value: string) => void;
   onRankingProfileChange: (value: string) => void;
   onEntityTypesChange: (value: string) => void;
   onSourceModulesChange: (value: string) => void;
   onStatusesChange: (value: string) => void;
+  onCategoryIdsChange: (value: string) => void;
+  onAttributeCodeChange: (value: string) => void;
+  onAttributeValuesChange: (value: string) => void;
+  onAttributeMinChange: (value: string) => void;
+  onAttributeMaxChange: (value: string) => void;
+  onSortAttributeCodeChange: (value: string) => void;
+  onSortDescChange: (value: boolean) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }): React.JSX.Element {
   return (
@@ -1456,6 +1550,13 @@ function PlaygroundPanel(props: {
           <input
             value={props.query}
             onChange={(event) => props.onQueryChange(event.target.value)}
+            className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+          />
+        </Field>
+        <Field label='Channel ID'>
+          <input
+            value={props.channelId}
+            onChange={(event) => props.onChannelIdChange(event.target.value)}
             className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
           />
         </Field>
@@ -1519,6 +1620,65 @@ function PlaygroundPanel(props: {
             className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
           />
         </Field>
+        <Field label='Category IDs (CSV)'>
+          <input
+            value={props.categoryIds}
+            onChange={(event) => props.onCategoryIdsChange(event.target.value)}
+            list={props.categoryOptions?.length ? 'search-admin-category-options' : undefined}
+            className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+          />
+          <CatalogOptionDatalist id='search-admin-category-options' options={props.categoryOptions} />
+        </Field>
+        <div className='space-y-3 border border-zinc-200 bg-zinc-50 p-3'>
+          <Field label='Attribute code'>
+            <input
+              value={props.attributeCode}
+              onChange={(event) => props.onAttributeCodeChange(event.target.value)}
+              list={props.attributeOptions?.length ? 'search-admin-attribute-options' : undefined}
+              className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+            />
+            <CatalogOptionDatalist id='search-admin-attribute-options' options={props.attributeOptions} />
+          </Field>
+          <Field label='Attribute values (CSV)'>
+            <input
+              value={props.attributeValues}
+              onChange={(event) => props.onAttributeValuesChange(event.target.value)}
+              className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+            />
+          </Field>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <Field label='Minimum'>
+              <input
+                value={props.attributeMin}
+                onChange={(event) => props.onAttributeMinChange(event.target.value)}
+                className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+              />
+            </Field>
+            <Field label='Maximum'>
+              <input
+                value={props.attributeMax}
+                onChange={(event) => props.onAttributeMaxChange(event.target.value)}
+                className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+              />
+            </Field>
+          </div>
+        </div>
+        <Field label='Sort attribute code'>
+          <input
+            value={props.sortAttributeCode}
+            onChange={(event) => props.onSortAttributeCodeChange(event.target.value)}
+            list={props.attributeOptions?.length ? 'search-admin-attribute-options' : undefined}
+            className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+          />
+        </Field>
+        <label className='flex items-center gap-2 text-sm font-medium text-zinc-900'>
+          <input
+            type='checkbox'
+            checked={props.sortDesc}
+            onChange={(event) => props.onSortDescChange(event.target.checked)}
+          />
+          Descending order
+        </label>
         {props.previewError ? (
           <ErrorPanel
             message={`Failed to run search preview: ${props.previewError}`}
@@ -2215,6 +2375,22 @@ function AnalyticsSummary({
   );
 }
 
+function CatalogOptionDatalist(props: {
+  id: string;
+  options?: SearchCatalogFilterOption[];
+}): React.JSX.Element | null {
+  if (!props.options?.length) return null;
+  return (
+    <datalist id={props.id}>
+      {props.options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </datalist>
+  );
+}
+
 function PreviewPanel({
   payload,
   token,
@@ -2249,7 +2425,7 @@ function PreviewPanel({
                   key={`${facet.name}-${bucket.value}`}
                   className='rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600'
                 >
-                  {bucket.value} ({bucket.count})
+                  {bucket.label || bucket.value} ({bucket.count})
                 </span>
               ))}
             </div>

@@ -3,6 +3,10 @@ pub mod direct;
 #[cfg(feature = "server")]
 pub mod entities;
 pub mod error;
+#[cfg(feature = "graphql")]
+pub mod graphql;
+#[cfg(feature = "graphql")]
+pub mod graphql_runtime;
 pub mod mcp;
 #[cfg(feature = "server")]
 pub mod metrics;
@@ -22,6 +26,8 @@ pub use direct::{
     DirectExecutionResult, DirectTaskHandler, MediaImageAssetHandler, ProductCopyHandler,
 };
 pub use error::{AiError, AiResult};
+#[cfg(feature = "graphql")]
+pub use graphql_runtime::{AiGraphqlRoleSlugProvider, AiGraphqlRoleSlugProviderHandle};
 pub use mcp::{McpClientAdapter, ToolExecutionResult};
 #[cfg(feature = "server")]
 pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};

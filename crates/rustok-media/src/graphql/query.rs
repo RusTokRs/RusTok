@@ -4,15 +4,29 @@ use rustok_storage::StorageService;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::MediaService;
+use crate::{load_media_usage_snapshot, MediaService};
 
-use super::{GqlMediaItem, GqlMediaList, GqlMediaTranslation, MODULE_SLUG};
+use super::{GqlMediaItem, GqlMediaList, GqlMediaTranslation, MediaUsageStats, MODULE_SLUG};
 
 #[derive(Default)]
 pub struct MediaQuery;
 
 #[Object]
 impl MediaQuery {
+    /// Media usage statistics for a tenant.
+    async fn media_usage(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<MediaUsageStats> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let usage = load_media_usage_snapshot(db, tenant_id)
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+
+        Ok(MediaUsageStats {
+            tenant_id: usage.tenant_id,
+            file_count: usage.file_count,
+            total_bytes: usage.total_bytes,
+        })
+    }
+
     /// List media assets for a tenant.
     async fn media(
         &self,

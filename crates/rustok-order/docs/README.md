@@ -8,6 +8,7 @@
 - `OrderModule` и `OrderService`;
 - `order_returns` и `order_return_items` для order-owned post-order returns foundation с resolution-ссылками на refund/order-change orchestration;
 - `order_changes` для draft/edit preview-apply skeleton без payment/fulfillment side effects;
+- owner-owned read-helper `load_order_stats_snapshot` и DTO `OrderStatsSnapshot` для dashboard-статистики заказов без SQL по order events внутри `apps/server`;
 - write-side lifecycle заказа: `pending -> confirmed -> paid -> shipped -> delivered/cancelled`;
 - публикация order events через transactional outbox;
 - module-owned admin UI пакет `rustok-order/admin` для order operations с разделением `admin/src/core/`, `admin/src/transport/mod.rs`, `admin/src/transport/graphql_adapter.rs` и `admin/src/ui/leptos.rs`.
@@ -26,6 +27,7 @@
 - admin UI ownership вынесен в `rustok-order/admin`;
 - returns foundation хранит item-level lines с validation количества и принадлежности line-item к заказу, а `resolution_type/refund_id/order_change_id` связывают completed return с refund/exchange/claim orchestration без переноса payment logic в order boundary;
 - order-change skeleton хранит `preview`, `change_type`, lifecycle `pending -> applied|cancelled` и metadata, но пока не применяет cross-domain effects.
+- dashboard order statistics читает `order.placed` outbox events через `rustok-order::load_order_stats_snapshot`; `apps/server` только композирует результат в root dashboard GraphQL и не держит order SQL/DTO.
 
 ## Контракты событий
 

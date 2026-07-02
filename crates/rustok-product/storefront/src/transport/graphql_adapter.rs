@@ -1,6 +1,19 @@
 use super::native_server_adapter::{self, ApiError};
 use crate::core::ProductStorefrontFetchRequest;
-use crate::model::StorefrontProductsData;
+use crate::model::{ProductCatalogSearchOptions, StorefrontProductsData};
+
+const STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY: &str = "query StorefrontCatalogSearchOptions($locale: String!) { storefrontCatalogSearchOptions(locale: $locale) { categoryOptions { value label } attributeOptions { value label } } }";
+
+#[derive(serde::Serialize)]
+struct CatalogSearchOptionsVariables {
+    locale: String,
+}
+
+#[derive(serde::Deserialize)]
+struct CatalogSearchOptionsResponse {
+    #[serde(rename = "storefrontCatalogSearchOptions")]
+    options: ProductCatalogSearchOptions,
+}
 
 pub async fn fetch_products(
     request: ProductStorefrontFetchRequest,
@@ -16,4 +29,15 @@ pub async fn fetch_products(
         request.quantity,
     )
     .await
+}
+
+pub async fn fetch_catalog_search_options(
+    locale: String,
+) -> Result<ProductCatalogSearchOptions, ApiError> {
+    let response: CatalogSearchOptionsResponse = native_server_adapter::request(
+        STOREFRONT_CATALOG_SEARCH_OPTIONS_QUERY,
+        CatalogSearchOptionsVariables { locale },
+    )
+    .await?;
+    Ok(response.options)
 }

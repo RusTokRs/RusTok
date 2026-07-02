@@ -10,9 +10,11 @@ use sea_orm_migration::MigrationTrait;
 pub mod attached;
 pub mod errors;
 pub mod events;
+pub mod graphql;
 pub mod orchestration;
 pub mod parsing;
 pub mod registry;
+pub mod rest;
 pub mod standalone;
 
 pub struct FlexModule;
@@ -32,6 +34,10 @@ pub use parsing::{parse_field_definitions_config, FieldDefinitionsConfigParseErr
 pub use registry::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
     UpdateFieldDefinitionCommand,
+};
+pub use rest::{
+    CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
+    FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
 };
 pub use standalone::{
     create_entry, create_entry_with_event, create_schema, create_schema_with_event, delete_entry,

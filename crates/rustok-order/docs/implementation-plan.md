@@ -6,12 +6,12 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 ## Execution checkpoint
 
-- Current phase: ffa_storefront_complete_request_boundary
-- Last checkpoint: Order storefront now owns both checkout completion transports. `storefront/src/transport/native_server_adapter/raw_adapter.rs` exposes `order/complete-checkout` and calls `rustok_commerce::storefront_checkout_runtime`, while `storefront/src/transport/graphql_adapter.rs` keeps the parallel public GraphQL mutation fallback. `storefront/src/transport.rs` exposes the MissingServer-gated `complete_checkout` facade without a commerce callback, and commerce no longer contains order completion GraphQL or native owner-operation wrappers.
-- Next step: Keep public GraphQL order contract parity while post-order surfaces continue moving through owner admin/storefront packages.
+- Current phase: owner-owned dashboard order analytics
+- Last checkpoint: `OrderStatsSnapshot` и `load_order_stats_snapshot` перенесены в `rustok-order`; `apps/server::RootQuery::dashboard_stats` только композирует owner helper за feature `mod-order` и больше не содержит SQL для событий `order.placed`. Граница закреплена `apps/server/tests/module_surface_boundary_guard.rs` без компиляции.
+- Next step: удерживать parity публичного GraphQL order contract, пока post-order surfaces продолжают переезжать в owner admin/storefront packages; продолжать удалять оставшиеся module-specific server GraphQL artifacts малыми no-compile срезами.
 - Open blockers: серверный OpenAPI contract test под default features ранее упирался в существующие compile errors вне order/commerce (`rustok-pages-admin`, server build service/module lifecycle/graphql mutations); targeted order lifecycle и `rustok-commerce` check остаются основным gate для этого среза.
 - Hand-off notes for next agent: После каждого returns/refund/exchange/claim инкремента обновлять FFA evidence и FBA placeholder, README/admin docs и central registry в том же PR.
-- Last updated at (UTC): 2026-06-30T08:04:31Z
+- Last updated at (UTC): 2026-07-02T00:00:00Z
 
 ## FFA/FBA status
 
@@ -31,8 +31,9 @@ outbox publication и module-owned admin UI, а post-order и transport parity
   - любые изменения UI/transport boundary должны фиксироваться с parity/boundary evidence в этом же инкременте;
   - manifest-driven storefront composition now registers `rustok-order-storefront` in `checkout_result_handoff`; `OrderView` is the zero-prop host entry adapter, reads the effective locale from `UiRouteContext.locale`, and resolves copy through the module-owned `en`/`ru` catalog declared by `[provides.storefront_ui.i18n]`;
   - storefront native checkout completion is now owner-owned: `storefront/src/transport/native_server_adapter/raw_adapter.rs` publishes `order/complete-checkout` over the explicit `rustok_commerce::storefront_checkout_runtime` API, so commerce no longer keeps the native order owner-operation wrapper;
+  - dashboard order analytics теперь owner-owned: `rustok-order::load_order_stats_snapshot` читает `order.placed` outbox events, а `apps/server::RootQuery` только композирует результат и проверяется boundary guard без компиляции;
   - admin FFA slice добавил framework-agnostic `admin/src/core/` list/filter request policy, module-owned `admin/src/transport/mod.rs` facade и явный Leptos render adapter `admin/src/ui/leptos.rs`, locked by `scripts/verify/verify-order-admin-boundary.mjs`; storefront owns `CompleteCheckoutRequest`, `CheckoutAdjustment`, `CheckoutCompletion`, the MissingServer-gated `complete_checkout` facade, `storefront/src/transport/graphql_adapter.rs` with the complete-checkout GraphQL mutation/mapping and `storefront/src/transport/native_server_adapter/raw_adapter.rs` with the `order/complete-checkout` server-function shell over the explicit commerce checkout runtime API; commerce no longer duplicates order GraphQL payload, response projection or native owner-operation wrapper; `scripts/verify/verify-order-storefront-boundary.mjs` and `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` lock the owner boundary.
-- Last verified at (UTC): 2026-06-30T08:04:31Z
+- Last verified at (UTC): 2026-07-02T00:00:00Z
 - Owner: `rustok-order` module team
 
 ## Область работ
@@ -50,6 +51,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 - write-side lifecycle и order events уже закреплены внутри модуля;
 - product/variant связи хранятся как snapshot references, без cross-module FK;
 - complete-checkout GraphQL execution, native server-function execution, result DTOs and fallback policy are order-owned; commerce exposes only the shared checkout runtime API for orchestration;
+- dashboard order analytics (`OrderStatsSnapshot`, `load_order_stats_snapshot`) уже module-owned; server GraphQL не содержит SQL по `order.placed`;
 - `rustok-order/admin` публикует module-owned route для order list/detail/lifecycle с `admin/src/core/` request defaults, `admin/src/transport/mod.rs` facade и явным `admin/src/ui/leptos.rs` render adapter.
 
 ## Этапы
