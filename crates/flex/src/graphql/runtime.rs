@@ -50,6 +50,5 @@ pub(crate) fn runtime<'ctx>(ctx: &'ctx Context<'_>) -> Result<&'ctx FlexGraphqlR
         <FieldError as GraphQLError>::internal_error(
             "FlexGraphqlRuntime is not registered; initialize the Flex host adapter",
         )
-        .into()
     })
 }

@@ -1,6 +1,6 @@
 {
   "crate": "utoipa",
-  "version": "5.4.0",
-  "docs_rs_crate": "https://docs.rs/crate/utoipa/5.4.0",
-  "docs_rs_rustdoc": "https://docs.rs/utoipa/5.4.0/utoipa/"
+  "version": "5.5.0",
+  "docs_rs_crate": "https://docs.rs/crate/utoipa/5.5.0",
+  "docs_rs_rustdoc": "https://docs.rs/utoipa/5.5.0/utoipa/"
 }

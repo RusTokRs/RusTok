@@ -5,4 +5,6 @@ ignore = [
   "RUSTSEC-2026-0098", # rustls-webpki URI name constraints; fix requires upstream aws-smithy/rustls 0.21 migration
   "RUSTSEC-2026-0099", # rustls-webpki wildcard name constraints; fix requires upstream aws-smithy/rustls 0.21 migration
   "RUSTSEC-2026-0104", # rustls-webpki CRL parsing panic; fix requires upstream aws-smithy/rustls 0.21 migration
+  "RUSTSEC-2026-0194", # quick-xml duplicate-attribute quadratic runtime; fixed quick-xml requires upstream loco-rs/opendal update
+  "RUSTSEC-2026-0195", # quick-xml NsReader namespace allocation DoS; fixed quick-xml requires upstream loco-rs/opendal update
 ]

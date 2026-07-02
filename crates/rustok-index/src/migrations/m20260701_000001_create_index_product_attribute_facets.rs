@@ -75,7 +75,9 @@ CREATE INDEX IF NOT EXISTS idx_index_product_attribute_search
     WHERE is_searchable = TRUE AND is_detached = FALSE;
 "#,
             )
-            .await
+            .await?;
+
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -91,6 +93,8 @@ DROP TABLE IF EXISTS index_product_attribute_values;
 DROP TABLE IF EXISTS index_product_categories;
 "#,
             )
-            .await
+            .await?;
+
+        Ok(())
     }
 }

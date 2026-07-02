@@ -45,7 +45,9 @@ async fn list_schemas(
     let rows = flex::list_schemas(&service, tenant.id)
         .await
         .map_err(map_flex_rest_error)?;
-    Ok(Json(rows.into_iter().map(FlexSchemaResponse::from).collect()))
+    Ok(Json(
+        rows.into_iter().map(FlexSchemaResponse::from).collect(),
+    ))
 }
 
 #[utoipa::path(
@@ -206,7 +208,9 @@ async fn list_entries(
     let rows = flex::list_entries(&service, tenant.id, schema_id)
         .await
         .map_err(map_flex_rest_error)?;
-    Ok(Json(rows.into_iter().map(FlexEntryResponse::from).collect()))
+    Ok(Json(
+        rows.into_iter().map(FlexEntryResponse::from).collect(),
+    ))
 }
 
 #[utoipa::path(

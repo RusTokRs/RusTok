@@ -508,8 +508,10 @@ mod tests {
         assert_eq!(login.email, "admin@example.com");
         assert_eq!(login.password, " password with spaces ");
 
-        let generated_password =
-            format!("pw-{}", Utc::now().timestamp_nanos_opt().unwrap_or_default());
+        let generated_password = format!(
+            "pw-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        );
         let register = prepare_register_request(
             " demo ".into(),
             " user@example.com ".into(),

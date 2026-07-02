@@ -1624,25 +1624,43 @@ function PlaygroundPanel(props: {
           <input
             value={props.categoryIds}
             onChange={(event) => props.onCategoryIdsChange(event.target.value)}
-            list={props.categoryOptions?.length ? 'search-admin-category-options' : undefined}
+            list={
+              props.categoryOptions?.length
+                ? 'search-admin-category-options'
+                : undefined
+            }
             className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
           />
-          <CatalogOptionDatalist id='search-admin-category-options' options={props.categoryOptions} />
+          <CatalogOptionDatalist
+            id='search-admin-category-options'
+            options={props.categoryOptions}
+          />
         </Field>
         <div className='space-y-3 border border-zinc-200 bg-zinc-50 p-3'>
           <Field label='Attribute code'>
             <input
               value={props.attributeCode}
-              onChange={(event) => props.onAttributeCodeChange(event.target.value)}
-              list={props.attributeOptions?.length ? 'search-admin-attribute-options' : undefined}
+              onChange={(event) =>
+                props.onAttributeCodeChange(event.target.value)
+              }
+              list={
+                props.attributeOptions?.length
+                  ? 'search-admin-attribute-options'
+                  : undefined
+              }
               className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
             />
-            <CatalogOptionDatalist id='search-admin-attribute-options' options={props.attributeOptions} />
+            <CatalogOptionDatalist
+              id='search-admin-attribute-options'
+              options={props.attributeOptions}
+            />
           </Field>
           <Field label='Attribute values (CSV)'>
             <input
               value={props.attributeValues}
-              onChange={(event) => props.onAttributeValuesChange(event.target.value)}
+              onChange={(event) =>
+                props.onAttributeValuesChange(event.target.value)
+              }
               className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
             />
           </Field>
@@ -1650,14 +1668,18 @@ function PlaygroundPanel(props: {
             <Field label='Minimum'>
               <input
                 value={props.attributeMin}
-                onChange={(event) => props.onAttributeMinChange(event.target.value)}
+                onChange={(event) =>
+                  props.onAttributeMinChange(event.target.value)
+                }
                 className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
               />
             </Field>
             <Field label='Maximum'>
               <input
                 value={props.attributeMax}
-                onChange={(event) => props.onAttributeMaxChange(event.target.value)}
+                onChange={(event) =>
+                  props.onAttributeMaxChange(event.target.value)
+                }
                 className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
               />
             </Field>
@@ -1666,8 +1688,14 @@ function PlaygroundPanel(props: {
         <Field label='Sort attribute code'>
           <input
             value={props.sortAttributeCode}
-            onChange={(event) => props.onSortAttributeCodeChange(event.target.value)}
-            list={props.attributeOptions?.length ? 'search-admin-attribute-options' : undefined}
+            onChange={(event) =>
+              props.onSortAttributeCodeChange(event.target.value)
+            }
+            list={
+              props.attributeOptions?.length
+                ? 'search-admin-attribute-options'
+                : undefined
+            }
             className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
           />
         </Field>

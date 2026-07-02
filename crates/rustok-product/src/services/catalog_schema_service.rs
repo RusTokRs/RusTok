@@ -1520,11 +1520,6 @@ async fn validate_virtual_category_rule_references(
     rule: &VirtualCategoryRuleV1,
 ) -> CommerceResult<()> {
     #[derive(FromQueryResult)]
-    struct ReferenceRow {
-        id: Uuid,
-    }
-
-    #[derive(FromQueryResult)]
     struct AttributeRuleDefinitionRow {
         value_type: String,
         scope: String,
@@ -1532,19 +1527,20 @@ async fn validate_virtual_category_rule_references(
     }
 
     if let Some(category_id) = rule.primary_category_subtree_id {
-        let category = ReferenceRow::find_by_statement(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            SELECT id
-            FROM catalog_categories
-            WHERE tenant_id = $1 AND id = $2 AND kind = 'structural'
-              AND is_active = TRUE AND deleted_at IS NULL
-            "#,
-            vec![tenant_id.into(), category_id.into()],
-        ))
-        .one(txn)
-        .await?;
-        if category.is_none() {
+        let category_exists = txn
+            .query_one(Statement::from_sql_and_values(
+                txn.get_database_backend(),
+                r#"
+                SELECT 1
+                FROM catalog_categories
+                WHERE tenant_id = $1 AND id = $2 AND kind = 'structural'
+                  AND is_active = TRUE AND deleted_at IS NULL
+                "#,
+                vec![tenant_id.into(), category_id.into()],
+            ))
+            .await?
+            .is_some();
+        if !category_exists {
             return Err(CommerceError::Validation(format!(
                 "virtual category subtree {} is not an active structural category",
                 category_id

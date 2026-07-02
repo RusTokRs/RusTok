@@ -422,8 +422,9 @@ fn flex_graphql_surface_is_owned_by_flex_crate() {
 #[test]
 fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
     let repo = repo_root();
-    let server_controller = std::fs::read_to_string(repo.join("apps/server/src/controllers/flex.rs"))
-        .expect("server Flex REST controller should read");
+    let server_controller =
+        std::fs::read_to_string(repo.join("apps/server/src/controllers/flex.rs"))
+            .expect("server Flex REST controller should read");
 
     for forbidden in [
         "pub struct CreateFlexSchemaRequest",
@@ -464,9 +465,8 @@ fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
         );
     }
 
-    let swagger =
-        std::fs::read_to_string(repo.join("apps/server/src/controllers/swagger.rs"))
-            .expect("server swagger controller should be readable");
+    let swagger = std::fs::read_to_string(repo.join("apps/server/src/controllers/swagger.rs"))
+        .expect("server swagger controller should be readable");
     assert!(swagger.contains("flex::rest::CreateFlexSchemaRequest"));
     assert!(swagger.contains("flex::rest::FlexSchemaResponse"));
     assert!(!swagger.contains("crate::controllers::flex::FlexSchemaResponse"));
