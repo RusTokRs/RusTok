@@ -45,7 +45,7 @@ impl FlexGraphqlRuntime {
     }
 }
 
-pub(crate) fn runtime(ctx: &Context<'_>) -> Result<&FlexGraphqlRuntime> {
+pub(crate) fn runtime<'ctx>(ctx: &'ctx Context<'_>) -> Result<&'ctx FlexGraphqlRuntime> {
     ctx.data::<FlexGraphqlRuntime>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error(
             "FlexGraphqlRuntime is not registered; initialize the Flex host adapter",

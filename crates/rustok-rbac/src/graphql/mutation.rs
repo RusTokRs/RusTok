@@ -36,7 +36,7 @@ impl RbacMutation {
             ));
         }
 
-        let user_role = input.role.into();
+        let user_role: rustok_core::UserRole = input.role.into();
         let role = user_role.to_string();
         let writer = ctx.data::<RbacGraphqlRoleWriterHandle>()?;
 

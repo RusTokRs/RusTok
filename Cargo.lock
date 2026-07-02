@@ -3542,6 +3542,7 @@ version = "0.1.0"
 dependencies = [
  "async-graphql",
  "async-trait",
+ "chrono",
  "regex",
  "rustok-api",
  "rustok-core",

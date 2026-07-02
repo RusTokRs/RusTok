@@ -80,7 +80,7 @@ pub struct McpClientRecord {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct McpTokenRecord {
     pub id: Uuid,
     pub client_id: Uuid,

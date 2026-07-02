@@ -268,7 +268,7 @@ impl SearchMutationRoot {
     ) -> Result<TriggerSearchRebuildPayload> {
         ensure_settings_manage_permission(ctx).await?;
 
-        let db = ctx.data::<DatabaseConnection>()?;
+        let _db = ctx.data::<DatabaseConnection>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
