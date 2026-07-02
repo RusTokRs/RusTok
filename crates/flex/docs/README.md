@@ -2,7 +2,7 @@
 
 > **Статус attached mode:** Phases 0–4 реализованы. Phase 4.5 (вынос в `crates/flex`) — в процессе.
 > **Статус standalone mode:** Phase 5 — в активной реализации (transport-agnostic контракты, persistence/service layer, GraphQL и REST surfaces уже live; rollout/governance contract уже зафиксирован, полный integration verification остаётся отдельным verification debt).
-> **Статус module-system wiring:** Phase 4.6 теперь живая: `flex` занесён в `modules.toml` как `capability_only` ghost module с `rustok-module.toml` и runtime `FlexModule`, но transport-слой остаётся в `apps/server`.
+> **Статус module-system wiring:** Phase 4.6 теперь живая: `flex` занесён в `modules.toml` как `capability_only` ghost module с `rustok-module.toml` и runtime `FlexModule`; GraphQL roots/runtime/DTO и REST contract DTO принадлежат `crates/flex`, а `apps/server` остаётся HTTP/persistence/composition adapter.
 > Нереализованное → [`implementation-plan.md`](./implementation-plan.md)
 
 > **Важно по многоязычности:** для `flex` уже действует общий platform contract. `FieldDefinition.is_localized` является live-частью DB/runtime контракта; standalone schema copy (`name`, `description`) хранится в `flex_schema_translations`; standalone entry values теперь разделены на `flex_entries.data` (shared/non-localized payload) и `flex_entry_localized_values` (locale-aware payload per `entry_id + locale`); attached-mode locale-aware values имеют canonical storage-path в `flex_attached_localized_values`, а shared entity/helpers для этого path живут в `crates/flex`. Live write/read path уже проведён для `user`, `product`, `order` и `topic`; для `topic` donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values идут в parallel attached rows по тому же контракту.
@@ -18,6 +18,7 @@
 
 - transport-agnostic field definition contracts и registry/orchestration helpers;
 - owner-owned attached field-definition и standalone GraphQL query/mutation roots, runtime handle и input/output DTO без server dependencies;
+- owner-owned standalone REST request/response DTO и view mapping в `flex::rest`; server controller остаётся только Loco/Axum adapter;
 - multilingual storage/runtime contract для attached и standalone Flex payload;
 - capability-only module metadata для `modules.toml` / `rustok-module.toml` / `ModuleRegistry`;
 - правила, по которым donor persistence ownership остаётся у модулей-потребителей.
@@ -26,7 +27,7 @@
 
 - `rustok-core::field_schema` поставляет базовые типы, validation rules и migration helpers;
 - `crates/flex` держит shared attached/standalone contracts и runtime metadata через `FlexModule`;
-- `apps/server` остаётся adapter/composition-слоем для SeaORM, REST и bootstrap; attached field-definition и standalone GraphQL roots/runtime/DTO/RBAC/error/event mapping живут в `flex::graphql`, roots подключаются через `[provides.graphql]`, а host передаёт concrete standalone service, registry/cache и DB handle через `FlexGraphqlRuntime`;
+- `apps/server` остаётся adapter/composition-слоем для SeaORM, REST handler и bootstrap; attached field-definition и standalone GraphQL roots/runtime/DTO/RBAC/error/event mapping живут в `flex::graphql`, REST request/response DTO и view mapping живут в `flex::rest`, roots подключаются через `[provides.graphql]`, а host передаёт concrete standalone service, registry/cache и DB handle через `FlexGraphqlRuntime`;
 - donor write/read paths сейчас живые для `user`, `product`, `order` и `topic`.
 
 ## Проверка
@@ -51,8 +52,8 @@
 Текущая архитектура разделена на три слоя:
 
 - `rustok-core::field_schema` хранит базовые типы, валидаторы и migration helpers для attached mode;
-- `crates/flex` хранит transport-agnostic orchestration, registry, standalone contracts и attached/standalone GraphQL roots/runtime/DTO;
-- `apps/server` держит adapter/wiring слой: SeaORM, REST, cache/bootstrap и schema runtime registration. Owner roots входят через manifest codegen; concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter создаются/передаются только в composition root через `FlexGraphqlRuntime`.
+- `crates/flex` хранит transport-agnostic orchestration, registry, standalone contracts, attached/standalone GraphQL roots/runtime/DTO и REST contract DTO;
+- `apps/server` держит adapter/wiring слой: SeaORM, REST handler, cache/bootstrap и schema runtime registration. Owner roots входят через manifest codegen; concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter создаются/передаются только в composition root через `FlexGraphqlRuntime`.
 
 Attached mode считается рабочим production contract. Standalone mode уже имеет live GraphQL и REST API surfaces в `apps/server`; rollout/governance policy для этого surface теперь тоже зафиксирован, а незакрытым остаётся именно полный integration verification.
 
@@ -531,11 +532,11 @@ pub enum FlexError {
 - Orchestration helpers: `list/find/create/update/delete` для schemas и entries
 - SeaORM adapter `FlexStandaloneSeaOrmService`
 - GraphQL queries/mutations в `crates/flex/src/graphql` для schemas и entries с shared `AuthContext` / `TenantContext` и отдельными `flex_schemas:*` / `flex_entries:*` permission gates
-- REST endpoints в `apps/server`: `/api/v1/flex/schemas*` и `/api/v1/flex/schemas/{schema_id}/entries*` с теми же tenant-scoped RBAC gates
+- REST endpoints в `apps/server`: `/api/v1/flex/schemas*` и `/api/v1/flex/schemas/{schema_id}/entries*` с теми же tenant-scoped RBAC gates; request/response DTO и view mapping берутся из `flex::rest`
 
 Для standalone surface уже действует live rollout/governance contract:
 
-- attached field-definition и standalone GraphQL transport принадлежат `crates/flex`, roots подключаются через manifest codegen, а server регистрирует только runtime и concrete persistence/registry/cache adapters; REST остаётся server-owned adapter layer;
+- attached field-definition и standalone GraphQL transport принадлежат `crates/flex`, roots подключаются через manifest codegen, REST contract DTO принадлежат `flex::rest`, а server регистрирует только runtime, concrete persistence/registry/cache adapters и Loco/Axum REST handler;
 - `flex` зарегистрирован в `modules.toml` как `capability_only` ghost module с `rustok-module.toml` и runtime `FlexModule`;
 - capability wiring проверяется через `cargo xtask validate-manifest` и `cargo xtask module validate flex`;
 - multilingual DB/runtime drift проверяется через `node scripts/verify/verify-flex-multilingual-contract.mjs`;

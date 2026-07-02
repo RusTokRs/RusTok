@@ -8,10 +8,10 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_no_compile_verification_handoff
-- Last checkpoint: Attached field-definition и standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping и DTO перенесены в `flex::graphql`; aggregate roots `FlexQuery` / `FlexMutation` объявлены через `[provides.graphql]` и входят в generated host composition, server регистрирует только `FlexGraphqlRuntime` с concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter, а source-level boundary guard запрещает возврат `apps/server/src/graphql/flex`.
-- Next step: Убрать оставшиеся Flex transport artifacts из server за пределами REST/SeaORM/bootstrap adapter layer; после разрешения компиляций выполнить узкие Flex tests и зафиксировать evidence.
+- Last checkpoint: Attached field-definition и standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping и DTO перенесены в `flex::graphql`; standalone REST request/response DTO и view mapping перенесены в `flex::rest`; aggregate roots `FlexQuery` / `FlexMutation` объявлены через `[provides.graphql]` и входят в generated host composition, server регистрирует только `FlexGraphqlRuntime` с concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter, а source-level boundary guards запрещают возврат `apps/server/src/graphql/flex` и server-owned Flex REST DTO.
+- Next step: Убрать оставшиеся Flex transport artifacts из server за пределами Loco/Axum REST handler, SeaORM/bootstrap adapter layer; после разрешения компиляций выполнить узкие Flex tests и зафиксировать evidence.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Flex GraphQL is owner-owned and consumes shared `rustok_api::AuthContext` / `TenantContext`, `rustok_core::EventBus`, and host-provided `FlexGraphqlRuntime`. Server Flex responsibilities are now REST, SeaORM persistence adapters, registry/cache/bootstrap wiring and schema composition data registration. Verify owner root composition and runtime injection with targeted Rust tests once compilation/test execution is allowed.
+- Hand-off notes for next agent: No compilation was run by explicit request. Flex GraphQL is owner-owned and consumes shared `rustok_api::AuthContext` / `TenantContext`, `rustok_core::EventBus`, and host-provided `FlexGraphqlRuntime`. Flex REST DTO ownership is now in `flex::rest`; server Flex responsibilities are now Loco/Axum REST handler extraction/routing, SeaORM persistence adapters, registry/cache/bootstrap wiring and schema composition data registration. Verify owner root composition and runtime injection with targeted Rust tests once compilation/test execution is allowed.
 - Last updated at (UTC): 2026-07-02T00:00:00Z
 
 ## Область работ
@@ -30,7 +30,7 @@
 
 - UI surfaces: none.
 - FFA: `not_started` — module-owned UI для capability не заявлен.
-- FBA: `in_progress` — attached field-definition и standalone GraphQL roots/runtime/DTO принадлежат `flex::graphql`, roots подключаются manifest codegen и зависят от host-composed `FlexGraphqlRuntime`; server остаётся adapter/composition layer для REST, SeaORM persistence, registry/cache/bootstrap wiring и DB/runtime injection.
+- FBA: `in_progress` — attached field-definition и standalone GraphQL roots/runtime/DTO принадлежат `flex::graphql`, standalone REST DTO принадлежат `flex::rest`, roots подключаются manifest codegen и зависят от host-composed `FlexGraphqlRuntime`; server остаётся adapter/composition layer для Loco/Axum REST handler, SeaORM persistence, registry/cache/bootstrap wiring и DB/runtime injection.
 - Structural shape: `no_ui_boundary`.
 
 ## Текущий статус
@@ -184,9 +184,9 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 - [x] Зафиксировать в manifest и docs семантику ghost module
   - `flex` расширяет donor modules custom contracts.
   - Данные attached-mode остаются в donor tables и donor write-path.
-  - `FlexModule` публикует capability/runtime metadata и RBAC surface; attached field-definition и standalone GraphQL являются owner-owned, REST пока остаётся server adapter-слоем.
+  - `FlexModule` публикует capability/runtime metadata и RBAC surface; attached field-definition и standalone GraphQL являются owner-owned, REST DTO contract тоже owner-owned в `flex::rest`, а server REST остаётся handler adapter-слоем.
 - [x] Определить policy для runtime surfaces
-  - Attached field-definition и standalone GraphQL owner-owned в `crates/flex` и объявлены через `[provides.graphql]`; REST остаётся live server adapter, а manifest не приписывает capability ownership donor persistence.
+  - Attached field-definition и standalone GraphQL owner-owned в `crates/flex` и объявлены через `[provides.graphql]`; REST request/response DTO owner-owned в `flex::rest`, live server adapter только монтирует Loco/Axum routes, а manifest не приписывает capability ownership donor persistence.
   - Capability-only server feature `mod-flex` нужен для registry/codegen wiring; сам crate при этом может оставаться always-linked support dependency сервера.
 - [~] Прогнать manifest validation flow
   - `cargo xtask validate-manifest` / `cargo xtask module validate flex` стали частью acceptance path для `flex` и проходят на текущем workspace state
@@ -282,7 +282,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - read/write service path уже мерджит parallel localized rows обратно в effective entry payload
   - cleanup/backfill вынесен в follow-up migrations; runtime читает shared payload плюс parallel localized rows
 - [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; `crates/flex` даёт transport-agnostic envelope/orchestration helpers и owner GraphQL публикует envelopes через shared `EventBus`, REST adapter публикует их из server)*
-- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server`, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates)*
+- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server` как Loco/Axum handler adapter, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates; request/response DTO и view mapping owner-owned в `flex::rest`)*
 - [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(owner-owned в `crates/flex/src/graphql`, подключаются через manifest-generated host schema, tenant-scoped и используют отдельные `flex_schemas:*` / `flex_entries:*` permission gates)*
 - [x] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
   - Typed permissions есть в `rustok-core`
@@ -297,7 +297,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 - [x] Guardrail: max relation depth = 1 (no recursive populate)
   - `crates/flex::validate_create_entry_command()` теперь явно запрещает `entity_type = "flex_entry"`, так что standalone `FlexEntry -> FlexEntry` цепочки режутся до adapter/service layer и одинаково работают для GraphQL и REST.
 - [x] Решить publish policy для standalone surface через ghost-module manifest
-  - Standalone surface остаётся server-owned adapter layer.
+  - Standalone REST handler остаётся server-owned adapter layer, но REST DTO contract и view mapping живут в `flex::rest`.
   - `flex` публикует capability/runtime metadata через `rustok-module.toml`, `modules.toml` и `FlexModule`, не забирая ownership transport surface.
   - Acceptance path: `cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`.
 - [ ] Тесты: unit + integration

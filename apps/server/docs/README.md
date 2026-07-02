@@ -147,6 +147,8 @@ Shared foundation / support crates:
 - manifest-driven композицию owner-owned `flex::graphql::FlexQuery` / `flex::graphql::FlexMutation` и
   регистрацию concrete persistence adapter в `FlexGraphqlRuntime`; standalone Flex
   и attached field-definition resolver/DTO/error/RBAC/event mapping в `apps/server` не размещается;
+- Loco/Axum REST handler для standalone Flex, который использует owner-owned `flex::rest`
+  request/response DTO и view mapping; server не владеет Flex REST contract types;
 - bootstrap общего module-owned event runtime через `ModuleRegistry` и `EventDispatcher`;
 - health/runtime guardrails, build/release orchestration и operator control-plane endpoints;
 - installer HTTP/CLI adapters поверх `rustok-installer`, install locks и

@@ -65,6 +65,8 @@ pub struct ProductDetail {
     pub product_type: Option<String>,
     #[serde(rename = "shippingProfileSlug")]
     pub shipping_profile_slug: Option<String>,
+    #[serde(rename = "primaryCategoryId")]
+    pub primary_category_id: Option<String>,
     pub tags: Vec<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,

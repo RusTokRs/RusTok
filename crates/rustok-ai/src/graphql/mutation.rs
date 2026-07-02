@@ -297,7 +297,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
-        let db = ctx.data::<DatabaseConnection>()?;
+        let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::start_chat_session(
             app_ctx,
@@ -331,7 +331,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
-        let db = ctx.data::<DatabaseConnection>()?;
+        let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::send_chat_message(
             app_ctx,
@@ -356,7 +356,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_approval_resolve(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
-        let db = ctx.data::<DatabaseConnection>()?;
+        let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::resume_approval(
             app_ctx,
@@ -394,7 +394,7 @@ impl AiMutation {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
         let app_ctx = ctx.data::<AppContext>()?;
-        let db = ctx.data::<DatabaseConnection>()?;
+        let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let task_input_json = serde_json::from_str(&input.task_input_json)
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;

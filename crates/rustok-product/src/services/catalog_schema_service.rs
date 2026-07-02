@@ -1132,10 +1132,10 @@ impl ProductCatalogSchemaService {
             return Ok(());
         }
         let missing = load_attribute_codes(&self.db, tenant_id, &required_attribute_ids).await?;
-        return Err(CommerceError::Validation(format!(
+        Err(CommerceError::Validation(format!(
             "required product attributes are missing: {}",
             missing.join(", ")
-        )));
+        )))
     }
 
     pub async fn save_product_attribute_values(

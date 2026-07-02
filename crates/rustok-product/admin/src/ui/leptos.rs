@@ -146,7 +146,7 @@ fn TypedProductAttributeField(
             <span class="flex items-center gap-2 font-medium">
                 {attribute.label}
                 <Show when=move || attribute.is_required>
-                    <span class="text-xs font-normal text-destructive">{required_label}</span>
+                    <span class="text-xs font-normal text-destructive">{required_label.clone()}</span>
                 </Show>
             </span>
             {input}
@@ -962,7 +962,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                 })
                                                 .collect_view()
                                         })
-                                        .unwrap_or_else(|| view! { <></> }.into_view())
+                                        .unwrap_or_default()
                                     }
                                 </select>
                             </div>
@@ -1014,7 +1014,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                         </div>
                                                     </section>
                                                 }).collect_view()}
-                                                <Show when=move || detached_count > 0>
+                                                <Show when=move || { detached_count > 0 }>
                                                     <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
                                                         <div class="flex flex-wrap items-center justify-between gap-3">
                                                             <div>
@@ -1449,6 +1449,7 @@ fn mutate_delete(
     set_vendor: WriteSignal<String>,
     set_product_type: WriteSignal<String>,
     set_shipping_profile_slug: WriteSignal<String>,
+    set_primary_category_id: WriteSignal<String>,
     set_sku: WriteSignal<String>,
     set_barcode: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
@@ -1507,6 +1508,7 @@ fn mutate_delete(
                 set_vendor,
                 set_product_type,
                 set_shipping_profile_slug,
+                set_primary_category_id,
                 set_sku,
                 set_barcode,
                 set_currency_code,
