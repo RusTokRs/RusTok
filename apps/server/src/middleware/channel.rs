@@ -5,18 +5,16 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use loco_rs::app::AppContext;
 use moka::future::Cache;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::common::{
-    extract_effective_host, peer_ip_from_extensions, RustokSettings, SharedRustokSettings,
-};
+use crate::common::{extract_effective_host, peer_ip_from_extensions, RustokSettings};
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::{
     context::AuthContextExtension, request::ResolvedRequestLocale, ChannelResolutionOutcome,
     ChannelResolutionStage, ChannelResolutionTraceStep,
@@ -79,18 +77,18 @@ impl ChannelResolutionCache {
     }
 }
 
-fn channel_cache(ctx: &AppContext) -> Arc<ChannelResolutionCache> {
-    if let Some(cache) = ctx.shared_store.get::<Arc<ChannelResolutionCache>>() {
+fn channel_cache(ctx: &ServerRuntimeContext) -> Arc<ChannelResolutionCache> {
+    if let Some(cache) = ctx.shared_get::<Arc<ChannelResolutionCache>>() {
         return cache;
     }
 
     let cache = Arc::new(ChannelResolutionCache::new());
-    ctx.shared_store.insert(cache.clone());
+    ctx.shared_insert(cache.clone());
     cache
 }
 
 pub async fn resolve(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, axum::http::StatusCode> {
@@ -98,12 +96,8 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     };
 
-    let shared = ctx
-        .shared_store
-        .get::<SharedRustokSettings>()
-        .ok_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    let settings: &RustokSettings = &shared.0;
-    let resolver = ChannelResolver::new(ctx.db.clone());
+    let settings = ctx.settings();
+    let resolver = ChannelResolver::new(ctx.db_clone());
     let facts = build_request_facts(
         tenant.id,
         req.headers(),
@@ -266,7 +260,7 @@ fn channel_slug_from_query(query: Option<&str>) -> Option<String> {
     })
 }
 
-pub async fn invalidate_tenant_channel_cache(ctx: &AppContext, tenant_id: Uuid) {
+pub async fn invalidate_tenant_channel_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     channel_cache(ctx).invalidate_tenant(tenant_id).await;
 }
 

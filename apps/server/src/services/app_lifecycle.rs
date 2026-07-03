@@ -5,17 +5,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use crate::common::settings::RustokSettings;
 #[cfg(feature = "mod-seo")]
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_executor::BuildExecutionService;
+#[cfg(feature = "mod-seo")]
+use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     spawn_outbox_relay_worker, EventRuntime, RelayRuntimeConfig,
 };
 use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::release_backend::ReleaseDeploymentService;
-#[cfg(feature = "mod-seo")]
-use rustok_outbox::loco::transactional_event_bus_from_context;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::SeoService;
 
@@ -187,8 +187,8 @@ pub fn apply_boot_database_fallback(config: &mut Config) -> bool {
 }
 
 pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|error| Error::Message(format!("Invalid rustok settings: {error}")))?;
+    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+    let settings = runtime_ctx.settings().clone();
     #[cfg(feature = "mod-seo")]
     let seo_bulk_worker_enabled = settings.runtime.background_workers.seo_bulk_enabled;
 
@@ -198,36 +198,33 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     }
 
     // Register graceful-shutdown handle if not already present.
-    if !ctx.shared_store.contains::<StopHandle>() {
+    if !runtime_ctx.shared_contains::<StopHandle>() {
         let (handle, _rx) = StopHandle::new();
-        ctx.shared_store.insert(handle);
+        runtime_ctx.shared_insert(handle);
     }
 
     // Obtain a stop receiver from the stored handle so workers can observe
     // the shutdown signal.  `subscribe()` creates a new independent receiver
     // from the existing sender — safe to call multiple times.
-    let stop_handle = ctx
-        .shared_store
-        .get_ref::<StopHandle>()
+    let stop_handle = runtime_ctx
+        .shared_get::<StopHandle>()
         .expect("StopHandle must be registered before spawning workers");
     let stop_rx = stop_handle.subscribe();
 
-    if ctx.shared_store.contains::<OutboxRelayWorkerHandle>() {
+    if runtime_ctx.shared_contains::<OutboxRelayWorkerHandle>() {
         // Keep going: build worker may still need to be attached.
     } else {
-        let event_runtime = ctx
-            .shared_store
-            .get::<std::sync::Arc<EventRuntime>>()
+        let event_runtime = runtime_ctx
+            .shared_get::<std::sync::Arc<EventRuntime>>()
             .ok_or_else(|| Error::Message("EventRuntime not initialized".to_string()))?;
 
         if let Some(relay_config) = event_runtime.relay_config.clone() {
-            ctx.shared_store
-                .insert(spawn_relay_worker_handle(relay_config, stop_rx.clone()));
+            runtime_ctx.shared_insert(spawn_relay_worker_handle(relay_config, stop_rx.clone()));
         }
     }
 
-    if settings.build.enabled && !ctx.shared_store.contains::<BuildWorkerHandle>() {
-        ctx.shared_store.insert(spawn_build_worker_handle(
+    if settings.build.enabled && !runtime_ctx.shared_contains::<BuildWorkerHandle>() {
+        runtime_ctx.shared_insert(spawn_build_worker_handle(
             ctx.clone(),
             settings.build,
             stop_rx.clone(),
@@ -235,9 +232,9 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     }
 
     if settings.registry.remote_executor.enabled
-        && !ctx.shared_store.contains::<RemoteExecutorReaperHandle>()
+        && !runtime_ctx.shared_contains::<RemoteExecutorReaperHandle>()
     {
-        ctx.shared_store.insert(spawn_remote_executor_reaper_handle(
+        runtime_ctx.shared_insert(spawn_remote_executor_reaper_handle(
             ctx.clone(),
             settings.registry.remote_executor.requeue_scan_interval_ms,
             stop_rx.clone(),
@@ -245,9 +242,8 @@ pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     }
 
     #[cfg(feature = "mod-seo")]
-    if seo_bulk_worker_enabled && !ctx.shared_store.contains::<SeoBulkWorkerHandle>() {
-        ctx.shared_store
-            .insert(spawn_seo_bulk_worker_handle(ctx.clone(), stop_rx.clone()));
+    if seo_bulk_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
+        runtime_ctx.shared_insert(spawn_seo_bulk_worker_handle(ctx.clone(), stop_rx.clone()));
     } else if !seo_bulk_worker_enabled {
         tracing::info!("SEO bulk worker disabled by runtime.background_workers config");
     }
@@ -323,8 +319,9 @@ async fn build_worker_loop(
     config: crate::common::settings::BuildRuntimeSettings,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let executor = BuildExecutionService::new(&ctx);
-    let release_backend = ReleaseDeploymentService::new(&ctx, config.clone());
+    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+    let executor = BuildExecutionService::new(&runtime_ctx);
+    let release_backend = ReleaseDeploymentService::new(&runtime_ctx, config.clone());
     let poll_interval = Duration::from_millis(config.poll_interval_ms);
 
     loop {
@@ -432,8 +429,9 @@ async fn remote_executor_reaper_loop(
 
 #[cfg(feature = "mod-seo")]
 async fn seo_bulk_worker_loop(ctx: AppContext, mut stop_rx: tokio::sync::watch::Receiver<bool>) {
-    let event_bus = transactional_event_bus_from_context(&ctx);
-    let runtime_extensions = module_runtime_extensions_from_ctx(&ctx);
+    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(&ctx);
+    let event_bus = transactional_event_bus_from_context(&runtime_ctx);
+    let runtime_extensions = module_runtime_extensions_from_ctx(&runtime_ctx);
     let service =
         match SeoService::from_runtime_extensions(ctx.db.clone(), event_bus, &runtime_extensions) {
             Ok(service) => service,

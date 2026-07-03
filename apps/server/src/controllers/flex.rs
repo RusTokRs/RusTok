@@ -3,7 +3,6 @@ use axum::{
     routing::get,
     Json,
 };
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use rustok_events::EventEnvelope;
 use uuid::Uuid;
@@ -20,6 +19,7 @@ use crate::extractors::{
 };
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use flex::rest::{
     CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
     FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
@@ -37,11 +37,11 @@ use flex::rest::{
     )
 )]
 async fn list_schemas(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexSchemasList(_user): RequireFlexSchemasList,
 ) -> Result<Json<Vec<FlexSchemaResponse>>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let rows = flex::list_schemas(&service, tenant.id)
         .await
         .map_err(map_flex_rest_error)?;
@@ -64,12 +64,12 @@ async fn list_schemas(
     )
 )]
 async fn get_schema(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexSchemasRead(_user): RequireFlexSchemasRead,
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<FlexSchemaResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::find_schema(&service, tenant.id, schema_id)
         .await
         .map_err(map_flex_rest_error)?
@@ -90,12 +90,12 @@ async fn get_schema(
     )
 )]
 async fn create_schema(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexSchemasCreate(user): RequireFlexSchemasCreate,
     Json(input): Json<CreateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let (row, event) = flex::create_schema_with_event(
         &service,
         tenant.id,
@@ -131,13 +131,13 @@ async fn create_schema(
     )
 )]
 async fn update_schema(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexSchemasUpdate(user): RequireFlexSchemasUpdate,
     Path(schema_id): Path<Uuid>,
     Json(input): Json<UpdateFlexSchemaRequest>,
 ) -> Result<Json<FlexSchemaResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let (row, event) = flex::update_schema_with_event(
         &service,
         tenant.id,
@@ -172,12 +172,12 @@ async fn update_schema(
     )
 )]
 async fn delete_schema(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexSchemasDelete(user): RequireFlexSchemasDelete,
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<DeleteFlexResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let event = flex::delete_schema_with_event(&service, tenant.id, Some(user.user.id), schema_id)
         .await
         .map_err(map_flex_rest_error)?;
@@ -199,12 +199,12 @@ async fn delete_schema(
     )
 )]
 async fn list_entries(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexEntriesList(_user): RequireFlexEntriesList,
     Path(schema_id): Path<Uuid>,
 ) -> Result<Json<Vec<FlexEntryResponse>>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let rows = flex::list_entries(&service, tenant.id, schema_id)
         .await
         .map_err(map_flex_rest_error)?;
@@ -230,12 +230,12 @@ async fn list_entries(
     )
 )]
 async fn get_entry(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexEntriesRead(_user): RequireFlexEntriesRead,
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<FlexEntryResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let row = flex::find_entry(&service, tenant.id, schema_id, entry_id)
         .await
         .map_err(map_flex_rest_error)?
@@ -257,13 +257,13 @@ async fn get_entry(
     )
 )]
 async fn create_entry(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexEntriesCreate(user): RequireFlexEntriesCreate,
     Path(schema_id): Path<Uuid>,
     Json(input): Json<CreateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let (row, event) = flex::create_entry_with_event(
         &service,
         tenant.id,
@@ -301,13 +301,13 @@ async fn create_entry(
     )
 )]
 async fn update_entry(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexEntriesUpdate(user): RequireFlexEntriesUpdate,
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<UpdateFlexEntryRequest>,
 ) -> Result<Json<FlexEntryResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let (row, event) = flex::update_entry_with_event(
         &service,
         tenant.id,
@@ -343,12 +343,12 @@ async fn update_entry(
     )
 )]
 async fn delete_entry(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireFlexEntriesDelete(user): RequireFlexEntriesDelete,
     Path((schema_id, entry_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<DeleteFlexResponse>> {
-    let service = FlexStandaloneSeaOrmService::new(ctx.db.clone());
+    let service = FlexStandaloneSeaOrmService::new(ctx.db_clone());
     let event =
         flex::delete_entry_with_event(&service, tenant.id, Some(user.user.id), schema_id, entry_id)
             .await
@@ -373,7 +373,7 @@ pub fn routes() -> Routes {
         )
 }
 
-fn publish_event(ctx: &AppContext, event: EventEnvelope) {
+fn publish_event(ctx: &ServerRuntimeContext, event: EventEnvelope) {
     let bus = event_bus_from_context(ctx);
     if let Err(error) = bus.publish_envelope(event) {
         tracing::warn!(error = %error, "Failed to publish flex standalone REST event");
@@ -402,13 +402,6 @@ mod tests {
     use crate::context::TenantContext;
     use crate::extractors::auth::CurrentUser;
     use crate::models::{flex_entries, flex_schemas, tenants, users};
-    use loco_rs::{
-        app::{AppContext, SharedStore},
-        cache,
-        environment::Environment,
-        storage::{self, Storage},
-        tests_cfg::config::test_config,
-    };
     use migration::Migrator;
     use rustok_api::Permission;
     use rustok_core::{
@@ -418,19 +411,13 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
     use serde_json::json;
-    use std::{collections::HashMap, sync::Arc};
+    use std::collections::HashMap;
 
-    fn test_app_context(db: sea_orm::DatabaseConnection) -> AppContext {
-        AppContext {
-            environment: Environment::Test,
+    fn test_runtime_context(db: sea_orm::DatabaseConnection) -> ServerRuntimeContext {
+        ServerRuntimeContext::with_empty_shared_store(
             db,
-            queue_provider: None,
-            config: test_config(),
-            mailer: None,
-            storage: Storage::single(storage::drivers::mem::new()).into(),
-            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-            shared_store: Arc::new(SharedStore::default()),
-        }
+            crate::common::settings::RustokSettings::default(),
+        )
     }
 
     fn tenant_context(model: &tenants::Model) -> TenantContext {
@@ -498,7 +485,7 @@ mod tests {
     #[tokio::test]
     async fn rest_handlers_roundtrip_standalone_schema_and_entry() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let ctx = test_app_context(db.clone());
+        let ctx = test_runtime_context(db.clone());
 
         let mut tenant = tenants::ActiveModel::new("Flex Tenant", "flex-rest");
         tenant.default_locale = Set("ru".to_string());
@@ -659,7 +646,7 @@ mod tests {
     #[tokio::test]
     async fn create_schema_rejects_invalid_fields_config_payload() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let ctx = test_app_context(db.clone());
+        let ctx = test_runtime_context(db.clone());
         let tenant = tenants::ActiveModel::new("Flex Tenant", "flex-rest-invalid")
             .insert(&db)
             .await

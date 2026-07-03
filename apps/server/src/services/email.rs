@@ -9,12 +9,12 @@ use std::sync::Arc;
 pub struct SharedSmtpEmailService(pub Arc<rustok_email::SmtpEmailSender>);
 
 use async_trait::async_trait;
-use loco_rs::app::AppContext;
 use loco_rs::mailer::{Email, EmailSender};
 use rustok_email::{EmailError, RenderedEmail};
 
-use crate::common::settings::{EmailProvider, RustokSettings};
+use crate::common::settings::EmailProvider;
 use crate::error::{Error, Result};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 static EMAIL_SEND_SUCCESS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static EMAIL_SEND_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -78,12 +78,9 @@ pub fn email_err(err: EmailError) -> Error {
 }
 
 /// Build password reset URL from settings + token.
-pub fn password_reset_url(ctx: &AppContext, token: &str) -> Result<String> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|e| Error::Message(e.to_string()))?;
-
+pub fn password_reset_url(ctx: &ServerRuntimeContext, token: &str) -> Result<String> {
     let config = rustok_email::EmailConfig {
-        reset_base_url: settings.email.reset_base_url.clone(),
+        reset_base_url: ctx.settings().email.reset_base_url.clone(),
         ..Default::default()
     };
 
@@ -373,7 +370,7 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
-/// Build a localized built-in auth email sender from `AppContext`.
+/// Build a localized built-in auth email sender from server runtime context.
 ///
 /// `locale` is used to render localized built-in auth templates for both `loco`
 /// and `smtp` providers. The underlying SMTP transport is cached in
@@ -384,34 +381,34 @@ impl BuiltInAuthEmailSender for TemplatedSmtpMailerAdapter {
 /// - `smtp` (default) → localized SMTP adapter over cached `SmtpEmailSender`
 /// - `none` → `EmailService::Disabled`
 pub fn email_service_from_ctx(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
+    mailer: Option<EmailSender>,
     locale: &str,
 ) -> Result<Box<dyn BuiltInAuthEmailSender>> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|e| Error::Message(e.to_string()))?;
+    let settings = ctx.settings();
 
     match settings.email.provider {
         EmailProvider::None => Ok(Box::new(DisabledBuiltInAuthEmailSender)),
 
         EmailProvider::Loco => {
             // Cannot cache: LocoMailerAdapter carries a per-request locale.
-            let Some(mailer) = ctx.mailer.clone() else {
+            let Some(mailer) = mailer else {
                 tracing::warn!(
-                    "email.provider = \"loco\" but ctx.mailer is not initialized; \
+                    "email.provider = \"loco\" but mailer is not initialized; \
                      falling back to disabled"
                 );
                 return Ok(Box::new(DisabledBuiltInAuthEmailSender));
             };
             Ok(Box::new(LocoMailerAdapter::new(
                 mailer,
-                settings.email.from,
+                settings.email.from.clone(),
                 locale,
             )))
         }
 
         EmailProvider::Smtp => {
             // Return cached transport if already initialised (connection pool reuse).
-            if let Some(shared) = ctx.shared_store.get::<SharedSmtpEmailService>() {
+            if let Some(shared) = ctx.shared_get::<SharedSmtpEmailService>() {
                 return Ok(Box::new(TemplatedSmtpMailerAdapter::new(
                     shared.0.clone(),
                     locale,
@@ -421,21 +418,20 @@ pub fn email_service_from_ctx(
             let config = rustok_email::EmailConfig {
                 enabled: settings.email.enabled,
                 smtp: rustok_email::SmtpConfig {
-                    host: settings.email.smtp.host,
+                    host: settings.email.smtp.host.clone(),
                     port: settings.email.smtp.port,
-                    username: settings.email.smtp.username,
-                    password: settings.email.smtp.password,
+                    username: settings.email.smtp.username.clone(),
+                    password: settings.email.smtp.password.clone(),
                 },
-                from: settings.email.from,
-                reset_base_url: settings.email.reset_base_url,
+                from: settings.email.from.clone(),
+                reset_base_url: settings.email.reset_base_url.clone(),
             };
             let service = EmailService::from_config(&config).map_err(email_err)?;
             let EmailService::Smtp(sender) = service else {
                 return Ok(Box::new(DisabledBuiltInAuthEmailSender));
             };
             let sender = Arc::new(*sender);
-            ctx.shared_store
-                .insert(SharedSmtpEmailService(sender.clone()));
+            ctx.shared_insert(SharedSmtpEmailService(sender.clone()));
             Ok(Box::new(TemplatedSmtpMailerAdapter::new(sender, locale)))
         }
     }

@@ -4,9 +4,9 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use loco_rs::{app::AppContext, controller::Routes};
+use loco_rs::controller::Routes;
 
-use crate::common::settings::{EmailProvider, EventTransportKind, RustokSettings};
+use crate::common::settings::{EmailProvider, EventTransportKind};
 use crate::error::Result;
 use crate::services::app_lifecycle::{
     BuildWorkerHandle, OutboxRelayWorkerHandle, RemoteExecutorReaperHandle,
@@ -39,6 +39,7 @@ use crate::services::rbac_service::{RbacResolverMetricsSnapshot, RbacService};
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot,
 };
+use crate::services::server_runtime_context::{ServerEmailRuntime, ServerRuntimeContext};
 use rustok_cache::CacheService;
 use rustok_telemetry::metrics::update_queue_depth;
 use tracing::warn;
@@ -57,7 +58,10 @@ static RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
         (status = 503, description = "Metrics collection disabled")
     )
 )]
-pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
+pub async fn metrics(
+    State(ctx): State<ServerRuntimeContext>,
+    State(email_runtime): State<ServerEmailRuntime>,
+) -> Result<Response> {
     match rustok_telemetry::metrics_handle() {
         Some(handle) => {
             sync_rate_limit_metrics(&ctx).await;
@@ -69,7 +73,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             payload.push_str(&render_tenant_locale_cache_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
             payload.push_str(&render_runtime_worker_metrics(&ctx));
-            payload.push_str(&render_email_backend_metrics(&ctx));
+            payload.push_str(&render_email_backend_metrics(&ctx, &email_runtime));
             payload.push_str(&render_auth_lifecycle_metrics());
             payload.push_str(&render_rbac_metrics(&ctx).await);
             payload.push_str(&render_search_metrics(&ctx).await);
@@ -90,28 +94,28 @@ pub fn routes() -> Routes {
     Routes::new().prefix("metrics").add("/", get(metrics))
 }
 
-async fn sync_rate_limit_metrics(ctx: &AppContext) {
-    if let Some(shared) = ctx.shared_store.get::<SharedApiRateLimiter>() {
+async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
+    if let Some(shared) = ctx.shared_get::<SharedApiRateLimiter>() {
         if let Err(error) = shared.0.sync_runtime_metrics().await {
             warn!(error = %error, "failed to sync API rate-limit metrics");
         }
     }
 
-    if let Some(shared) = ctx.shared_store.get::<SharedAuthRateLimiter>() {
+    if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>() {
         if let Err(error) = shared.0.sync_runtime_metrics().await {
             warn!(error = %error, "failed to sync auth rate-limit metrics");
         }
     }
 
-    if let Some(shared) = ctx.shared_store.get::<SharedOAuthRateLimiter>() {
+    if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>() {
         if let Err(error) = shared.0.sync_runtime_metrics().await {
             warn!(error = %error, "failed to sync oauth rate-limit metrics");
         }
     }
 }
 
-async fn render_cache_service_metrics(ctx: &AppContext) -> String {
-    match ctx.shared_store.get::<CacheService>() {
+async fn render_cache_service_metrics(ctx: &ServerRuntimeContext) -> String {
+    match ctx.shared_get::<CacheService>() {
         Some(cache) => cache.prometheus_metrics().await,
         None => String::from(
             "rustok_cache_redis_configured 0\n\
@@ -122,7 +126,7 @@ rustok_cache_in_flight_loads 0\n",
     }
 }
 
-async fn render_tenant_cache_metrics(ctx: &AppContext) -> String {
+async fn render_tenant_cache_metrics(ctx: &ServerRuntimeContext) -> String {
     format_tenant_cache_metrics(tenant_cache_stats(ctx).await)
 }
 
@@ -153,7 +157,7 @@ rustok_tenant_invalidation_listener_status {invalidation_listener_status}\n",
     )
 }
 
-async fn render_tenant_locale_cache_metrics(ctx: &AppContext) -> String {
+async fn render_tenant_locale_cache_metrics(ctx: &ServerRuntimeContext) -> String {
     format_tenant_locale_cache_metrics(tenant_locale_cache_stats(ctx).await)
 }
 
@@ -172,15 +176,15 @@ rustok_tenant_locale_cache_entries {entries}\n",
     )
 }
 
-async fn render_tenant_activity_metrics(ctx: &AppContext) -> String {
+async fn render_tenant_activity_metrics(ctx: &ServerRuntimeContext) -> String {
     let active_total = TenantsEntity::find()
         .filter(TenantsColumn::IsActive.eq(true))
-        .count(&ctx.db)
+        .count(ctx.db())
         .await
         .unwrap_or(0);
     let inactive_total = TenantsEntity::find()
         .filter(TenantsColumn::IsActive.eq(false))
-        .count(&ctx.db)
+        .count(ctx.db())
         .await
         .unwrap_or(0);
 
@@ -196,7 +200,7 @@ rustok_tenant_total {tenant_total}\n",
     )
 }
 
-async fn render_runtime_guardrail_metrics(ctx: &AppContext) -> String {
+async fn render_runtime_guardrail_metrics(ctx: &ServerRuntimeContext) -> String {
     let snapshot = collect_runtime_guardrail_snapshot(ctx).await;
     format_runtime_guardrail_metrics(&snapshot)
 }
@@ -300,23 +304,23 @@ rustok_runtime_guardrail_event_backpressure_critical_total {critical_count}\n",
     payload
 }
 
-async fn render_outbox_metrics(ctx: &AppContext) -> String {
+async fn render_outbox_metrics(ctx: &ServerRuntimeContext) -> String {
     let backlog_size = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
-        .count(&ctx.db)
+        .count(ctx.db())
         .await
         .unwrap_or(0);
 
     let dlq_total = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Failed))
-        .count(&ctx.db)
+        .count(ctx.db())
         .await
         .unwrap_or(0);
 
     let retries_total = ctx
-        .db
+        .db()
         .query_one(Statement::from_string(
-            ctx.db.get_database_backend(),
+            ctx.db().get_database_backend(),
             "SELECT COALESCE(SUM(retry_count), 0) AS total FROM sys_events".to_string(),
         ))
         .await
@@ -328,7 +332,7 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
     let pending_lag_seconds = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
         .order_by_asc(SysEventsColumn::CreatedAt)
-        .one(&ctx.db)
+        .one(ctx.db())
         .await
         .ok()
         .flatten()
@@ -338,8 +342,7 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
     let mut payload =
         format_outbox_metrics(backlog_size, dlq_total, retries_total, pending_lag_seconds);
     let relay_metrics = ctx
-        .shared_store
-        .get::<Arc<EventRuntime>>()
+        .shared_get::<Arc<EventRuntime>>()
         .and_then(|runtime| {
             runtime
                 .relay_config
@@ -386,42 +389,34 @@ rustok_outbox_relay_latency_samples {processed_total}\n",
     )
 }
 
-fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
+    let settings = ctx.settings();
     let relay_required = settings.events.transport == EventTransportKind::Outbox
         && ctx
-            .shared_store
-            .get::<Arc<EventRuntime>>()
+            .shared_get::<Arc<EventRuntime>>()
             .and_then(|runtime| runtime.relay_config.clone())
             .is_some();
     let stop_requested = ctx
-        .shared_store
-        .get_ref::<StopHandle>()
-        .is_some_and(|handle| handle.is_stopping());
+        .shared_map::<StopHandle, _>(StopHandle::is_stopping)
+        .unwrap_or(false);
 
     let mut payload = String::new();
     payload.push_str(&format_runtime_worker_state(
         "outbox_relay",
         relay_required,
-        ctx.shared_store
-            .get_ref::<OutboxRelayWorkerHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
         "build_executor",
         settings.build.enabled,
-        ctx.shared_store
-            .get_ref::<BuildWorkerHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::is_finished),
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_state(
         "remote_executor_reaper",
         settings.registry.remote_executor.enabled,
-        ctx.shared_store
-            .get_ref::<RemoteExecutorReaperHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
         stop_requested,
     ));
     payload.push_str(&format_runtime_worker_restart_metrics(
@@ -432,9 +427,9 @@ fn render_runtime_worker_metrics(ctx: &AppContext) -> String {
     payload.push_str(&format_runtime_worker_state(
         "seo_bulk",
         settings.runtime.background_workers.seo_bulk_enabled,
-        ctx.shared_store
-            .get_ref::<crate::services::app_lifecycle::SeoBulkWorkerHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
+            crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
+        ),
         stop_requested,
     ));
 
@@ -474,12 +469,15 @@ fn format_runtime_worker_restart_metrics(snapshot: OutboxRelaySupervisorMetricsS
     )
 }
 
-fn render_email_backend_metrics(ctx: &AppContext) -> String {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+fn render_email_backend_metrics(
+    ctx: &ServerRuntimeContext,
+    email_runtime: &ServerEmailRuntime,
+) -> String {
+    let settings = ctx.settings();
     let mut payload = format_email_backend_state(
         &settings.email.provider,
         settings.email.enabled,
-        ctx.mailer.is_some(),
+        email_runtime.mailer_initialized(),
     );
     payload.push_str(&format_email_delivery_metrics(
         email_delivery_metrics_snapshot(),
@@ -514,7 +512,7 @@ rustok_email_send_skipped_total {skipped_total}\n",
     )
 }
 
-async fn render_rbac_metrics(ctx: &AppContext) -> String {
+async fn render_rbac_metrics(ctx: &ServerRuntimeContext) -> String {
     let stats = RbacService::metrics_snapshot();
     let started_at = Instant::now();
     let consistency = match load_rbac_consistency_stats(ctx).await {
@@ -537,11 +535,11 @@ async fn render_rbac_metrics(ctx: &AppContext) -> String {
     )
 }
 
-async fn render_search_metrics(ctx: &AppContext) -> String {
-    let backend = ctx.db.get_database_backend();
+async fn render_search_metrics(ctx: &ServerRuntimeContext) -> String {
+    let backend = ctx.db().get_database_backend();
     let stmt = Statement::from_string(backend, search_metrics_snapshot_query(backend).to_string());
 
-    match ctx.db.query_one(stmt).await {
+    match ctx.db().query_one(stmt).await {
         Ok(Some(row)) => {
             let read_metric =
                 |column: &str| -> i64 { row.try_get::<i64>("", column).unwrap_or(0).max(0) };

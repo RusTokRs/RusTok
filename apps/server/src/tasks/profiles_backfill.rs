@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::models::{tenants, users};
 use crate::services::event_bus::transactional_event_bus_from_context;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[cfg(feature = "mod-customer")]
 use rustok_customer::customer;
@@ -60,8 +61,9 @@ impl Task for ProfilesBackfillTask {
             })?;
         let customer_profiles = load_customer_map(ctx, tenant.id, &user_ids).await?;
 
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
         let event_bus =
-            (!dry_run && emit_events).then(|| transactional_event_bus_from_context(ctx));
+            (!dry_run && emit_events).then(|| transactional_event_bus_from_context(&runtime_ctx));
         let mut report = ProfilesBackfillReport {
             generated_at: Utc::now().to_rfc3339(),
             tenant_id: tenant.id,

@@ -6,7 +6,6 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::Extension;
 use chrono::Utc;
-use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
 use once_cell::sync::Lazy;
@@ -38,6 +37,7 @@ use crate::services::event_transport_factory;
 use crate::services::runtime_guardrails::{
     collect_runtime_guardrail_snapshot, RuntimeGuardrailSnapshot, RuntimeGuardrailStatus,
 };
+use crate::services::server_runtime_context::{ServerEmailRuntime, ServerRuntimeContext};
 
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 3;
@@ -169,25 +169,26 @@ pub async fn live() -> Result<Response> {
     )
 )]
 pub async fn ready(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
+    State(email_runtime): State<ServerEmailRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
-    let profile = ReadinessProfile::from_settings(&settings);
+    let settings = ctx.settings();
+    let profile = ReadinessProfile::from_settings(settings);
 
     let mut checks = vec![
         run_guarded_check(
             "database",
             DependencyCriticality::Critical,
             "dependency",
-            || check_database(&ctx.db),
+            || check_database(ctx.db()),
         )
         .await,
         run_guarded_check(
             "database_schema",
             DependencyCriticality::Critical,
             "dependency",
-            || check_required_database_schema(&ctx, &settings),
+            || check_required_database_schema(&ctx, settings),
         )
         .await,
         run_guarded_check(
@@ -266,11 +267,14 @@ pub async fn ready(
         );
         checks.push(check_runtime_guardrails(&ctx).await);
         if settings.events.transport == EventTransportKind::Outbox {
-            checks.push(check_outbox_pending_lag(&ctx, &settings).await);
+            checks.push(check_outbox_pending_lag(&ctx, settings).await);
         }
-        checks.push(check_search_index_lag(&ctx, &settings).await);
-        checks.push(email_backend_check(&settings, ctx.mailer.is_some()));
-        checks.extend(check_runtime_workers(&ctx, &settings));
+        checks.push(check_search_index_lag(&ctx, settings).await);
+        checks.push(email_backend_check(
+            settings,
+            email_runtime.mailer_initialized(),
+        ));
+        checks.extend(check_runtime_workers(&ctx, settings));
 
         #[cfg(feature = "mod-media")]
         checks.push(
@@ -346,7 +350,7 @@ pub async fn ready(
         (status = 200, description = "Runtime guardrail snapshot", body = RuntimeGuardrailSnapshot)
     )
 )]
-pub async fn runtime(State(ctx): State<AppContext>) -> Result<Response> {
+pub async fn runtime(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
     let snapshot = collect_runtime_guardrail_snapshot(&ctx).await;
     format::json(snapshot)
 }
@@ -393,10 +397,10 @@ pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<R
 }
 
 #[cfg(feature = "mod-media")]
-async fn check_storage_backend(ctx: &AppContext) -> std::result::Result<(), String> {
+async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
     use rustok_storage::StorageService;
 
-    let Some(storage) = ctx.shared_store.get::<StorageService>() else {
+    let Some(storage) = ctx.shared_get::<StorageService>() else {
         return Ok(()); // not configured — skip
     };
 
@@ -423,12 +427,12 @@ async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), Stri
 }
 
 async fn check_required_database_schema(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> std::result::Result<(), String> {
     for table in required_database_schema_tables(settings) {
         let query = format!("SELECT 1 FROM {table} LIMIT 1");
-        if let Err(error) = ctx.db.execute_unprepared(&query).await {
+        if let Err(error) = ctx.db().execute_unprepared(&query).await {
             return Err(format!("required table `{table}` is unavailable: {error}"));
         }
     }
@@ -450,10 +454,10 @@ fn required_database_schema_tables(settings: &RustokSettings) -> Vec<&'static st
     required_tables
 }
 
-async fn check_cache_backend(ctx: &AppContext) -> std::result::Result<(), String> {
+async fn check_cache_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
     use rustok_cache::CacheService;
 
-    let Some(cache) = ctx.shared_store.get::<CacheService>() else {
+    let Some(cache) = ctx.shared_get::<CacheService>() else {
         return Ok(()); // not configured — skip
     };
     let report = cache.health().await;
@@ -466,7 +470,9 @@ async fn check_cache_backend(ctx: &AppContext) -> std::result::Result<(), String
     }
 }
 
-async fn check_tenant_invalidation_listener(ctx: &AppContext) -> std::result::Result<(), String> {
+async fn check_tenant_invalidation_listener(
+    ctx: &ServerRuntimeContext,
+) -> std::result::Result<(), String> {
     let snapshot = tenant_invalidation_listener_snapshot(ctx).await;
 
     match snapshot.status {
@@ -482,13 +488,12 @@ async fn check_tenant_invalidation_listener(ctx: &AppContext) -> std::result::Re
     }
 }
 
-async fn check_event_transport(ctx: &AppContext) -> std::result::Result<(), String> {
+async fn check_event_transport(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
     use rustok_core::events::EventTransport;
     use std::sync::Arc;
 
-    if let Some(runtime) = ctx
-        .shared_store
-        .get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
+    if let Some(runtime) =
+        ctx.shared_get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
     {
         if runtime.relay_fallback_active {
             return Err(
@@ -497,19 +502,21 @@ async fn check_event_transport(ctx: &AppContext) -> std::result::Result<(), Stri
         }
     }
 
-    ctx.shared_store
-        .get::<Arc<dyn EventTransport>>()
+    ctx.shared_get::<Arc<dyn EventTransport>>()
         .map(|_| ())
         .ok_or_else(|| "event transport not initialized in shared_store".to_string())
 }
 
-async fn check_outbox_pending_lag(ctx: &AppContext, settings: &RustokSettings) -> ReadinessCheck {
+async fn check_outbox_pending_lag(
+    ctx: &ServerRuntimeContext,
+    settings: &RustokSettings,
+) -> ReadinessCheck {
     let started_at = Instant::now();
     let threshold = settings.readiness.outbox_max_pending_lag_seconds as i64;
     let result = SysEventsEntity::find()
         .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
         .order_by_asc(SysEventsColumn::CreatedAt)
-        .one(&ctx.db)
+        .one(ctx.db())
         .await;
 
     let (status, reason) = match result {
@@ -543,13 +550,16 @@ async fn check_outbox_pending_lag(ctx: &AppContext, settings: &RustokSettings) -
     }
 }
 
-async fn check_search_index_lag(ctx: &AppContext, settings: &RustokSettings) -> ReadinessCheck {
+async fn check_search_index_lag(
+    ctx: &ServerRuntimeContext,
+    settings: &RustokSettings,
+) -> ReadinessCheck {
     let started_at = Instant::now();
     let threshold = settings.readiness.search_max_lag_seconds as i64;
-    let backend = ctx.db.get_database_backend();
+    let backend = ctx.db().get_database_backend();
     let stmt = Statement::from_string(backend, search_index_lag_query(backend).to_string());
 
-    let (status, reason) = match ctx.db.query_one(stmt).await {
+    let (status, reason) = match ctx.db().query_one(stmt).await {
         Ok(Some(row)) => {
             let lag_seconds = row
                 .try_get::<i64>("", "max_lag_seconds")
@@ -622,42 +632,37 @@ fn is_missing_search_relation_error(error: &sea_orm::DbErr) -> bool {
         || message.contains("relation") && message.contains("does not exist")
 }
 
-fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<ReadinessCheck> {
+fn check_runtime_workers(
+    ctx: &ServerRuntimeContext,
+    settings: &RustokSettings,
+) -> Vec<ReadinessCheck> {
     let relay_required = settings.events.transport == EventTransportKind::Outbox
         && ctx
-            .shared_store
-            .get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
+            .shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
             .and_then(|runtime| runtime.relay_config.clone())
             .is_some();
     let stop_requested = ctx
-        .shared_store
-        .get_ref::<StopHandle>()
-        .is_some_and(|handle| handle.is_stopping());
+        .shared_map::<StopHandle, _>(StopHandle::is_stopping)
+        .unwrap_or(false);
 
     let mut checks = vec![runtime_worker_check(
         "worker:outbox_relay",
         relay_required,
-        ctx.shared_store
-            .get_ref::<OutboxRelayWorkerHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<OutboxRelayWorkerHandle, _>(OutboxRelayWorkerHandle::is_finished),
         stop_requested,
     )];
 
     checks.push(runtime_worker_check(
         "worker:build_executor",
         settings.build.enabled,
-        ctx.shared_store
-            .get_ref::<BuildWorkerHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<BuildWorkerHandle, _>(BuildWorkerHandle::is_finished),
         stop_requested,
     ));
 
     checks.push(runtime_worker_check(
         "worker:remote_executor_reaper",
         settings.registry.remote_executor.enabled,
-        ctx.shared_store
-            .get_ref::<RemoteExecutorReaperHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<RemoteExecutorReaperHandle, _>(RemoteExecutorReaperHandle::is_finished),
         stop_requested,
     ));
 
@@ -665,9 +670,9 @@ fn check_runtime_workers(ctx: &AppContext, settings: &RustokSettings) -> Vec<Rea
     checks.push(runtime_worker_check(
         "worker:seo_bulk",
         settings.runtime.background_workers.seo_bulk_enabled,
-        ctx.shared_store
-            .get_ref::<crate::services::app_lifecycle::SeoBulkWorkerHandle>()
-            .map(|handle| handle.is_finished()),
+        ctx.shared_map::<crate::services::app_lifecycle::SeoBulkWorkerHandle, _>(
+            crate::services::app_lifecycle::SeoBulkWorkerHandle::is_finished,
+        ),
         stop_requested,
     ));
 
@@ -757,29 +762,26 @@ fn email_backend_check(settings: &RustokSettings, loco_mailer_initialized: bool)
 }
 
 async fn check_rate_limit_backend(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     namespace: &'static str,
 ) -> std::result::Result<(), String> {
     match namespace {
         "api" => ctx
-            .shared_store
-            .get::<SharedApiRateLimiter>()
+            .shared_get::<SharedApiRateLimiter>()
             .ok_or_else(|| "API rate limiter not initialized in shared_store".to_string())?
             .0
             .check_backend_health()
             .await
             .map_err(|error| format!("api rate-limit backend check failed: {error}")),
         "auth" => ctx
-            .shared_store
-            .get::<SharedAuthRateLimiter>()
+            .shared_get::<SharedAuthRateLimiter>()
             .ok_or_else(|| "auth rate limiter not initialized in shared_store".to_string())?
             .0
             .check_backend_health()
             .await
             .map_err(|error| format!("auth rate-limit backend check failed: {error}")),
         "oauth" => ctx
-            .shared_store
-            .get::<SharedOAuthRateLimiter>()
+            .shared_get::<SharedOAuthRateLimiter>()
             .ok_or_else(|| "oauth rate limiter not initialized in shared_store".to_string())?
             .0
             .check_backend_health()
@@ -789,7 +791,7 @@ async fn check_rate_limit_backend(
     }
 }
 
-async fn check_runtime_guardrails(ctx: &AppContext) -> ReadinessCheck {
+async fn check_runtime_guardrails(ctx: &ServerRuntimeContext) -> ReadinessCheck {
     let started_at = Instant::now();
     let snapshot = collect_runtime_guardrail_snapshot(ctx).await;
     let (criticality, status) = match snapshot.status {

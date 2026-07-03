@@ -97,21 +97,21 @@ status: verified
 | `ctx.config.cache` / Loco cache config | `rustok-cache` (`crates/rustok-cache`) | Получать `CacheService` из `ctx.shared_store.get::<CacheService>()` — он инициализируется в `bootstrap_app_runtime` | Не читать `REDIS_URL` вручную в модулях; не создавать `redis::Client` напрямую; не игнорировать `ctx.config.cache` ради самостоятельного подключения |
 | Loco Mailer (`ctx.mailer`) / SMTP | `rustok-email` + `apps/server/src/services/email.rs` | Использовать `email_service_from_ctx(ctx, locale)` — возвращает локализованный `BuiltInAuthEmailSender` для built-in auth mailers; провайдер выбирается через `settings.rustok.email.provider` | Не вызывать `ctx.mailer` напрямую в обработчиках; не создавать `AsyncSmtpTransport` вне email-сервиса; не выносить email в отдельный platform module |
 | Loco Storage abstraction | `rustok-storage` (`crates/rustok-storage`) | Получать `StorageService` из `ctx.shared_store.get::<StorageService>()`; загружать файлы через него | Не создавать adhoc upload backends в контроллерах; не добавлять параллельные storage paths мимо `rustok-storage` |
-| Loco Queue / Workers | `rustok-outbox` — не прямая замена, а самостоятельный слой для transactional event delivery. Loco Queue (Sidekiq) и Outbox решают разные задачи. | Для доменных событий с гарантией атомарности: `publish_in_tx` через `TransactionalEventBus`. Для фоновых/maintenance задач: loco Tasks. | Не дублировать event delivery-path через Loco Queue; не создавать `rustok-jobs` поверх outbox — они решают разные задачи. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md` |
+| Loco Queue / Workers | `rustok-outbox` — не прямая замена, а самостоятельный слой для transactional event delivery. Loco Queue (Sidekiq) и Outbox решают разные задачи. | Для доменных событий с гарантией атомарности: `publish_in_tx` через `TransactionalEventBus`. Для фоновых runtime workers использовать собственный lifecycle; для maintenance flows целевой слой — отдельный `rustok-ops`. | Не дублировать event delivery-path через Loco Queue; не создавать `rustok-jobs` поверх outbox — они решают разные задачи. ADR: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md` |
 | Loco Channels (WebSocket) | Кастомный Axum WebSocket в `apps/server` | Использовать существующие WS-handlers | Не использовать `loco_rs::controller::channels` — несовместимо с кастомным auth-handshake |
 
-**Что по-прежнему берётся из loco напрямую:**
-- `Hooks` trait — lifecycle приложения (`app.rs`)
-- `AppContext` — runtime context, передаётся повсюду
-- `Config` + YAML конфиги (`development.yaml`, `test.yaml`)
-- SeaORM stack — ORM, migrations, entities
-- Tasks (`cargo loco task`) — CLI/maintenance задачи (`cleanup`, `rebuild`, `db_baseline`, `media_cleanup`, `create_oauth_app`)
-- Initializers — startup hooks (telemetry)
+**Текущий статус ухода от Loco:**
+- Активный roadmap: [`docs/architecture/loco-exit-plan.md`](./architecture/loco-exit-plan.md).
+- Архитектурное решение: [`DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md`](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md).
+- Новые server-owned services не должны принимать `loco_rs::app::AppContext`; используйте `ServerRuntimeContext` или узкие typed contexts.
+- Module-owned Leptos server functions должны потреблять `rustok_api::HostRuntimeContext`, а не `AppContext`.
+- Loco `Hooks`, `AppContext`, `Config`, tasks и initializers остаются только как inventory текущего cutover, а не как целевая архитектура.
+- Maintenance/CLI flows целевого состояния идут через отдельный `rustok-ops` и module-local `cli/` adapters, не через `cargo loco task` и не через production server binary.
 
 **Loco Queue (Sidekiq/Redis) не подключён и не нужен.** Причины:
 - Фоновые воркеры запускаются как tokio-таски напрямую: outbox relay (`OutboxRelayWorkerHandle`), build worker (`BuildWorkerHandle`), index/search dispatchers, workflow cron.
 - Outbox паттерн архитектурно лучше Sidekiq для доменных событий — гарантирует атомарность.
-- Loco Tasks покрывают maintenance/CLI нужды.
+- Текущие Loco Tasks являются legacy inventory; новые maintenance flows проектируются под отдельный `rustok-ops`.
 - Для отвязки медленных операций от HTTP-запросов используется `tokio::spawn` (например, отправка email в `forgot_password`).
 - Если понадобится push-based очередь с retry — рассматривать расширение outbox relay, а не подключение Sidekiq.
 

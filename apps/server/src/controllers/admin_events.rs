@@ -5,7 +5,6 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
@@ -20,6 +19,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::extractors::rbac::RequireLogsRead;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Deserialize)]
 pub struct DlqQuery {
@@ -69,7 +69,7 @@ pub struct DlqReplayResponse {
     tag = "admin"
 )]
 pub async fn list_dlq(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     _user: RequireLogsRead,
     Query(query): Query<DlqQuery>,
 ) -> Result<Json<DlqListResponse>> {
@@ -91,14 +91,14 @@ pub async fn list_dlq(
 
     if let Some(tenant_id) = query.tenant_id {
         db_query = db_query.filter(sys_event_tenant_condition(
-            ctx.db.get_database_backend(),
+            ctx.db().get_database_backend(),
             tenant_id,
         ));
     }
 
     let query_started_at = Instant::now();
     let models = db_query
-        .all(&ctx.db)
+        .all(ctx.db())
         .await
         .map_err(|e| Error::BadRequest(format!("Failed to load DLQ events: {e}")))?;
     metrics::record_read_path_query(
@@ -152,12 +152,12 @@ pub async fn list_dlq(
     tag = "admin"
 )]
 pub async fn replay_dlq_event(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     _user: RequireLogsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DlqReplayResponse>> {
     let model = entity::Entity::find_by_id(id)
-        .one(&ctx.db)
+        .one(ctx.db())
         .await
         .map_err(|e| Error::BadRequest(format!("Failed to fetch sys_event: {e}")))?
         .ok_or_else(|| Error::NotFound)?;
@@ -178,7 +178,7 @@ pub async fn replay_dlq_event(
     active.dispatched_at = Set(None);
 
     active
-        .update(&ctx.db)
+        .update(ctx.db())
         .await
         .map_err(|e| Error::BadRequest(format!("Failed to replay sys_event: {e}")))?;
 

@@ -1,4 +1,3 @@
-use loco_rs::app::AppContext;
 use rustok_core::events::BackpressureState;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::Serialize;
@@ -10,6 +9,7 @@ use crate::middleware::rate_limit::{
 };
 use crate::services::event_bus::SharedEventBus;
 use crate::services::event_transport_factory::EventRuntime;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -109,14 +109,16 @@ pub struct RemoteExecutorGuardrailSnapshot {
     pub state: RuntimeGuardrailStatus,
 }
 
-pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuardrailSnapshot {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
+pub async fn collect_runtime_guardrail_snapshot(
+    ctx: &ServerRuntimeContext,
+) -> RuntimeGuardrailSnapshot {
+    let settings = ctx.settings();
     let policy = runtime_guardrail_policy_from_settings(&settings);
     let mut reasons = Vec::new();
     let mut observed_status = RuntimeGuardrailStatus::Ok;
 
     let mut rate_limits = Vec::new();
-    if let Some(shared) = ctx.shared_store.get::<SharedApiRateLimiter>() {
+    if let Some(shared) = ctx.shared_get::<SharedApiRateLimiter>() {
         let snapshot = collect_rate_limit_snapshot("api", &shared.0, &policy).await;
         if !snapshot.healthy {
             escalate(
@@ -153,7 +155,7 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         rate_limits.push(snapshot);
     }
 
-    if let Some(shared) = ctx.shared_store.get::<SharedAuthRateLimiter>() {
+    if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>() {
         let snapshot = collect_rate_limit_snapshot("auth", &shared.0, &policy).await;
         if !snapshot.healthy {
             escalate(
@@ -190,7 +192,7 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
         rate_limits.push(snapshot);
     }
 
-    if let Some(shared) = ctx.shared_store.get::<SharedOAuthRateLimiter>() {
+    if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>() {
         let snapshot = collect_rate_limit_snapshot("oauth", &shared.0, &policy).await;
         if !snapshot.healthy {
             escalate(
@@ -228,8 +230,7 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
     }
 
     let event_transport = ctx
-        .shared_store
-        .get::<std::sync::Arc<EventRuntime>>()
+        .shared_get::<std::sync::Arc<EventRuntime>>()
         .map(|runtime| EventTransportGuardrailSnapshot {
             relay_fallback_active: runtime.relay_fallback_active,
             channel_capacity: runtime.channel_capacity,
@@ -269,8 +270,7 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
     }
 
     let event_bus = ctx
-        .shared_store
-        .get::<SharedEventBus>()
+        .shared_get::<SharedEventBus>()
         .and_then(|shared| shared.0.backpressure().map(|bp| bp.metrics()))
         .map(|metrics| {
             let state = match metrics.state {
@@ -351,7 +351,7 @@ pub async fn collect_runtime_guardrail_snapshot(ctx: &AppContext) -> RuntimeGuar
 }
 
 async fn collect_remote_executor_snapshot(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> RemoteExecutorGuardrailSnapshot {
     let config = &settings.registry.remote_executor;
@@ -376,7 +376,7 @@ async fn collect_remote_executor_snapshot(
             .filter(crate::models::registry_validation_stage::Column::Status.eq(
                 crate::models::registry_validation_stage::RegistryValidationStageStatus::Running,
             ))
-            .count(&ctx.db)
+            .count(ctx.db())
             .await
             .unwrap_or(0);
     let expired_claims = crate::models::registry_validation_stage::Entity::find()
@@ -384,7 +384,7 @@ async fn collect_remote_executor_snapshot(
         .filter(
             crate::models::registry_validation_stage::Column::ClaimExpiresAt.lt(chrono::Utc::now()),
         )
-        .count(&ctx.db)
+        .count(ctx.db())
         .await
         .unwrap_or(0);
     let token_configured = config

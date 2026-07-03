@@ -6,7 +6,8 @@ use rustok_api::Permission;
 use rustok_core::ModuleRegistry;
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use semver::{Version, VersionReq};
 use std::time::Instant;
@@ -37,6 +38,7 @@ use crate::services::rbac_service::RbacService;
 use crate::services::registry_governance::{
     RegistryGovernanceService, RegistryModuleLifecycleSnapshot,
 };
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::graphql::{encode_cursor, PageInfo, PaginationInput};
 
@@ -522,11 +524,11 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+    let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
 
     let can_read_modules = RbacService::has_any_permission(
-        &app_ctx.db,
+        db,
         &tenant.id,
         &auth.user_id,
         &[
@@ -548,26 +550,28 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
 }
 
 async fn load_marketplace_catalog(
-    app_ctx: &loco_rs::app::AppContext,
+    db: &DatabaseConnection,
+    runtime_ctx: &ServerRuntimeContext,
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
     preferred_locale: Option<&str>,
     fallback_locale: Option<&str>,
 ) -> Result<Vec<crate::modules::CatalogManifestModule>> {
-    let modules = marketplace_catalog_from_context(app_ctx)
+    let modules = marketplace_catalog_from_context(runtime_ctx)
         .list_modules(manifest, registry, query)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
-    RegistryGovernanceService::new(app_ctx.db.clone())
+    RegistryGovernanceService::new(db.clone())
         .apply_catalog_projection(modules, preferred_locale, fallback_locale)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
 
 async fn load_marketplace_module(
-    app_ctx: &loco_rs::app::AppContext,
+    db: &DatabaseConnection,
+    runtime_ctx: &ServerRuntimeContext,
     manifest: &crate::modules::ModulesManifest,
     registry: &ModuleRegistry,
     query: &MarketplaceCatalogQuery,
@@ -575,7 +579,7 @@ async fn load_marketplace_module(
     preferred_locale: Option<&str>,
     fallback_locale: Option<&str>,
 ) -> Result<Option<crate::modules::CatalogManifestModule>> {
-    let module = marketplace_catalog_from_context(app_ctx)
+    let module = marketplace_catalog_from_context(runtime_ctx)
         .get_module(manifest, registry, query, slug)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -583,7 +587,7 @@ async fn load_marketplace_module(
         return Ok(None);
     };
 
-    let mut projected = RegistryGovernanceService::new(app_ctx.db.clone())
+    let mut projected = RegistryGovernanceService::new(db.clone())
         .apply_catalog_projection(vec![module], preferred_locale, fallback_locale)
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -613,12 +617,12 @@ impl RootQuery {
     }
 
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let modules = EffectiveModulePolicyService::list_enabled(&app_ctx.db, registry, tenant.id)
+        let modules = EffectiveModulePolicyService::list_enabled(db, registry, tenant.id)
             .await
             .map_err(|err| err.to_string())?
             .into_iter()
@@ -643,19 +647,21 @@ impl RootQuery {
     ) -> Result<Vec<ModuleRegistryItem>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let db = runtime_ctx.db();
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
         let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let query = MarketplaceCatalogQuery::default();
         let catalog_by_slug: HashMap<String, crate::modules::CatalogManifestModule> =
             load_marketplace_catalog(
-                app_ctx,
+                db,
+                runtime_ctx,
                 &manifest,
                 registry,
                 &query,
@@ -666,10 +672,9 @@ impl RootQuery {
             .into_iter()
             .map(|module| (module.slug.clone(), module))
             .collect();
-        let enabled_modules =
-            EffectiveModulePolicyService::list_enabled(&app_ctx.db, registry, tenant.id)
-                .await
-                .map_err(|err| err.to_string())?;
+        let enabled_modules = EffectiveModulePolicyService::list_enabled(db, registry, tenant.id)
+            .await
+            .map_err(|err| err.to_string())?;
         let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
 
         let modules = registry
@@ -737,7 +742,7 @@ impl RootQuery {
     ) -> Result<Vec<TenantModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
@@ -745,7 +750,7 @@ impl RootQuery {
             .filter(TenantModulesColumn::TenantId.eq(tenant.id))
             .order_by_asc(TenantModulesColumn::ModuleSlug)
             .limit(limit as u64)
-            .all(&app_ctx.db)
+            .all(db)
             .await
             .map_err(|err| err.to_string())?;
 
@@ -778,8 +783,8 @@ impl RootQuery {
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+        let db = ctx.data::<DatabaseConnection>()?;
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -815,13 +820,14 @@ impl RootQuery {
     ) -> Result<Vec<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let db = runtime_ctx.db();
         let registry = ctx.data::<ModuleRegistry>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let installed_modules = ManifestManager::installed_modules(&manifest);
@@ -857,7 +863,8 @@ impl RootQuery {
 
         let modules = marketplace_modules_from_catalog(
             load_marketplace_catalog(
-                app_ctx,
+                db,
+                runtime_ctx,
                 &manifest,
                 registry,
                 &query,
@@ -917,18 +924,20 @@ impl RootQuery {
     ) -> Result<Option<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let db = runtime_ctx.db();
         let registry = ctx.data::<ModuleRegistry>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+        let manifest = PlatformCompositionService::active_manifest(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let installed_modules = ManifestManager::installed_modules(&manifest);
         let slug = slug.trim().to_lowercase();
         let query = MarketplaceCatalogQuery::default();
         let module = load_marketplace_module(
-            app_ctx,
+            db,
+            runtime_ctx,
             &manifest,
             registry,
             &query,
@@ -942,7 +951,7 @@ impl RootQuery {
         };
 
         let mut module = marketplace_module_from_catalog_entry(entry, registry, &installed_modules);
-        module.registry_lifecycle = RegistryGovernanceService::new(app_ctx.db.clone())
+        module.registry_lifecycle = RegistryGovernanceService::new(db.clone())
             .lifecycle_snapshot(&module.slug)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
@@ -958,12 +967,10 @@ impl RootQuery {
     ) -> Result<Option<ModuleOperationRecoveryPlan>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let plan =
-            match ModuleLifecycleService::module_operation_recovery_plan(&app_ctx.db, operation_id)
-                .await
-            {
+            match ModuleLifecycleService::module_operation_recovery_plan(db, operation_id).await {
                 Ok(plan) => plan,
                 Err(ModuleOperationRecoveryError::OperationNotFound) => return Ok(None),
                 Err(err) => return Err(map_module_operation_recovery_error(err)),
@@ -984,12 +991,12 @@ impl RootQuery {
     ) -> Result<Vec<ModuleOperationRecoveryPlan>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
         let plans = ModuleLifecycleService::failed_module_operation_recovery_plans(
-            &app_ctx.db,
+            db,
             tenant.id,
             module_slug.as_deref(),
         )
@@ -1014,8 +1021,8 @@ impl RootQuery {
     async fn active_build(&self, ctx: &Context<'_>) -> Result<Option<BuildJob>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-        let build = BuildService::new(app_ctx.db.clone())
+        let db = ctx.data::<DatabaseConnection>()?;
+        let build = BuildService::new(db.clone())
             .active_build()
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -1031,7 +1038,7 @@ impl RootQuery {
     ) -> Result<Vec<BuildJob>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;
         let offset = offset.max(0) as u64;
@@ -1040,7 +1047,7 @@ impl RootQuery {
             .order_by_desc(BuildColumn::CreatedAt)
             .offset(offset)
             .limit(limit)
-            .all(&app_ctx.db)
+            .all(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -1060,11 +1067,11 @@ impl RootQuery {
     async fn active_release(&self, ctx: &Context<'_>) -> Result<Option<ReleaseInfo>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let release = ReleaseEntity::find()
             .filter(ReleaseColumn::Status.eq(ReleaseStatus::Active))
             .order_by_desc(ReleaseColumn::UpdatedAt)
-            .one(&app_ctx.db)
+            .one(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -1079,7 +1086,7 @@ impl RootQuery {
     ) -> Result<Vec<ReleaseInfo>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;
         let offset = offset.max(0) as u64;
@@ -1088,7 +1095,7 @@ impl RootQuery {
             .order_by_desc(ReleaseColumn::CreatedAt)
             .offset(offset)
             .limit(limit)
-            .all(&app_ctx.db)
+            .all(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -1113,13 +1120,13 @@ impl RootQuery {
             Some(auth) => auth,
             None => return Ok(None),
         };
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let user = users::Entity::find()
             .filter(UsersColumn::Id.eq(auth.user_id))
             .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(&app_ctx.db)
+            .one(db)
             .await
             .map_err(|err| err.to_string())?;
 
@@ -1131,10 +1138,10 @@ impl RootQuery {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
 
         let can_read_users = RbacService::has_permission(
-            &app_ctx.db,
+            db,
             &tenant.id,
             &auth.user_id,
             &rustok_api::Permission::USERS_READ,
@@ -1150,7 +1157,7 @@ impl RootQuery {
 
         let user = users::Entity::find_by_id(id)
             .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(&app_ctx.db)
+            .one(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -1168,10 +1175,10 @@ impl RootQuery {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
 
         let can_list_users = RbacService::has_permission(
-            &app_ctx.db,
+            db,
             &tenant.id,
             &auth.user_id,
             &rustok_api::Permission::USERS_LIST,
@@ -1192,7 +1199,7 @@ impl RootQuery {
         if let Some(filter) = filter {
             if let Some(role) = filter.role {
                 let role: rustok_core::UserRole = role.into();
-                let user_ids = RbacService::get_user_ids_for_role(&app_ctx.db, &tenant.id, role)
+                let user_ids = RbacService::get_user_ids_for_role(db, &tenant.id, role)
                     .await
                     .map_err(|err| {
                         <FieldError as GraphQLError>::internal_error(&err.to_string())
@@ -1218,7 +1225,7 @@ impl RootQuery {
         let count_started_at = Instant::now();
         let total = query
             .clone()
-            .count(&app_ctx.db)
+            .count(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             as i64;
@@ -1234,7 +1241,7 @@ impl RootQuery {
         let users = query
             .offset(offset as u64)
             .limit(limit as u64)
-            .all(&app_ctx.db)
+            .all(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         metrics::record_read_path_query(
@@ -1269,7 +1276,7 @@ impl RootQuery {
     }
 
     async fn dashboard_stats(&self, ctx: &Context<'_>) -> Result<DashboardStats> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let now = Utc::now();
@@ -1278,7 +1285,7 @@ impl RootQuery {
 
         let user_stats_started_at = Instant::now();
         let user_stats = dashboard_user_activity::load_user_stats_snapshot(
-            &app_ctx.db,
+            db,
             tenant.id,
             current_period_start,
             previous_period_start,
@@ -1297,7 +1304,7 @@ impl RootQuery {
         let (total_posts, current_posts, previous_posts) = {
             let post_stats_started_at = Instant::now();
             let post_stats = rustok_content::load_post_stats_snapshot(
-                &app_ctx.db,
+                db,
                 tenant.id,
                 current_period_start,
                 previous_period_start,
@@ -1331,7 +1338,7 @@ impl RootQuery {
         ) = {
             let order_stats_started_at = Instant::now();
             let order_stats = rustok_order::load_order_stats_snapshot(
-                &app_ctx.db,
+                db,
                 tenant.id,
                 current_period_start,
                 previous_period_start,
@@ -1384,20 +1391,17 @@ impl RootQuery {
         ctx: &Context<'_>,
         #[graphql(default)] limit: i64,
     ) -> Result<Vec<ActivityItem>> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 50);
 
         let recent_users_started_at = Instant::now();
-        let recent_users = dashboard_user_activity::load_recent_user_activity(
-            &app_ctx.db,
-            tenant.id,
-            limit as u64,
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let recent_users =
+            dashboard_user_activity::load_recent_user_activity(db, tenant.id, limit as u64)
+                .await
+                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         metrics::record_read_path_query(
             "graphql",
             "root.recent_activity",

@@ -12,6 +12,7 @@
 - Provide the framework-independent manifest-to-runtime registry comparison contract used by the server composition root.
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
+- Provide `HostRuntimeContext` for server-side Leptos/native adapters that need host-owned runtime handles without importing the Loco application context.
 - Provide neutral port context/error primitives, policy helpers (`PortCallPolicy`) and typed error constructors for module-owned ports; `rustok-region` and migrated tenant, channel, product, customer, media, workflow, RBAC, tax, fulfillment, payment, pricing, cart, inventory, comments, search, order, index, email delivery, outbox relay, and page-builder publish paths use these shared primitives for FBA read/write boundaries.
 - Own neutral permission contracts (`Permission`, `Action`, `Resource`) and platform locale normalization, matching, candidate, fallback, and `Accept-Language` parsing contracts.
 - Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`, `channel_resolution_trace`) from host middleware into module adapters.
@@ -35,6 +36,7 @@
 - `src/lib.rs`
 - `src/context/`
 - `src/request.rs`
+- `src/runtime.rs`
 - `src/ui.rs`
 - `src/route_selection.rs`
 - `src/module_registry_contract.rs`

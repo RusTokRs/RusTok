@@ -12,6 +12,7 @@ All significant architectural choices should be recorded as ADRs.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [2026-07-02](./2026-07-02-axum-runtime-and-ops-cli-boundary.md) | Граница Axum runtime и ops CLI | Accepted |
 | [2026-07-01](./2026-07-01-product-category-bound-attribute-schemas.md) | Product category-bound attribute schemas | Accepted |
 | [2026-07-01](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) | Владение port-контрактами и граница runtime features | Accepted |
 | [2026-05-22](./2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) | Module lifecycle hook phases and retry contract | Accepted |

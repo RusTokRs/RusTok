@@ -138,6 +138,150 @@ requireContains('scripts/verify/README.md', 'verify-api-surface-contract.mjs', '
 requireContains('crates/rustok-api/src/ports.rs', 'pub struct PortContext', 'rustok-api owns PortContext');
 requireContains('crates/rustok-api/src/ports.rs', 'pub struct PortError', 'rustok-api owns PortError');
 requireNotContains('crates/rustok-api/src/ports.rs', 'rustok_core', 'rustok-api Port contracts do not re-export core');
+requireContains('crates/rustok-api/src/runtime.rs', 'pub struct HostRuntimeContext', 'rustok-api owns neutral host runtime context');
+requireContains('crates/rustok-api/src/runtime.rs', 'pub fn db_clone(&self) -> DatabaseConnection', 'HostRuntimeContext exposes DB access without Loco');
+requireContains('apps/server/src/services/app_router.rs', 'HostRuntimeContext::new(ctx.db.clone())', 'server function context provides neutral runtime context');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'pub struct ServerRuntimeContext', 'server owns neutral runtime context for server services');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn db(&self) -> &DatabaseConnection', 'ServerRuntimeContext exposes DB access without service-level Loco dependency');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn shared_get<T>(&self) -> Option<T>', 'ServerRuntimeContext exposes typed shared-store access behind server boundary');
+requireContains('apps/server/src/services/server_runtime_context.rs', 'impl FromRef<AppContext> for ServerRuntimeContext', 'Axum can extract the neutral server runtime from the current host state');
+requireNotContains('apps/server/src/services/settings_service.rs', 'loco_rs', 'settings service does not depend on Loco runtime context');
+requireContains('apps/server/src/services/settings_service.rs', 'ServerRuntimeContext', 'settings service consumes server runtime context');
+for (const rel of [
+  'apps/server/src/services/build_event_hub.rs',
+  'apps/server/src/services/field_definition_cache.rs',
+  'apps/server/src/services/marketplace_catalog.rs',
+]) {
+  requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
+  requireContains(rel, 'ServerRuntimeContext', `${rel} consumes server runtime context`);
+}
+requireNotContains('apps/server/src/services/event_bus.rs', 'use loco_rs::app::AppContext', 'event bus service does not consume Loco AppContext');
+requireNotContains('apps/server/src/services/event_bus.rs', 'rustok_outbox::loco', 'server event bus does not re-export the outbox Loco adapter');
+requireContains('apps/server/src/services/event_bus.rs', 'ServerRuntimeContext', 'event bus service consumes server runtime context');
+requireContains('apps/server/src/services/event_bus.rs', 'pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext)', 'transactional event bus is built from the server runtime context');
+requireNotContains('apps/server/src/services/runtime_guardrails.rs', 'loco_rs', 'runtime guardrails service does not depend on Loco runtime context');
+requireContains('apps/server/src/services/runtime_guardrails.rs', 'ServerRuntimeContext', 'runtime guardrails service consumes server runtime context');
+requireNotContains('apps/server/src/services/rbac_consistency.rs', 'loco_rs', 'RBAC consistency service does not depend on Loco runtime context');
+requireContains('apps/server/src/services/rbac_consistency.rs', 'ServerRuntimeContext', 'RBAC consistency service consumes server runtime context');
+requireNotContains('apps/server/src/services/release_backend.rs', 'loco_rs', 'release backend service does not depend on Loco runtime context');
+requireContains('apps/server/src/services/release_backend.rs', 'ServerRuntimeContext', 'release backend service consumes server runtime context');
+requireNotContains('apps/server/src/services/build_executor.rs', 'loco_rs', 'build executor service does not depend on Loco runtime context');
+requireContains('apps/server/src/services/build_executor.rs', 'ServerRuntimeContext', 'build executor service consumes server runtime context');
+requireNotContains('apps/server/src/services/event_transport_factory.rs', 'loco_rs', 'event transport factory does not depend on Loco runtime context');
+requireContains('apps/server/src/services/event_transport_factory.rs', 'ServerRuntimeContext', 'event transport factory consumes server runtime context');
+requireContains('apps/server/src/services/module_event_dispatcher.rs', 'ctx: &ServerRuntimeContext', 'module event dispatcher spawn consumes server runtime context');
+requireNotContains('apps/server/src/services/module_event_dispatcher.rs', 'loco_rs::app::AppContext', 'module runtime extension assembly does not consume Loco AppContext');
+requireNotContains('apps/server/src/services/email.rs', 'AppContext', 'email service factory does not depend on Loco AppContext');
+requireContains('apps/server/src/services/email.rs', 'ServerRuntimeContext', 'email service factory consumes server runtime context');
+requireContains('apps/server/src/services/app_runtime.rs', 'pub fn module_runtime_extensions_from_ctx', 'module runtime extensions helper is owned by app runtime');
+requireContains('apps/server/src/services/app_runtime.rs', 'ctx: &ServerRuntimeContext', 'app runtime helpers consume server runtime context');
+requireContains('apps/server/src/services/app_runtime.rs', 'init_storage(ctx: &ServerRuntimeContext)', 'storage bootstrap helper consumes server runtime context');
+requireContains('apps/server/src/services/app_runtime.rs', 'init_marketplace_catalog(ctx: &ServerRuntimeContext)', 'marketplace catalog bootstrap helper consumes server runtime context');
+requireContains('apps/server/src/services/graphql_schema.rs', 'storage_from_ctx(ctx: &ServerRuntimeContext)', 'GraphQL schema storage helper consumes server runtime context');
+requireContains('apps/server/src/services/graphql_schema.rs', 'ctx.shared_get::<SharedGraphqlSchema>()', 'GraphQL schema cache uses server runtime context shared store');
+requireNotContains('apps/server/src/services/graphql_schema.rs', 'loco_rs', 'GraphQL schema service does not depend on Loco');
+requireContains('apps/server/src/services/graphql_schema.rs', 'init_graphql_schema(ctx: &ServerRuntimeContext)', 'GraphQL schema service consumes the server runtime context');
+requireContains('apps/server/src/services/app_lifecycle.rs', 'let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);', 'runtime worker lifecycle isolates current Loco boundary adapter');
+requireNotContains('apps/server/src/services/app_lifecycle.rs', 'RustokSettings::from_settings(&ctx.config.settings)', 'runtime worker lifecycle does not parse settings from Loco config directly');
+for (const rel of [
+  'apps/server/src/middleware/channel.rs',
+  'apps/server/src/middleware/locale.rs',
+  'apps/server/src/middleware/tenant.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::app::AppContext', `${rel} does not consume Loco AppContext`);
+  requireContains(rel, 'ServerRuntimeContext', `${rel} consumes server runtime context`);
+}
+requireNotContains('apps/server/src/middleware/auth_context.rs', 'loco_rs::app::AppContext', 'auth context middleware does not consume Loco AppContext');
+requireContains('apps/server/src/middleware/auth_context.rs', 'ServerAuthRuntime', 'auth context middleware consumes narrow auth runtime');
+requireNotContains('apps/server/src/extractors/auth.rs', 'loco_rs::app::AppContext', 'auth extractor does not consume Loco AppContext');
+requireContains('apps/server/src/extractors/auth.rs', 'ServerAuthRuntime', 'auth extractor consumes narrow auth runtime');
+requireNotContains('apps/server/src/extractors/rbac.rs', 'loco_rs::app::AppContext', 'RBAC permission extractor macro does not require Loco AppContext');
+requireContains('apps/server/src/extractors/rbac.rs', 'ServerAuthRuntime', 'RBAC permission extractor macro consumes auth runtime bound');
+requireNotContains('apps/server/src/services/auth_lifecycle.rs', 'AppContext', 'auth lifecycle service does not expose Loco compatibility entrypoints');
+for (const method of [
+  'create_user_runtime',
+  'register_runtime',
+  'login_runtime',
+  'refresh_runtime',
+  'confirm_password_reset_runtime',
+  'update_profile_runtime',
+  'change_password_runtime',
+  'logout_runtime',
+  'list_sessions_runtime',
+  'revoke_session_runtime',
+  'revoke_all_other_sessions_runtime',
+]) {
+  requireContains('apps/server/src/services/auth_lifecycle.rs', method, `auth lifecycle exposes ${method} without Loco AppContext`);
+  requireContains('apps/server/src/services/auth_lifecycle_provider.rs', method, `auth lifecycle provider consumes ${method}`);
+}
+requireNotContains('apps/server/src/services/auth_lifecycle_provider.rs', 'loco_rs::app::AppContext', 'auth lifecycle provider does not retain Loco AppContext');
+requireContains('apps/server/src/services/auth_lifecycle_provider.rs', 'auth_config: AuthConfig', 'auth lifecycle provider owns explicit auth config dependency');
+for (const rel of [
+  'apps/server/src/graphql/settings/query.rs',
+  'apps/server/src/graphql/settings/mutation.rs',
+  'apps/server/src/graphql/system.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::app::AppContext', `${rel} does not consume Loco AppContext`);
+  requireContains(rel, 'ServerRuntimeContext', `${rel} consumes neutral server runtime data`);
+}
+requireContains('apps/server/src/graphql/settings/mutation.rs', 'ctx.data::<TransactionalEventBus>()?', 'settings GraphQL mutation consumes the schema-owned transactional event bus');
+requireContains('apps/server/src/controllers/graphql.rs', '.data(runtime_ctx)', 'GraphQL HTTP requests receive neutral server runtime data');
+requireContains('apps/server/src/controllers/graphql.rs', 'data.insert(runtime_ctx);', 'GraphQL WebSocket connections receive neutral server runtime data');
+requireNotContains('apps/server/src/controllers/graphql.rs', 'loco_rs::app::AppContext', 'GraphQL controller handlers do not consume Loco AppContext');
+requireContains('apps/server/src/controllers/graphql.rs', 'State(runtime_ctx): State<ServerRuntimeContext>', 'GraphQL controller extracts neutral runtime state');
+requireContains('apps/server/src/controllers/graphql.rs', 'State(auth_runtime): State<ServerAuthRuntime>', 'GraphQL WebSocket controller extracts narrow auth state');
+requireNotContains('apps/server/src/controllers/users.rs', 'loco_rs::app::AppContext', 'users controller handlers do not consume Loco AppContext');
+requireContains('apps/server/src/controllers/users.rs', 'State<ServerRuntimeContext>', 'users controller extracts neutral runtime state');
+requireNotContains('apps/server/src/controllers/metrics.rs', 'loco_rs::app::AppContext', 'metrics controller does not consume Loco AppContext');
+requireContains('apps/server/src/controllers/metrics.rs', 'State(ctx): State<ServerRuntimeContext>', 'metrics controller extracts neutral runtime state');
+requireContains('apps/server/src/controllers/metrics.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'metrics controller extracts narrow email runtime state');
+requireNotContains('apps/server/src/controllers/health.rs', 'loco_rs::app::AppContext', 'health controller does not consume Loco AppContext');
+requireContains('apps/server/src/controllers/health.rs', 'State(ctx): State<ServerRuntimeContext>', 'health controller extracts neutral runtime state');
+requireContains('apps/server/src/controllers/health.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'health readiness extracts narrow email runtime state');
+for (const rel of [
+  'apps/server/src/controllers/channel.rs',
+  'apps/server/src/controllers/flex.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::app::AppContext', `${rel} handlers do not consume Loco AppContext`);
+  requireContains(rel, 'State<ServerRuntimeContext>', `${rel} extracts neutral runtime state`);
+}
+requireContains('apps/server/src/controllers/flex.rs', 'fn test_runtime_context', 'Flex controller tests use the neutral runtime fixture');
+requireNotContains('apps/server/src/controllers/auth.rs', 'loco_rs::app::AppContext', 'auth controller does not consume Loco AppContext');
+requireContains('apps/server/src/controllers/auth.rs', 'State(ctx): State<ServerAuthRuntime>', 'auth controller extracts narrow auth runtime state');
+requireContains('apps/server/src/controllers/auth.rs', 'State(email_runtime): State<ServerEmailRuntime>', 'auth email endpoints extract narrow email runtime state');
+requireNotContains('apps/server/src/controllers/auth.rs', 'auth_config_from_ctx', 'auth controller reads config from the narrow auth runtime');
+requireNotContains('apps/server/src/controllers/oauth_metadata.rs', 'loco_rs::app::AppContext', 'OAuth metadata controller does not consume Loco AppContext');
+requireContains('apps/server/src/controllers/oauth_metadata.rs', 'State(ctx): State<ServerAuthRuntime>', 'OAuth metadata controller extracts narrow auth runtime state');
+for (const rel of [
+  'apps/server/src/controllers/admin_events.rs',
+  'apps/server/src/controllers/installer.rs',
+  'apps/server/src/controllers/mcp.rs',
+  'apps/server/src/controllers/swagger.rs',
+  'apps/server/src/channels/builds.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::app::AppContext', `${rel} does not consume Loco AppContext`);
+  requireContains(rel, 'ServerRuntimeContext', `${rel} consumes neutral runtime state`);
+}
+requireContains('apps/server/src/services/server_runtime_context.rs', 'pub fn shared_map<T, R>', 'server runtime supports scoped reads of non-clone shared handles');
+for (const rel of [
+  'apps/server/src/graphql/mutations.rs',
+  'apps/server/src/graphql/queries.rs',
+  'apps/server/src/graphql/subscriptions.rs',
+  'apps/server/src/graphql/types.rs',
+]) {
+  requireNotContains(rel, 'loco_rs::app::AppContext', `${rel} does not consume Loco AppContext`);
+  requireContains(rel, 'DatabaseConnection', `${rel} consumes the schema-owned database handle`);
+}
+for (const rel of walk('apps/server/src/graphql', (file) => file.endsWith('.rs'))) {
+  requireNotContains(rel, 'loco_rs', `GraphQL implementation is Loco-independent: ${rel}`);
+}
+for (const rel of [
+  'crates/rustok-index/admin/src/transport/native_server_adapter.rs',
+  'crates/rustok-outbox/admin/src/transport/native_server_adapter.rs',
+]) {
+  requireNotContains(rel, 'loco_rs', `${rel} does not depend on Loco runtime context`);
+  requireContains(rel, 'HostRuntimeContext', `${rel} consumes neutral host runtime context`);
+}
 requireContains('crates/rustok-api/src/permissions.rs', 'pub struct Permission', 'rustok-api owns Permission');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Action', 'rustok-api owns Action');
 requireContains('crates/rustok-api/src/permissions.rs', 'pub enum Resource', 'rustok-api owns Resource');

@@ -1,17 +1,17 @@
 use crate::error::Error;
 use chrono::{Duration, Utc};
-use loco_rs::app::AppContext;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 
 use crate::auth::{
-    auth_config_from_ctx, decode_password_reset_token, encode_access_token, generate_refresh_token,
-    hash_password, hash_refresh_token, verify_password, AuthConfig,
+    decode_password_reset_token, encode_access_token, generate_refresh_token, hash_password,
+    hash_refresh_token, verify_password, AuthConfig,
 };
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::rbac_service::RbacService;
@@ -116,8 +116,8 @@ impl AuthLifecycleService {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.store(0, Ordering::Relaxed);
     }
 
-    pub async fn create_user(
-        ctx: &AppContext,
+    pub async fn create_user_runtime(
+        ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
         email: &str,
         password: &str,
@@ -125,7 +125,7 @@ impl AuthLifecycleService {
         role: rustok_core::UserRole,
         status: Option<rustok_core::UserStatus>,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        Self::create_user_db(&ctx.db, tenant_id, email, password, name, role, status).await
+        Self::create_user_db(ctx.db(), tenant_id, email, password, name, role, status).await
     }
 
     pub(crate) async fn create_user_db(
@@ -203,13 +203,13 @@ impl AuthLifecycleService {
         Ok(user)
     }
 
-    pub async fn update_profile(
-        ctx: &AppContext,
+    pub async fn update_profile_runtime(
+        ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
         name: Option<String>,
     ) -> std::result::Result<users::Model, AuthLifecycleError> {
-        Self::update_profile_db(&ctx.db, tenant_id, user_id, name).await
+        Self::update_profile_db(ctx.db(), tenant_id, user_id, name).await
     }
 
     async fn update_profile_db(
@@ -241,15 +241,15 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)
     }
 
-    pub async fn register(
-        ctx: &AppContext,
+    pub async fn register_runtime(
+        ctx: &ServerRuntimeContext,
+        config: &AuthConfig,
         tenant_id: uuid::Uuid,
         email: &str,
         password: &str,
         name: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
-        let user = Self::create_user(
+        let user = Self::create_user_runtime(
             ctx,
             tenant_id,
             email,
@@ -261,23 +261,29 @@ impl AuthLifecycleService {
         .await?;
 
         let tokens =
-            Self::create_session_and_tokens(ctx, tenant_id, &user, None, None, &config).await?;
+            Self::create_session_and_tokens_db(ctx.db(), config, tenant_id, &user, None, None)
+                .await?;
 
         Ok((user, tokens))
     }
 
-    pub async fn login(
-        ctx: &AppContext,
+    pub async fn login_runtime(
+        ctx: &ServerRuntimeContext,
+        config: &AuthConfig,
         tenant_id: uuid::Uuid,
         email: &str,
         password: &str,
         ip_address: Option<String>,
         user_agent: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
-
         Self::login_with_config(
-            &ctx.db, &config, tenant_id, email, password, ip_address, user_agent,
+            ctx.db(),
+            config,
+            tenant_id,
+            email,
+            password,
+            ip_address,
+            user_agent,
         )
         .await
     }
@@ -321,13 +327,13 @@ impl AuthLifecycleService {
         Ok((user, tokens))
     }
 
-    pub async fn refresh(
-        ctx: &AppContext,
+    pub async fn refresh_runtime(
+        ctx: &ServerRuntimeContext,
+        config: &AuthConfig,
         tenant_id: uuid::Uuid,
         refresh_token: &str,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
-        Self::refresh_with_config_db(&ctx.db, &config, tenant_id, refresh_token).await
+        Self::refresh_with_config_db(ctx.db(), config, tenant_id, refresh_token).await
     }
 
     async fn refresh_with_config_db(
@@ -393,14 +399,14 @@ impl AuthLifecycleService {
         ))
     }
 
-    pub async fn confirm_password_reset(
-        ctx: &AppContext,
+    pub async fn confirm_password_reset_runtime(
+        ctx: &ServerRuntimeContext,
+        config: &AuthConfig,
         tenant_id: uuid::Uuid,
         token: &str,
         password: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
-        Self::confirm_password_reset_with_config(&ctx.db, &config, tenant_id, token, password).await
+        Self::confirm_password_reset_with_config(ctx.db(), config, tenant_id, token, password).await
     }
 
     async fn confirm_password_reset_with_config(
@@ -425,8 +431,27 @@ impl AuthLifecycleService {
         Self::reset_password_and_revoke_sessions(db, tenant_id, user, password, None).await
     }
 
-    pub async fn change_password(
-        ctx: &AppContext,
+    pub async fn change_password_runtime(
+        ctx: &ServerRuntimeContext,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        current_session_id: uuid::Uuid,
+        current_password: &str,
+        new_password: &str,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        Self::change_password_db(
+            ctx.db(),
+            tenant_id,
+            user_id,
+            current_session_id,
+            current_password,
+            new_password,
+        )
+        .await
+    }
+
+    async fn change_password_db(
+        db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
         current_session_id: uuid::Uuid,
@@ -435,7 +460,7 @@ impl AuthLifecycleService {
     ) -> std::result::Result<(), AuthLifecycleError> {
         let user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(tenant_id))
-            .one(&ctx.db)
+            .one(db)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidCredentials)?;
@@ -450,20 +475,28 @@ impl AuthLifecycleService {
         user_active.password_hash =
             Set(hash_password(new_password).map_err(AuthLifecycleError::from)?);
         user_active
-            .update(&ctx.db)
+            .update(db)
             .await
             .map_err(AuthLifecycleError::from)?;
 
         let revoked_sessions =
-            Self::revoke_user_sessions(ctx, tenant_id, user_id, Some(current_session_id)).await?;
+            Self::revoke_user_sessions_db(db, tenant_id, user_id, Some(current_session_id)).await?;
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
 
         Ok(())
     }
 
     /// Revoke the current session (logout).
-    pub async fn logout(
-        ctx: &AppContext,
+    pub async fn logout_runtime(
+        ctx: &ServerRuntimeContext,
+        tenant_id: uuid::Uuid,
+        session_id: uuid::Uuid,
+    ) -> std::result::Result<(), AuthLifecycleError> {
+        Self::logout_db(ctx.db(), tenant_id, session_id).await
+    }
+
+    async fn logout_db(
+        db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
         session_id: uuid::Uuid,
     ) -> std::result::Result<(), AuthLifecycleError> {
@@ -473,15 +506,24 @@ impl AuthLifecycleService {
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .exec(&ctx.db)
+            .exec(db)
             .await
             .map_err(AuthLifecycleError::from)?;
         Ok(())
     }
 
     /// List active sessions for a user, newest first (max `limit`).
-    pub async fn list_sessions(
-        ctx: &AppContext,
+    pub async fn list_sessions_runtime(
+        ctx: &ServerRuntimeContext,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        limit: u64,
+    ) -> std::result::Result<Vec<sessions::Model>, AuthLifecycleError> {
+        Self::list_sessions_db(ctx.db(), tenant_id, user_id, limit).await
+    }
+
+    async fn list_sessions_db(
+        db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
         limit: u64,
@@ -493,7 +535,7 @@ impl AuthLifecycleService {
             .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
             .order_by_desc(sessions::Column::CreatedAt)
             .limit(limit)
-            .all(&ctx.db)
+            .all(db)
             .await
             .map_err(AuthLifecycleError::from)?;
         Ok(rows)
@@ -501,8 +543,17 @@ impl AuthLifecycleService {
 
     /// Revoke a specific session. Returns `false` if the session was not found
     /// or did not belong to `user_id` (ownership check prevents cross-user revocation).
-    pub async fn revoke_session(
-        ctx: &AppContext,
+    pub async fn revoke_session_runtime(
+        ctx: &ServerRuntimeContext,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        session_id: uuid::Uuid,
+    ) -> std::result::Result<bool, AuthLifecycleError> {
+        Self::revoke_session_db(ctx.db(), tenant_id, user_id, session_id).await
+    }
+
+    async fn revoke_session_db(
+        db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
         session_id: uuid::Uuid,
@@ -513,20 +564,20 @@ impl AuthLifecycleService {
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::Id.eq(session_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .exec(&ctx.db)
+            .exec(db)
             .await
             .map_err(AuthLifecycleError::from)?;
         Ok(result.rows_affected > 0)
     }
 
     /// Revoke all sessions for a user except the current one.
-    pub async fn revoke_all_other_sessions(
-        ctx: &AppContext,
+    pub async fn revoke_all_other_sessions_runtime(
+        ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
         current_session_id: uuid::Uuid,
     ) -> std::result::Result<u64, AuthLifecycleError> {
-        Self::revoke_user_sessions(ctx, tenant_id, user_id, Some(current_session_id)).await
+        Self::revoke_user_sessions_db(ctx.db(), tenant_id, user_id, Some(current_session_id)).await
     }
 
     async fn reset_password_and_revoke_sessions(
@@ -550,18 +601,6 @@ impl AuthLifecycleService {
         AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL.fetch_add(revoked_sessions, Ordering::Relaxed);
 
         Ok(())
-    }
-
-    async fn create_session_and_tokens(
-        ctx: &AppContext,
-        tenant_id: uuid::Uuid,
-        user: &users::Model,
-        ip_address: Option<String>,
-        user_agent: Option<String>,
-        config: &AuthConfig,
-    ) -> std::result::Result<AuthTokens, AuthLifecycleError> {
-        Self::create_session_and_tokens_db(&ctx.db, config, tenant_id, user, ip_address, user_agent)
-            .await
     }
 
     async fn create_session_and_tokens_db(
@@ -611,15 +650,6 @@ impl AuthLifecycleService {
             .await
             .map_err(AuthLifecycleError::from)?;
         Ok(infer_user_role_from_permissions(&permissions))
-    }
-
-    async fn revoke_user_sessions(
-        ctx: &AppContext,
-        tenant_id: uuid::Uuid,
-        user_id: uuid::Uuid,
-        except_session_id: Option<uuid::Uuid>,
-    ) -> std::result::Result<u64, AuthLifecycleError> {
-        Self::revoke_user_sessions_db(&ctx.db, tenant_id, user_id, except_session_id).await
     }
 
     async fn revoke_user_sessions_db(
@@ -1813,8 +1843,7 @@ mod tests {
         .await
         .expect("create session");
 
-        // Build a minimal AppContext-like proxy using db directly
-        // logout() uses ctx.db, so we call the private helper indirectly via update_many
+        // Exercise the same revocation predicate as logout_db and verify idempotency.
         let result = sessions::Entity::update_many()
             .col_expr(
                 sessions::Column::RevokedAt,

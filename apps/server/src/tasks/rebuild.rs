@@ -7,6 +7,7 @@ use loco_rs::{
 use uuid::Uuid;
 
 use crate::services::build_executor::BuildExecutionService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub struct RebuildTask;
 
@@ -21,7 +22,8 @@ impl Task for RebuildTask {
 
     async fn run(&self, ctx: &AppContext, vars: &Vars) -> Result<()> {
         let dry_run = is_flag_enabled(vars, "dry_run");
-        let executor = BuildExecutionService::new(ctx);
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+        let executor = BuildExecutionService::new(&runtime_ctx);
 
         let report = if let Some(build_id) = vars.cli.get("build_id") {
             executor

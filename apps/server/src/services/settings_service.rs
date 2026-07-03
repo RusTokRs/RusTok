@@ -1,10 +1,9 @@
-use loco_rs::app::AppContext;
 use sea_orm::{ActiveModelTrait, Set};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::common::settings::RustokSettings;
 use crate::models::platform_settings::{self, ActiveModel, Entity};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 /// Known setting categories.
 pub mod category {
@@ -173,9 +172,13 @@ pub struct SettingsService;
 
 impl SettingsService {
     /// Get settings for a single category with fallback.
-    pub async fn get(ctx: &AppContext, tenant_id: Uuid, cat: &str) -> Result<Value, SettingsError> {
+    pub async fn get(
+        ctx: &ServerRuntimeContext,
+        tenant_id: Uuid,
+        cat: &str,
+    ) -> Result<Value, SettingsError> {
         // 1. DB row
-        if let Some(row) = Entity::find_by_category(&ctx.db, tenant_id, cat).await? {
+        if let Some(row) = Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
             return Ok(row.settings);
         }
 
@@ -191,10 +194,10 @@ impl SettingsService {
 
     /// List all categories for a tenant, filling gaps with fallbacks.
     pub async fn get_all(
-        ctx: &AppContext,
+        ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
     ) -> Result<Vec<(String, Value)>, SettingsError> {
-        let db_rows = Entity::find_all_for_tenant(&ctx.db, tenant_id).await?;
+        let db_rows = Entity::find_all_for_tenant(ctx.db(), tenant_id).await?;
         let mut result: Vec<(String, Value)> = db_rows
             .into_iter()
             .map(|r| (r.category, r.settings))
@@ -226,7 +229,7 @@ impl SettingsService {
     ///
     /// Returns the stored `Value`.
     pub async fn update(
-        ctx: &AppContext,
+        ctx: &ServerRuntimeContext,
         tenant_id: Uuid,
         cat: &str,
         settings: Value,
@@ -241,17 +244,17 @@ impl SettingsService {
             .validate(cat, &settings)
             .map_err(SettingsError::ValidationFailed)?;
 
-        match Entity::find_by_category(&ctx.db, tenant_id, cat).await? {
+        match Entity::find_by_category(ctx.db(), tenant_id, cat).await? {
             Some(existing) => {
                 let mut active: platform_settings::ActiveModel = existing.into();
                 active.settings = Set(settings.clone());
                 active.updated_by = Set(actor_id);
                 active.schema_version = Set(1);
-                active.update(&ctx.db).await?;
+                active.update(ctx.db()).await?;
             }
             None => {
                 ActiveModel::new(tenant_id, cat, settings.clone(), actor_id)
-                    .insert(&ctx.db)
+                    .insert(ctx.db())
                     .await?;
             }
         }
@@ -261,16 +264,14 @@ impl SettingsService {
 
     // ── Private helpers ────────────────────────────────────────────────────
 
-    fn yaml_defaults_for(ctx: &AppContext, cat: &str) -> Value {
-        let Ok(rs) = RustokSettings::from_settings(&ctx.config.settings) else {
-            return Value::Null;
-        };
+    fn yaml_defaults_for(ctx: &ServerRuntimeContext, cat: &str) -> Value {
+        let rs = ctx.settings();
         match cat {
-            category::EMAIL => serde_json::to_value(rs.email).unwrap_or(Value::Null),
-            category::SEARCH => serde_json::to_value(rs.search).unwrap_or(Value::Null),
-            category::RATE_LIMIT => serde_json::to_value(rs.rate_limit).unwrap_or(Value::Null),
-            category::EVENTS => serde_json::to_value(rs.events).unwrap_or(Value::Null),
-            category::FEATURES => serde_json::to_value(rs.features).unwrap_or(Value::Null),
+            category::EMAIL => serde_json::to_value(&rs.email).unwrap_or(Value::Null),
+            category::SEARCH => serde_json::to_value(&rs.search).unwrap_or(Value::Null),
+            category::RATE_LIMIT => serde_json::to_value(&rs.rate_limit).unwrap_or(Value::Null),
+            category::EVENTS => serde_json::to_value(&rs.events).unwrap_or(Value::Null),
+            category::FEATURES => serde_json::to_value(&rs.features).unwrap_or(Value::Null),
             _ => Value::Null,
         }
     }

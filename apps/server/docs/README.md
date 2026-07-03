@@ -55,13 +55,42 @@ Shared foundation / support crates:
   блокирует возврат server-owned shims.
 - Shared content canonical query и cross-module conversion mutations также приходят готовыми
   GraphQL roots из `rustok-content` и `rustok-content-orchestration`; host не владеет их resolver/DTO.
-- Auth lifecycle и OAuth GraphQL query/mutation/types принадлежат `rustok-auth`; server реализует только `AuthLifecyclePort`/`OAuthAdminPort` поверх persisted lifecycle/OAuth/email services и регистрирует соответствующие runtimes в shared runtime extensions.
+- Auth lifecycle и OAuth GraphQL query/mutation/types принадлежат `rustok-auth`; server реализует только `AuthLifecyclePort`/`OAuthAdminPort` поверх persisted lifecycle/OAuth/email services и регистрирует соответствующие runtimes в shared runtime extensions. `AuthLifecycleService` принимает только `ServerRuntimeContext` и явный `AuthConfig`, без Loco compatibility entrypoints. `ServerAuthLifecycleProvider` получает явные `ServerRuntimeContext`, `AuthConfig` и mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware и RBAC permission extractors используют узкий `ServerAuthRuntime`; полный Loco `AppContext` остаётся только в bootstrap/REST boundary adapters, которые собирают эти зависимости.
 - MCP GraphQL query/mutation/types принадлежат `rustok-mcp`; server реализует `McpManagementPort` поверх persisted `McpManagementService` и регистрирует `McpManagementRuntime`.
 - Content GraphQL dataloaders для `nodes`, `node_translations` и `bodies` живут в
   `rustok-content`; `apps/server` только регистрирует owner-owned loader types в schema builder.
 - System GraphQL может публиковать media usage, но читает его через `rustok-media::load_media_usage_snapshot`,
   без прямого импорта module-owned media entities.
-- Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле.
+- Settings и system GraphQL resolvers получают `ServerRuntimeContext`, DB и schema-owned
+  `TransactionalEventBus` через GraphQL data. Они не извлекают и не адаптируют Loco `AppContext`;
+  request/connection boundary пока продолжает передавать его только для ещё не перенесённых resolvers.
+- User complex fields и build progress subscription используют schema-owned `DatabaseConnection`
+  напрямую и также не зависят от Loco host context.
+- Host-owned `RootQuery` также не извлекает Loco `AppContext`: DB-only read paths используют
+  schema-owned `DatabaseConnection`, а marketplace/cache paths — `ServerRuntimeContext`.
+- Весь `apps/server/src/graphql/**`, включая `RootMutation`, RBAC writer и search rate limiter,
+  не импортирует Loco. `services/graphql_schema.rs` также принимает только `ServerRuntimeContext`;
+  текущий app bootstrap/controller boundary отвечает за однократную адаптацию host context.
+- Server event runtime строит обычный и transactional event bus из `ServerRuntimeContext` и больше
+  не реэкспортирует `rustok_outbox::loco`; crate-local Loco adapter остаётся до удаления dependency feature.
+- GraphQL HTTP и WebSocket handlers извлекают `ServerRuntimeContext`/`ServerAuthRuntime` как Axum
+  substate и не передают Loco `AppContext` в request/connection data. `loco_rs::controller::Routes`
+  остаётся только временным routing adapter до Phase 2.
+- Users REST handlers также извлекают `ServerRuntimeContext`; Loco response/error helpers пока
+  сохраняются как отдельная часть Phase 2, без смешивания state migration и response cutover.
+- Metrics handler и весь metrics helper pipeline используют `ServerRuntimeContext`; состояние
+  mailer передаётся отдельным `ServerEmailRuntime`, а worker handles читаются через scoped shared API.
+- Health readiness/runtime handlers используют те же runtime contracts для DB, settings, cache,
+  event transport, rate limits, worker lifecycle и email backend state; Loco response formatter
+  остаётся только до общего Phase 2 error/response cutover.
+- Channel и standalone Flex REST handlers получают `ServerRuntimeContext`; Flex controller tests
+  собирают тот же neutral runtime fixture и не создают Loco `AppContext`.
+- Auth REST handlers извлекают узкий `ServerAuthRuntime`; password reset и verification endpoints
+  дополнительно получают `ServerEmailRuntime`. Controller не читает Loco config, DB или mailer напрямую.
+- OAuth discovery metadata также использует `ServerAuthRuntime` как единственный источник auth config.
+- Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools
+  и build WebSocket извлекают `ServerRuntimeContext`; DB/shared runtime semantics не зависят от Loco state.
+- Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле. Request-level `tenant`, `channel` и `locale` middleware получают `ServerRuntimeContext`, auth context получает `ServerAuthRuntime`; Loco `AppContext` остаётся только в router/controller boundary adapters для текущего host.
 - Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
 - Server migrator является backend composition root для module-owned schema: content-family модули (`blog`, `pages`, `comments`) и search обязаны подключаться здесь через `crates/rustok-*/src/migrations`, иначе внешние Next/Leptos admin surfaces получают рабочий route shell без нужных таблиц.
 - `apps/server` может работать как `full` host или как `registry_only`, но `host_mode` не заменяет deployment profile и не меняет build/deploy semantics.
@@ -183,9 +212,10 @@ Shared foundation / support crates:
 
 - [Health и runtime guardrails](./health.md)
 - [Стек библиотек](./library-stack.md)
+- [План ухода от Loco RS к чистому Axum и своим CLI](../../../docs/architecture/loco-exit-plan.md)
 - [Контракт транспорта событий](./event-transport.md)
 - [План верификации ядра](./CORE_VERIFICATION_PLAN.md)
-- [Loco integration](./loco-core-integration-plan.md)
+- [Loco integration](./loco-core-integration-plan.md) — historical/deprecated context; active roadmap is the Loco exit plan above
 - [Контракт event flow](../../../docs/architecture/event-flow-contract.md)
 - [Контракты manifest-слоя](../../../docs/modules/manifest.md)
 - [Runbook retry/compensation lifecycle hook failures](./module-lifecycle-retry-compensation-runbook.md)

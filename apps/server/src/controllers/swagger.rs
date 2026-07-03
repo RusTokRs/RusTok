@@ -4,13 +4,13 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use loco_rs::app::AppContext;
 use loco_rs::{controller::Routes, Result};
 use utoipa::openapi::OpenApi as OpenApiDoc;
 use utoipa::OpenApi;
 
 use crate::common::settings::RustokSettings;
 use crate::error::Error;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -173,9 +173,8 @@ fn build_openapi_document(settings: &RustokSettings) -> OpenApiDoc {
         (status = 200, description = "OpenAPI specification in JSON format", content_type = "application/json"),
     )
 )]
-pub async fn openapi_json(State(ctx): State<AppContext>) -> Result<Response> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
-    let spec = build_openapi_document(&settings)
+pub async fn openapi_json(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    let spec = build_openapi_document(ctx.settings())
         .to_json()
         .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec: {e}")))?;
     Ok((
@@ -195,9 +194,8 @@ pub async fn openapi_json(State(ctx): State<AppContext>) -> Result<Response> {
         (status = 200, description = "OpenAPI specification in YAML format", content_type = "text/yaml"),
     )
 )]
-pub async fn openapi_yaml(State(ctx): State<AppContext>) -> Result<Response> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
-    let spec = build_openapi_document(&settings)
+pub async fn openapi_yaml(State(ctx): State<ServerRuntimeContext>) -> Result<Response> {
+    let spec = build_openapi_document(ctx.settings())
         .to_yaml()
         .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}")))?;
     Ok((

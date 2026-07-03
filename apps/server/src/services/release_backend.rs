@@ -3,7 +3,6 @@ use std::process::Stdio;
 
 use anyhow::{anyhow, bail, Context};
 use chrono::Utc;
-use loco_rs::app::AppContext;
 use reqwest::multipart;
 use serde::Serialize;
 use tokio::process::Command;
@@ -15,6 +14,7 @@ use crate::models::build::Model as Build;
 use crate::models::release::Model as Release;
 use crate::modules::{BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan};
 use crate::services::build_service::{BuildService, ReleaseArtifactBundle};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum ReleasePublishState {
@@ -43,9 +43,9 @@ pub struct ReleaseDeploymentService {
 }
 
 impl ReleaseDeploymentService {
-    pub fn new(ctx: &AppContext, config: BuildRuntimeSettings) -> Self {
+    pub fn new(ctx: &ServerRuntimeContext, config: BuildRuntimeSettings) -> Self {
         Self {
-            build_service: BuildService::new(ctx.db.clone()),
+            build_service: BuildService::new(ctx.db_clone()),
             config,
         }
     }

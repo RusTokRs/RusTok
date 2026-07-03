@@ -967,21 +967,40 @@ pub fn ProductAdmin() -> impl IntoView {
                                 </select>
                             </div>
                             <div class="border-y border-border py-4">
-                                {move || match effective_form.get() {
-                                    None => view! {
-                                        <p class="text-xs text-muted-foreground">{attribute_form_copy.loading.clone()}</p>
-                                    }.into_any(),
-                                    Some(Err(err)) => view! {
-                                        <p class="text-xs text-destructive">{attribute_form_copy.load_failure(err)}</p>
-                                    }.into_any(),
-                                    Some(Ok(None)) => view! {
-                                        <p class="text-xs text-muted-foreground">{attribute_form_copy.select_category.clone()}</p>
-                                    }.into_any(),
-                                    Some(Ok(Some(form))) if form.attributes.is_empty() => view! {
-                                        <p class="text-xs text-muted-foreground">{attribute_form_copy.no_attributes.clone()}</p>
-                                    }.into_any(),
+                                {move || {
+                                    let attribute_form_copy = attribute_form_copy.clone();
+                                    let ui_locale = ui_locale.clone();
+                                    match effective_form.get() {
+                                    None => {
+                                        let loading = attribute_form_copy.loading.clone();
+                                        view! {
+                                            <p class="text-xs text-muted-foreground">{loading}</p>
+                                        }.into_any()
+                                    },
+                                    Some(Err(err)) => {
+                                        let load_failure = attribute_form_copy.load_failure(err);
+                                        view! {
+                                            <p class="text-xs text-destructive">{load_failure}</p>
+                                        }.into_any()
+                                    },
+                                    Some(Ok(None)) => {
+                                        let select_category = attribute_form_copy.select_category.clone();
+                                        view! {
+                                            <p class="text-xs text-muted-foreground">{select_category}</p>
+                                        }.into_any()
+                                    },
+                                    Some(Ok(Some(form))) if form.attributes.is_empty() => {
+                                        let no_attributes = attribute_form_copy.no_attributes.clone();
+                                        view! {
+                                            <p class="text-xs text-muted-foreground">{no_attributes}</p>
+                                        }.into_any()
+                                    },
                                     Some(Ok(Some(form))) => {
                                         let detached_count = form.detached_attribute_ids.len();
+                                        let detached_title = attribute_form_copy.detached_title.clone();
+                                        let detached_values_label = attribute_form_copy.detached_values(detached_count);
+                                        let clear_detached_label = attribute_form_copy.clear_detached_label.clone();
+                                        let detached_empty_label = attribute_form_copy.detached_empty_label.clone();
                                         let mut groups: Vec<(String, Vec<ProductEffectiveFormAttribute>)> = Vec::new();
                                         for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled) {
                                             let group = attribute
@@ -1003,8 +1022,8 @@ pub fn ProductAdmin() -> impl IntoView {
                                                         <div class="grid gap-4 md:grid-cols-2">
                                                             {attributes.into_iter().map(|attribute| view! {
                                                                 <TypedProductAttributeField
-                                                                    attribute=attribute
-                                                                    editor_state=attribute_editor_state
+                                                            attribute=attribute
+                                                            editor_state=attribute_editor_state
                                                                     required_label=attribute_form_copy.required_label.clone()
                                                                     empty_option_label=attribute_form_copy.empty_option_label.clone()
                                                                     boolean_true_label=attribute_form_copy.boolean_true_label.clone()
@@ -1018,8 +1037,8 @@ pub fn ProductAdmin() -> impl IntoView {
                                                     <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
                                                         <div class="flex flex-wrap items-center justify-between gap-3">
                                                             <div>
-                                                                <h4 class="text-sm font-semibold text-foreground">{attribute_form_copy.detached_title.clone()}</h4>
-                                                                <p class="text-xs text-muted-foreground">{attribute_form_copy.detached_values(detached_count)}</p>
+                                                                <h4 class="text-sm font-semibold text-foreground">{detached_title.clone()}</h4>
+                                                                <p class="text-xs text-muted-foreground">{detached_values_label.clone()}</p>
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -1040,18 +1059,20 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                     }
                                                                 }
                                                             >
-                                                                {attribute_form_copy.clear_detached_label.clone()}
+                                                                {clear_detached_label.clone()}
                                                             </button>
                                                         </div>
                                                         <div class="mt-3 grid gap-2">
                                                             {move || {
+                                                                let ui_locale = ui_locale.clone();
+                                                                let detached_empty_label = detached_empty_label.clone();
                                                                 let values = attribute_values
                                                                     .get()
                                                                     .and_then(Result::ok)
                                                                     .map(|values| build_product_detached_attribute_value_view_models(ui_locale.as_deref(), &values))
                                                                     .unwrap_or_default();
                                                                 if values.is_empty() {
-                                                                    view! { <p class="text-xs text-muted-foreground">{attribute_form_copy.detached_empty_label.clone()}</p> }.into_any()
+                                                                    view! { <p class="text-xs text-muted-foreground">{detached_empty_label}</p> }.into_any()
                                                                 } else {
                                                                     view! {
                                                                         <div class="grid gap-2">
@@ -1070,6 +1091,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                 </Show>
                                             </div>
                                         }.into_any()
+                                    }
                                     }
                                 }}
                             </div>

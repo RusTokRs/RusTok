@@ -1,6 +1,5 @@
-use loco_rs::app::AppContext;
-
 use crate::error::{Error, Result};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 
@@ -11,9 +10,11 @@ pub struct RbacConsistencyStats {
     pub orphan_role_permissions_total: i64,
 }
 
-pub async fn load_rbac_consistency_stats(ctx: &AppContext) -> Result<RbacConsistencyStats> {
+pub async fn load_rbac_consistency_stats(
+    ctx: &ServerRuntimeContext,
+) -> Result<RbacConsistencyStats> {
     let row = ctx
-        .db
+        .db()
         .query_one(Statement::from_string(
             DbBackend::Postgres,
             "SELECT

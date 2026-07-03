@@ -13,7 +13,6 @@ use axum::{
     Extension, Json,
 };
 use futures_util::{SinkExt, StreamExt};
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use rustok_core::i18n::Locale;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -23,11 +22,12 @@ use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::{resolve_current_user_from_access_token, OptionalCurrentUser};
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::graphql::AppSchema;
+use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 use rustok_core::ModuleRegistry;
 
 #[allow(clippy::too_many_arguments)]
 async fn graphql_handler(
-    State(ctx): State<AppContext>,
+    State(runtime_ctx): State<ServerRuntimeContext>,
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
     tenant_ctx: TenantContext,
@@ -36,6 +36,7 @@ async fn graphql_handler(
     headers: HeaderMap,
     Json(req): Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
+    let db = runtime_ctx.db_clone();
     let locale = Locale::parse(&request_context.locale).unwrap_or_default();
     if let Some(hash) = persisted_query_hash(&req) {
         tracing::debug!(
@@ -46,7 +47,8 @@ async fn graphql_handler(
     }
 
     let mut request = req
-        .data(ctx)
+        .data(runtime_ctx)
+        .data(db)
         .data(tenant_ctx)
         .data(request_context)
         .data(headers)
@@ -106,7 +108,8 @@ struct GraphqlWsInitPayload {
 
 async fn graphql_ws_handler(
     ws: WebSocketUpgrade,
-    State(ctx): State<AppContext>,
+    State(runtime_ctx): State<ServerRuntimeContext>,
+    State(auth_runtime): State<ServerAuthRuntime>,
     Extension(registry): Extension<ModuleRegistry>,
     Extension(schema): Extension<Arc<AppSchema>>,
 ) -> impl IntoResponse {
@@ -117,13 +120,23 @@ async fn graphql_ws_handler(
         .and_then(|value| value.parse::<WebSocketProtocols>().ok())
         .unwrap_or(WebSocketProtocols::GraphQLWS);
 
-    ws.on_upgrade(move |socket| handle_graphql_ws(socket, schema, ctx, registry, protocol))
+    ws.on_upgrade(move |socket| {
+        handle_graphql_ws(
+            socket,
+            schema,
+            runtime_ctx,
+            auth_runtime,
+            registry,
+            protocol,
+        )
+    })
 }
 
 async fn handle_graphql_ws(
     socket: WebSocket,
     schema: Arc<AppSchema>,
-    app_ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
+    auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     protocol: WebSocketProtocols,
 ) {
@@ -131,7 +144,8 @@ async fn handle_graphql_ws(
     let (incoming_tx, incoming_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
     let schema_for_stream = schema.as_ref().clone();
-    let app_ctx_for_init = app_ctx.clone();
+    let runtime_ctx_for_init = runtime_ctx.clone();
+    let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
     let mut graphql_stream = async_graphql::http::WebSocket::new(
         schema_for_stream,
@@ -139,7 +153,12 @@ async fn handle_graphql_ws(
         protocol,
     )
     .on_connection_init(move |payload| {
-        build_ws_connection_data(app_ctx_for_init.clone(), registry_for_init.clone(), payload)
+        build_ws_connection_data(
+            runtime_ctx_for_init.clone(),
+            auth_runtime_for_init.clone(),
+            registry_for_init.clone(),
+            payload,
+        )
     });
 
     let forward_incoming = tokio::spawn(async move {
@@ -185,7 +204,8 @@ async fn handle_graphql_ws(
 }
 
 async fn build_ws_connection_data(
-    app_ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
+    auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
@@ -200,7 +220,7 @@ async fn build_ws_connection_data(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| async_graphql::Error::new("connection_init.token is required"))?;
 
-    let tenant = crate::models::tenants::Entity::find_by_slug(&app_ctx.db, &tenant_slug)
+    let tenant = crate::models::tenants::Entity::find_by_slug(runtime_ctx.db(), &tenant_slug)
         .await
         .map_err(|_| async_graphql::Error::new("Failed to resolve tenant"))?
         .ok_or_else(|| async_graphql::Error::new("Tenant not found"))?;
@@ -214,9 +234,10 @@ async fn build_ws_connection_data(
         .strip_prefix("Bearer ")
         .or_else(|| token.trim().strip_prefix("bearer "))
         .unwrap_or(token.trim());
-    let current_user = resolve_current_user_from_access_token(&app_ctx, tenant.id, access_token)
-        .await
-        .map_err(|(_, message)| async_graphql::Error::new(message))?;
+    let current_user =
+        resolve_current_user_from_access_token(&auth_runtime, tenant.id, access_token)
+            .await
+            .map_err(|(_, message)| async_graphql::Error::new(message))?;
 
     let locale = payload
         .locale
@@ -244,7 +265,8 @@ async fn build_ws_connection_data(
     };
 
     let mut data = Data::default();
-    data.insert(app_ctx);
+    data.insert(runtime_ctx.db_clone());
+    data.insert(runtime_ctx);
     data.insert(registry);
     data.insert(locale);
     data.insert(tenant_ctx);

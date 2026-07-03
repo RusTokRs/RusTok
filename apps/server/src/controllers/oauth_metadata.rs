@@ -1,12 +1,11 @@
 //! OAuth 2.0 Authorization Server Metadata (RFC 8414)
 //! OpenID Connect Discovery 1.0
 
-use crate::auth::auth_config_from_ctx;
 use axum::{extract::State, routing::get, Json};
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 
 use crate::error::Error;
+use crate::services::server_runtime_context::ServerAuthRuntime;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -29,10 +28,11 @@ pub struct OAuthAuthorizationServerMetadata {
 }
 
 async fn get_metadata(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
 ) -> Result<Json<OAuthAuthorizationServerMetadata>, Error> {
-    let auth_config =
-        auth_config_from_ctx(&ctx).map_err(|_| Error::Message("Auth config error".into()))?;
+    let auth_config = ctx
+        .auth_config()
+        .ok_or_else(|| Error::Message("Auth config error".into()))?;
 
     // Generate issuer base URL
     // In a real environment, this should be the public URL from config.

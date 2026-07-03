@@ -5,7 +5,6 @@ use axum::{
     routing::{delete, get, patch, post},
     Extension, Json,
 };
-use loco_rs::app::AppContext;
 use loco_rs::controller::{format, ErrorDetail, Routes};
 use rustok_api::Permission;
 use rustok_channel::{
@@ -26,6 +25,7 @@ use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Serialize)]
 struct ChannelBootstrapResponse {
@@ -89,7 +89,7 @@ struct AvailableOauthAppItem {
 }
 
 async fn bootstrap(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Extension(registry): Extension<ModuleRegistry>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
@@ -97,7 +97,7 @@ async fn bootstrap(
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let channels = service
         .list_channel_details(tenant.id)
         .await
@@ -122,7 +122,7 @@ async fn bootstrap(
         .collect::<Vec<_>>();
     available_modules.sort_by(|left, right| left.slug.cmp(&right.slug));
 
-    let mut oauth_apps = oauth_apps::Entity::find_active_by_tenant(&ctx.db, tenant.id)
+    let mut oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
         .await
         .map_err(internal_error)?
         .into_iter()
@@ -146,14 +146,14 @@ async fn bootstrap(
 }
 
 async fn create_channel(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Json(input): Json<CreateChannelInput>,
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let channel = service
         .create_channel(CreateChannelInput {
             tenant_id: tenant.id,
@@ -163,13 +163,13 @@ async fn create_channel(
         })
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(channel)
 }
 
 async fn create_target(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
@@ -178,18 +178,18 @@ async fn create_target(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let target: ChannelTargetResponse = service
         .add_target(channel_id, input)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(target)
 }
 
 async fn set_default_channel(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
@@ -197,18 +197,18 @@ async fn set_default_channel(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let channel = service
         .set_default_channel(channel_id)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(channel)
 }
 
 async fn update_target(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((channel_id, target_id)): Path<(Uuid, Uuid)>,
@@ -217,18 +217,18 @@ async fn update_target(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let target: ChannelTargetResponse = service
         .update_target(channel_id, target_id, input)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(target)
 }
 
 async fn delete_target(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((channel_id, target_id)): Path<(Uuid, Uuid)>,
@@ -236,18 +236,18 @@ async fn delete_target(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let target: ChannelTargetResponse = service
         .delete_target(channel_id, target_id)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(target)
 }
 
 async fn bind_module(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
@@ -256,18 +256,18 @@ async fn bind_module(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let binding = service
         .bind_module(channel_id, input)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
 
 async fn bind_oauth_app(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(channel_id): Path<Uuid>,
@@ -276,7 +276,7 @@ async fn bind_oauth_app(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let oauth_apps = oauth_apps::Entity::find_active_by_tenant(&ctx.db, tenant.id)
+    let oauth_apps = oauth_apps::Entity::find_active_by_tenant(ctx.db(), tenant.id)
         .await
         .map_err(internal_error)?;
     if !oauth_apps.iter().any(|app| app.id == input.oauth_app_id) {
@@ -285,18 +285,18 @@ async fn bind_oauth_app(
         ));
     }
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let binding = service
         .bind_oauth_app(channel_id, input)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
 
 async fn delete_module_binding(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((channel_id, binding_id)): Path<(Uuid, Uuid)>,
@@ -304,18 +304,18 @@ async fn delete_module_binding(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let binding = service
         .remove_module_binding(channel_id, binding_id)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
 
 async fn delete_oauth_app_binding(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((channel_id, binding_id)): Path<(Uuid, Uuid)>,
@@ -323,25 +323,25 @@ async fn delete_oauth_app_binding(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let binding = service
         .revoke_oauth_app_binding(channel_id, binding_id)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
 
 async fn create_resolution_policy_set(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Json(input): Json<CreateResolutionPolicySetRequest>,
 ) -> Result<Response> {
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let policy_set = service
         .create_resolution_policy_set(CreateChannelResolutionPolicySetInput {
             tenant_id: tenant.id,
@@ -351,13 +351,13 @@ async fn create_resolution_policy_set(
         })
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(policy_set)
 }
 
 async fn create_resolution_rule(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(policy_set_id): Path<Uuid>,
@@ -369,7 +369,7 @@ async fn create_resolution_rule(
 
     let (priority, is_active, definition) =
         build_rule_definition(input).map_err(Error::BadRequest)?;
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let rule = service
         .create_resolution_rule(
             policy_set_id,
@@ -381,13 +381,13 @@ async fn create_resolution_rule(
         )
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(rule)
 }
 
 async fn update_resolution_rule(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((policy_set_id, rule_id)): Path<(Uuid, Uuid)>,
@@ -400,18 +400,18 @@ async fn update_resolution_rule(
         ensure_channel_belongs_to_tenant(&ctx, tenant.id, action_channel_id).await?;
     }
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let rule = service
         .update_resolution_rule(policy_set_id, rule_id, build_update_rule_input(input))
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(rule)
 }
 
 async fn reorder_resolution_rules(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(policy_set_id): Path<Uuid>,
@@ -420,7 +420,7 @@ async fn reorder_resolution_rules(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let rules = service
         .reorder_resolution_rules(
             policy_set_id,
@@ -430,13 +430,13 @@ async fn reorder_resolution_rules(
         )
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(rules)
 }
 
 async fn activate_resolution_policy_set(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(policy_set_id): Path<Uuid>,
@@ -444,18 +444,18 @@ async fn activate_resolution_policy_set(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let policy_set = service
         .set_active_resolution_policy_set(policy_set_id)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(policy_set)
 }
 
 async fn delete_resolution_rule(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path((policy_set_id, rule_id)): Path<(Uuid, Uuid)>,
@@ -463,23 +463,23 @@ async fn delete_resolution_rule(
     ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let rule = service
         .remove_resolution_rule(policy_set_id, rule_id)
         .await
         .map_err(internal_error)?;
-    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
+    invalidate_channel_resolution_cache(&ctx, tenant.id).await;
 
     format::json(rule)
 }
 
 async fn ensure_channel_manage_access(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     user_id: Uuid,
 ) -> Result<()> {
     let allowed = RbacService::has_any_permission(
-        &ctx.db,
+        ctx.db(),
         &tenant_id,
         &user_id,
         &[Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE],
@@ -505,11 +505,11 @@ async fn ensure_channel_manage_access(
 }
 
 async fn ensure_channel_belongs_to_tenant(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     channel_id: Uuid,
 ) -> Result<ChannelResponse> {
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let channel = service
         .get_channel(channel_id)
         .await
@@ -521,11 +521,11 @@ async fn ensure_channel_belongs_to_tenant(
 }
 
 async fn ensure_policy_set_belongs_to_tenant(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     policy_set_id: Uuid,
 ) -> Result<()> {
-    let service = ChannelService::new(ctx.db.clone());
+    let service = ChannelService::new(ctx.db_clone());
     let policy_set = service
         .get_resolution_policy_set(policy_set_id)
         .await
@@ -620,6 +620,10 @@ fn forbidden_error(description: impl Into<String>) -> Error {
         StatusCode::FORBIDDEN,
         ErrorDetail::new("forbidden", description.as_str()),
     )
+}
+
+async fn invalidate_channel_resolution_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
+    invalidate_tenant_channel_cache(ctx, tenant_id).await;
 }
 
 pub fn routes() -> Routes {

@@ -1,10 +1,10 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use loco_rs::app::AppContext;
 use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::context::{AuthContext, TenantContext};
-use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::{SettingsService, ValidatorRegistry};
 use rustok_api::graphql::GraphQLError;
 
@@ -22,14 +22,14 @@ impl SettingsMutation {
         ctx: &Context<'_>,
         input: UpdatePlatformSettingsInput,
     ) -> Result<UpdatePlatformSettingsPayload> {
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let can_manage = RbacService::has_permission(
-            &app_ctx.db,
+            runtime_ctx.db(),
             &tenant.id,
             &auth.user_id,
             &rustok_api::Permission::SETTINGS_MANAGE,
@@ -49,7 +49,7 @@ impl SettingsMutation {
         let validators = ValidatorRegistry::default();
 
         let stored = SettingsService::update(
-            app_ctx,
+            runtime_ctx,
             tenant.id,
             &input.category,
             settings_json,
@@ -68,7 +68,7 @@ impl SettingsMutation {
         })?;
 
         // Emit audit event through outbox (best-effort: don't fail the mutation on event error)
-        let event_bus = transactional_event_bus_from_context(app_ctx);
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         if let Err(e) = event_bus
             .publish(
                 tenant.id,

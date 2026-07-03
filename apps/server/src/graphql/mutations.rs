@@ -1,5 +1,5 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
@@ -32,6 +32,7 @@ use crate::services::platform_composition::{
     PlatformCompositionService,
 };
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::Permission;
 use rustok_auth::{
@@ -276,16 +277,12 @@ async fn ensure_modules_manage_permission(
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
         .clone();
     let tenant = ctx.data::<TenantContext>()?.clone();
-    let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+    let db = ctx.data::<DatabaseConnection>()?;
 
-    let can_manage_modules = RbacService::has_permission(
-        &app_ctx.db,
-        &tenant.id,
-        &auth.user_id,
-        &Permission::MODULES_MANAGE,
-    )
-    .await
-    .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+    let can_manage_modules =
+        RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
     if !can_manage_modules {
         return Err(<FieldError as GraphQLError>::permission_denied(
@@ -298,7 +295,7 @@ async fn ensure_modules_manage_permission(
 
 #[allow(clippy::too_many_arguments)]
 async fn persist_manifest_and_request_build(
-    app_ctx: &loco_rs::app::AppContext,
+    runtime_ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     registry: &ModuleRegistry,
     expected_revision: Option<i64>,
@@ -309,16 +306,16 @@ async fn persist_manifest_and_request_build(
 ) -> Result<BuildJob> {
     let event_publisher = Arc::new(CompositeBuildEventPublisher::new(vec![
         Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
-            app_ctx,
+            runtime_ctx,
         ))),
         Arc::new(EventBusBuildEventPublisher::new(
-            event_bus_from_context(app_ctx),
+            event_bus_from_context(runtime_ctx),
             tenant_id,
         )),
     ]));
 
     let result = PlatformCompositionBuildService::update_manifest_and_request_build(
-        &app_ctx.db,
+        runtime_ctx.db(),
         event_publisher,
         registry,
         expected_revision,
@@ -498,10 +495,10 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
 
         let can_manage_users = RbacService::has_permission(
-            &app_ctx.db,
+            db,
             &tenant.id,
             &auth.user_id,
             &rustok_api::Permission::USERS_MANAGE,
@@ -517,7 +514,7 @@ impl RootMutation {
 
         let user = users::Entity::find_by_id(id)
             .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(&app_ctx.db)
+            .one(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             .ok_or_else(|| FieldError::new("User not found"))?;
@@ -526,7 +523,7 @@ impl RootMutation {
         model.status = Set(rustok_core::UserStatus::Inactive);
 
         let user = model
-            .update(&app_ctx.db)
+            .update(db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -555,10 +552,10 @@ impl RootMutation {
         expected_revision: Option<i64>,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let snapshot = PlatformCompositionService::active_snapshot(&app_ctx.db)
+        let snapshot = PlatformCompositionService::active_snapshot(runtime_ctx.db())
             .await
             .map_err(map_platform_composition_error)?;
         let mut manifest = snapshot.manifest.clone();
@@ -567,7 +564,7 @@ impl RootMutation {
                 .map_err(map_manifest_error)?;
 
         persist_manifest_and_request_build(
-            app_ctx,
+            runtime_ctx,
             tenant.id,
             registry,
             Some(expected_revision.unwrap_or(snapshot.revision)),
@@ -586,10 +583,10 @@ impl RootMutation {
         expected_revision: Option<i64>,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let snapshot = PlatformCompositionService::active_snapshot(&app_ctx.db)
+        let snapshot = PlatformCompositionService::active_snapshot(runtime_ctx.db())
             .await
             .map_err(map_platform_composition_error)?;
         let mut manifest = snapshot.manifest.clone();
@@ -597,7 +594,7 @@ impl RootMutation {
             ManifestManager::uninstall_module(&mut manifest, &slug).map_err(map_manifest_error)?;
 
         persist_manifest_and_request_build(
-            app_ctx,
+            runtime_ctx,
             tenant.id,
             registry,
             Some(expected_revision.unwrap_or(snapshot.revision)),
@@ -617,10 +614,10 @@ impl RootMutation {
         expected_revision: Option<i64>,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let snapshot = PlatformCompositionService::active_snapshot(&app_ctx.db)
+        let snapshot = PlatformCompositionService::active_snapshot(runtime_ctx.db())
             .await
             .map_err(map_platform_composition_error)?;
         let mut manifest = snapshot.manifest.clone();
@@ -628,7 +625,7 @@ impl RootMutation {
             .map_err(map_manifest_error)?;
 
         persist_manifest_and_request_build(
-            app_ctx,
+            runtime_ctx,
             tenant.id,
             registry,
             Some(expected_revision.unwrap_or(snapshot.revision)),
@@ -643,15 +640,15 @@ impl RootMutation {
     async fn rollback_build(&self, ctx: &Context<'_>, build_id: String) -> Result<BuildJob> {
         let (_, tenant) = ensure_modules_manage_permission(ctx).await?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let service = BuildService::with_event_publisher(
-            app_ctx.db.clone(),
+            runtime_ctx.db_clone(),
             Arc::new(CompositeBuildEventPublisher::new(vec![
                 Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
-                    app_ctx,
+                    runtime_ctx,
                 ))),
                 Arc::new(EventBusBuildEventPublisher::new(
-                    event_bus_from_context(app_ctx),
+                    event_bus_from_context(runtime_ctx),
                     tenant.id,
                 )),
             ])),
@@ -681,7 +678,7 @@ impl RootMutation {
 
         let active_release = ReleaseEntity::find()
             .filter(ReleaseColumn::Status.eq(ReleaseStatus::Active))
-            .one(&app_ctx.db)
+            .one(runtime_ctx.db())
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             .ok_or_else(|| FieldError::new("No active release available for rollback"))?;
@@ -726,17 +723,13 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let can_manage_modules = RbacService::has_permission(
-            &app_ctx.db,
-            &tenant.id,
-            &auth.user_id,
-            &Permission::MODULES_MANAGE,
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let can_manage_modules =
+            RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
+                .await
+                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
         if !can_manage_modules {
             return Err(<FieldError as GraphQLError>::permission_denied(
@@ -747,7 +740,7 @@ impl RootMutation {
         let registry = ctx.data::<ModuleRegistry>()?;
 
         let module = ModuleLifecycleService::toggle_module_with_actor(
-            &app_ctx.db,
+            db,
             registry,
             tenant.id,
             &module_slug,
@@ -770,11 +763,11 @@ impl RootMutation {
         operation_id: Uuid,
     ) -> Result<ModuleOperationRecoveryPlan> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
         let existing_plan =
-            ModuleLifecycleService::module_operation_recovery_plan(&app_ctx.db, operation_id)
+            ModuleLifecycleService::module_operation_recovery_plan(db, operation_id)
                 .await
                 .map_err(map_module_operation_recovery_error)?;
         if existing_plan.tenant_id != tenant.id {
@@ -784,7 +777,7 @@ impl RootMutation {
         }
 
         let operation = ModuleLifecycleService::retry_failed_post_hook_operation(
-            &app_ctx.db,
+            db,
             registry,
             operation_id,
             Some(auth.user_id.to_string()),
@@ -804,11 +797,11 @@ impl RootMutation {
         operation_id: Uuid,
     ) -> Result<TenantModule> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
         let existing_plan =
-            ModuleLifecycleService::module_operation_recovery_plan(&app_ctx.db, operation_id)
+            ModuleLifecycleService::module_operation_recovery_plan(db, operation_id)
                 .await
                 .map_err(map_module_operation_recovery_error)?;
         if existing_plan.tenant_id != tenant.id {
@@ -818,7 +811,7 @@ impl RootMutation {
         }
 
         let module = ModuleLifecycleService::compensate_failed_operation(
-            &app_ctx.db,
+            db,
             registry,
             operation_id,
             Some(auth.user_id.to_string()),
@@ -840,14 +833,14 @@ impl RootMutation {
         settings: String,
     ) -> Result<TenantModule> {
         let (_, tenant) = ensure_modules_manage_permission(ctx).await?;
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
         let settings_json: serde_json::Value = serde_json::from_str(&settings)
             .map_err(|err| FieldError::new(format!("Invalid JSON in settings: {err}")))?;
 
         let module = ModuleLifecycleService::update_module_settings(
-            &app_ctx.db,
+            db,
             registry,
             tenant.id,
             &module_slug,

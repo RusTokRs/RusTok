@@ -13,11 +13,10 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_api::{AuthContext, OptionalTenant};
+        use rustok_api::{AuthContext, HostRuntimeContext, OptionalTenant};
         use rustok_core::{HealthStatus, RusToKModule};
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let _auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -26,7 +25,7 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
             .ok()
             .and_then(|value| value.0);
 
-        let db = app_ctx.db.clone();
+        let db = runtime_ctx.db_clone();
         let backend = sea_orm::ConnectionTrait::get_database_backend(&db);
 
         let module = rustok_outbox::OutboxModule;

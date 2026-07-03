@@ -1,8 +1,8 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use loco_rs::app::AppContext;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::SettingsService;
 use rustok_api::graphql::GraphQLError;
 
@@ -20,14 +20,14 @@ impl SettingsQuery {
         ctx: &Context<'_>,
         category: String,
     ) -> Result<PlatformSettingsPayload> {
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let can_read = RbacService::has_permission(
-            &app_ctx.db,
+            runtime_ctx.db(),
             &tenant.id,
             &auth.user_id,
             &rustok_api::Permission::SETTINGS_READ,
@@ -41,7 +41,7 @@ impl SettingsQuery {
             ));
         }
 
-        let value = SettingsService::get(app_ctx, tenant.id, &category)
+        let value = SettingsService::get(runtime_ctx, tenant.id, &category)
             .await
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
@@ -57,14 +57,14 @@ impl SettingsQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<Vec<PlatformSettingsPayload>> {
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
         let can_read = RbacService::has_permission(
-            &app_ctx.db,
+            runtime_ctx.db(),
             &tenant.id,
             &auth.user_id,
             &rustok_api::Permission::SETTINGS_READ,
@@ -78,7 +78,7 @@ impl SettingsQuery {
             ));
         }
 
-        let categories = SettingsService::get_all(app_ctx, tenant.id)
+        let categories = SettingsService::get_all(runtime_ctx, tenant.id)
             .await
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 

@@ -17,7 +17,7 @@ fn has_effective_permission(user: &CurrentUser, permission: &Permission) -> bool
 /// # Example
 /// ```rust,ignore
 /// async fn create_product(
-///     State(ctx): State<AppContext>,
+///     State(ctx): State<AppState>,
 ///     RequirePermission(user, Permission::PRODUCTS_CREATE): RequirePermission,
 ///     Json(input): Json<CreateProductInput>,
 /// ) -> Result<Json<ProductResponse>> {
@@ -34,7 +34,7 @@ fn has_effective_permission(user: &CurrentUser, permission: &Permission) -> bool
 /// ```rust,ignore
 /// // In controller
 /// async fn create_product(
-///     State(ctx): State<AppContext>,
+///     State(ctx): State<AppState>,
 ///     RequireProductCreate(user): RequireProductCreate,
 ///     Json(input): Json<CreateProductInput>,
 /// ) -> Result<Json<ProductResponse>> {
@@ -49,7 +49,7 @@ macro_rules! define_permission_extractor {
         impl<S> axum::extract::FromRequestParts<S> for $name
         where
             S: Send + Sync,
-            loco_rs::app::AppContext: axum::extract::FromRef<S>,
+            $crate::services::server_runtime_context::ServerAuthRuntime: axum::extract::FromRef<S>,
         {
             type Rejection = (axum::http::StatusCode, String);
 

@@ -24,6 +24,7 @@ use crate::common::{extract_effective_proto, RustokSettings};
 use crate::context::TenantContext;
 use crate::extractors::auth::{resolve_current_user_from_access_token, CurrentUser};
 use crate::services::oauth_app::OAuthAppService;
+use crate::services::server_runtime_context::ServerAuthRuntime;
 
 const OAUTH_BROWSER_SESSION_COOKIE: &str = "rustok_oauth_browser_session";
 const OAUTH_BROWSER_SESSION_TTL_SECS: u64 = 10 * 60;
@@ -533,8 +534,11 @@ async fn authorize_browser_handler(
         return render_authorization_required(&validated.app.name).into_response();
     };
 
+    let auth_runtime = ServerAuthRuntime::from_loco_app_context(&ctx);
     let current_user =
-        match resolve_current_user_from_access_token(&ctx, tenant_ctx.id, &access_token).await {
+        match resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
+            .await
+        {
             Ok(current_user) => current_user,
             Err((status, message)) => {
                 return (
@@ -626,8 +630,11 @@ async fn consent_handler(
         return render_authorization_required(&validated.app.name).into_response();
     };
 
+    let auth_runtime = ServerAuthRuntime::from_loco_app_context(&ctx);
     let current_user =
-        match resolve_current_user_from_access_token(&ctx, tenant_ctx.id, &access_token).await {
+        match resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
+            .await
+        {
             Ok(current_user) => current_user,
             Err((status, message)) => {
                 return (

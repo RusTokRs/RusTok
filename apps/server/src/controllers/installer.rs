@@ -5,7 +5,6 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use loco_rs::app::AppContext;
 use loco_rs::controller::{ErrorDetail, Routes};
 use once_cell::sync::Lazy;
 use rustok_installer::{evaluate_preflight, redact_install_plan, InstallPlan};
@@ -18,6 +17,7 @@ use crate::error::{Error, Result};
 use crate::installer_cli::{apply_plan, InstallerApplyOptions, InstallerApplyOutput};
 use crate::models::install_step_receipt;
 use crate::services::installer_persistence::InstallerPersistenceService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 static INSTALL_JOBS: Lazy<Mutex<HashMap<Uuid, InstallJobStatusResponse>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -89,8 +89,8 @@ pub struct InstallStatusResponse {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-async fn status(State(ctx): State<AppContext>) -> Result<Json<InstallStatusResponse>> {
-    let persistence = InstallerPersistenceService::new(ctx.db.clone());
+async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallStatusResponse>> {
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
     match persistence.latest_session().await {
         Ok(Some(session)) => {
             let completed = session.status == "completed";
@@ -234,11 +234,11 @@ async fn job_status(
 
 async fn receipts(
     headers: HeaderMap,
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<InstallReceiptsResponse>> {
     require_setup_token(&headers, false)?;
-    let persistence = InstallerPersistenceService::new(ctx.db.clone());
+    let persistence = InstallerPersistenceService::new(ctx.db_clone());
     let receipts = persistence
         .list_receipts(session_id)
         .await

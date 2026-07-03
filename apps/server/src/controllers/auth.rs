@@ -9,7 +9,6 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
 use rustok_telemetry::metrics;
@@ -22,10 +21,9 @@ use std::net::SocketAddr;
 use utoipa::ToSchema;
 
 use crate::auth::{
-    auth_config_from_ctx, decode_email_verification_token, decode_invite_token,
-    encode_email_verification_token, encode_password_reset_token, hash_refresh_token,
+    decode_email_verification_token, decode_invite_token, encode_email_verification_token,
+    encode_password_reset_token, hash_refresh_token,
 };
-use crate::common::settings::RustokSettings;
 use crate::common::RequestContext;
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::{
@@ -36,6 +34,7 @@ use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{
     email_service_from_ctx, password_reset_url, EmailVerificationEmail, PasswordResetEmail,
 };
+use crate::services::server_runtime_context::{ServerAuthRuntime, ServerEmailRuntime};
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 const DEFAULT_VERIFY_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
@@ -197,12 +196,18 @@ fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> User
 #[utoipa::path(post, path = "/api/auth/register", tag = "auth", request_body = RegisterParams,
     responses((status = 200, description = "Registration successful", body = AuthResponse),(status = 400, description = "Email already exists")))]
 async fn register(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
-    let (user, tokens) = AuthLifecycleService::register(
-        &ctx,
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::register_runtime(
+        runtime_ctx,
+        &config,
         tenant.id,
         &params.email,
         &params.password,
@@ -224,7 +229,7 @@ async fn register(
 #[utoipa::path(post, path = "/api/auth/login", tag = "auth", request_body = LoginParams,
     responses((status = 200, description = "Login successful", body = AuthResponse),(status = 401, description = "Unauthorized")))]
 async fn login(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
@@ -235,8 +240,14 @@ async fn login(
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string());
 
-    let (user, tokens) = AuthLifecycleService::login(
-        &ctx,
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::login_runtime(
+        runtime_ctx,
+        &config,
         tenant.id,
         &params.email,
         &params.password,
@@ -259,13 +270,23 @@ async fn login(
 #[utoipa::path(post, path = "/api/auth/refresh", tag = "auth", request_body = RefreshRequest,
     responses((status = 200, description = "Token refreshed", body = AuthResponse),(status = 401, description = "Invalid or expired refresh token")))]
 async fn refresh(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
-    let (user, tokens) = AuthLifecycleService::refresh(&ctx, tenant.id, &params.refresh_token)
-        .await
-        .map_err(|e: AuthLifecycleError| Error::from(e))?;
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let (user, tokens) = AuthLifecycleService::refresh_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        &params.refresh_token,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     let user_role = tokens.effective_role.clone();
     format::json(AuthResponse {
@@ -280,19 +301,20 @@ async fn refresh(
 #[utoipa::path(post, path = "/api/auth/logout", tag = "auth", request_body = RefreshRequest,
     responses((status = 200, description = "Logout successful", body = LogoutResponse),(status = 401, description = "Invalid or expired refresh token")))]
 async fn logout(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RefreshRequest>,
 ) -> Result<Response> {
     let token_hash = hash_refresh_token(&params.refresh_token);
-    let session = sessions::Entity::find_by_token_hash(&ctx.db, tenant.id, &token_hash)
-        .await?
-        .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
+    let session =
+        sessions::Entity::find_by_token_hash(ctx.runtime_ctx().db(), tenant.id, &token_hash)
+            .await?
+            .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
 
     if session.revoked_at.is_none() {
         let mut session_model: sessions::ActiveModel = session.into();
         session_model.revoked_at = Set(Some(Utc::now().into()));
-        session_model.update(&ctx.db).await?;
+        session_model.update(ctx.runtime_ctx().db()).await?;
     }
 
     format::json(LogoutResponse { status: "ok" })
@@ -313,11 +335,14 @@ async fn me(
 #[utoipa::path(post, path = "/api/auth/invite/accept", tag = "auth", request_body = AcceptInviteParams,
     responses((status = 200, description = "Invite accepted", body = InviteAcceptResponse),(status = 401, description = "Invalid or expired invite token")))]
 async fn accept_invite(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<AcceptInviteParams>,
 ) -> Result<Response> {
-    let config = auth_config_from_ctx(&ctx)?;
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
     let claims = decode_invite_token(&config, &params.token)?;
 
     if claims.tenant_id != tenant.id {
@@ -326,9 +351,10 @@ async fn accept_invite(
 
     let email = claims.sub.clone();
     let role = claims.role.clone();
+    let runtime_ctx = ctx.runtime_ctx();
 
-    AuthLifecycleService::create_user(
-        &ctx,
+    AuthLifecycleService::create_user_runtime(
+        runtime_ctx,
         tenant.id,
         &email,
         &params.password,
@@ -354,14 +380,18 @@ async fn accept_invite(
 #[utoipa::path(post, path = "/api/auth/reset/request", tag = "auth", request_body = RequestResetParams,
     responses((status = 200, description = "Reset request accepted", body = ResetRequestResponse)))]
 async fn request_reset(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
+    State(email_runtime): State<ServerEmailRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     request_context: RequestContext,
     Json(params): Json<RequestResetParams>,
 ) -> Result<Response> {
-    let config = auth_config_from_ctx(&ctx)?;
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
 
-    let user_exists = Users::find_by_email(&ctx.db, tenant.id, &params.email)
+    let user_exists = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email)
         .await?
         .is_some();
 
@@ -381,10 +411,15 @@ async fn request_reset(
     };
 
     if let Some(reset_token_value) = reset_token.as_ref() {
-        let email_service = email_service_from_ctx(&ctx, request_context.locale.as_str())
+        let runtime_ctx = ctx.runtime_ctx();
+        let email_service = email_service_from_ctx(
+            runtime_ctx,
+            email_runtime.mailer_clone(),
+            request_context.locale.as_str(),
+        )
+        .map_err(|_| Error::InternalServerError)?;
+        let reset_url = password_reset_url(runtime_ctx, reset_token_value)
             .map_err(|_| Error::InternalServerError)?;
-        let reset_url =
-            password_reset_url(&ctx, reset_token_value).map_err(|_| Error::InternalServerError)?;
         let recipient = params.email.clone();
 
         tokio::spawn(async move {
@@ -409,13 +444,24 @@ async fn request_reset(
 #[utoipa::path(post, path = "/api/auth/reset/confirm", tag = "auth", request_body = ConfirmResetParams,
     responses((status = 200, description = "Password updated", body = GenericStatusResponse),(status = 401, description = "Invalid token")))]
 async fn confirm_reset(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<ConfirmResetParams>,
 ) -> Result<Response> {
-    AuthLifecycleService::confirm_password_reset(&ctx, tenant.id, &params.token, &params.password)
-        .await
-        .map_err(|e: AuthLifecycleError| Error::from(e))?;
+    let runtime_ctx = ctx.runtime_ctx();
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    AuthLifecycleService::confirm_password_reset_runtime(
+        runtime_ctx,
+        &config,
+        tenant.id,
+        &params.token,
+        &params.password,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     format::json(GenericStatusResponse { status: "ok" })
 }
@@ -423,16 +469,19 @@ async fn confirm_reset(
 #[utoipa::path(post, path = "/api/auth/verify/request", tag = "auth", request_body = RequestVerificationParams,
     responses((status = 200, description = "Verification request accepted", body = VerificationRequestResponse)))]
 async fn request_verification(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
+    State(email_runtime): State<ServerEmailRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     request_context: RequestContext,
     Json(params): Json<RequestVerificationParams>,
 ) -> Result<Response> {
-    let config = auth_config_from_ctx(&ctx)?;
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|_| Error::InternalServerError)?;
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
+    let settings = ctx.runtime_ctx().settings();
 
-    let user = Users::find_by_email(&ctx.db, tenant.id, &params.email).await?;
+    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &params.email).await?;
 
     let expose_token = std::env::var("RUSTOK_DEMO_MODE")
         .map(|value| value == "1")
@@ -454,8 +503,13 @@ async fn request_verification(
     };
 
     if let Some(verification_token_value) = verification_token.as_ref() {
-        let email_service = email_service_from_ctx(&ctx, request_context.locale.as_str())
-            .map_err(|_| Error::InternalServerError)?;
+        let runtime_ctx = ctx.runtime_ctx();
+        let email_service = email_service_from_ctx(
+            runtime_ctx,
+            email_runtime.mailer_clone(),
+            request_context.locale.as_str(),
+        )
+        .map_err(|_| Error::InternalServerError)?;
         let recipient = params.email.clone();
         let verification_token = verification_token_value.clone();
 
@@ -485,25 +539,28 @@ async fn request_verification(
 #[utoipa::path(post, path = "/api/auth/verify/confirm", tag = "auth", request_body = ConfirmVerificationParams,
     responses((status = 200, description = "Email verified", body = GenericStatusResponse),(status = 401, description = "Invalid token")))]
 async fn confirm_verification(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<ConfirmVerificationParams>,
 ) -> Result<Response> {
-    let config = auth_config_from_ctx(&ctx)?;
+    let config = ctx
+        .auth_config()
+        .cloned()
+        .ok_or(Error::InternalServerError)?;
     let claims = decode_email_verification_token(&config, &params.token)?;
 
     if claims.tenant_id != tenant.id {
         return Err(Error::Unauthorized("Invalid verification token".into()));
     }
 
-    let user = Users::find_by_email(&ctx.db, tenant.id, &claims.sub)
+    let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, &claims.sub)
         .await?
         .ok_or_else(|| Error::Unauthorized("Invalid verification token".into()))?;
 
     if user.email_verified_at.is_none() {
         let mut user_active: users::ActiveModel = user.into();
         user_active.email_verified_at = Set(Some(Utc::now().into()));
-        user_active.update(&ctx.db).await?;
+        user_active.update(ctx.runtime_ctx().db()).await?;
     }
 
     format::json(GenericStatusResponse { status: "ok" })
@@ -515,7 +572,7 @@ async fn confirm_verification(
     ),
     responses((status = 200, description = "Active sessions", body = SessionsResponse)))]
 async fn list_sessions(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Query(params): Query<SessionListParams>,
@@ -530,7 +587,7 @@ async fn list_sessions(
         .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
         .order_by_desc(sessions::Column::CreatedAt)
         .limit(limit)
-        .all(&ctx.db)
+        .all(ctx.runtime_ctx().db())
         .await?;
 
     metrics::record_read_path_budget(
@@ -560,7 +617,7 @@ async fn list_sessions(
 #[utoipa::path(post, path = "/api/auth/sessions/revoke-all", tag = "auth", security(("bearer_auth" = [])),
     responses((status = 200, description = "Sessions revoked", body = GenericStatusResponse)))]
 async fn revoke_all_sessions(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
 ) -> Result<Response> {
@@ -572,7 +629,7 @@ async fn revoke_all_sessions(
         .filter(sessions::Column::UserId.eq(current.user.id))
         .filter(sessions::Column::RevokedAt.is_null())
         .filter(sessions::Column::Id.ne(current.session_id))
-        .exec(&ctx.db)
+        .exec(ctx.runtime_ctx().db())
         .await?;
 
     format::json(GenericStatusResponse { status: "ok" })
@@ -581,13 +638,14 @@ async fn revoke_all_sessions(
 #[utoipa::path(post, path = "/api/auth/change-password", tag = "auth", security(("bearer_auth" = [])), request_body = ChangePasswordParams,
     responses((status = 200, description = "Password changed", body = GenericStatusResponse),(status = 401, description = "Invalid credentials")))]
 async fn change_password(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Json(params): Json<ChangePasswordParams>,
 ) -> Result<Response> {
-    AuthLifecycleService::change_password(
-        &ctx,
+    let runtime_ctx = ctx.runtime_ctx();
+    AuthLifecycleService::change_password_runtime(
+        runtime_ctx,
         tenant.id,
         current.user.id,
         current.session_id,
@@ -603,14 +661,20 @@ async fn change_password(
 #[utoipa::path(post, path = "/api/auth/profile", tag = "auth", security(("bearer_auth" = [])), request_body = UpdateProfileParams,
     responses((status = 200, description = "Profile updated", body = UserResponse)))]
 async fn update_profile(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Json(params): Json<UpdateProfileParams>,
 ) -> Result<Response> {
-    let user = AuthLifecycleService::update_profile(&ctx, tenant.id, current.user.id, params.name)
-        .await
-        .map_err(|e: AuthLifecycleError| Error::from(e))?;
+    let runtime_ctx = ctx.runtime_ctx();
+    let user = AuthLifecycleService::update_profile_runtime(
+        runtime_ctx,
+        tenant.id,
+        current.user.id,
+        params.name,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     format::json(UserResponse::from_user_and_role(
         user,
@@ -624,7 +688,7 @@ async fn update_profile(
     ),
     responses((status = 200, description = "Login history", body = SessionsResponse)))]
 async fn login_history(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Query(params): Query<SessionListParams>,
@@ -637,7 +701,7 @@ async fn login_history(
         .filter(sessions::Column::UserId.eq(current.user.id))
         .order_by_desc(sessions::Column::CreatedAt)
         .limit(limit)
-        .all(&ctx.db)
+        .all(ctx.runtime_ctx().db())
         .await?;
 
     metrics::record_read_path_budget(
@@ -671,15 +735,20 @@ async fn login_history(
         (status = 404, description = "Session not found or already revoked")
     ))]
 async fn revoke_session(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(session_id): Path<uuid::Uuid>,
 ) -> Result<Response> {
-    let revoked =
-        AuthLifecycleService::revoke_session(&ctx, tenant.id, current.user.id, session_id)
-            .await
-            .map_err(|e: AuthLifecycleError| Error::from(e))?;
+    let runtime_ctx = ctx.runtime_ctx();
+    let revoked = AuthLifecycleService::revoke_session_runtime(
+        runtime_ctx,
+        tenant.id,
+        current.user.id,
+        session_id,
+    )
+    .await
+    .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     if revoked {
         format::json(GenericStatusResponse { status: "ok" })

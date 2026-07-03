@@ -36,6 +36,7 @@ pub mod registry_governance;
 pub mod registry_principal;
 pub mod release_backend;
 pub mod runtime_guardrails;
+pub mod server_runtime_context;
 pub mod settings_service;
 pub mod topic_field_service;
 pub mod user_field_service;

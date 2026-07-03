@@ -4,13 +4,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use loco_rs::app::AppContext;
 use moka::future::Cache;
 use rustok_core::{DomainEvent, EventBus, EventConsumerRuntime};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use flex::FieldDefinitionView;
+
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const FIELD_DEFINITION_CACHE_TTL: Duration = Duration::from_secs(30);
 
@@ -64,10 +65,10 @@ impl FieldDefinitionCache {
 }
 
 pub fn field_definition_cache_from_context(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     bus: EventBus,
 ) -> FieldDefinitionCache {
-    if let Some(shared) = ctx.shared_store.get::<SharedFieldDefinitionCache>() {
+    if let Some(shared) = ctx.shared_get::<SharedFieldDefinitionCache>() {
         return (*shared.0).clone();
     }
 
@@ -111,10 +112,8 @@ pub fn field_definition_cache_from_context(
         }
     });
 
-    ctx.shared_store
-        .insert(FieldDefinitionCacheInvalidationHandle { _handle: handle });
-    ctx.shared_store
-        .insert(SharedFieldDefinitionCache(cache.clone()));
+    ctx.shared_insert(FieldDefinitionCacheInvalidationHandle { _handle: handle });
+    ctx.shared_insert(SharedFieldDefinitionCache(cache.clone()));
 
     (*cache).clone()
 }
@@ -137,19 +136,14 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 #[cfg(test)]
 mod tests {
     use super::{field_definition_cache_from_context, FieldDefinitionCache};
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
     use flex::FieldDefinitionView;
-    use loco_rs::{
-        app::{AppContext, SharedStore},
-        cache,
-        environment::Environment,
-        storage::{self, Storage},
-        tests_cfg::config::test_config,
-    };
     use rustok_core::EventBus;
     use rustok_events::{DomainEvent, EventEnvelope};
     use sea_orm::{Database, DatabaseConnection};
     use serde_json::json;
-    use std::{sync::Arc, time::Duration};
+    use std::time::Duration;
     use tokio::time::sleep;
     use uuid::Uuid;
 
@@ -168,19 +162,6 @@ mod tests {
             is_active: true,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
-        }
-    }
-
-    fn test_app_context(db: DatabaseConnection) -> AppContext {
-        AppContext {
-            environment: Environment::Test,
-            db,
-            queue_provider: None,
-            config: test_config(),
-            mailer: None,
-            storage: Storage::single(storage::drivers::mem::new()).into(),
-            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-            shared_store: Arc::new(SharedStore::default()),
         }
     }
 
@@ -206,9 +187,10 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("in-memory sqlite db should connect");
-        let ctx = test_app_context(db);
+        let runtime_ctx =
+            ServerRuntimeContext::with_empty_shared_store(db, RustokSettings::default());
         let bus = EventBus::default();
-        let cache = field_definition_cache_from_context(&ctx, bus.clone());
+        let cache = field_definition_cache_from_context(&runtime_ctx, bus.clone());
         let (tenant_id, entity_type) = match &event {
             DomainEvent::FieldDefinitionCreated {
                 tenant_id,

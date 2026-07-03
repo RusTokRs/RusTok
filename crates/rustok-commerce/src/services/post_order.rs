@@ -324,10 +324,8 @@ impl PostOrderOrchestrationService {
                         std::str::FromStr::from_str(s).ok()
                     } else if let Some(n) = val.as_f64() {
                         Decimal::from_f64_retain(n)
-                    } else if let Some(i) = val.as_i64() {
-                        Some(Decimal::from(i))
                     } else {
-                        None
+                        val.as_i64().map(Decimal::from)
                     };
                     if let Some(amount) = amount {
                         let reason = order_change

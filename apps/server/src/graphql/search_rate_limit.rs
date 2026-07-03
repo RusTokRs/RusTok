@@ -7,6 +7,7 @@ use rustok_search::graphql::{
 };
 
 use crate::middleware::rate_limit::{RateLimitCheckError, RateLimiter, SharedSearchRateLimiter};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 struct ServerSearchGraphqlRateLimiter {
     limiter: Arc<RateLimiter>,
@@ -38,13 +39,11 @@ impl SearchGraphqlRateLimiter for ServerSearchGraphqlRateLimiter {
 }
 
 pub fn search_graphql_rate_limiter_from_context(
-    ctx: &loco_rs::app::AppContext,
+    ctx: &ServerRuntimeContext,
 ) -> Option<SearchGraphqlRateLimiterHandle> {
-    ctx.shared_store
-        .get::<SharedSearchRateLimiter>()
-        .map(|shared| {
-            SearchGraphqlRateLimiterHandle(Arc::new(ServerSearchGraphqlRateLimiter {
-                limiter: shared.0,
-            }))
-        })
+    ctx.shared_get::<SharedSearchRateLimiter>().map(|shared| {
+        SearchGraphqlRateLimiterHandle(Arc::new(ServerSearchGraphqlRateLimiter {
+            limiter: shared.0,
+        }))
+    })
 }

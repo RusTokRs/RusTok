@@ -13,7 +13,6 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use loco_rs::app::AppContext;
 use moka::future::Cache;
 use rustok_api::request::{resolve_request_locale, ResolvedRequestLocale};
 use rustok_core::i18n::Locale;
@@ -22,6 +21,7 @@ use sea_orm::ConnectionTrait;
 use uuid::Uuid;
 
 use crate::context::TenantContextExt;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_LOCALE_CACHE_TTL: Duration = Duration::from_secs(60);
 const TENANT_LOCALE_CACHE_MAX_CAPACITY: u64 = 2_000;
@@ -100,18 +100,18 @@ impl TenantLocaleCache {
     }
 }
 
-fn tenant_locale_cache(ctx: &AppContext) -> Arc<TenantLocaleCache> {
-    if let Some(cache) = ctx.shared_store.get::<Arc<TenantLocaleCache>>() {
+fn tenant_locale_cache(ctx: &ServerRuntimeContext) -> Arc<TenantLocaleCache> {
+    if let Some(cache) = ctx.shared_get::<Arc<TenantLocaleCache>>() {
         return cache;
     }
 
     let cache = Arc::new(TenantLocaleCache::new());
-    ctx.shared_store.insert(cache.clone());
+    ctx.shared_insert(cache.clone());
     cache
 }
 
 pub async fn resolve_locale(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     request: Request,
     next: Next,
 ) -> Result<Response, axum::http::StatusCode> {
@@ -147,7 +147,7 @@ pub async fn resolve_locale(
 }
 
 async fn get_tenant_locales_cached(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
 ) -> Result<Arc<Vec<TenantLocaleRecord>>, sea_orm::DbErr> {
     let cache = tenant_locale_cache(ctx);
@@ -161,19 +161,18 @@ async fn get_tenant_locales_cached(
     Ok(locales)
 }
 
-pub async fn invalidate_tenant_locale_cache(ctx: &AppContext, tenant_id: Uuid) {
+pub async fn invalidate_tenant_locale_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     tenant_locale_cache(ctx).invalidate(tenant_id).await;
 }
 
-pub async fn tenant_locale_cache_stats(ctx: &AppContext) -> TenantLocaleCacheStats {
-    ctx.shared_store
-        .get::<Arc<TenantLocaleCache>>()
+pub async fn tenant_locale_cache_stats(ctx: &ServerRuntimeContext) -> TenantLocaleCacheStats {
+    ctx.shared_get::<Arc<TenantLocaleCache>>()
         .map(|cache| cache.stats())
         .unwrap_or_default()
 }
 
 async fn load_tenant_locales(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
 ) -> Result<Vec<TenantLocaleRecord>, sea_orm::DbErr> {
     let statement = Query::select()
@@ -190,8 +189,8 @@ async fn load_tenant_locales(
         .to_owned();
 
     let rows = ctx
-        .db
-        .query_all(ctx.db.get_database_backend().build(&statement))
+        .db()
+        .query_all(ctx.db().get_database_backend().build(&statement))
         .await?;
 
     rows.into_iter()

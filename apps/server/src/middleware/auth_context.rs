@@ -1,11 +1,11 @@
 use axum::{extract::State, http::Request, middleware::Next, response::Response};
-use loco_rs::app::AppContext;
 use rustok_api::context::{AuthContext, AuthContextExtension};
 
 use crate::extractors::auth::resolve_current_user;
+use crate::services::server_runtime_context::ServerAuthRuntime;
 
 pub async fn resolve_optional(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     mut req: Request<axum::body::Body>,
     next: Next,
 ) -> Response {

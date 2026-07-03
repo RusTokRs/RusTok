@@ -1,5 +1,6 @@
 use async_graphql::{Context, FieldError, Result, Subscription};
 use futures_util::stream;
+use sea_orm::DatabaseConnection;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::types::BuildProgressEvent;
@@ -16,11 +17,11 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+    let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
 
     let can_read_modules = RbacService::has_any_permission(
-        &app_ctx.db,
+        db,
         &tenant.id,
         &auth.user_id,
         &[

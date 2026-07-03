@@ -4,7 +4,6 @@ use axum::{
     routing::get,
 };
 use axum::{http::StatusCode, response::Response};
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use loco_rs::controller::{format, ErrorDetail};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
@@ -15,6 +14,7 @@ use uuid::Uuid;
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::models::users::{self, Column as UserColumn};
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserItem {
@@ -59,13 +59,13 @@ fn map_user(m: users::Model) -> UserItem {
         (status = 403, description = "Forbidden")
     ))]
 async fn list_users(
-    axum::extract::State(ctx): axum::extract::State<AppContext>,
+    axum::extract::State(ctx): axum::extract::State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Query(params): Query<UsersListParams>,
 ) -> Result<Response> {
     let can_list = RbacService::has_permission(
-        &ctx.db,
+        ctx.db(),
         &tenant.id,
         &current.user.id,
         &rustok_api::Permission::USERS_LIST,
@@ -107,7 +107,7 @@ async fn list_users(
         query = query.filter(UserColumn::Status.eq(status.as_str()));
     }
 
-    let paginator = query.paginate(&ctx.db, page_size);
+    let paginator = query.paginate(ctx.db(), page_size);
     let total = paginator.num_items().await.unwrap_or(0);
     let rows = paginator.fetch_page(page - 1).await.unwrap_or_default();
 
@@ -128,13 +128,13 @@ async fn list_users(
         (status = 403, description = "Forbidden")
     ))]
 async fn get_user(
-    axum::extract::State(ctx): axum::extract::State<AppContext>,
+    axum::extract::State(ctx): axum::extract::State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Path(user_id): Path<Uuid>,
 ) -> Result<Response> {
     let can_read = RbacService::has_permission(
-        &ctx.db,
+        ctx.db(),
         &tenant.id,
         &current.user.id,
         &rustok_api::Permission::USERS_READ,
@@ -157,7 +157,7 @@ async fn get_user(
 
     let user = users::Entity::find_by_id(user_id)
         .filter(UserColumn::TenantId.eq(tenant.id))
-        .one(&ctx.db)
+        .one(ctx.db())
         .await
         .map_err(|e| Error::Message(e.to_string()))?
         .ok_or(Error::NotFound)?;

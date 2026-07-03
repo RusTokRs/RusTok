@@ -1,5 +1,5 @@
-use loco_rs::app::AppContext;
-use rustok_auth::{AuthLifecycleRuntime, OAuthAdminRuntime, UserAdminMutationRuntime};
+use loco_rs::mailer::EmailSender;
+use rustok_auth::{AuthConfig, AuthLifecycleRuntime, OAuthAdminRuntime, UserAdminMutationRuntime};
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_index::IndexerRuntimeConfig;
@@ -9,14 +9,15 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use crate::common::settings::RustokSettings;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub fn spawn_module_event_dispatcher(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) {
     let bus = crate::services::event_bus::event_bus_from_context(ctx);
-    let db = ctx.db.clone();
+    let db = ctx.db_clone();
     let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
     let handler_count = dispatcher.handler_count();
     if handler_count == 0 {
@@ -69,11 +70,13 @@ pub fn build_shared_runtime_extensions(
 pub fn build_shared_runtime_extensions_with_host_providers(
     registry: &ModuleRegistry,
     settings: &RustokSettings,
-    ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
+    auth_config: AuthConfig,
+    mailer: Option<EmailSender>,
 ) -> Arc<ModuleRuntimeExtensions> {
     let base = build_shared_runtime_extensions(registry, settings);
     let mut extensions = base.as_ref().clone();
-    let db = ctx.db.clone();
+    let db = runtime_ctx.db_clone();
     let auth_admin_provider = Arc::new(
         crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider::new(
             db.clone(),
@@ -81,8 +84,13 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     );
     extensions.insert(OAuthAdminRuntime::new(auth_admin_provider.clone()));
     extensions.insert(UserAdminMutationRuntime::new(auth_admin_provider));
-    let auth_lifecycle_provider =
-        Arc::new(crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(ctx));
+    let auth_lifecycle_provider = Arc::new(
+        crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(
+            runtime_ctx,
+            auth_config,
+            mailer,
+        ),
+    );
     extensions.insert(AuthLifecycleRuntime::new(auth_lifecycle_provider));
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_mutation_provider::ServerMcpManagementMutationProvider::new(
@@ -124,31 +132,12 @@ mod tests {
         build_shared_runtime_extensions_with_host_providers,
     };
     use crate::common::settings::RustokSettings;
-    use loco_rs::{
-        app::{AppContext, SharedStore},
-        cache,
-        environment::Environment,
-        storage::{self, Storage},
-        tests_cfg::config::test_config,
-    };
+    use rustok_auth::AuthConfig;
     use rustok_core::{EventBus, ModuleRegistry};
     use rustok_index::IndexModule;
     use rustok_search::SearchModule;
     use sea_orm::{Database, DatabaseConnection};
     use std::sync::Arc;
-
-    fn test_app_context(db: DatabaseConnection) -> AppContext {
-        AppContext {
-            environment: Environment::Test,
-            db,
-            queue_provider: None,
-            config: test_config(),
-            mailer: None,
-            storage: Storage::single(storage::drivers::mem::new()).into(),
-            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-            shared_store: Arc::new(SharedStore::default()),
-        }
-    }
 
     #[tokio::test]
     async fn build_module_event_dispatcher_collects_registry_owned_handlers() {
@@ -181,7 +170,12 @@ mod tests {
         let extensions = build_shared_runtime_extensions_with_host_providers(
             &registry,
             &settings,
-            test_app_context(db),
+            crate::services::server_runtime_context::ServerRuntimeContext::with_empty_shared_store(
+                db,
+                settings.clone(),
+            ),
+            AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
+            None,
         );
 
         assert!(extensions.contains::<rustok_auth::AuthLifecycleRuntime>());

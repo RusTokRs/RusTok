@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, SecondsFormat, Utc};
-use loco_rs::app::AppContext;
 use moka::future::Cache;
 use reqwest::{Client, StatusCode};
 use rustok_core::ModuleRegistry;
@@ -20,6 +19,7 @@ use crate::modules::{
     CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
     ModulesManifest,
 };
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
@@ -910,14 +910,15 @@ impl MarketplaceCatalogService {
     }
 }
 
-pub fn marketplace_catalog_from_context(ctx: &AppContext) -> Arc<MarketplaceCatalogService> {
-    if let Some(shared) = ctx.shared_store.get::<SharedMarketplaceCatalogService>() {
+pub fn marketplace_catalog_from_context(
+    ctx: &ServerRuntimeContext,
+) -> Arc<MarketplaceCatalogService> {
+    if let Some(shared) = ctx.shared_get::<SharedMarketplaceCatalogService>() {
         return shared.0.clone();
     }
 
     let service = Arc::new(MarketplaceCatalogService::evolutionary_defaults());
-    ctx.shared_store
-        .insert(SharedMarketplaceCatalogService(service.clone()));
+    ctx.shared_insert(SharedMarketplaceCatalogService(service.clone()));
     service
 }
 

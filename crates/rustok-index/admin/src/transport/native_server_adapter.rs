@@ -9,12 +9,11 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use loco_rs::app::AppContext;
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
         use rustok_core::RusToKModule;
         use sea_orm::ConnectionTrait;
 
-        let app_ctx = expect_context::<AppContext>();
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
         let _auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -22,7 +21,7 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
             .await
             .map_err(ServerFnError::new)?;
 
-        let db = app_ctx.db.clone();
+        let db = runtime_ctx.db_clone();
         let backend = db.get_database_backend();
 
         let module = rustok_index::IndexModule;

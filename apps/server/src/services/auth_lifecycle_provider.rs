@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use loco_rs::app::AppContext;
+use loco_rs::mailer::EmailSender;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use rustok_auth::{
@@ -7,22 +7,33 @@ use rustok_auth::{
     AuthSessionRecord, AuthTokenRecord, AuthUserRecord,
 };
 
-use crate::auth::{auth_config_from_ctx, decode_invite_token, encode_password_reset_token};
+use crate::auth::{decode_invite_token, encode_password_reset_token, AuthConfig};
 use crate::context::infer_user_role_from_permissions;
 use crate::models::users;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 pub struct ServerAuthLifecycleProvider {
-    app_ctx: AppContext,
+    runtime_ctx: ServerRuntimeContext,
+    auth_config: AuthConfig,
+    mailer: Option<EmailSender>,
 }
 
 impl ServerAuthLifecycleProvider {
-    pub fn new(app_ctx: AppContext) -> Self {
-        Self { app_ctx }
+    pub fn new(
+        runtime_ctx: ServerRuntimeContext,
+        auth_config: AuthConfig,
+        mailer: Option<EmailSender>,
+    ) -> Self {
+        Self {
+            runtime_ctx,
+            auth_config,
+            mailer,
+        }
     }
 
     async fn permission_strings(
@@ -30,9 +41,10 @@ impl ServerAuthLifecycleProvider {
         tenant_id: uuid::Uuid,
         user_id: uuid::Uuid,
     ) -> Result<Vec<String>, AuthLifecycleMutationError> {
-        let permissions = RbacService::get_user_permissions(&self.app_ctx.db, &tenant_id, &user_id)
-            .await
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+        let permissions =
+            RbacService::get_user_permissions(self.runtime_ctx.db(), &tenant_id, &user_id)
+                .await
+                .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
         let mut values = permissions
             .iter()
             .map(ToString::to_string)
@@ -90,7 +102,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         let user_id = Self::require_user_id(context)?;
         let user = users::Entity::find_by_id(user_id)
             .filter(users::Column::TenantId.eq(context.tenant_id))
-            .one(&self.app_ctx.db)
+            .one(self.runtime_ctx.db())
             .await
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?
             .ok_or(AuthLifecycleMutationError::Unauthorized)?;
@@ -111,24 +123,29 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         limit: u64,
     ) -> Result<Vec<AuthSessionRecord>, AuthLifecycleMutationError> {
         let user_id = Self::require_user_id(context)?;
-        AuthLifecycleService::list_sessions(&self.app_ctx, context.tenant_id, user_id, limit)
-            .await
-            .map(|sessions| {
-                sessions
-                    .into_iter()
-                    .map(|session| AuthSessionRecord {
-                        id: session.id,
-                        ip_address: session.ip_address,
-                        user_agent: session.user_agent,
-                        last_used_at: session
-                            .last_used_at
-                            .map(|value| value.with_timezone(&chrono::Utc)),
-                        expires_at: session.expires_at.with_timezone(&chrono::Utc),
-                        created_at: session.created_at.with_timezone(&chrono::Utc),
-                    })
-                    .collect()
-            })
-            .map_err(map_lifecycle_error)
+        AuthLifecycleService::list_sessions_runtime(
+            &self.runtime_ctx,
+            context.tenant_id,
+            user_id,
+            limit,
+        )
+        .await
+        .map(|sessions| {
+            sessions
+                .into_iter()
+                .map(|session| AuthSessionRecord {
+                    id: session.id,
+                    ip_address: session.ip_address,
+                    user_agent: session.user_agent,
+                    last_used_at: session
+                        .last_used_at
+                        .map(|value| value.with_timezone(&chrono::Utc)),
+                    expires_at: session.expires_at.with_timezone(&chrono::Utc),
+                    created_at: session.created_at.with_timezone(&chrono::Utc),
+                })
+                .collect()
+        })
+        .map_err(map_lifecycle_error)
     }
 
     async fn sign_in(
@@ -137,8 +154,9 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         email: String,
         password: String,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
-        let (user, tokens) = AuthLifecycleService::login(
-            &self.app_ctx,
+        let (user, tokens) = AuthLifecycleService::login_runtime(
+            &self.runtime_ctx,
+            &self.auth_config,
             context.tenant_id,
             &email,
             &password,
@@ -157,8 +175,9 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
-        let (user, tokens) = AuthLifecycleService::register(
-            &self.app_ctx,
+        let (user, tokens) = AuthLifecycleService::register_runtime(
+            &self.runtime_ctx,
+            &self.auth_config,
             context.tenant_id,
             &email,
             &password,
@@ -174,10 +193,14 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         refresh_token: String,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
-        let (user, tokens) =
-            AuthLifecycleService::refresh(&self.app_ctx, context.tenant_id, &refresh_token)
-                .await
-                .map_err(map_lifecycle_error)?;
+        let (user, tokens) = AuthLifecycleService::refresh_runtime(
+            &self.runtime_ctx,
+            &self.auth_config,
+            context.tenant_id,
+            &refresh_token,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
         self.token_record(context.tenant_id, user, tokens).await
     }
 
@@ -186,9 +209,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         email: String,
     ) -> Result<(), AuthLifecycleMutationError> {
-        let config = auth_config_from_ctx(&self.app_ctx)
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let user = users::Entity::find_by_email(&self.app_ctx.db, context.tenant_id, &email)
+        let user = users::Entity::find_by_email(self.runtime_ctx.db(), context.tenant_id, &email)
             .await
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
 
@@ -197,15 +218,19 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         }
 
         let reset_token = encode_password_reset_token(
-            &config,
+            &self.auth_config,
             context.tenant_id,
             &email,
             DEFAULT_RESET_TOKEN_TTL_SECS,
         )
         .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let email_service = email_service_from_ctx(&self.app_ctx, context.locale.as_str())
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let reset_url = password_reset_url(&self.app_ctx, &reset_token)
+        let email_service = email_service_from_ctx(
+            &self.runtime_ctx,
+            self.mailer.clone(),
+            context.locale.as_str(),
+        )
+        .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
+        let reset_url = password_reset_url(&self.runtime_ctx, &reset_token)
             .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
 
         tokio::spawn(async move {
@@ -229,10 +254,14 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         name: Option<String>,
     ) -> Result<AuthUserRecord, AuthLifecycleMutationError> {
         let user_id = Self::require_user_id(context)?;
-        let updated =
-            AuthLifecycleService::update_profile(&self.app_ctx, context.tenant_id, user_id, name)
-                .await
-                .map_err(map_lifecycle_error)?;
+        let updated = AuthLifecycleService::update_profile_runtime(
+            &self.runtime_ctx,
+            context.tenant_id,
+            user_id,
+            name,
+        )
+        .await
+        .map_err(map_lifecycle_error)?;
 
         Ok(AuthUserRecord {
             id: updated.id,
@@ -250,8 +279,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         current_password: String,
         new_password: String,
     ) -> Result<(), AuthLifecycleMutationError> {
-        AuthLifecycleService::change_password(
-            &self.app_ctx,
+        AuthLifecycleService::change_password_runtime(
+            &self.runtime_ctx,
             context.tenant_id,
             Self::require_user_id(context)?,
             Self::require_session_id(context)?,
@@ -268,8 +297,9 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         token: String,
         new_password: String,
     ) -> Result<(), AuthLifecycleMutationError> {
-        AuthLifecycleService::confirm_password_reset(
-            &self.app_ctx,
+        AuthLifecycleService::confirm_password_reset_runtime(
+            &self.runtime_ctx,
+            &self.auth_config,
             context.tenant_id,
             &token,
             &new_password,
@@ -282,8 +312,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         &self,
         context: &AuthLifecycleContext,
     ) -> Result<(), AuthLifecycleMutationError> {
-        AuthLifecycleService::logout(
-            &self.app_ctx,
+        AuthLifecycleService::logout_runtime(
+            &self.runtime_ctx,
             context.tenant_id,
             Self::require_session_id(context)?,
         )
@@ -296,8 +326,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         context: &AuthLifecycleContext,
         session_id: uuid::Uuid,
     ) -> Result<bool, AuthLifecycleMutationError> {
-        AuthLifecycleService::revoke_session(
-            &self.app_ctx,
+        AuthLifecycleService::revoke_session_runtime(
+            &self.runtime_ctx,
             context.tenant_id,
             Self::require_user_id(context)?,
             session_id,
@@ -310,8 +340,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         &self,
         context: &AuthLifecycleContext,
     ) -> Result<u64, AuthLifecycleMutationError> {
-        AuthLifecycleService::revoke_all_other_sessions(
-            &self.app_ctx,
+        AuthLifecycleService::revoke_all_other_sessions_runtime(
+            &self.runtime_ctx,
             context.tenant_id,
             Self::require_user_id(context)?,
             Self::require_session_id(context)?,
@@ -327,9 +357,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         password: String,
         name: Option<String>,
     ) -> Result<AcceptInviteRecord, AuthLifecycleMutationError> {
-        let config = auth_config_from_ctx(&self.app_ctx)
-            .map_err(|err| AuthLifecycleMutationError::Internal(err.to_string()))?;
-        let claims = decode_invite_token(&config, &token)
+        let claims = decode_invite_token(&self.auth_config, &token)
             .map_err(|_| AuthLifecycleMutationError::InvalidInviteToken)?;
 
         if claims.tenant_id != context.tenant_id {
@@ -338,8 +366,8 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
 
         let email = claims.sub.clone();
         let role = claims.role.clone();
-        AuthLifecycleService::create_user(
-            &self.app_ctx,
+        AuthLifecycleService::create_user_runtime(
+            &self.runtime_ctx,
             context.tenant_id,
             &email,
             &password,

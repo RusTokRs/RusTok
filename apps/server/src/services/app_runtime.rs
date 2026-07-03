@@ -26,6 +26,7 @@ use crate::services::module_event_dispatcher::{
 };
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 use crate::services::platform_composition::PlatformCompositionService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_cache::CacheService;
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -66,8 +67,9 @@ pub async fn bootstrap_app_runtime(
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
     ctx.shared_store
         .insert(SharedRustokSettings(Arc::new(settings.clone())));
+    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
 
-    init_marketplace_catalog(ctx);
+    init_marketplace_catalog(&runtime_ctx);
 
     let manifest = if settings.runtime.is_registry_only() {
         ManifestManager::load().map_err(|error| {
@@ -97,39 +99,44 @@ pub async fn bootstrap_app_runtime(
     };
 
     let registry = modules::build_registry();
-    let runtime_extensions =
-        build_shared_runtime_extensions_with_host_providers(&registry, settings, ctx.clone());
-    ctx.shared_store.insert(runtime_extensions.clone());
-    ctx.shared_store
-        .insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));
+    let runtime_extensions = build_shared_runtime_extensions_with_host_providers(
+        &registry,
+        settings,
+        runtime_ctx.clone(),
+        crate::auth::auth_config_from_ctx(ctx)?,
+        ctx.mailer.clone(),
+    );
+    runtime_ctx.shared_insert(runtime_extensions.clone());
+    runtime_ctx.shared_insert(rustok_ai::SharedAiModuleRegistry(registry.clone()));
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
     if !settings.runtime.is_registry_only() {
-        let event_runtime = build_event_runtime(ctx).await?;
-        ctx.shared_store.insert(event_runtime.transport.clone());
-        spawn_module_event_dispatcher(ctx, &registry, runtime_extensions.clone());
-        ctx.shared_store.insert(Arc::new(event_runtime));
-        ctx.shared_store
-            .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
-        sync_manifest_managed_apps_for_all_tenants(&ctx.db, &manifest)
+        let event_runtime = build_event_runtime(&runtime_ctx).await?;
+        runtime_ctx.shared_insert(event_runtime.transport.clone());
+        spawn_module_event_dispatcher(&runtime_ctx, &registry, runtime_extensions.clone());
+        runtime_ctx.shared_insert(Arc::new(event_runtime));
+        runtime_ctx.shared_insert(
+            crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(runtime_ctx.db_clone()),
+        );
+        sync_manifest_managed_apps_for_all_tenants(runtime_ctx.db(), &manifest)
             .await
             .map_err(|error| {
                 Error::Message(format!(
                     "Failed to sync manifest-managed OAuth apps: {error}"
                 ))
             })?;
-        middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
+        middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await;
         rustok_content_orchestration::init_content_orchestration(
             ctx,
-            transactional_event_bus_from_context(ctx),
+            transactional_event_bus_from_context(&runtime_ctx),
         );
 
-        init_storage(ctx, settings).await?;
+        init_storage(&runtime_ctx).await?;
 
         #[cfg(feature = "mod-workflow")]
         if settings.runtime.background_workers.workflow_cron_enabled {
-            init_workflow_runtime(ctx);
+            init_workflow_runtime(&runtime_ctx);
         } else {
             tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
         }
@@ -144,18 +151,16 @@ pub async fn bootstrap_app_runtime(
         // GraphQL schema construction still expects an EventTransport in shared_store.
         // Seed a local memory transport to keep shared initialization deterministic
         // for tests and non-GraphQL surfaces.
-        if ctx
-            .shared_store
-            .get::<std::sync::Arc<dyn rustok_core::events::EventTransport>>()
+        if runtime_ctx
+            .shared_get::<std::sync::Arc<dyn rustok_core::events::EventTransport>>()
             .is_none()
         {
-            ctx.shared_store
-                .insert(std::sync::Arc::new(MemoryTransport::new())
-                    as std::sync::Arc<dyn rustok_core::events::EventTransport>);
+            runtime_ctx.shared_insert(std::sync::Arc::new(MemoryTransport::new())
+                as std::sync::Arc<dyn rustok_core::events::EventTransport>);
         }
     }
 
-    let graphql_schema = init_graphql_schema(ctx);
+    let graphql_schema = init_graphql_schema(&runtime_ctx);
     let rate_limits = init_rate_limit_layers(ctx, settings, &cache_service)?;
 
     Ok(AppRuntimeBootstrap {
@@ -166,33 +171,34 @@ pub async fn bootstrap_app_runtime(
     })
 }
 
-pub fn module_runtime_extensions_from_ctx(ctx: &AppContext) -> Arc<ModuleRuntimeExtensions> {
-    ctx.shared_store
-        .get::<Arc<ModuleRuntimeExtensions>>()
+pub fn module_runtime_extensions_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> Arc<ModuleRuntimeExtensions> {
+    ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
         .expect("ModuleRuntimeExtensions not initialized; bootstrap_app_runtime must run first")
 }
 
-async fn init_storage(ctx: &AppContext, settings: &RustokSettings) -> Result<()> {
+async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
     use rustok_storage::StorageService;
 
+    let settings = ctx.settings();
     let service = StorageService::from_config(&settings.storage)
         .await
         .map_err(|error| {
             Error::Message(format!("Failed to initialize storage backend: {error}"))
         })?;
     tracing::info!(driver = ?settings.storage.driver, "Initialized storage backend");
-    ctx.shared_store.insert(service);
+    ctx.shared_insert(service);
     Ok(())
 }
 
-fn init_marketplace_catalog(ctx: &AppContext) {
+fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
     let marketplace_catalog = Arc::new(MarketplaceCatalogService::evolutionary_defaults());
     tracing::info!(
         providers = ?marketplace_catalog.provider_keys(),
         "Initialized evolutionary marketplace catalog provider chain"
     );
-    ctx.shared_store
-        .insert(SharedMarketplaceCatalogService(marketplace_catalog));
+    ctx.shared_insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
 
 fn init_alloy_runtime(_ctx: &AppContext) {
@@ -203,9 +209,9 @@ fn init_alloy_runtime(_ctx: &AppContext) {
 }
 
 #[cfg(feature = "mod-workflow")]
-fn init_workflow_runtime(ctx: &AppContext) {
+fn init_workflow_runtime(ctx: &ServerRuntimeContext) {
     use rustok_workflow::WorkflowCronScheduler;
-    let db = ctx.db.clone();
+    let db = ctx.db_clone();
 
     // Start the cron scheduler
     let scheduler = WorkflowCronScheduler::new(db);

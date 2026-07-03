@@ -1,5 +1,7 @@
 # План полной интеграции Loco RS + Core с управлением из админки
 
+> Status: deprecated historical context. Active roadmap: [План ухода от Loco RS](../../../docs/architecture/loco-exit-plan.md).
+
 **Дата:** 2026-03-12
 **Актуализировано:** 2026-04-05
 **Статус:** Частично реализован; документ отражает текущее состояние и остаточный scope

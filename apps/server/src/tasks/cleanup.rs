@@ -15,6 +15,7 @@ use serde_json::json;
 
 use crate::models::sessions;
 use crate::services::rbac_consistency::load_rbac_consistency_stats;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 /// Cleanup task for maintenance operations
 pub struct CleanupTask;
@@ -48,7 +49,8 @@ impl Task for CleanupTask {
                 tracing::info!("Cache cleanup complete");
             }
             "rbac-report" => {
-                let stats = load_rbac_consistency_stats(ctx).await?;
+                let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+                let stats = load_rbac_consistency_stats(&runtime_ctx).await?;
                 tracing::info!(
                     users_without_roles_total = stats.users_without_roles_total,
                     orphan_user_roles_total = stats.orphan_user_roles_total,

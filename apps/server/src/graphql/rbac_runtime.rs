@@ -7,6 +7,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 struct ServerRbacGraphqlRoleWriter {
     db: DatabaseConnection,
@@ -27,7 +28,7 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
 }
 
 pub fn rbac_graphql_role_writer_from_context(
-    ctx: &loco_rs::app::AppContext,
+    ctx: &ServerRuntimeContext,
 ) -> RbacGraphqlRoleWriterHandle {
-    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter { db: ctx.db.clone() }))
+    RbacGraphqlRoleWriterHandle(Arc::new(ServerRbacGraphqlRoleWriter { db: ctx.db_clone() }))
 }

@@ -3,6 +3,7 @@ use async_graphql::{
 };
 use rustok_api::Permission;
 use rustok_core::{UserRole, UserStatus};
+use sea_orm::DatabaseConnection;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -115,18 +116,18 @@ impl User {
     }
 
     async fn role(&self, ctx: &Context<'_>) -> Result<String> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
-        let role = RbacService::get_user_role(&app_ctx.db, &self.tenant_id, &self.id)
+        let db = ctx.data::<DatabaseConnection>()?;
+        let role = RbacService::get_user_role(db, &self.tenant_id, &self.id)
             .await
             .map_err(|err| err.to_string())?;
         Ok(role.to_string())
     }
 
     async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let permission = Permission::from_str(&action).map_err(|err| err.to_string())?;
 
-        RbacService::has_permission(&app_ctx.db, &self.tenant_id, &self.id, &permission)
+        RbacService::has_permission(db, &self.tenant_id, &self.id, &permission)
             .await
             .map_err(|err| err.to_string().into())
     }
@@ -137,7 +138,7 @@ impl User {
     }
 
     async fn custom_fields(&self, ctx: &Context<'_>) -> Result<Option<serde_json::Value>> {
-        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<crate::context::TenantContext>()?;
         let preferred_locale = ctx
             .data_opt::<RequestContext>()
@@ -145,7 +146,7 @@ impl User {
             .unwrap_or(tenant.default_locale.as_str());
 
         FlexAttachedValuesService::resolve_merged_payload(
-            &app_ctx.db,
+            db,
             self.tenant_id,
             "user",
             self.id,

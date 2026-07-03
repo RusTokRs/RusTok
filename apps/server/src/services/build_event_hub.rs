@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use loco_rs::app::AppContext;
 use tokio::sync::broadcast;
 
 use crate::services::build_service::{BuildEvent, BuildEventPublisher};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Clone)]
 pub struct SharedBuildEventHub(pub Arc<BuildEventHub>);
@@ -27,13 +27,13 @@ impl BuildEventHub {
     }
 }
 
-pub fn build_event_hub_from_context(ctx: &AppContext) -> Arc<BuildEventHub> {
-    if let Some(shared) = ctx.shared_store.get::<SharedBuildEventHub>() {
+pub fn build_event_hub_from_context(ctx: &ServerRuntimeContext) -> Arc<BuildEventHub> {
+    if let Some(shared) = ctx.shared_get::<SharedBuildEventHub>() {
         return shared.0.clone();
     }
 
     let hub = Arc::new(BuildEventHub::new(128));
-    ctx.shared_store.insert(SharedBuildEventHub(hub.clone()));
+    ctx.shared_insert(SharedBuildEventHub(hub.clone()));
     hub
 }
 

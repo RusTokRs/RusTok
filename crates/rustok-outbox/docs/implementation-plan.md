@@ -18,6 +18,7 @@ manifest/doc contract.
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
 - Evidence / notes:
+  - Admin native server-function transport no longer imports `loco_rs::app::AppContext`; it consumes host-provided `rustok_api::HostRuntimeContext`, and this is guarded by `scripts/verify/verify-api-surface-contract.mjs`;
   - пакетный owner gate `scripts/verify/verify-owner-fba-runtime-order.mjs` проверяет `crates/rustok-outbox/contracts/evidence/outbox-provider-runtime-order-smoke.json`: canonical `rustok_api::ports` write policy helper, deadline/idempotency error mapping, relay invocation до metrics projection и fallback/degraded parity; registry/manifest metadata переведены со старого `rustok_api::ports::*` на единственный `rustok_api::ports::*` contract, статус остаётся `in_progress` до live relay execution;
   - admin UI имеет явный FFA split: `admin/src/lib.rs` только wiring/re-export, `admin/src/core.rs` содержит Leptos-free DTO/view-model helpers, `admin/src/transport/` владеет native server-function facade, `admin/src/ui/leptos.rs` владеет Leptos rendering;
   - GraphQL/REST fallback не добавлялся в этом срезе, потому что legacy outbox admin surface был native-only read-only bootstrap; это temporary single-adapter state до появления headless parity requirement для operator UI;

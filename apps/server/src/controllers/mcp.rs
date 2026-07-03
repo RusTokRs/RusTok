@@ -6,7 +6,6 @@ use axum::{
     Extension, Json,
 };
 use chrono::{DateTime, Utc};
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -21,6 +20,7 @@ use crate::services::mcp_management::{
     McpManagementService, RotateMcpTokenInput, StageMcpScaffoldDraftInput, UpdateMcpPolicyInput,
 };
 use crate::services::mcp_runtime::{DbBackedMcpRuntimeBridge, McpRemoteBootstrapResponse};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_core::ModuleRegistry;
 use rustok_mcp::{
     default_tool_requirement, ApplyModuleScaffoldRequest, McpActorType, McpAuditSink,
@@ -225,7 +225,7 @@ pub struct McpModuleScaffoldDraftResponse {
 }
 
 async fn bootstrap_remote_session(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     headers: HeaderMap,
     Json(input): Json<BootstrapMcpRemoteSessionRequest>,
 ) -> Result<Json<McpRemoteBootstrapResponse>> {
@@ -239,9 +239,8 @@ async fn bootstrap_remote_session(
         .unwrap_or_else(|| "http".to_string());
 
     let bridge = ctx
-        .shared_store
-        .get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
-        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
+        .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
+        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db_clone()));
 
     let response = bridge
         .bootstrap_remote_session(
@@ -262,7 +261,7 @@ async fn bootstrap_remote_session(
 }
 
 async fn call_remote_tool(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Extension(registry): Extension<ModuleRegistry>,
     headers: HeaderMap,
     Json(input): Json<McpRemoteToolCallRequest>,
@@ -272,7 +271,7 @@ async fn call_remote_tool(
 }
 
 async fn stream_remote_tool(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Extension(registry): Extension<ModuleRegistry>,
     headers: HeaderMap,
     Json(input): Json<McpRemoteToolCallRequest>,
@@ -292,7 +291,7 @@ async fn stream_remote_tool(
 }
 
 async fn execute_remote_tool_call(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     registry: ModuleRegistry,
     headers: HeaderMap,
     input: McpRemoteToolCallRequest,
@@ -308,9 +307,8 @@ async fn execute_remote_tool_call(
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let bridge = ctx
-        .shared_store
-        .get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
-        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
+        .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
+        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db_clone()));
     let binding = bridge.resolve_binding_for_token(&plaintext_token).await?;
 
     let decision = if input.tool_name == TOOL_MCP_HEALTH {
@@ -559,34 +557,34 @@ fn module_info(module: &dyn rustok_core::RusToKModule) -> ModuleInfo {
 }
 
 async fn list_clients(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpRead(_user): RequireMcpRead,
 ) -> Result<Json<Vec<McpClientSummaryResponse>>> {
-    let clients = McpManagementService::list_clients(&ctx.db, tenant.id, Some(100)).await?;
+    let clients = McpManagementService::list_clients(ctx.db(), tenant.id, Some(100)).await?;
     Ok(Json(clients.into_iter().map(map_client_summary).collect()))
 }
 
 async fn get_client(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpRead(_user): RequireMcpRead,
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<McpClientDetailsResponse>> {
-    let details = McpManagementService::get_client_details(&ctx.db, tenant.id, client_id)
+    let details = McpManagementService::get_client_details(ctx.db(), tenant.id, client_id)
         .await?
         .ok_or(crate::error::Error::NotFound)?;
     Ok(Json(map_client_details(details)))
 }
 
 async fn create_client(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<CreateMcpClientRequest>,
 ) -> Result<Json<CreateMcpClientResponse>> {
     let result = McpManagementService::create_client(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         CreateMcpClientInput {
             slug: input.slug,
@@ -615,14 +613,14 @@ async fn create_client(
 }
 
 async fn rotate_token(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
     Json(input): Json<RotateMcpTokenRequest>,
 ) -> Result<Json<RotateMcpTokenResponse>> {
     let result = McpManagementService::rotate_token(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         client_id,
         RotateMcpTokenInput {
@@ -643,14 +641,14 @@ async fn rotate_token(
 }
 
 async fn update_policy(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
     Json(input): Json<UpdateMcpPolicyRequest>,
 ) -> Result<Json<McpPolicyResponse>> {
     let policy = McpManagementService::update_policy(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         client_id,
         UpdateMcpPolicyInput {
@@ -668,24 +666,24 @@ async fn update_policy(
 }
 
 async fn revoke_token_by_id(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Path(token_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
-    McpManagementService::revoke_token(&ctx.db, tenant.id, token_id, Some(user.user.id), None)
+    McpManagementService::revoke_token(ctx.db(), tenant.id, token_id, Some(user.user.id), None)
         .await?;
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
 async fn deactivate_client(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Path(client_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     McpManagementService::deactivate_client(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         client_id,
         Some(user.user.id),
@@ -696,13 +694,13 @@ async fn deactivate_client(
 }
 
 async fn list_audit_events(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpRead(_user): RequireMcpRead,
     Query(query): Query<McpAuditQuery>,
 ) -> Result<Json<Vec<McpAuditEventResponse>>> {
     let events = McpManagementService::list_audit_events(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         McpAuditFilters {
             client_id: query.client_id,
@@ -718,34 +716,34 @@ async fn list_audit_events(
 }
 
 async fn list_scaffold_drafts(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(_user): RequireMcpManage,
 ) -> Result<Json<Vec<McpModuleScaffoldDraftResponse>>> {
-    let drafts = McpManagementService::list_scaffold_drafts(&ctx.db, tenant.id, Some(100)).await?;
+    let drafts = McpManagementService::list_scaffold_drafts(ctx.db(), tenant.id, Some(100)).await?;
     Ok(Json(drafts.into_iter().map(map_scaffold_draft).collect()))
 }
 
 async fn get_scaffold_draft(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(_user): RequireMcpManage,
     Path(draft_id): Path<Uuid>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
-    let draft = McpManagementService::get_scaffold_draft(&ctx.db, tenant.id, draft_id)
+    let draft = McpManagementService::get_scaffold_draft(ctx.db(), tenant.id, draft_id)
         .await?
         .ok_or(crate::error::Error::NotFound)?;
     Ok(Json(map_scaffold_draft(draft)))
 }
 
 async fn stage_scaffold_draft(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Json(input): Json<StageMcpModuleScaffoldDraftRequest>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
     let draft = McpManagementService::stage_scaffold_draft(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         StageMcpScaffoldDraftInput {
             client_id: input.client_id,
@@ -767,14 +765,14 @@ async fn stage_scaffold_draft(
 }
 
 async fn apply_scaffold_draft(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     CurrentTenant(tenant): CurrentTenant,
     RequireMcpManage(user): RequireMcpManage,
     Path(draft_id): Path<Uuid>,
     Json(input): Json<ApplyMcpModuleScaffoldDraftRequest>,
 ) -> Result<Json<McpModuleScaffoldDraftResponse>> {
     let (draft, _) = McpManagementService::apply_scaffold_draft(
-        &ctx.db,
+        ctx.db(),
         tenant.id,
         draft_id,
         ApplyMcpScaffoldDraftInput {

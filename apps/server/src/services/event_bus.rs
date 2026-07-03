@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use loco_rs::app::AppContext;
 use rustok_core::events::{BackpressureConfig, BackpressureController, EventTransport};
 use rustok_core::{EventBus, EventConsumerRuntime};
+use rustok_outbox::TransactionalEventBus;
 use tokio::task::JoinHandle;
 
 use crate::common::settings::RustokSettings;
-
-pub use rustok_outbox::loco::transactional_event_bus_from_context;
-pub use rustok_outbox::loco::SharedTransactionalEventBus;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 #[derive(Clone)]
 pub struct SharedEventBus(pub Arc<EventBus>);
@@ -17,15 +15,14 @@ pub struct EventForwarderHandle {
     _handle: JoinHandle<()>,
 }
 
-pub fn event_bus_from_context(ctx: &AppContext) -> EventBus {
-    if let Some(shared) = ctx.shared_store.get::<SharedEventBus>() {
+pub fn event_bus_from_context(ctx: &ServerRuntimeContext) -> EventBus {
+    if let Some(shared) = ctx.shared_get::<SharedEventBus>() {
         return (*shared.0).clone();
     }
 
-    let settings = RustokSettings::from_settings(&ctx.config.settings).ok();
-    let bus = Arc::new(build_event_bus(ctx, settings.as_ref()));
+    let bus = Arc::new(build_event_bus(ctx, Some(ctx.settings())));
 
-    if let Some(transport) = ctx.shared_store.get::<Arc<dyn EventTransport>>() {
+    if let Some(transport) = ctx.shared_get::<Arc<dyn EventTransport>>() {
         let mut receiver = bus.subscribe();
         let consumer_runtime = EventConsumerRuntime::new("server_event_forwarder");
         let handle = tokio::spawn(async move {
@@ -47,22 +44,27 @@ pub fn event_bus_from_context(ctx: &AppContext) -> EventBus {
                 }
             }
         });
-        ctx.shared_store
-            .insert(EventForwarderHandle { _handle: handle });
+        ctx.shared_insert(EventForwarderHandle { _handle: handle });
     } else {
         tracing::warn!(
             "Event transport is not initialized; event bus will operate in local in-memory mode"
         );
     }
 
-    ctx.shared_store.insert(SharedEventBus(bus.clone()));
+    ctx.shared_insert(SharedEventBus(bus.clone()));
     (*bus).clone()
 }
 
-fn build_event_bus(ctx: &AppContext, settings: Option<&RustokSettings>) -> EventBus {
-    let Some(runtime) = ctx
-        .shared_store
-        .get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
+pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext) -> TransactionalEventBus {
+    let transport = ctx
+        .shared_get::<Arc<dyn EventTransport>>()
+        .expect("Event transport must be initialized before creating TransactionalEventBus");
+    TransactionalEventBus::new(transport)
+}
+
+fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>) -> EventBus {
+    let Some(runtime) =
+        ctx.shared_get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
     else {
         return EventBus::default();
     };

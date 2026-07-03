@@ -1,11 +1,10 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use chrono::{DateTime, Utc};
-use loco_rs::app::AppContext;
 use rustok_outbox::entity::{Column as EventCol, Entity as EventEntity};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::common::settings::RustokSettings;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 use crate::models::_entities::sessions::{Column as SessionCol, Entity as SessionEntity};
 
@@ -132,9 +131,9 @@ impl SystemQuery {
     async fn cache_health(&self, ctx: &Context<'_>) -> Result<CacheHealthPayload> {
         use rustok_cache::CacheService;
 
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
 
-        let Some(cache) = app_ctx.shared_store.get::<CacheService>() else {
+        let Some(cache) = runtime_ctx.shared_get::<CacheService>() else {
             return Ok(CacheHealthPayload {
                 redis_configured: false,
                 redis_healthy: false,
@@ -164,11 +163,10 @@ impl SystemQuery {
         use crate::common::settings::EventTransportKind;
         use rustok_iggy::config::IggyMode;
 
-        let app_ctx = ctx.data::<AppContext>()?;
-        let db = &app_ctx.db;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let db = runtime_ctx.db();
 
-        let settings = RustokSettings::from_settings(&app_ctx.config.settings).unwrap_or_default();
-        let ev = &settings.events;
+        let ev = &runtime_ctx.settings().events;
 
         // Derive human-readable transport key (matches UI dropdown values).
         let configured_transport = match ev.transport {

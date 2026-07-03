@@ -5,6 +5,7 @@ use axum::Router as AxumRouter;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use loco_rs::app::AppContext;
+use rustok_api::HostRuntimeContext;
 
 #[cfg(feature = "embed-admin")]
 #[allow(unused_imports)]
@@ -17,6 +18,7 @@ use crate::common::settings::RustokSettings;
 use crate::middleware;
 use crate::middleware::rate_limit::rate_limit_for_paths;
 use crate::services::app_runtime::AppRuntimeBootstrap;
+use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
 #[cfg(feature = "embed-admin-assets")]
 use axum::response::IntoResponse;
@@ -125,6 +127,8 @@ pub fn compose_application_router(
     rustok_settings: &RustokSettings,
 ) -> AxumRouter {
     if rustok_settings.runtime.is_registry_only() {
+        let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+        let auth_runtime = ServerAuthRuntime::from_loco_app_context(ctx);
         return router
             .layer(Extension(runtime.registry))
             // Rate limiting must be present to prevent resource exhaustion even
@@ -136,11 +140,11 @@ pub fn compose_application_router(
             // Auth context must be resolved so registry handlers can enforce
             // authentication (RTK-001: actor derived from AuthContextExtension).
             .layer(axum_middleware::from_fn_with_state(
-                ctx.clone(),
+                auth_runtime,
                 middleware::auth_context::resolve_optional,
             ))
             .layer(axum_middleware::from_fn_with_state(
-                ctx.clone(),
+                runtime_ctx,
                 middleware::locale::resolve_locale,
             ))
             .layer(axum_middleware::from_fn(
@@ -149,6 +153,9 @@ pub fn compose_application_router(
     }
 
     let server_fn_ctx = ctx.clone();
+    let middleware_runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+    let auth_runtime = ServerAuthRuntime::from_loco_app_context(ctx);
+    let server_fn_runtime_ctx = HostRuntimeContext::new(ctx.db.clone());
     let server_fn_registry = runtime.registry.clone();
 
     mount_application_shell(
@@ -156,11 +163,13 @@ pub fn compose_application_router(
             "/api/fn/{*fn_name}",
             post(move |req| {
                 let ctx = server_fn_ctx.clone();
+                let runtime_ctx = server_fn_runtime_ctx.clone();
                 let registry = server_fn_registry.clone();
                 async move {
                     handle_server_fns_with_context(
                         move || {
                             provide_context(ctx.clone());
+                            provide_context(runtime_ctx.clone());
                             provide_context(registry.clone());
                         },
                         req,
@@ -188,19 +197,19 @@ pub fn compose_application_router(
         rate_limit_for_paths,
     ))
     .layer(axum_middleware::from_fn_with_state(
-        ctx.clone(),
+        middleware_runtime_ctx.clone(),
         middleware::channel::resolve,
     ))
     .layer(axum_middleware::from_fn_with_state(
-        ctx.clone(),
+        auth_runtime,
         middleware::auth_context::resolve_optional,
     ))
     .layer(axum_middleware::from_fn_with_state(
-        ctx.clone(),
+        middleware_runtime_ctx.clone(),
         middleware::locale::resolve_locale,
     ))
     .layer(axum_middleware::from_fn_with_state(
-        ctx.clone(),
+        middleware_runtime_ctx,
         middleware::tenant::resolve,
     ))
     .layer(axum_middleware::from_fn(

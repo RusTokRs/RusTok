@@ -1,5 +1,7 @@
 ﻿# RusToK Server — Loco.rs Feature Support & Anti-Duplication Matrix
 
+> Status: deprecated inventory. Active roadmap: [План ухода от Loco RS](../../../docs/architecture/loco-exit-plan.md).
+
 **Date:** 2026-02-18  
 **Loco.rs Version:** `0.16` (workspace dependency)  
 **Purpose:** сохранить полный обзор реализованного server-функционала (включая auth и доменные API), при этом явно зафиксировать границы: где используем Loco, где сознательно используем самопис.
@@ -256,5 +258,4 @@ Policy anchor: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 - `crates/rustok-core/src/context.rs`
 - `apps/server/Cargo.toml`
 - `Cargo.toml`
-
 

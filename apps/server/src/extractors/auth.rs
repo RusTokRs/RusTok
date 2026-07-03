@@ -1,4 +1,4 @@
-use crate::auth::{auth_config_from_ctx, decode_access_token};
+use crate::auth::decode_access_token;
 use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
     oauth_apps::Entity as OAuthApps,
@@ -14,11 +14,12 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use loco_rs::app::AppContext;
 use rustok_api::Permission;
 use rustok_core::UserRole;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
+
+use crate::services::server_runtime_context::ServerAuthRuntime;
 
 #[derive(Debug)]
 pub struct CurrentUser {
@@ -83,9 +84,9 @@ pub(crate) async fn resolve_current_user<S>(
 ) -> Result<CurrentUser, (StatusCode, &'static str)>
 where
     S: Send + Sync,
-    AppContext: FromRef<S>,
+    ServerAuthRuntime: FromRef<S>,
 {
-    let ctx = AppContext::from_ref(state);
+    let auth_runtime = ServerAuthRuntime::from_ref(state);
 
     let tenant_id = parts
         .tenant_context()
@@ -97,20 +98,19 @@ where
             .await
             .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
 
-    resolve_current_user_from_access_token(&ctx, tenant_id, bearer.token()).await
+    resolve_current_user_from_access_token(&auth_runtime, tenant_id, bearer.token()).await
 }
 
 pub async fn resolve_current_user_from_access_token(
-    ctx: &AppContext,
+    ctx: &ServerAuthRuntime,
     tenant_id: uuid::Uuid,
     access_token: &str,
 ) -> Result<CurrentUser, (StatusCode, &'static str)> {
-    let auth_config = auth_config_from_ctx(ctx).map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "JWT secret not configured",
-        )
-    })?;
+    let auth_config = ctx.auth_config().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "JWT secret not configured",
+    ))?;
+    let db = ctx.runtime_ctx().db();
 
     let claims = decode_access_token(&auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
@@ -124,7 +124,7 @@ pub async fn resolve_current_user_from_access_token(
 
     if !is_oauth_service_token {
         let session = Sessions::find_by_id(claims.session_id)
-            .one(&ctx.db)
+            .one(db)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
             .ok_or((StatusCode::UNAUTHORIZED, "Session not found"))?;
@@ -135,7 +135,7 @@ pub async fn resolve_current_user_from_access_token(
     }
 
     let user = Users::find_by_id(claims.sub)
-        .one(&ctx.db)
+        .one(db)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -144,7 +144,7 @@ pub async fn resolve_current_user_from_access_token(
             return Err((StatusCode::FORBIDDEN, "User is inactive"));
         }
 
-        let permissions = RbacService::get_user_permissions(&ctx.db, &tenant_id, &user.id)
+        let permissions = RbacService::get_user_permissions(db, &tenant_id, &user.id)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
@@ -167,7 +167,7 @@ pub async fn resolve_current_user_from_access_token(
             "OAuth service token is missing client_id",
         ))?;
         let (permissions, inferred_role) =
-            resolve_service_token_permissions(&ctx.db, tenant_id, client_id, claims.role).await?;
+            resolve_service_token_permissions(db, tenant_id, client_id, claims.role).await?;
 
         (
             users::Model::default_service_user(claims.sub, tenant_id),
@@ -193,7 +193,7 @@ pub async fn resolve_current_user_from_access_token(
 impl<S> FromRequestParts<S> for CurrentUser
 where
     S: Send + Sync,
-    AppContext: FromRef<S>,
+    ServerAuthRuntime: FromRef<S>,
 {
     type Rejection = (StatusCode, &'static str);
 
@@ -207,7 +207,7 @@ pub struct OptionalCurrentUser(pub Option<CurrentUser>);
 impl<S> FromRequestParts<S> for OptionalCurrentUser
 where
     S: Send + Sync,
-    AppContext: FromRef<S>,
+    ServerAuthRuntime: FromRef<S>,
 {
     type Rejection = (StatusCode, &'static str);
 
@@ -228,25 +228,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::{resolve_current_user_from_access_token, resolve_service_token_permissions};
-    use crate::auth::{auth_config_from_ctx, encode_access_token};
+    use crate::auth::{encode_access_token, AuthConfig, AuthSettingsOverrides};
+    use crate::common::settings::RustokSettings;
     use crate::models::{oauth_apps, sessions, tenants, users};
     use crate::services::rbac_service::RbacService;
+    use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
     use chrono::{Duration, Utc};
-    use loco_rs::{
-        app::{AppContext, SharedStore},
-        cache,
-        config::{Auth, JWT},
-        environment::Environment,
-        storage::{self, Storage},
-        tests_cfg::config::test_config,
-    };
     use migration::Migrator;
     use rustok_api::Permission;
     use rustok_core::{UserRole, UserStatus};
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Schema, Set};
     use sea_orm_migration::SchemaManager;
-    use std::{str::FromStr, sync::Arc};
+    use std::str::FromStr;
     use uuid::Uuid;
 
     async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
@@ -269,26 +263,19 @@ mod tests {
             .expect("create oauth_apps table for auth extractor tests");
     }
 
-    fn test_app_context(db: DatabaseConnection) -> AppContext {
-        let mut config = test_config();
-        config.auth = Some(Auth {
-            jwt: Some(JWT {
-                location: None,
-                secret: "test-secret-key-for-auth-extractor-32b".to_string(),
-                expiration: 900,
-            }),
-        });
+    fn test_auth_config() -> AuthConfig {
+        rustok_auth::build_auth_config(
+            "test-secret-key-for-auth-extractor-32b".to_string(),
+            900,
+            AuthSettingsOverrides::default(),
+        )
+        .expect("auth config")
+    }
 
-        AppContext {
-            environment: Environment::Test,
-            db,
-            queue_provider: None,
-            config,
-            mailer: None,
-            storage: Storage::single(storage::drivers::mem::new()).into(),
-            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
-            shared_store: Arc::new(SharedStore::default()),
-        }
+    fn test_auth_runtime(db: DatabaseConnection) -> ServerAuthRuntime {
+        let runtime_ctx =
+            ServerRuntimeContext::with_empty_shared_store(db, RustokSettings::default());
+        ServerAuthRuntime::new(runtime_ctx, test_auth_config())
     }
 
     async fn insert_user_with_session(
@@ -379,7 +366,7 @@ mod tests {
     #[tokio::test]
     async fn access_token_resolver_returns_forbidden_for_inactive_user() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let ctx = test_app_context(db.clone());
+        let auth_runtime = test_auth_runtime(db.clone());
         let tenant = tenants::ActiveModel::new(
             "Inactive user tenant",
             &format!("tenant-{}", Uuid::new_v4()),
@@ -389,7 +376,7 @@ mod tests {
         .expect("create tenant");
         let (user, session_id) =
             insert_user_with_session(&db, tenant.id, UserStatus::Inactive).await;
-        let auth_config = auth_config_from_ctx(&ctx).expect("auth config");
+        let auth_config = test_auth_config();
         let token = encode_access_token(
             &auth_config,
             user.id,
@@ -399,7 +386,7 @@ mod tests {
         )
         .expect("encode access token");
 
-        let error = resolve_current_user_from_access_token(&ctx, tenant.id, &token)
+        let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
             .await
             .expect_err("inactive user should be rejected");
 
@@ -412,14 +399,14 @@ mod tests {
     #[tokio::test]
     async fn access_token_resolver_returns_internal_server_error_on_rbac_storage_failure() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let ctx = test_app_context(db.clone());
+        let auth_runtime = test_auth_runtime(db.clone());
         let tenant =
             tenants::ActiveModel::new("RBAC failure tenant", &format!("tenant-{}", Uuid::new_v4()))
                 .insert(&db)
                 .await
                 .expect("create tenant");
         let (user, session_id) = insert_user_with_session(&db, tenant.id, UserStatus::Active).await;
-        let auth_config = auth_config_from_ctx(&ctx).expect("auth config");
+        let auth_config = test_auth_config();
         let token = encode_access_token(
             &auth_config,
             user.id,
@@ -436,7 +423,7 @@ mod tests {
         .await
         .expect("drop user_roles to simulate RBAC storage failure");
 
-        let error = resolve_current_user_from_access_token(&ctx, tenant.id, &token)
+        let error = resolve_current_user_from_access_token(&auth_runtime, tenant.id, &token)
             .await
             .expect_err("RBAC storage failure should surface as 500");
 

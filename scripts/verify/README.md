@@ -24,6 +24,7 @@ node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
 node scripts/verify/verify-module-lifecycle-bypass-usage.mjs
 node scripts/verify/verify-api-surface-contract.mjs
+node scripts/verify/verify-loco-inventory.mjs
 node scripts/verify/export-reference-artifacts.mjs artifacts/reference
 node scripts/verify/verify-reference-artifacts.mjs artifacts/reference
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs
@@ -44,6 +45,7 @@ node scripts/verify/verify-ecommerce-fba-registries.mjs
 | После рефакторинга модуля | `./scripts/verify/verify-all.sh -v` |
 | Ревью PR | `./scripts/verify/verify-all.sh -v` |
 | Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` + `node scripts/verify/verify-api-surface-contract.mjs` |
+| Трогаете Loco/Axum cutover | `node scripts/verify/verify-loco-inventory.mjs` |
 | Экспорт OpenAPI и GraphQL contracts | `node scripts/verify/export-reference-artifacts.mjs artifacts/reference` |
 | Добавили новый event | `./scripts/verify/verify-all.sh events` |
 | Проверка anti-bypass drift | `./scripts/verify/verify-all.sh anti-bypass` |
@@ -189,6 +191,23 @@ node scripts/verify/verify-api-surface-contract.mjs
 ```bash
 node scripts/verify/verify-runtime-context-invariants.mjs
 ./scripts/verify/verify-all.sh runtime-context-invariants
+```
+
+---
+
+### `verify-loco-inventory.mjs`
+**Loco RS exit inventory guardrail** — быстрый source-level gate для плана ухода от Loco RS.
+
+Что проверяет:
+- сканирует `apps/`, `crates/`, `scripts/`, `docs/`, `Cargo.toml` и `Cargo.lock` на `loco_rs`, `loco-rs`, `cargo loco`, `rustok_outbox::loco`;
+- классифицирует каждое текущее вхождение по категориям roadmap (`host_runtime`, `server_task`, `module_ui_adapter`, `dependency_manifest`, `docs` и т.д.);
+- падает на новом неклассифицированном Loco-вхождении, чтобы Phase 0 inventory не расползался.
+
+Пример:
+
+```bash
+node scripts/verify/verify-loco-inventory.mjs
+npm run verify:loco:inventory
 ```
 
 ---

@@ -7,13 +7,12 @@ use serde::Serialize;
 use tokio::process::Command;
 use uuid::Uuid;
 
-use loco_rs::app::AppContext;
-
 use crate::models::build::{BuildStage, BuildStatus, Model as Build};
 use crate::models::release::Model as Release;
 use crate::modules::{BuildExecutionPlan, FrontendBuildPlan, FrontendBuildTool, ModulesManifest};
 use crate::services::build_event_hub::{build_event_hub_from_context, BuildEventHubPublisher};
 use crate::services::build_service::{BuildEventPublisher, BuildService};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const DEFAULT_CARGO_BIN: &str = "cargo";
 const BUILD_CARGO_BIN_ENV: &str = "RUSTOK_BUILD_CARGO_BIN";
@@ -36,7 +35,7 @@ pub struct BuildExecutionService {
 }
 
 impl BuildExecutionService {
-    pub fn new(ctx: &AppContext) -> Self {
+    pub fn new(ctx: &ServerRuntimeContext) -> Self {
         Self::with_event_publisher(
             ctx,
             Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
@@ -46,11 +45,11 @@ impl BuildExecutionService {
     }
 
     pub fn with_event_publisher(
-        ctx: &AppContext,
+        ctx: &ServerRuntimeContext,
         event_publisher: Arc<dyn BuildEventPublisher>,
     ) -> Self {
         Self {
-            build_service: BuildService::with_event_publisher(ctx.db.clone(), event_publisher),
+            build_service: BuildService::with_event_publisher(ctx.db_clone(), event_publisher),
         }
     }
 

@@ -5,7 +5,6 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use loco_rs::app::AppContext;
 #[cfg(feature = "redis-cache")]
 use redis::AsyncCommands;
 use rustok_cache::{CacheInvalidationMessage, CacheLoadSource, CacheService};
@@ -26,9 +25,10 @@ use uuid::Uuid;
 
 use crate::common::{
     extract_effective_host, peer_ip_from_extensions,
-    settings::{RustokSettings, SharedRustokSettings, TenantFallbackMode},
+    settings::{RustokSettings, TenantFallbackMode},
 };
 use crate::context::{TenantContext, TenantContextExtension};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const TENANT_CACHE_VERSION: &str = "v1";
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
@@ -529,19 +529,19 @@ impl TenantCacheInfrastructure {
     }
 }
 
-pub async fn init_tenant_cache_infrastructure(ctx: &AppContext, cache_service: &CacheService) {
-    if ctx
-        .shared_store
-        .contains::<Arc<TenantCacheInfrastructure>>()
-    {
+pub async fn init_tenant_cache_infrastructure(
+    ctx: &ServerRuntimeContext,
+    cache_service: &CacheService,
+) {
+    if ctx.shared_contains::<Arc<TenantCacheInfrastructure>>() {
         return;
     }
 
     let infra = Arc::new(TenantCacheInfrastructure::new(cache_service).await);
-    ctx.shared_store.insert(infra.clone());
+    ctx.shared_insert(infra.clone());
 
     if let Some(task) = spawn_invalidation_listener(infra.clone(), cache_service).await {
-        ctx.shared_store.insert(task);
+        ctx.shared_insert(task);
     } else {
         infra
             .invalidation_listener_state
@@ -653,12 +653,12 @@ fn parse_invalidation_payload(payload: &str) -> Option<(&str, &str)> {
     Some((cache_key, negative_key))
 }
 
-fn tenant_infra(ctx: &AppContext) -> Option<Arc<TenantCacheInfrastructure>> {
-    ctx.shared_store.get::<Arc<TenantCacheInfrastructure>>()
+fn tenant_infra(ctx: &ServerRuntimeContext) -> Option<Arc<TenantCacheInfrastructure>> {
+    ctx.shared_get::<Arc<TenantCacheInfrastructure>>()
 }
 
 pub async fn resolve(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     mut req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
@@ -666,11 +666,7 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     }
 
-    let shared = ctx
-        .shared_store
-        .get::<SharedRustokSettings>()
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    let settings: &RustokSettings = &shared.0;
+    let settings = ctx.settings();
     let identifier = resolve_identifier(&req, settings)?;
 
     let Some(infra) = tenant_infra(&ctx) else {
@@ -694,7 +690,7 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     }
 
-    let tenant_service = TenantService::new(ctx.db.clone());
+    let tenant_service = TenantService::new(ctx.db_clone());
     let tenant_request = tenant_read_request(&identifier);
     let tenant_port_context = tenant_read_context(&identifier);
     let negative_key_clone = negative_key.clone();
@@ -958,7 +954,7 @@ pub struct TenantCacheStats {
     pub invalidation_listener_status: i64,
 }
 
-pub async fn tenant_cache_stats(ctx: &AppContext) -> TenantCacheStats {
+pub async fn tenant_cache_stats(ctx: &ServerRuntimeContext) -> TenantCacheStats {
     let Some(infra) = tenant_infra(ctx) else {
         return TenantCacheStats {
             hits: 0,
@@ -984,7 +980,7 @@ pub async fn tenant_cache_stats(ctx: &AppContext) -> TenantCacheStats {
 }
 
 pub async fn tenant_invalidation_listener_snapshot(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
 ) -> TenantInvalidationListenerSnapshot {
     let Some(infra) = tenant_infra(ctx) else {
         return TenantInvalidationListenerSnapshot {
@@ -997,24 +993,28 @@ pub async fn tenant_invalidation_listener_snapshot(
 }
 
 /// Invalidate cached tenant (call after tenant or domain update)
-pub async fn invalidate_tenant_cache(ctx: &AppContext, identifier: &str) {
+pub async fn invalidate_tenant_cache(ctx: &ServerRuntimeContext, identifier: &str) {
     let resolved = classify_identifier(identifier.to_string());
     invalidate_cache_keys(ctx, resolved.kind, &resolved.value).await;
 }
 
-pub async fn invalidate_tenant_cache_by_host(ctx: &AppContext, host: &str) {
+pub async fn invalidate_tenant_cache_by_host(ctx: &ServerRuntimeContext, host: &str) {
     invalidate_cache_keys(ctx, TenantIdentifierKind::Host, host).await;
 }
 
-pub async fn invalidate_tenant_cache_by_uuid(ctx: &AppContext, tenant_id: Uuid) {
+pub async fn invalidate_tenant_cache_by_uuid(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
     invalidate_cache_keys(ctx, TenantIdentifierKind::Uuid, &tenant_id.to_string()).await;
 }
 
-pub async fn invalidate_tenant_cache_by_slug(ctx: &AppContext, slug: &str) {
+pub async fn invalidate_tenant_cache_by_slug(ctx: &ServerRuntimeContext, slug: &str) {
     invalidate_cache_keys(ctx, TenantIdentifierKind::Slug, slug).await;
 }
 
-async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, value: &str) {
+async fn invalidate_cache_keys(
+    ctx: &ServerRuntimeContext,
+    kind: TenantIdentifierKind,
+    value: &str,
+) {
     let Some(infra) = tenant_infra(ctx) else {
         return;
     };

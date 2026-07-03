@@ -12,9 +12,10 @@ status: verified
 
 ## Loco
 
-- Не обходить Loco hooks (`Hooks::routes`, `Hooks::after_routes`, `Hooks::connect_workers`) через отдельный жизненный цикл «чистого Axum». См. `docs/references/loco/README.md`.
-- Не заменять `AppContext` на глобальные singleton-объекты, если зависимость уже должна жить в `ctx.shared_store`.
-- Не смешивать произвольные контракты ошибок: для контроллеров придерживаться `loco_rs::Result<...>`.
+- Не добавлять новые зависимости на `loco_rs` вне уже классифицированного inventory. Запускайте `node scripts/verify/verify-loco-inventory.mjs` при Loco/Axum cutover.
+- Не проектировать новые server-owned services вокруг `loco_rs::app::AppContext`; используйте `ServerRuntimeContext` или узкие typed contexts.
+- Не переносить maintenance/CLI flows в production server binary. Целевой слой — отдельный `rustok-ops` и module-local `cli/` adapters.
+- Пока legacy controllers ещё не переведены, не смешивайте новые Axum error contracts с Loco controller paths в одном срезе; переводите route/error surface атомарно по плану.
 
 ## Iggy / Outbox
 
@@ -89,7 +90,8 @@ status: verified
 
 Если задача затрагивает Loco/Iggy/MCP/Outbox/Telemetry/Database/Frontend:
 1. Сначала открыть соответствующий reference-пакет:
-   - `docs/references/loco/README.md`
+   - `docs/architecture/loco-exit-plan.md`
+   - `DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md`
    - `docs/references/iggy/README.md`
    - `docs/references/mcp/README.md`
    - `docs/references/outbox/README.md`

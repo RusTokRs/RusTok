@@ -3,13 +3,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::{Error, Result};
-use loco_rs::app::AppContext;
 use rustok_core::events::{EventTransport, MemoryTransport};
 use rustok_iggy::{IggyConfig, IggyTransport};
 use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 static OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL: AtomicU64 = AtomicU64::new(0);
 
@@ -38,9 +38,8 @@ pub fn outbox_relay_supervisor_metrics_snapshot() -> OutboxRelaySupervisorMetric
     }
 }
 
-pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
-    let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
+pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRuntime> {
+    let settings = ctx.settings();
 
     match settings.events.transport {
         EventTransportKind::Memory => Ok(EventRuntime {
@@ -50,7 +49,7 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
             relay_fallback_active: false,
         }),
         EventTransportKind::Outbox => {
-            let outbox_transport = Arc::new(OutboxTransport::new(ctx.db.clone()));
+            let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
             let (relay_target, relay_fallback_active) = resolve_relay_target(&settings).await?;
             let relay_policy = &settings.events.relay_retry_policy;
             let max_attempts = if settings.events.dlq.enabled {
@@ -60,7 +59,7 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
             };
             let relay_config = RelayRuntimeConfig {
                 interval: Duration::from_millis(settings.events.relay_interval_ms),
-                relay: OutboxRelay::new(ctx.db.clone(), relay_target).with_config(RelayConfig {
+                relay: OutboxRelay::new(ctx.db_clone(), relay_target).with_config(RelayConfig {
                     batch_size: settings.events.relay_batch_size,
                     max_attempts,
                     backoff_base: Duration::from_millis(relay_policy.base_backoff_ms),
