@@ -36,7 +36,7 @@
     "next-intl": "^4.13.1",
     "next-seo": "^7.1.0",
     "openapi-fetch": "^0.17.0",
-    "posthog-js": "^1.396.4",
+    "posthog-js": "^1.396.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hot-toast": "^2.4.1",
