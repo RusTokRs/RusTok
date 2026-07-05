@@ -11,16 +11,20 @@ pub fn SearchStorefrontComposition() -> impl IntoView {
     let locale = use_context::<UiRouteContext>()
         .and_then(|context| context.locale)
         .unwrap_or_default();
-    let catalog_options = LocalResource::new(
-        move || (product_enabled.get(), locale.clone()),
-        move |(product_enabled, locale)| async move {
-            if !product_enabled || locale.trim().is_empty() {
-                return Ok(Default::default());
-            }
+    let catalog_options = LocalResource::new({
+        let locale = locale.clone();
+        move || {
+            let product_enabled = product_enabled.get();
+            let locale = locale.clone();
+            async move {
+                if !product_enabled || locale.trim().is_empty() {
+                    return Ok(Default::default());
+                }
 
-            fetch_catalog_search_options(locale).await
-        },
-    );
+                fetch_catalog_search_options(locale).await
+            }
+        }
+    });
 
     view! {
         {move || {

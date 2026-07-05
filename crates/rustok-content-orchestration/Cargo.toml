@@ -24,6 +24,7 @@ uuid.workspace = true
 [dev-dependencies]
 rustok-test-utils.workspace = true
 tokio.workspace = true
+sea-orm-migration.workspace = true
 
 [features]
 default = []

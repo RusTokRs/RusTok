@@ -967,9 +967,11 @@ pub fn ProductAdmin() -> impl IntoView {
                                 </select>
                             </div>
                             <div class="border-y border-border py-4">
-                                {move || {
-                                    let attribute_form_copy = attribute_form_copy.clone();
+                                {
                                     let ui_locale = ui_locale.clone();
+                                    move || {
+                                        let attribute_form_copy = attribute_form_copy.clone();
+                                        let ui_locale = ui_locale.clone();
                                     match effective_form.get() {
                                     None => {
                                         let loading = attribute_form_copy.loading.clone();
@@ -1001,6 +1003,8 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let detached_values_label = attribute_form_copy.detached_values(detached_count);
                                         let clear_detached_label = attribute_form_copy.clear_detached_label.clone();
                                         let detached_empty_label = attribute_form_copy.detached_empty_label.clone();
+                                        let ui_locale = ui_locale.clone();
+                                        let clear_detached_values = clear_detached_values.clone();
                                         let mut groups: Vec<(String, Vec<ProductEffectiveFormAttribute>)> = Vec::new();
                                         for attribute in form.attributes.into_iter().filter(|item| !item.is_disabled) {
                                             let group = attribute
@@ -1034,60 +1038,70 @@ pub fn ProductAdmin() -> impl IntoView {
                                                     </section>
                                                 }).collect_view()}
                                                 <Show when=move || { detached_count > 0 }>
-                                                    <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
-                                                        <div class="flex flex-wrap items-center justify-between gap-3">
-                                                            <div>
-                                                                <h4 class="text-sm font-semibold text-foreground">{detached_title.clone()}</h4>
-                                                                <p class="text-xs text-muted-foreground">{detached_values_label.clone()}</p>
-                                                            </div>
-                                                            <button
-                                                                type="button"
-                                                                class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
-                                                                disabled=move || busy.get()
-                                                                on:click={
-                                                                    let clear_detached_values = clear_detached_values.clone();
-                                                                    move |_| {
-                                                                        let ids = attribute_values
+                                                    {
+                                                        let detached_title = detached_title.clone();
+                                                        let detached_values_label = detached_values_label.clone();
+                                                        let clear_detached_label = clear_detached_label.clone();
+                                                        let clear_detached_values = clear_detached_values.clone();
+                                                        let ui_locale = ui_locale.clone();
+                                                        let detached_empty_label = detached_empty_label.clone();
+                                                        view! {
+                                                            <div class="rounded-xl border border-dashed border-border bg-muted/30 p-3">
+                                                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                                                    <div>
+                                                                        <h4 class="text-sm font-semibold text-foreground">{detached_title.clone()}</h4>
+                                                                        <p class="text-xs text-muted-foreground">{detached_values_label.clone()}</p>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        class="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
+                                                                        disabled=move || busy.get()
+                                                                        on:click={
+                                                                            let clear_detached_values = clear_detached_values.clone();
+                                                                            move |_| {
+                                                                                let ids = attribute_values
+                                                                                    .get()
+                                                                                    .and_then(Result::ok)
+                                                                                    .unwrap_or_default()
+                                                                                    .into_iter()
+                                                                                    .filter(|value| value.detached)
+                                                                                    .map(|value| value.attribute_id)
+                                                                                    .collect::<Vec<_>>();
+                                                                                clear_detached_values(ids);
+                                                                            }
+                                                                        }
+                                                                    >
+                                                                        {clear_detached_label.clone()}
+                                                                    </button>
+                                                                </div>
+                                                                <div class="mt-3 grid gap-2">
+                                                                    {move || {
+                                                                        let ui_locale = ui_locale.clone();
+                                                                        let detached_empty_label = detached_empty_label.clone();
+                                                                        let values = attribute_values
                                                                             .get()
                                                                             .and_then(Result::ok)
-                                                                            .unwrap_or_default()
-                                                                            .into_iter()
-                                                                            .filter(|value| value.detached)
-                                                                            .map(|value| value.attribute_id)
-                                                                            .collect::<Vec<_>>();
-                                                                        clear_detached_values(ids);
-                                                                    }
-                                                                }
-                                                            >
-                                                                {clear_detached_label.clone()}
-                                                            </button>
-                                                        </div>
-                                                        <div class="mt-3 grid gap-2">
-                                                            {move || {
-                                                                let ui_locale = ui_locale.clone();
-                                                                let detached_empty_label = detached_empty_label.clone();
-                                                                let values = attribute_values
-                                                                    .get()
-                                                                    .and_then(Result::ok)
-                                                                    .map(|values| build_product_detached_attribute_value_view_models(ui_locale.as_deref(), &values))
-                                                                    .unwrap_or_default();
-                                                                if values.is_empty() {
-                                                                    view! { <p class="text-xs text-muted-foreground">{detached_empty_label}</p> }.into_any()
-                                                                } else {
-                                                                    view! {
-                                                                        <div class="grid gap-2">
-                                                                            {values.into_iter().map(|value| view! {
-                                                                                <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs">
-                                                                                    <p class="font-medium text-foreground">{value.label}</p>
-                                                                                    <p class="mt-1 break-all text-muted-foreground">{value.value}</p>
+                                                                            .map(|values| build_product_detached_attribute_value_view_models(ui_locale.as_deref(), &values))
+                                                                            .unwrap_or_default();
+                                                                        if values.is_empty() {
+                                                                            view! { <p class="text-xs text-muted-foreground">{detached_empty_label}</p> }.into_any()
+                                                                        } else {
+                                                                            view! {
+                                                                                <div class="grid gap-2">
+                                                                                    {values.into_iter().map(|value| view! {
+                                                                                        <div class="rounded-lg border border-border bg-background px-3 py-2 text-xs">
+                                                                                            <p class="font-medium text-foreground">{value.label}</p>
+                                                                                            <p class="mt-1 break-all text-muted-foreground">{value.value}</p>
+                                                                                        </div>
+                                                                                    }).collect_view()}
                                                                                 </div>
-                                                                            }).collect_view()}
-                                                                        </div>
-                                                                    }.into_any()
-                                                                }
-                                                            }}
-                                                        </div>
-                                                    </div>
+                                                                            }.into_any()
+                                                                        }
+                                                                    }}
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    }
                                                 </Show>
                                             </div>
                                         }.into_any()

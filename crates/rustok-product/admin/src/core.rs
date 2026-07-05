@@ -2327,6 +2327,7 @@ mod tests {
             vendor: Some("Acme".to_string()),
             product_type: None,
             shipping_profile_slug: Some("standard".to_string()),
+            primary_category_id: None,
             tags: Vec::new(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             published_at: Some("2026-01-02T00:00:00Z".to_string()),
