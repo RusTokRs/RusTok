@@ -165,6 +165,10 @@
 - [ ] покрывать publication, tags и shipping-profile edge-cases targeted tests;
 - [ ] развивать product-specific semantics без возврата к metadata-only contract;
 - [ ] удерживать deliverability-facing bindings совместимыми с fulfillment/pricing flows.
+- [ ] Закрыть DB-level tenant consistency audit для native catalog tables: составные tenant-aware FK/unique guardrails должны исключать cross-tenant связи между attributes/options/categories/schemas/groups/values на уровне БД, а не только сервисной валидацией.
+- [ ] Нормализовать оставшиеся legacy product locale columns до `VARCHAR(32)` по platform i18n contract: `product_translations`, `product_image_translations`, `product_option_translations`, `product_option_value_translations`, `product_variant_translations`.
+- [ ] Зафиксировать detached-value marker contract: текущее поведение вычисляет detached read-time от effective schema и не требует проставлять `detached_at` при смене `primary_category_id`; если нужен persisted marker, добавить отдельную миграцию/обработчик `ProductPrimaryCategoryChanged`.
+- [ ] Добавить быстрый no-compile schema guardrail для product catalog attribute migration и index projection invariants: ключевые таблицы, `VARCHAR(32)` locale в новых tables, closure/materialized virtual tables, typed value/options tables, partial indexes для facet/search/sort.
 
 ### 3. Operability
 
