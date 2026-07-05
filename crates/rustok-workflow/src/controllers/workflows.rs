@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
 use serde::Deserialize;
@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub async fn list(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
 ) -> Result<Json<Vec<WorkflowSummary>>> {
@@ -25,7 +25,7 @@ pub async fn list(
         "Permission denied: workflows:list required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     let workflows = service
         .list(tenant.id)
         .await
@@ -34,7 +34,7 @@ pub async fn list(
 }
 
 pub async fn get(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -45,7 +45,7 @@ pub async fn get(
         "Permission denied: workflows:read required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     let workflow = service
         .get(tenant.id, id)
         .await
@@ -54,7 +54,7 @@ pub async fn get(
 }
 
 pub async fn create(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateWorkflowInput>,
@@ -65,7 +65,7 @@ pub async fn create(
         "Permission denied: workflows:create required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     let id = service
         .create(tenant.id, Some(auth.user_id), input)
         .await
@@ -74,7 +74,7 @@ pub async fn create(
 }
 
 pub async fn update(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -86,7 +86,7 @@ pub async fn update(
         "Permission denied: workflows:update required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     service
         .update(tenant.id, id, Some(auth.user_id), input)
         .await
@@ -95,7 +95,7 @@ pub async fn update(
 }
 
 pub async fn delete_workflow(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -106,7 +106,7 @@ pub async fn delete_workflow(
         "Permission denied: workflows:delete required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     service
         .delete(tenant.id, id)
         .await
@@ -115,7 +115,7 @@ pub async fn delete_workflow(
 }
 
 pub async fn activate(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -126,7 +126,7 @@ pub async fn activate(
         "Permission denied: workflows:update required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     service
         .update(
             tenant.id,
@@ -143,7 +143,7 @@ pub async fn activate(
 }
 
 pub async fn pause(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -154,7 +154,7 @@ pub async fn pause(
         "Permission denied: workflows:update required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     service
         .update(
             tenant.id,
@@ -179,7 +179,7 @@ pub struct TriggerManualInput {
 }
 
 pub async fn trigger_manual(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -191,7 +191,7 @@ pub async fn trigger_manual(
         "Permission denied: workflows:execute required",
     )?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     let execution_id = service
         .trigger_manual(
             tenant.id,

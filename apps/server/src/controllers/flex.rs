@@ -100,14 +100,7 @@ async fn create_schema(
         &service,
         tenant.id,
         Some(user.user.id),
-        flex::CreateFlexSchemaCommand {
-            slug: input.slug,
-            name: input.name,
-            description: input.description,
-            fields_config: parse_fields_config(input.fields_config)?,
-            settings: input.settings,
-            is_active: input.is_active,
-        },
+        input.into_command().map_err(map_flex_config_parse_error)?,
     )
     .await
     .map_err(map_flex_rest_error)?;
@@ -143,13 +136,7 @@ async fn update_schema(
         tenant.id,
         Some(user.user.id),
         schema_id,
-        flex::UpdateFlexSchemaCommand {
-            name: input.name,
-            description: input.description,
-            fields_config: input.fields_config.map(parse_fields_config).transpose()?,
-            settings: input.settings,
-            is_active: input.is_active,
-        },
+        input.into_command().map_err(map_flex_config_parse_error)?,
     )
     .await
     .map_err(map_flex_rest_error)?;
@@ -183,7 +170,7 @@ async fn delete_schema(
         .map_err(map_flex_rest_error)?;
 
     publish_event(&ctx, event);
-    Ok(Json(DeleteFlexResponse { success: true }))
+    Ok(Json(DeleteFlexResponse::success()))
 }
 
 #[utoipa::path(
@@ -268,13 +255,7 @@ async fn create_entry(
         &service,
         tenant.id,
         Some(user.user.id),
-        flex::CreateFlexEntryCommand {
-            schema_id,
-            entity_type: input.entity_type,
-            entity_id: input.entity_id,
-            data: input.data,
-            status: input.status,
-        },
+        input.into_command(schema_id),
     )
     .await
     .map_err(map_flex_rest_error)?;
@@ -314,10 +295,7 @@ async fn update_entry(
         Some(user.user.id),
         schema_id,
         entry_id,
-        flex::UpdateFlexEntryCommand {
-            data: input.data,
-            status: input.status,
-        },
+        input.into_command(),
     )
     .await
     .map_err(map_flex_rest_error)?;
@@ -355,7 +333,7 @@ async fn delete_entry(
             .map_err(map_flex_rest_error)?;
 
     publish_event(&ctx, event);
-    Ok(Json(DeleteFlexResponse { success: true }))
+    Ok(Json(DeleteFlexResponse::success()))
 }
 
 pub fn routes() -> Routes {
@@ -380,11 +358,10 @@ fn publish_event(ctx: &ServerRuntimeContext, event: EventEnvelope) {
     }
 }
 
-fn parse_fields_config(
-    value: serde_json::Value,
-) -> Result<Vec<rustok_core::field_schema::FieldDefinition>> {
-    flex::parse_field_definitions_config(value)
-        .map_err(|error| crate::error::Error::BadRequest(error.message().to_string()))
+fn map_flex_config_parse_error(
+    error: flex::FieldDefinitionsConfigParseError,
+) -> crate::error::Error {
+    crate::error::Error::BadRequest(error.message().to_string())
 }
 
 fn map_flex_rest_error(error: rustok_core::field_schema::FlexError) -> crate::error::Error {

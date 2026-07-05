@@ -3,10 +3,9 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_telemetry::metrics;
 use std::time::Instant;
 use uuid::Uuid;
@@ -35,7 +34,7 @@ fn clamp_per_page(per_page: u64) -> u64 {
     )
 )]
 pub async fn list_replies(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -52,7 +51,7 @@ pub async fn list_replies(
     let requested_limit = Some(filter.per_page);
     let effective_limit = clamp_per_page(filter.per_page);
     filter.per_page = effective_limit;
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let list_started_at = Instant::now();
     let (replies, _) = service
         .list_for_topic_with_locale_fallback(
@@ -114,7 +113,7 @@ mod tests {
     )
 )]
 pub async fn get_reply(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -130,7 +129,7 @@ pub async fn get_reply(
     let locale = filter
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
@@ -161,7 +160,7 @@ pub async fn get_reply(
     )
 )]
 pub async fn create_reply(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(topic_id): Path<Uuid>,
@@ -173,7 +172,7 @@ pub async fn create_reply(
         "Permission denied: forum_replies:create required",
     )?;
 
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
         .create(
             tenant.id,
@@ -203,7 +202,7 @@ pub async fn create_reply(
     )
 )]
 pub async fn update_reply(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -215,7 +214,7 @@ pub async fn update_reply(
         "Permission denied: forum_replies:update required",
     )?;
 
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
         .update(
             tenant.id,
@@ -244,7 +243,7 @@ pub async fn update_reply(
     )
 )]
 pub async fn delete_reply(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -255,7 +254,7 @@ pub async fn delete_reply(
         "Permission denied: forum_replies:delete required",
     )?;
 
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     service
         .delete(
             tenant.id,
@@ -285,7 +284,7 @@ pub async fn delete_reply(
     )
 )]
 pub async fn set_reply_vote(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -297,7 +296,7 @@ pub async fn set_reply_vote(
         "Permission denied: forum_replies:read required",
     )?;
 
-    VoteService::new(ctx.db.clone())
+    VoteService::new(runtime.db_clone())
         .set_reply_vote(
             tenant.id,
             reply_id,
@@ -310,7 +309,7 @@ pub async fn set_reply_vote(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
         .get_with_locale_fallback(
             tenant.id,
@@ -339,7 +338,7 @@ pub async fn set_reply_vote(
     )
 )]
 pub async fn clear_reply_vote(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -351,7 +350,7 @@ pub async fn clear_reply_vote(
         "Permission denied: forum_replies:read required",
     )?;
 
-    VoteService::new(ctx.db.clone())
+    VoteService::new(runtime.db_clone())
         .clear_reply_vote(
             tenant.id,
             reply_id,
@@ -363,7 +362,7 @@ pub async fn clear_reply_vote(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
         .get_with_locale_fallback(
             tenant.id,

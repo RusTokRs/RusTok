@@ -12,19 +12,17 @@ use axum::{
     routing::{get, post},
     Json,
 };
-use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use uuid::Uuid;
 
-use crate::auth::auth_config_from_ctx;
 use crate::common::{extract_effective_proto, RustokSettings};
 use crate::context::TenantContext;
 use crate::extractors::auth::{resolve_current_user_from_access_token, CurrentUser};
 use crate::services::oauth_app::OAuthAppService;
-use crate::services::server_runtime_context::ServerAuthRuntime;
+use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
 
 const OAUTH_BROWSER_SESSION_COOKIE: &str = "rustok_oauth_browser_session";
 const OAUTH_BROWSER_SESSION_TTL_SECS: u64 = 10 * 60;
@@ -129,7 +127,7 @@ struct ValidatedAuthorizeRequest {
 }
 
 async fn token_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     Json(req): Json<TokenRequest>,
 ) -> axum::response::Response {
@@ -161,10 +159,11 @@ async fn token_handler(
 }
 
 async fn handle_client_credentials(
-    ctx: &AppContext,
+    ctx: &ServerAuthRuntime,
     tenant_ctx: &TenantContext,
     req: &TokenRequest,
 ) -> Result<Json<TokenResponse>, TokenErrorResponse> {
+    let runtime_ctx = ctx.runtime_ctx();
     // 1. Parse client_id
     let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
         error: "invalid_client".to_string(),
@@ -177,7 +176,7 @@ async fn handle_client_credentials(
     })?;
 
     // 2. Find the app
-    let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
+    let app = OAuthAppService::find_by_client_id(runtime_ctx.db(), client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -244,20 +243,20 @@ async fn handle_client_credentials(
         .unwrap_or_default();
 
     // 7. Issue token
-    let auth_config = auth_config_from_ctx(ctx).map_err(|_| TokenErrorResponse {
+    let auth_config = ctx.auth_config().ok_or_else(|| TokenErrorResponse {
         error: "invalid_client".to_string(),
         error_description: "Server configuration error".to_string(),
     })?;
 
     let (access_token, expires_in) =
-        OAuthAppService::issue_client_credentials_token(&app, &auth_config, &requested_scopes)
+        OAuthAppService::issue_client_credentials_token(&app, auth_config, &requested_scopes)
             .map_err(|_| TokenErrorResponse {
                 error: "invalid_client".to_string(),
                 error_description: "Failed to issue token".to_string(),
             })?;
 
     // 8. Touch last_used_at (fire and forget)
-    let db = ctx.db.clone();
+    let db = runtime_ctx.db_clone();
     let app_id = app.id;
     tokio::spawn(async move {
         let _ = OAuthAppService::touch_last_used(&db, app_id).await;
@@ -280,10 +279,11 @@ async fn handle_client_credentials(
 }
 
 async fn handle_authorization_code(
-    ctx: &AppContext,
+    ctx: &ServerAuthRuntime,
     tenant_ctx: &TenantContext,
     req: &TokenRequest,
 ) -> Result<Json<TokenResponse>, TokenErrorResponse> {
+    let runtime_ctx = ctx.runtime_ctx();
     // 1. Verify required fields
     let client_id_str = req.client_id.as_deref().ok_or_else(|| TokenErrorResponse {
         error: "invalid_client".to_string(),
@@ -313,7 +313,7 @@ async fn handle_authorization_code(
     })?;
 
     // 2. Find and check app
-    let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
+    let app = OAuthAppService::find_by_client_id(runtime_ctx.db(), client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -339,16 +339,16 @@ async fn handle_authorization_code(
     }
 
     // 3. Exchange code for tokens
-    let auth_config = auth_config_from_ctx(ctx).map_err(|_| TokenErrorResponse {
+    let auth_config = ctx.auth_config().ok_or_else(|| TokenErrorResponse {
         error: "server_error".to_string(),
         error_description: "Server configuration error".to_string(),
     })?;
 
     let (access_token, refresh_token_plain, expires_in) =
         OAuthAppService::exchange_authorization_code(
-            &ctx.db,
+            runtime_ctx.db(),
             &app,
-            &auth_config,
+            auth_config,
             code,
             redirect_uri,
             code_verifier,
@@ -360,7 +360,7 @@ async fn handle_authorization_code(
         })?;
 
     // Touch app last_used_at in background
-    let db = ctx.db.clone();
+    let db = runtime_ctx.db_clone();
     let app_id = app.id;
     tokio::spawn(async move {
         let _ = OAuthAppService::touch_last_used(&db, app_id).await;
@@ -378,10 +378,11 @@ async fn handle_authorization_code(
 }
 
 async fn handle_refresh_token(
-    ctx: &AppContext,
+    ctx: &ServerAuthRuntime,
     tenant_ctx: &TenantContext,
     req: &TokenRequest,
 ) -> Result<Json<TokenResponse>, TokenErrorResponse> {
+    let runtime_ctx = ctx.runtime_ctx();
     // 1. Verify fields
     let refresh_token = req
         .refresh_token
@@ -402,7 +403,7 @@ async fn handle_refresh_token(
     })?;
 
     // 2. Find app
-    let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
+    let app = OAuthAppService::find_by_client_id(runtime_ctx.db(), client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -421,13 +422,13 @@ async fn handle_refresh_token(
     }
 
     // 3. Process refresh logic
-    let auth_config = auth_config_from_ctx(ctx).map_err(|_| TokenErrorResponse {
+    let auth_config = ctx.auth_config().ok_or_else(|| TokenErrorResponse {
         error: "server_error".to_string(),
         error_description: "Server configuration error".to_string(),
     })?;
 
     let (access_token, refresh_token_plain, expires_in) =
-        OAuthAppService::refresh_access_token(&ctx.db, &app, &auth_config, refresh_token)
+        OAuthAppService::refresh_access_token(runtime_ctx.db(), &app, auth_config, refresh_token)
             .await
             .map_err(|e| TokenErrorResponse {
                 error: "invalid_grant".to_string(),
@@ -435,7 +436,7 @@ async fn handle_refresh_token(
             })?;
 
     // Touch app last_used_at in background
-    let db = ctx.db.clone();
+    let db = runtime_ctx.db_clone();
     let app_id = app.id;
     tokio::spawn(async move {
         let _ = OAuthAppService::touch_last_used(&db, app_id).await;
@@ -451,7 +452,7 @@ async fn handle_refresh_token(
 }
 
 async fn authorize_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
     current_user: CurrentUser,
     Json(req): Json<AuthorizeRequest>,
@@ -471,7 +472,7 @@ async fn authorize_handler(
 
     if validated.app.requires_user_consent() {
         let has_consent = OAuthAppService::get_active_consent(
-            &ctx.db,
+            ctx.db(),
             validated.app.id,
             current_user.user.id,
             &validated.requested_scopes,
@@ -507,13 +508,14 @@ async fn authorize_handler(
 }
 
 async fn authorize_browser_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
     Query(req): Query<BrowserAuthorizeRequest>,
 ) -> axum::response::Response {
+    let runtime_ctx = ctx.runtime_ctx();
     let validated = match validate_authorize_request(
-        &ctx,
+        runtime_ctx,
         tenant_ctx.id,
         req.client_id.clone(),
         req.redirect_uri.clone(),
@@ -534,11 +536,8 @@ async fn authorize_browser_handler(
         return render_authorization_required(&validated.app.name).into_response();
     };
 
-    let auth_runtime = ServerAuthRuntime::from_loco_app_context(&ctx);
     let current_user =
-        match resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
-            .await
-        {
+        match resolve_current_user_from_access_token(&ctx, tenant_ctx.id, &access_token).await {
             Ok(current_user) => current_user,
             Err((status, message)) => {
                 return (
@@ -553,8 +552,13 @@ async fn authorize_browser_handler(
         };
 
     if !validated.app.requires_user_consent() {
-        return match issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id)
-            .await
+        return match issue_authorization_code(
+            runtime_ctx,
+            tenant_ctx.id,
+            &validated,
+            current_user.user.id,
+        )
+        .await
         {
             Ok(code) => {
                 redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
@@ -565,7 +569,7 @@ async fn authorize_browser_handler(
     }
 
     let has_consent = match OAuthAppService::get_active_consent(
-        &ctx.db,
+        runtime_ctx.db(),
         validated.app.id,
         current_user.user.id,
         &validated.requested_scopes,
@@ -583,8 +587,13 @@ async fn authorize_browser_handler(
     };
 
     if has_consent {
-        return match issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id)
-            .await
+        return match issue_authorization_code(
+            runtime_ctx,
+            tenant_ctx.id,
+            &validated,
+            current_user.user.id,
+        )
+        .await
         {
             Ok(code) => {
                 redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
@@ -603,13 +612,14 @@ async fn authorize_browser_handler(
 }
 
 async fn consent_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerAuthRuntime>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
     Form(req): Form<ConsentRequest>,
 ) -> axum::response::Response {
+    let runtime_ctx = ctx.runtime_ctx();
     let validated = match validate_authorize_request(
-        &ctx,
+        runtime_ctx,
         tenant_ctx.id,
         req.client_id.clone(),
         req.redirect_uri.clone(),
@@ -630,11 +640,8 @@ async fn consent_handler(
         return render_authorization_required(&validated.app.name).into_response();
     };
 
-    let auth_runtime = ServerAuthRuntime::from_loco_app_context(&ctx);
     let current_user =
-        match resolve_current_user_from_access_token(&auth_runtime, tenant_ctx.id, &access_token)
-            .await
-        {
+        match resolve_current_user_from_access_token(&ctx, tenant_ctx.id, &access_token).await {
             Ok(current_user) => current_user,
             Err((status, message)) => {
                 return (
@@ -667,7 +674,7 @@ async fn consent_handler(
     }
 
     if let Err(error) = OAuthAppService::grant_consent(
-        &ctx.db,
+        runtime_ctx.db(),
         validated.app.id,
         current_user.user.id,
         tenant_ctx.id,
@@ -682,7 +689,9 @@ async fn consent_handler(
         .into_response();
     }
 
-    match issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id).await {
+    match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, current_user.user.id)
+        .await
+    {
         Ok(code) => redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
             .into_response(),
         Err(error) => error.into_response(),
@@ -690,7 +699,7 @@ async fn consent_handler(
 }
 
 async fn create_browser_session_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     _current_user: CurrentUser,
@@ -703,47 +712,26 @@ async fn create_browser_session_handler(
         .into_response();
     };
 
-    let settings = match RustokSettings::from_settings(&ctx.config.settings) {
-        Ok(settings) => settings,
-        Err(_) => {
-            return TokenErrorResponse {
-                error: "server_error".to_string(),
-                error_description: "Failed to load rustok settings".to_string(),
-            }
-            .into_response();
-        }
-    };
-
     (
         StatusCode::NO_CONTENT,
         [(
             SET_COOKIE,
-            build_oauth_browser_session_cookie(&access_token, &headers, addr.ip(), &settings),
+            build_oauth_browser_session_cookie(&access_token, &headers, addr.ip(), ctx.settings()),
         )],
     )
         .into_response()
 }
 
 async fn clear_browser_session_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> axum::response::Response {
-    let settings = match RustokSettings::from_settings(&ctx.config.settings) {
-        Ok(settings) => settings,
-        Err(_) => {
-            return TokenErrorResponse {
-                error: "server_error".to_string(),
-                error_description: "Failed to load rustok settings".to_string(),
-            }
-            .into_response();
-        }
-    };
     (
         StatusCode::NO_CONTENT,
         [(
             SET_COOKIE,
-            clear_oauth_browser_session_cookie(&headers, addr.ip(), &settings),
+            clear_oauth_browser_session_cookie(&headers, addr.ip(), ctx.settings()),
         )],
     )
         .into_response()
@@ -751,7 +739,7 @@ async fn clear_browser_session_handler(
 
 #[allow(clippy::too_many_arguments)]
 async fn validate_authorize_request(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     client_id: String,
     redirect_uri: String,
@@ -780,7 +768,7 @@ async fn validate_authorize_request(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
+    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -839,13 +827,13 @@ async fn validate_authorize_request(
 }
 
 async fn issue_authorization_code(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     tenant_id: Uuid,
     validated: &ValidatedAuthorizeRequest,
     user_id: Uuid,
 ) -> Result<String, TokenErrorResponse> {
     OAuthAppService::generate_authorization_code(
-        &ctx.db,
+        ctx.db(),
         validated.app.id,
         user_id,
         tenant_id,
@@ -1071,7 +1059,7 @@ pub struct RevokeRequest {
 /// Token Revocation Endpoint (RFC 7009)
 /// Revokes a refresh token (access tokens are stateless JWTs and expire naturally).
 async fn revoke_handler(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     tenant_ctx: TenantContext,
     Json(req): Json<RevokeRequest>,
 ) -> Result<axum::http::StatusCode, TokenErrorResponse> {
@@ -1085,7 +1073,7 @@ async fn revoke_handler(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
+    let app = OAuthAppService::find_by_client_id(ctx.db(), client_id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "invalid_client".to_string(),
@@ -1133,7 +1121,7 @@ async fn revoke_handler(
     hasher.update(req.token.as_bytes());
     let token_hash = hex::encode(hasher.finalize());
 
-    OAuthAppService::revoke_token_by_hash(&ctx.db, &token_hash, app.id)
+    OAuthAppService::revoke_token_by_hash(ctx.db(), &token_hash, app.id)
         .await
         .map_err(|_| TokenErrorResponse {
             error: "server_error".to_string(),

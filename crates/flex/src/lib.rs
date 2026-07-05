@@ -32,7 +32,10 @@ pub use orchestration::{
 };
 pub use parsing::{parse_field_definitions_config, FieldDefinitionsConfigParseError};
 pub use registry::{
-    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
+    field_definition_created_event, field_definition_deleted_event, field_definition_from_source,
+    field_definition_position_or_next, field_definition_type_name, field_definition_updated_event,
+    validate_field_definition_create, CreateFieldDefinitionCommand, FieldDefRegistry,
+    FieldDefinitionService, FieldDefinitionSource, FieldDefinitionView, FieldDefinitionViewSource,
     UpdateFieldDefinitionCommand,
 };
 pub use rest::{
@@ -40,9 +43,13 @@ pub use rest::{
     FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
 };
 pub use standalone::{
-    create_entry, create_entry_with_event, create_schema, create_schema_with_event, delete_entry,
-    delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry, find_schema,
-    list_entries, list_schemas, update_entry, update_entry_with_event, update_schema,
+    build_standalone_custom_fields_schema, create_entry, create_entry_with_event, create_schema,
+    create_schema_with_event, delete_entry, delete_entry_with_event, delete_schema,
+    delete_schema_with_event, effective_standalone_entry_data, find_entry, find_schema,
+    list_entries, list_schemas, merge_standalone_entry_patch,
+    normalize_and_validate_standalone_entry, parse_standalone_fields_config,
+    serialize_standalone_fields_config, split_standalone_entry_data,
+    standalone_localized_field_keys, update_entry, update_entry_with_event, update_schema,
     update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
     validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
     validate_update_schema_command, CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView,

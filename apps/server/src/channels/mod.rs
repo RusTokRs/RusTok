@@ -17,7 +17,8 @@
 
 use async_trait::async_trait;
 use axum::extract::ws::WebSocket;
-use loco_rs::app::AppContext;
+
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 /// Contract for server-side WebSocket channels.
 ///
@@ -36,7 +37,7 @@ pub trait RustokChannel: Send + Sync {
     ///
     /// Called after the HTTP → WebSocket upgrade succeeds. The implementation
     /// is responsible for reading/writing frames and closing cleanly.
-    async fn handle(&self, socket: WebSocket, ctx: AppContext);
+    async fn handle(&self, socket: WebSocket, ctx: ServerRuntimeContext);
 }
 
 pub mod builds;

@@ -4,7 +4,7 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::Value;
 use tracing::{info, warn};
@@ -17,14 +17,15 @@ pub struct WebhookResponse {
 }
 
 pub async fn receive(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     Path((tenant_slug, webhook_slug)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<WebhookResponse>> {
+    let db = runtime.db_clone();
     let tenant = rustok_tenant::entities::tenant::Entity::find()
         .filter(rustok_tenant::entities::tenant::Column::Slug.eq(&tenant_slug))
-        .one(&ctx.db)
+        .one(&db)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?
         .ok_or_else(|| Error::BadRequest(format!("Tenant not found: {tenant_slug}")))?;
@@ -47,7 +48,7 @@ pub async fn receive(
         );
     }
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(db);
     let executions = service
         .trigger_by_webhook(tenant.id, &webhook_slug, payload)
         .await

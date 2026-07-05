@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_payment::PaymentService;
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
+    super::CommerceHttpRuntime,
     ListPaymentCollectionsParams, ListRefundsParams,
 };
 use crate::dto::{
@@ -31,7 +32,7 @@ use crate::dto::{
     )
 )]
 pub async fn list_payment_collections(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListPaymentCollectionsParams>,
@@ -43,7 +44,7 @@ pub async fn list_payment_collections(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (collections, total) = PaymentService::new(ctx.db.clone())
+    let (collections, total) = PaymentService::new(runtime.db_clone())
         .list_collections(
             tenant.id,
             ListPaymentCollectionsInput {
@@ -77,7 +78,7 @@ pub async fn list_payment_collections(
     )
 )]
 pub async fn show_payment_collection(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -88,7 +89,7 @@ pub async fn show_payment_collection(
         "Permission denied: payments:read required",
     )?;
 
-    let collection = PaymentService::new(ctx.db.clone())
+    let collection = PaymentService::new(runtime.db_clone())
         .get_collection(tenant.id, id)
         .await
         .map_err(super::map_payment_error)?;
@@ -110,7 +111,7 @@ pub async fn show_payment_collection(
     )
 )]
 pub async fn authorize_payment_collection(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -122,7 +123,7 @@ pub async fn authorize_payment_collection(
         "Permission denied: payments:update required",
     )?;
 
-    let collection = PaymentService::new(ctx.db.clone())
+    let collection = PaymentService::new(runtime.db_clone())
         .authorize_collection(tenant.id, id, input)
         .await
         .map_err(super::map_payment_error)?;
@@ -144,7 +145,7 @@ pub async fn authorize_payment_collection(
     )
 )]
 pub async fn capture_payment_collection(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -156,7 +157,7 @@ pub async fn capture_payment_collection(
         "Permission denied: payments:update required",
     )?;
 
-    let collection = PaymentService::new(ctx.db.clone())
+    let collection = PaymentService::new(runtime.db_clone())
         .capture_collection(tenant.id, id, input)
         .await
         .map_err(super::map_payment_error)?;
@@ -178,7 +179,7 @@ pub async fn capture_payment_collection(
     )
 )]
 pub async fn cancel_payment_collection(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -190,7 +191,7 @@ pub async fn cancel_payment_collection(
         "Permission denied: payments:update required",
     )?;
 
-    let collection = crate::PaymentOrchestrationService::new(ctx.db.clone())
+    let collection = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .cancel_collection(tenant.id, id, input)
         .await
         .map_err(super::map_payment_orchestration_error)?;
@@ -212,7 +213,7 @@ pub async fn cancel_payment_collection(
     )
 )]
 pub async fn create_refund(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -224,7 +225,7 @@ pub async fn create_refund(
         "Permission denied: payments:update required",
     )?;
 
-    let refund = crate::PaymentOrchestrationService::new(ctx.db.clone())
+    let refund = crate::PaymentOrchestrationService::new(runtime.db_clone())
         .create_refund(tenant.id, id, input)
         .await
         .map_err(super::map_payment_orchestration_error)?;
@@ -244,7 +245,7 @@ pub async fn create_refund(
     )
 )]
 pub async fn list_refunds(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListRefundsParams>,
@@ -256,7 +257,7 @@ pub async fn list_refunds(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (refunds, total) = PaymentService::new(ctx.db.clone())
+    let (refunds, total) = PaymentService::new(runtime.db_clone())
         .list_refunds(
             tenant.id,
             ListRefundsInput {
@@ -289,7 +290,7 @@ pub async fn list_refunds(
     )
 )]
 pub async fn show_refund(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -300,7 +301,7 @@ pub async fn show_refund(
         "Permission denied: payments:read required",
     )?;
 
-    let refund = PaymentService::new(ctx.db.clone())
+    let refund = PaymentService::new(runtime.db_clone())
         .get_refund(tenant.id, id)
         .await
         .map_err(super::map_payment_error)?;
@@ -322,7 +323,7 @@ pub async fn show_refund(
     )
 )]
 pub async fn complete_refund(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -334,7 +335,7 @@ pub async fn complete_refund(
         "Permission denied: payments:update required",
     )?;
 
-    let refund = PaymentService::new(ctx.db.clone())
+    let refund = PaymentService::new(runtime.db_clone())
         .complete_refund(tenant.id, id, input)
         .await
         .map_err(super::map_payment_error)?;
@@ -356,7 +357,7 @@ pub async fn complete_refund(
     )
 )]
 pub async fn cancel_refund(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -368,7 +369,7 @@ pub async fn cancel_refund(
         "Permission denied: payments:update required",
     )?;
 
-    let refund = PaymentService::new(ctx.db.clone())
+    let refund = PaymentService::new(runtime.db_clone())
         .cancel_refund(tenant.id, id, input)
         .await
         .map_err(super::map_payment_error)?;

@@ -17,6 +17,7 @@
 - generate sitemap files, serve `robots.txt`, and submit sitemap indexes via runtime adapters with per-endpoint aggregation and bounded partial-failure summaries
 - prepare Phase D productionization seams for typed SEO events, outbox emission/idempotency, and SEO→index integration without breaking existing public contracts
 - expose a headless REST read path for `SeoPageContext` at `/api/seo/page-context`, reusing canonical request locale/channel context
+- keep REST handlers on narrow `SeoHttpRuntime` state with explicit DB/event bus/runtime extension handles; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover
 - expose registry-backed SEO target descriptors through GraphQL `seoTargets` and REST `/api/seo/targets`
   with the same tenant/module-enabled gate and `seo:manage` admin permission contract
 - expose read-only cross-link suggestions through GraphQL `seoCrossLinkSuggestions` and REST `/api/seo/cross-link-suggestions`

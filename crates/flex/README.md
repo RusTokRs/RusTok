@@ -11,9 +11,10 @@
 
 - `FieldDefinitionService` trait.
 - `FieldDefRegistry` runtime registry.
-- Command/view DTOs for field-definition CRUD orchestration.
+- Command/view DTOs plus owner-owned row-to-core, view-source, command-to-adapter-input mapping, lifecycle guardrail, type-name, and event helpers for field-definition CRUD orchestration.
 - Owner-owned attached field-definition and standalone GraphQL query/mutation roots, runtime handle, and input/output DTOs under `flex::graphql`.
-- Owner-owned standalone REST request/response DTOs and view-to-response mappings under `flex::rest`; the server controller remains only the Loco/Axum adapter.
+- Owner-owned standalone REST request/response DTOs, request-to-command mappings, and view-to-response mappings under `flex::rest`; the server controller remains only the Loco/Axum adapter.
+- Owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, entry normalization/schema validation, shared/localized split, read resolution, and PATCH merge helpers; server persistence adapters only adapt SeaORM rows into storage calls.
 - `FlexModule` capability-only runtime metadata for the manifest-driven module registry.
 
 ## Multilingual status
@@ -37,18 +38,21 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 - Depends on `rustok-core` (`FlexError`, `FieldType`, `ValidationRule`).
 - Depends on `rustok-events` (`EventEnvelope`).
 - Registered in `modules.toml` as a capability-only ghost module with `flex_schemas:*` and `flex_entries:*` permissions.
-- Consumed by manifest-driven host schema composition, REST, and bootstrap wiring; GraphQL ownership and REST DTO ownership are in this crate, while the host supplies persistence/registry/cache adapters through `FlexGraphqlRuntime`.
+- Consumed by manifest-driven host schema composition, REST, and bootstrap wiring; GraphQL ownership, REST DTO/command-mapping ownership, field-definition row/view/command/lifecycle policy ownership, and standalone fields_config/schema/key-derivation/entry validation/split/merge ownership are in this crate, while the host supplies persistence/registry/cache adapters through `FlexGraphqlRuntime`.
 
 ## Entry points
 
 - `flex::FlexModule`
 - `flex::FieldDefRegistry`
 - `flex::FieldDefinitionService`
-- `flex::{CreateFieldDefinitionCommand, UpdateFieldDefinitionCommand, FieldDefinitionView}`
+- `flex::{CreateFieldDefinitionCommand, UpdateFieldDefinitionCommand, FieldDefinitionView, FieldDefinitionViewSource}`
+- `flex::impl_field_definition_command_conversions!`
 - `flex::graphql::{FlexQuery, FlexMutation, FlexGraphqlRuntime}`
 - `flex::graphql::{FieldDefinitionObject, CreateFieldDefinitionInput, UpdateFieldDefinitionInput, DeleteFieldDefinitionPayload}`
 - `flex::graphql::{FlexSchemaObject, FlexEntryObject, CreateFlexSchemaInput, UpdateFlexSchemaInput, CreateFlexEntryInput, UpdateFlexEntryInput, DeleteFlexPayload}`
 - `flex::rest::{CreateFlexSchemaRequest, UpdateFlexSchemaRequest, CreateFlexEntryRequest, UpdateFlexEntryRequest, FlexSchemaResponse, FlexEntryResponse, DeleteFlexResponse}`
+- `flex::{parse_standalone_fields_config, build_standalone_custom_fields_schema, serialize_standalone_fields_config, standalone_localized_field_keys}`
+- `flex::normalize_and_validate_standalone_entry`
 
 ## Docs
 

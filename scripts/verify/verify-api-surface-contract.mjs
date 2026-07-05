@@ -177,10 +177,103 @@ requireContains('apps/server/src/services/app_runtime.rs', 'pub fn module_runtim
 requireContains('apps/server/src/services/app_runtime.rs', 'ctx: &ServerRuntimeContext', 'app runtime helpers consume server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_storage(ctx: &ServerRuntimeContext)', 'storage bootstrap helper consumes server runtime context');
 requireContains('apps/server/src/services/app_runtime.rs', 'init_marketplace_catalog(ctx: &ServerRuntimeContext)', 'marketplace catalog bootstrap helper consumes server runtime context');
+requireContains('apps/server/src/services/app_runtime.rs', 'fn init_alloy_runtime(ctx: &ServerRuntimeContext)', 'Alloy bootstrap helper consumes server runtime context');
+requireContains('apps/server/src/services/app_runtime.rs', 'alloy::build_alloy_runtime', 'server registers Alloy runtime through host-neutral construction');
+requireNotContains('crates/alloy/src/runtime.rs', 'loco_rs', 'Alloy runtime core does not consume Loco AppContext');
+requireNotContains('crates/alloy/src/runtime.rs', 'AppContext', 'Alloy runtime core exposes host-neutral construction only');
+requireNotContains('crates/alloy/src/graphql/mod.rs', 'loco_rs', 'Alloy GraphQL resolvers do not consume Loco AppContext');
+requireContains('crates/alloy/src/graphql/mod.rs', 'SharedAlloyRuntime', 'Alloy GraphQL resolvers consume schema-owned runtime data');
+requireContains('apps/server/src/graphql/schema.rs', 'alloy::SharedAlloyRuntime', 'GraphQL schema receives Alloy runtime as schema-owned data');
+requireContains('crates/alloy/src/controllers/mod.rs', 'pub struct AlloyHttpRuntime', 'Alloy HTTP controllers use a narrow runtime state');
+requireContains('crates/alloy/src/controllers/mod.rs', 'State(runtime): State<AlloyHttpRuntime>', 'Alloy HTTP handlers consume narrow runtime state');
+requireNotContains('crates/alloy/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'Alloy HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/alloy/src/controllers/mod.rs', 'ctx.shared_store', 'Alloy HTTP handlers do not use Loco shared store as service locator');
+requireNotContains('crates/rustok-ai/Cargo.toml', 'loco-rs', 'AI capability crate does not depend on Loco');
+requireNotContains('crates/rustok-ai/src/graphql/mutation.rs', 'loco_rs', 'AI GraphQL mutations do not consume Loco AppContext');
+requireNotContains('crates/rustok-ai/src/service.rs', 'AppContext', 'AI management service does not consume Loco AppContext');
+requireNotContains('crates/rustok-ai/src/direct.rs', 'rustok_outbox::loco', 'AI direct execution does not consume outbox Loco adapter');
+requireContains('crates/rustok-ai/src/service/types.rs', 'pub struct AiHostRuntime', 'AI owns a host-neutral runtime contract');
+requireContains('apps/server/src/graphql/schema.rs', 'rustok_ai::AiHostRuntime', 'GraphQL schema receives AI runtime as schema-owned data');
+requireContains('apps/server/src/services/app_runtime.rs', 'fn init_rate_limit_layers(\n    ctx: &ServerRuntimeContext', 'rate-limit bootstrap consumes server runtime context');
+requireContains('apps/server/src/services/app_runtime.rs', 'fn build_namespaced_rate_limiter(\n    ctx: &ServerRuntimeContext', 'rate-limit shared handles are inserted through server runtime context');
 requireContains('apps/server/src/services/graphql_schema.rs', 'storage_from_ctx(ctx: &ServerRuntimeContext)', 'GraphQL schema storage helper consumes server runtime context');
 requireContains('apps/server/src/services/graphql_schema.rs', 'ctx.shared_get::<SharedGraphqlSchema>()', 'GraphQL schema cache uses server runtime context shared store');
 requireNotContains('apps/server/src/services/graphql_schema.rs', 'loco_rs', 'GraphQL schema service does not depend on Loco');
 requireContains('apps/server/src/services/graphql_schema.rs', 'init_graphql_schema(ctx: &ServerRuntimeContext)', 'GraphQL schema service consumes the server runtime context');
+requireNotContains('crates/rustok-content-orchestration/Cargo.toml', 'loco-rs', 'content orchestration crate does not depend on Loco');
+requireNotContains('crates/rustok-content-orchestration/src/lib.rs', 'AppContext', 'content orchestration runtime helpers do not consume Loco AppContext');
+requireNotContains('crates/rustok-content-orchestration/src/graphql.rs', 'loco_rs', 'content orchestration GraphQL resolvers do not consume Loco AppContext');
+requireContains('crates/rustok-content-orchestration/src/lib.rs', 'build_content_orchestration_service', 'content orchestration exposes host-neutral service construction');
+requireContains('apps/server/src/services/app_runtime.rs', 'build_content_orchestration_service', 'server registers content orchestration through host-neutral construction');
+requireContains('apps/server/src/graphql/schema.rs', 'SharedContentOrchestrationService', 'GraphQL schema receives content orchestration as schema-owned data');
+requireNotContains('crates/rustok-commerce/src/storefront_checkout_runtime.rs', 'loco_rs', 'commerce storefront checkout runtime does not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/storefront_checkout_runtime.rs', 'rustok_outbox::loco', 'commerce storefront checkout runtime does not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/storefront_checkout_runtime.rs', 'pub struct StorefrontCheckoutRuntime', 'commerce storefront checkout exposes a host-neutral runtime contract');
+requireContains('crates/rustok-commerce/src/controllers/mod.rs', 'pub struct CommerceHttpRuntime', 'commerce HTTP controllers expose a narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/products.rs', 'AppContext', 'commerce product HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/products.rs', 'rustok_outbox::loco', 'commerce product HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/products.rs', 'State(runtime): State<crate::controllers::CommerceHttpRuntime>', 'commerce product HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/products.rs', 'AppContext', 'commerce admin product HTTP wrapper does not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/products.rs', 'rustok_outbox::loco', 'commerce admin product HTTP wrapper does not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/products.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin product HTTP wrapper consumes narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/store/products.rs', 'AppContext', 'commerce storefront product/catalog HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/store/products.rs', 'rustok_outbox::loco', 'commerce storefront product/catalog HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/store/products.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce storefront product/catalog HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/fulfillments.rs', 'AppContext', 'commerce admin fulfillment HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/fulfillments.rs', 'rustok_outbox::loco', 'commerce admin fulfillment HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/fulfillments.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin fulfillment HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/shipping.rs', 'AppContext', 'commerce admin shipping HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/shipping.rs', 'rustok_outbox::loco', 'commerce admin shipping HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/shipping.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin shipping HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/payments.rs', 'AppContext', 'commerce admin payment HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/payments.rs', 'rustok_outbox::loco', 'commerce admin payment HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/payments.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin payment HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/orders.rs', 'AppContext', 'commerce admin order HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/orders.rs', 'rustok_outbox::loco', 'commerce admin order HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/orders.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin order HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'AppContext', 'commerce admin order-change HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'rustok_outbox::loco', 'commerce admin order-change HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin order-change HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'AppContext', 'blog post HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'AppContext', 'blog comment HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'rustok_outbox::loco', 'blog post HTTP handlers do not consume outbox Loco adapter');
+requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'rustok_outbox::loco', 'blog comment HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-blog/src/controllers/mod.rs', 'pub struct BlogHttpRuntime', 'blog HTTP controllers use a narrow runtime state');
+requireNotContains('crates/rustok-pages/src/controllers/mod.rs', 'rustok_outbox::loco', 'pages HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-pages/src/controllers/mod.rs', 'pub struct PagesHttpRuntime', 'pages HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-pages/src/controllers/mod.rs', 'State(runtime): State<PagesHttpRuntime>', 'pages HTTP handlers consume narrow runtime state');
+for (const rel of [
+  'crates/rustok-forum/src/controllers/categories.rs',
+  'crates/rustok-forum/src/controllers/topics.rs',
+  'crates/rustok-forum/src/controllers/replies.rs',
+  'crates/rustok-forum/src/controllers/users.rs',
+  'crates/rustok-forum/src/controllers/widgets.rs',
+]) {
+  requireNotContains(rel, 'AppContext', `${rel} handlers do not consume Loco AppContext`);
+  requireNotContains(rel, 'rustok_outbox::loco', `${rel} handlers do not consume outbox Loco adapter`);
+  requireContains(rel, 'ForumHttpRuntime', `${rel} handlers consume narrow forum runtime state`);
+}
+requireNotContains('crates/rustok-forum/Cargo.toml', 'loco-adapter', 'forum crate does not depend on the outbox Loco adapter feature');
+requireContains('crates/rustok-forum/src/controllers/mod.rs', 'pub struct ForumHttpRuntime', 'forum HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-media/src/controllers/mod.rs', 'pub struct MediaHttpRuntime', 'media HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-media/src/controllers/mod.rs', 'State(runtime): State<MediaHttpRuntime>', 'media HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-media/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'media HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-media/src/controllers/mod.rs', 'ctx.shared_store', 'media HTTP handlers do not use Loco shared store as service locator');
+for (const rel of [
+  'crates/rustok-workflow/src/controllers/workflows.rs',
+  'crates/rustok-workflow/src/controllers/steps.rs',
+  'crates/rustok-workflow/src/controllers/executions.rs',
+  'crates/rustok-workflow/src/controllers/webhook.rs',
+]) {
+  requireNotContains(rel, 'AppContext', `${rel} handlers do not consume Loco AppContext`);
+  requireContains(rel, 'WorkflowHttpRuntime', `${rel} handlers consume narrow workflow runtime state`);
+}
+requireContains('crates/rustok-workflow/src/controllers/mod.rs', 'pub struct WorkflowHttpRuntime', 'workflow HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-seo/src/controllers/mod.rs', 'pub struct SeoHttpRuntime', 'SEO HTTP controllers use a narrow runtime state');
+requireContains('crates/rustok-seo/src/controllers/mod.rs', 'State(runtime): State<SeoHttpRuntime>', 'SEO HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'State(ctx): State<AppContext>', 'SEO HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-seo/src/controllers/mod.rs', 'rustok_outbox::loco', 'SEO HTTP handlers do not consume outbox Loco adapter');
+requireNotContains('crates/rustok-seo/Cargo.toml', 'loco-adapter', 'SEO crate does not depend on the outbox Loco adapter feature');
 requireContains('apps/server/src/services/app_lifecycle.rs', 'let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);', 'runtime worker lifecycle isolates current Loco boundary adapter');
 requireNotContains('apps/server/src/services/app_lifecycle.rs', 'RustokSettings::from_settings(&ctx.config.settings)', 'runtime worker lifecycle does not parse settings from Loco config directly');
 for (const rel of [
@@ -197,6 +290,10 @@ requireNotContains('apps/server/src/extractors/auth.rs', 'loco_rs::app::AppConte
 requireContains('apps/server/src/extractors/auth.rs', 'ServerAuthRuntime', 'auth extractor consumes narrow auth runtime');
 requireNotContains('apps/server/src/extractors/rbac.rs', 'loco_rs::app::AppContext', 'RBAC permission extractor macro does not require Loco AppContext');
 requireContains('apps/server/src/extractors/rbac.rs', 'ServerAuthRuntime', 'RBAC permission extractor macro consumes auth runtime bound');
+requireNotContains('apps/server/src/guards/module.rs', 'loco_rs::app::AppContext', 'module guard does not consume Loco AppContext');
+requireContains('apps/server/src/guards/module.rs', 'ServerRuntimeContext', 'module guard consumes neutral server runtime context');
+requireNotContains('apps/server/src/channels/mod.rs', 'loco_rs::app::AppContext', 'channel contract does not expose Loco AppContext');
+requireContains('apps/server/src/channels/mod.rs', 'ServerRuntimeContext', 'channel contract exposes neutral server runtime context');
 requireNotContains('apps/server/src/services/auth_lifecycle.rs', 'AppContext', 'auth lifecycle service does not expose Loco compatibility entrypoints');
 for (const method of [
   'create_user_runtime',
@@ -252,6 +349,13 @@ requireContains('apps/server/src/controllers/auth.rs', 'State(email_runtime): St
 requireNotContains('apps/server/src/controllers/auth.rs', 'auth_config_from_ctx', 'auth controller reads config from the narrow auth runtime');
 requireNotContains('apps/server/src/controllers/oauth_metadata.rs', 'loco_rs::app::AppContext', 'OAuth metadata controller does not consume Loco AppContext');
 requireContains('apps/server/src/controllers/oauth_metadata.rs', 'State(ctx): State<ServerAuthRuntime>', 'OAuth metadata controller extracts narrow auth runtime state');
+requireNotContains('apps/server/src/controllers/oauth.rs', 'loco_rs::app::AppContext', 'OAuth REST controller does not consume Loco AppContext');
+requireNotContains('apps/server/src/controllers/oauth.rs', 'auth_config_from_ctx', 'OAuth REST controller reads config from the narrow auth runtime');
+requireContains('apps/server/src/controllers/oauth.rs', 'State(ctx): State<ServerAuthRuntime>', 'OAuth token/consent handlers extract narrow auth runtime state');
+requireContains('apps/server/src/controllers/oauth.rs', 'State(ctx): State<ServerRuntimeContext>', 'OAuth non-auth runtime handlers extract neutral runtime state');
+requireNotContains('apps/server/src/controllers/marketplace_registry.rs', 'loco_rs::app::AppContext', 'marketplace registry controller does not consume Loco AppContext');
+requireContains('apps/server/src/controllers/marketplace_registry.rs', 'State(ctx): State<ServerRuntimeContext>', 'marketplace registry controller extracts neutral runtime state');
+requireContains('apps/server/src/controllers/marketplace_registry.rs', 'shared_get::<rustok_storage::StorageService>()', 'marketplace registry artifact paths read storage through neutral runtime state');
 for (const rel of [
   'apps/server/src/controllers/admin_events.rs',
   'apps/server/src/controllers/installer.rs',

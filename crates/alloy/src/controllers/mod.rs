@@ -21,10 +21,32 @@ use crate::{
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic},
-    ScriptError,
+    ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime,
 };
 
 pub const LOCO_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{id}/executions"];
+
+#[derive(Clone)]
+pub struct AlloyHttpRuntime {
+    runtime: Option<SharedAlloyRuntime>,
+}
+
+impl AlloyHttpRuntime {
+    fn scoped(&self, tenant_id: Uuid) -> Result<ScopedAlloyRuntime> {
+        self.runtime
+            .as_ref()
+            .map(|runtime| runtime.0.scoped(tenant_id))
+            .ok_or_else(|| Error::Message("Alloy runtime not initialised".to_string()))
+    }
+}
+
+impl axum::extract::FromRef<AppContext> for AlloyHttpRuntime {
+    fn from_ref(input: &AppContext) -> Self {
+        Self {
+            runtime: input.shared_store.get::<SharedAlloyRuntime>(),
+        }
+    }
+}
 
 fn script_error(error: ScriptError) -> Error {
     match error {
@@ -47,11 +69,11 @@ fn entity_to_proxy(entity: EntityInput) -> EntityProxy {
 }
 
 pub async fn list_scripts(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Query(query): Query<ListScriptsQuery>,
 ) -> Result<Json<ListScriptsResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let script_query = match query.status_filter().map_err(Error::BadRequest)? {
         Some(status) => crate::storage::ScriptQuery::ByStatus(status),
         None => crate::storage::ScriptQuery::All,
@@ -74,21 +96,21 @@ pub async fn list_scripts(
 }
 
 pub async fn get_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ScriptResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     Ok(Json(script.into()))
 }
 
 pub async fn create_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Json(req): Json<CreateScriptRequest>,
 ) -> Result<(StatusCode, Json<ScriptResponse>)> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
 
     if runtime.storage.get_by_name(&req.name).await.is_ok() {
         return Err(Error::BadRequest(format!(
@@ -108,12 +130,12 @@ pub async fn create_script(
 }
 
 pub async fn update_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateScriptRequest>,
 ) -> Result<Json<ScriptResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
 
     if let Some(name) = req.name {
@@ -142,11 +164,11 @@ pub async fn update_script(
 }
 
 pub async fn delete_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     runtime.engine.invalidate(&script.name);
     runtime.storage.delete(id).await.map_err(script_error)?;
@@ -154,12 +176,12 @@ pub async fn delete_script(
 }
 
 pub async fn run_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
     Json(req): Json<RunScriptRequest>,
 ) -> Result<Json<RunScriptResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
 
     let params = req
@@ -179,12 +201,12 @@ pub async fn run_script(
 }
 
 pub async fn run_script_by_name(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(name): Path<String>,
     Json(req): Json<RunScriptRequest>,
 ) -> Result<Json<RunScriptResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let script = runtime
         .storage
         .get_by_name(&name)
@@ -208,11 +230,11 @@ pub async fn run_script_by_name(
 }
 
 pub async fn list_recent_executions(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Query(query): Query<ListExecutionLogQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let offset = query.offset();
     let limit = query.limit();
     let executions = runtime
@@ -239,12 +261,12 @@ pub async fn list_recent_executions(
 }
 
 pub async fn list_script_executions(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
     Query(query): Query<ListExecutionLogQuery>,
 ) -> Result<Json<ListExecutionLogResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let offset = query.offset();
     let limit = query.limit();
     let executions = runtime
@@ -271,11 +293,11 @@ pub async fn list_script_executions(
 }
 
 pub async fn validate_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Json(req): Json<CreateScriptRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let mut scope = rhai_full::Scope::new();
 
     match runtime
@@ -334,11 +356,11 @@ fn run_response(result: crate::ExecutionResult) -> RunScriptResponse {
 }
 
 pub async fn activate_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ScriptResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     script.activate();
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
@@ -346,11 +368,11 @@ pub async fn activate_script(
 }
 
 pub async fn pause_script(
-    State(ctx): State<AppContext>,
+    State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ScriptResponse>> {
-    let runtime = crate::runtime::scoped_runtime(&ctx, tenant.id);
+    let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     script.status = ScriptStatus::Paused;
     script.updated_at = Utc::now();

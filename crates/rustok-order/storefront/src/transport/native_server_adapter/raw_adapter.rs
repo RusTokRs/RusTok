@@ -29,6 +29,10 @@ async fn storefront_order_complete_checkout_native(
         };
 
         let app_ctx = expect_context::<AppContext>();
+        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+            app_ctx.db.clone(),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+        );
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -43,7 +47,7 @@ async fn storefront_order_complete_checkout_native(
         let metadata = request.metadata;
 
         let completion = storefront_checkout_runtime::complete_storefront_checkout(
-            &app_ctx,
+            &runtime,
             &tenant,
             &request_context,
             auth,

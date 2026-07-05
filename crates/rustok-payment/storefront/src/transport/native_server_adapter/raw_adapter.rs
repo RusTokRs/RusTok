@@ -28,6 +28,10 @@ async fn storefront_refund_summary_native(
         use rustok_commerce::storefront_checkout_runtime;
 
         let app_ctx = expect_context::<AppContext>();
+        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+            app_ctx.db.clone(),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+        );
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -41,7 +45,7 @@ async fn storefront_refund_summary_native(
             .map_err(|_| ServerFnError::new("order_id must be a valid UUID"))?;
 
         let (items, total) = storefront_checkout_runtime::read_storefront_order_refunds(
-            &app_ctx,
+            &runtime,
             &tenant,
             &request_context,
             auth,
@@ -80,6 +84,10 @@ async fn storefront_payment_collection_native(
         use rustok_commerce::storefront_checkout_runtime;
 
         let app_ctx = expect_context::<AppContext>();
+        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+            app_ctx.db.clone(),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+        );
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -90,7 +98,7 @@ async fn storefront_payment_collection_native(
             .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
 
         storefront_checkout_runtime::read_storefront_payment_collection(
-            &app_ctx, &tenant, auth, cart_id,
+            &runtime, &tenant, auth, cart_id,
         )
         .await
         .map(|collection| collection.map(map_payment_collection))
@@ -126,6 +134,10 @@ async fn storefront_payment_create_collection_native(
         };
 
         let app_ctx = expect_context::<AppContext>();
+        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+            app_ctx.db.clone(),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+        );
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -140,7 +152,7 @@ async fn storefront_payment_create_collection_native(
         let metadata = request.metadata;
 
         let collection = storefront_checkout_runtime::create_storefront_payment_collection(
-            &app_ctx,
+            &runtime,
             &tenant,
             &request_context,
             auth,

@@ -9,6 +9,9 @@
 - Own script storage, execution contracts, scheduler, and migrations.
 - Own the Rhai runtime, hook orchestration, execution log, and transport surfaces.
 - Expose the canonical Alloy runtime API used by MCP, workflow integrations, and server wiring.
+- Expose host-neutral runtime construction so server bootstrap can register Alloy without depending on Loco host context.
+- Keep GraphQL runtime access on `SharedAlloyRuntime` schema data instead of host framework context.
+- Keep REST script/execution handlers on narrow `AlloyHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 
 ## Interactions
 
@@ -20,6 +23,9 @@
 ## Entry points
 
 - `create_default_engine`
+- `build_alloy_runtime`
+- `SharedAlloyRuntime`
+- `AlloyHttpRuntime`
 - `ScriptEngine`
 - `ScriptOrchestrator`
 - `Scheduler`

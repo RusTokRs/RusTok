@@ -1,7 +1,4 @@
 //! High-level model helpers for `user_field_definitions`.
-//!
-//! Provides conversion from a DB row to [`FieldDefinition`], the portable
-//! DTO used by [`rustok_core::field_schema::CustomFieldsSchema`].
 
 use sea_orm::prelude::*;
 use std::collections::HashMap;
@@ -11,7 +8,7 @@ use rustok_core::field_schema::{FieldDefinition, FieldType, ValidationRule};
 pub use super::_entities::user_field_definitions::{ActiveModel, Column, Entity, Model, Relation};
 
 // Maximum number of field definitions per entity type per tenant.
-// Enforced in [`UserFieldService::create`].
+// Enforced in `UserFieldService::create`.
 pub const MAX_FIELDS_PER_TENANT: usize = 50;
 
 impl Entity {
@@ -31,36 +28,12 @@ impl Entity {
     }
 }
 
+flex::impl_field_definition_source!(Model);
+
 impl Model {
-    /// Convert a DB row into the portable [`FieldDefinition`] DTO.
-    ///
-    /// Returns `None` if `field_type` contains an unknown string (forward
-    /// compatibility — unknown types are silently skipped by callers).
+    /// Convert a DB row into the portable `FieldDefinition` DTO.
     pub fn into_field_definition(self) -> Option<FieldDefinition> {
-        let field_type: FieldType =
-            serde_json::from_value(serde_json::Value::String(self.field_type.clone())).ok()?;
-
-        let label: HashMap<String, String> = serde_json::from_value(self.label).unwrap_or_default();
-
-        let description: Option<HashMap<String, String>> = self
-            .description
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        let validation: Option<ValidationRule> =
-            self.validation.and_then(|v| serde_json::from_value(v).ok());
-
-        Some(FieldDefinition {
-            field_key: self.field_key,
-            field_type,
-            label,
-            description,
-            is_localized: self.is_localized,
-            is_required: self.is_required,
-            default_value: self.default_value,
-            validation,
-            position: self.position,
-            is_active: self.is_active,
-        })
+        flex::field_definition_from_source(&self)
     }
 }
 

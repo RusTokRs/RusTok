@@ -3,16 +3,16 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::CatalogService;
 use uuid::Uuid;
 
 use super::super::{
     common::{ensure_permissions, PaginatedResponse},
     products::{ListProductsParams, ProductListItem},
+    CommerceHttpRuntime,
 };
 use crate::dto::{CreateProductInput, ProductResponse, UpdateProductInput};
 
@@ -28,7 +28,7 @@ use crate::dto::{CreateProductInput, ProductResponse, UpdateProductInput};
     )
 )]
 pub async fn list_products(
-    state: State<AppContext>,
+    state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -49,7 +49,7 @@ pub async fn list_products(
     )
 )]
 pub async fn create_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateProductInput>,
@@ -61,13 +61,13 @@ pub async fn create_product(
     )?;
 
     super::validate_product_shipping_profile_input(
-        &ctx.db,
+        runtime.db(),
         tenant.id,
         input.shipping_profile_slug.as_deref(),
     )
     .await?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product = service
         .create_product(tenant.id, auth.user_id, input)
         .await
@@ -88,7 +88,7 @@ pub async fn create_product(
     )
 )]
 pub async fn show_product(
-    state: State<AppContext>,
+    state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -110,7 +110,7 @@ pub async fn show_product(
     )
 )]
 pub async fn update_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -123,13 +123,13 @@ pub async fn update_product(
     )?;
 
     super::validate_product_shipping_profile_input(
-        &ctx.db,
+        runtime.db(),
         tenant.id,
         input.shipping_profile_slug.as_deref(),
     )
     .await?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product = service
         .update_product(tenant.id, auth.user_id, id, input)
         .await
@@ -150,7 +150,7 @@ pub async fn update_product(
     )
 )]
 pub async fn delete_product(
-    state: State<AppContext>,
+    state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     path: Path<Uuid>,
@@ -170,7 +170,7 @@ pub async fn delete_product(
     )
 )]
 pub async fn publish_product(
-    state: State<AppContext>,
+    state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     path: Path<Uuid>,
@@ -190,7 +190,7 @@ pub async fn publish_product(
     )
 )]
 pub async fn unpublish_product(
-    state: State<AppContext>,
+    state: State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     path: Path<Uuid>,

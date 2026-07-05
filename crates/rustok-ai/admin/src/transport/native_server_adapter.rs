@@ -810,8 +810,9 @@ async fn ai_start_session_native(
             .map_err(ServerFnError::new)?;
         ensure_ai_session_run_permission(&auth.permissions)?;
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime = ai_runtime_from_app_ctx(&app_ctx);
         let item = rustok_ai::AiManagementService::start_chat_session(
-            &app_ctx,
+            &runtime,
             &operator(&auth, &app_ctx.db).await?,
             rustok_ai::StartAiChatSessionInput {
                 title,
@@ -864,8 +865,9 @@ async fn ai_run_task_job_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let task_input_json = serde_json::from_str(&task_input_json)
             .map_err(|err| ServerFnError::new(err.to_string()))?;
+        let runtime = ai_runtime_from_app_ctx(&app_ctx);
         let item = rustok_ai::AiManagementService::run_task_job(
-            &app_ctx,
+            &runtime,
             &operator(&auth, &app_ctx.db).await?,
             rustok_ai::RunAiTaskJobInput {
                 title,
@@ -913,8 +915,9 @@ async fn ai_send_message_native(
             .map_err(ServerFnError::new)?;
         ensure_ai_session_run_permission(&auth.permissions)?;
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime = ai_runtime_from_app_ctx(&app_ctx);
         let item = rustok_ai::AiManagementService::send_chat_message(
-            &app_ctx,
+            &runtime,
             &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&session_id, "session_id")?,
             rustok_ai::SendAiChatMessageInput { content },
@@ -943,8 +946,9 @@ async fn ai_resume_approval_native(
             .map_err(ServerFnError::new)?;
         ensure_ai_approval_resolve_permission(&auth.permissions)?;
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let runtime = ai_runtime_from_app_ctx(&app_ctx);
         let item = rustok_ai::AiManagementService::resume_approval(
-            &app_ctx,
+            &runtime,
             &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&approval_id, "approval_id")?,
             rustok_ai::ResumeAiApprovalInput { approved, reason },
@@ -1074,6 +1078,21 @@ fn ensure_ai_overview_permission(
     } else {
         Err(ServerFnError::new("AI read permissions required"))
     }
+}
+
+#[cfg(feature = "ssr")]
+fn ai_runtime_from_app_ctx(app_ctx: &loco_rs::app::AppContext) -> rustok_ai::AiHostRuntime {
+    rustok_ai::AiHostRuntime::new(
+        app_ctx.db.clone(),
+        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
+        app_ctx
+            .shared_store
+            .get::<rustok_ai::SharedAiModuleRegistry>()
+            .expect("AI module registry not initialized")
+            .0,
+    )
+    .with_storage(app_ctx.shared_store.get::<rustok_storage::StorageService>())
+    .with_alloy_runtime(app_ctx.shared_store.get::<alloy::SharedAlloyRuntime>())
 }
 
 #[cfg(feature = "ssr")]

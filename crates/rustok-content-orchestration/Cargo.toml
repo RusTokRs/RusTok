@@ -9,14 +9,13 @@ description = "Owner-owned cross-module content orchestration bridge for blog/fo
 async-trait.workspace = true
 async-graphql.workspace = true
 chrono.workspace = true
-loco-rs.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-blog = { workspace = true, optional = true }
 rustok-comments = { workspace = true, features = ["server"], optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core.workspace = true
 rustok-forum = { workspace = true, optional = true }
-rustok-outbox = { workspace = true, features = ["loco-adapter"] }
+rustok-outbox.workspace = true
 rustok-taxonomy = { workspace = true, optional = true }
 sea-orm.workspace = true
 serde_json.workspace = true

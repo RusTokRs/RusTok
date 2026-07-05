@@ -9,6 +9,7 @@
 - Provide `BlogModule` metadata for the runtime registry.
 - Own blog-specific post lifecycle, SEO, and localized blog orchestration.
 - Own blog GraphQL and REST transport adapters alongside the domain services, including comment moderation endpoint `POST /api/blog/comments/{id}/moderate`.
+- Keep REST post/comment handlers on narrow `BlogHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 - Publish module-owned Leptos admin/storefront packages for installable UI surfaces.
 - Publish schema-driven tenant settings through `rustok-module.toml`, including curated option sets for admin forms.
 - Publish the typed `blog_posts:*` RBAC surface.

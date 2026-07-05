@@ -18,6 +18,7 @@ Entity-specific SEO authoring не живёт в `rustok-seo-admin`: стран�
 - runtime adapter seam для sitemap submission с per-endpoint статусами и bounded partial-failure summary;
 - diagnostics read model: readiness score, issue list, issue aggregates и source counts, включая image descriptor quality issue codes `missing_image_alt` и `missing_image_size` для SEO-critical targets;
 - read-only cross-link suggestions (`seoCrossLinkSuggestions` / `/api/seo/cross-link-suggestions`) без автоматической HTML mutation;
+- REST handlers на узком `SeoHttpRuntime` с явными DB/event bus/runtime extensions handles; текущий Loco `AppContext` остаётся только в route-state adapter до полного Axum cutover;
 - REST control-plane parity endpoints для диагностики/карт сайта/bulk jobs: `/api/seo/diagnostics`, `/api/seo/sitemaps/status`, `/api/seo/sitemaps/jobs`, `/api/seo/sitemaps/jobs/{job_id}`, `/api/seo/bulk/jobs`, `/api/seo/bulk/jobs/{job_id}`;
 - REST error envelope на control-plane endpoint-ах унифицирован с GraphQL кодами (`errors[].extensions.code`: `BAD_USER_INPUT`, `PERMISSION_DENIED`, `NOT_FOUND`, `INTERNAL_ERROR`) для deterministic client-side mapping;
 - shared capability registry через `rustok-seo-targets`;

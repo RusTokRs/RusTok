@@ -12,6 +12,7 @@
 
 - orchestration между `cart/customer/product/region/pricing/inventory/order/payment/fulfillment`;
 - REST/GraphQL transport и переходные orchestration UI-поверхности, пока доменные surfaces не вынесены по ownership boundaries;
+- shared/admin product, storefront product/catalog, admin order/change, admin fulfillment, admin shipping и admin payment HTTP handlers на узком `CommerceHttpRuntime`; остальные admin/storefront REST adapters режутся отдельными Loco-exit срезами;
 - channel-aware commerce contract поверх `rustok-channel`, checkout orchestration и cross-domain deliverability semantics;
 - поддержание thin-host роли `apps/server` без возврата commerce business logic в host.
 

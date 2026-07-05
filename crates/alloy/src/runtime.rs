@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use loco_rs::app::AppContext;
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
@@ -46,14 +46,10 @@ impl AlloyRuntime {
     }
 }
 
-pub fn init(ctx: &AppContext) -> Arc<AlloyRuntime> {
-    if let Some(shared) = ctx.shared_store.get::<SharedAlloyRuntime>() {
-        return shared.0.clone();
-    }
-
+pub fn build_alloy_runtime(db: DatabaseConnection) -> Arc<AlloyRuntime> {
     let engine = Arc::new(create_default_engine());
-    let storage = Arc::new(SeaOrmStorage::new(ctx.db.clone()));
-    let execution_log = Arc::new(SeaOrmExecutionLog::new(ctx.db.clone()));
+    let storage = Arc::new(SeaOrmStorage::new(db.clone()));
+    let execution_log = Arc::new(SeaOrmExecutionLog::new(db));
 
     let executor = ScriptExecutor::new(engine.clone(), storage.clone())
         .with_execution_log(execution_log.clone());
@@ -65,24 +61,9 @@ pub fn init(ctx: &AppContext) -> Arc<AlloyRuntime> {
         scheduler.start().await;
     });
 
-    let runtime = Arc::new(AlloyRuntime {
+    Arc::new(AlloyRuntime {
         engine,
         storage,
         execution_log,
-    });
-
-    ctx.shared_store.insert(SharedAlloyRuntime(runtime.clone()));
-    runtime
-}
-
-pub fn runtime_from_ctx(ctx: &AppContext) -> Arc<AlloyRuntime> {
-    ctx.shared_store
-        .get::<SharedAlloyRuntime>()
-        .expect("Alloy runtime not initialised")
-        .0
-        .clone()
-}
-
-pub fn scoped_runtime(ctx: &AppContext, tenant_id: Uuid) -> ScopedAlloyRuntime {
-    runtime_from_ctx(ctx).scoped(tenant_id)
+    })
 }

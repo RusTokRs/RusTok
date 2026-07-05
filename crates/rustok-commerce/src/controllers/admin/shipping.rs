@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
+    super::CommerceHttpRuntime,
     ListShippingOptionsParams, ListShippingProfilesParams,
 };
 use crate::{
@@ -34,7 +35,7 @@ use crate::{
     )
 )]
 pub async fn list_shipping_profiles(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -47,7 +48,7 @@ pub async fn list_shipping_profiles(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (items, total) = ShippingProfileService::new(ctx.db.clone())
+    let (items, total) = ShippingProfileService::new(runtime.db_clone())
         .list_shipping_profiles(
             tenant.id,
             ListShippingProfilesInput {
@@ -81,7 +82,7 @@ pub async fn list_shipping_profiles(
     )
 )]
 pub async fn create_shipping_profile(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateShippingProfileInput>,
@@ -92,7 +93,7 @@ pub async fn create_shipping_profile(
         "Permission denied: fulfillments:create required",
     )?;
 
-    let profile = ShippingProfileService::new(ctx.db.clone())
+    let profile = ShippingProfileService::new(runtime.db_clone())
         .create_shipping_profile(tenant.id, input)
         .await
         .map_err(super::map_shipping_profile_error)?;
@@ -113,7 +114,7 @@ pub async fn create_shipping_profile(
     )
 )]
 pub async fn show_shipping_profile(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -125,7 +126,7 @@ pub async fn show_shipping_profile(
         "Permission denied: fulfillments:read required",
     )?;
 
-    let profile = ShippingProfileService::new(ctx.db.clone())
+    let profile = ShippingProfileService::new(runtime.db_clone())
         .get_shipping_profile(
             tenant.id,
             id,
@@ -152,7 +153,7 @@ pub async fn show_shipping_profile(
     )
 )]
 pub async fn update_shipping_profile(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -164,7 +165,7 @@ pub async fn update_shipping_profile(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let profile = ShippingProfileService::new(ctx.db.clone())
+    let profile = ShippingProfileService::new(runtime.db_clone())
         .update_shipping_profile(tenant.id, id, input)
         .await
         .map_err(super::map_shipping_profile_error)?;
@@ -185,7 +186,7 @@ pub async fn update_shipping_profile(
     )
 )]
 pub async fn deactivate_shipping_profile(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -196,7 +197,7 @@ pub async fn deactivate_shipping_profile(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let profile = ShippingProfileService::new(ctx.db.clone())
+    let profile = ShippingProfileService::new(runtime.db_clone())
         .deactivate_shipping_profile(tenant.id, id)
         .await
         .map_err(super::map_shipping_profile_error)?;
@@ -217,7 +218,7 @@ pub async fn deactivate_shipping_profile(
     )
 )]
 pub async fn reactivate_shipping_profile(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -228,7 +229,7 @@ pub async fn reactivate_shipping_profile(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let profile = ShippingProfileService::new(ctx.db.clone())
+    let profile = ShippingProfileService::new(runtime.db_clone())
         .reactivate_shipping_profile(tenant.id, id)
         .await
         .map_err(super::map_shipping_profile_error)?;
@@ -248,7 +249,7 @@ pub async fn reactivate_shipping_profile(
     )
 )]
 pub async fn list_shipping_options(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -261,7 +262,7 @@ pub async fn list_shipping_options(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let mut items = FulfillmentService::new(ctx.db.clone())
+    let mut items = FulfillmentService::new(runtime.db_clone())
         .list_all_shipping_options(
             tenant.id,
             Some(request_context.locale.as_str()),
@@ -309,7 +310,7 @@ pub async fn list_shipping_options(
     )
 )]
 pub async fn create_shipping_option(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateShippingOptionInput>,
@@ -321,13 +322,13 @@ pub async fn create_shipping_option(
     )?;
 
     super::validate_shipping_option_profile_inputs(
-        &ctx.db,
+        runtime.db(),
         tenant.id,
         input.allowed_shipping_profile_slugs.as_ref(),
     )
     .await?;
 
-    let option = FulfillmentService::new(ctx.db.clone())
+    let option = FulfillmentService::new(runtime.db_clone())
         .create_shipping_option(tenant.id, input)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -348,7 +349,7 @@ pub async fn create_shipping_option(
     )
 )]
 pub async fn show_shipping_option(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -360,7 +361,7 @@ pub async fn show_shipping_option(
         "Permission denied: fulfillments:read required",
     )?;
 
-    let option = FulfillmentService::new(ctx.db.clone())
+    let option = FulfillmentService::new(runtime.db_clone())
         .get_shipping_option(
             tenant.id,
             id,
@@ -392,7 +393,7 @@ pub async fn show_shipping_option(
     )
 )]
 pub async fn update_shipping_option(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -405,13 +406,13 @@ pub async fn update_shipping_option(
     )?;
 
     super::validate_shipping_option_profile_inputs(
-        &ctx.db,
+        runtime.db(),
         tenant.id,
         input.allowed_shipping_profile_slugs.as_ref(),
     )
     .await?;
 
-    let option = FulfillmentService::new(ctx.db.clone())
+    let option = FulfillmentService::new(runtime.db_clone())
         .update_shipping_option(tenant.id, id, input)
         .await
         .map_err(|err| match err {
@@ -437,7 +438,7 @@ pub async fn update_shipping_option(
     )
 )]
 pub async fn deactivate_shipping_option(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -448,7 +449,7 @@ pub async fn deactivate_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let option = FulfillmentService::new(ctx.db.clone())
+    let option = FulfillmentService::new(runtime.db_clone())
         .deactivate_shipping_option(tenant.id, id)
         .await
         .map_err(|err| match err {
@@ -474,7 +475,7 @@ pub async fn deactivate_shipping_option(
     )
 )]
 pub async fn reactivate_shipping_option(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -485,7 +486,7 @@ pub async fn reactivate_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let option = FulfillmentService::new(ctx.db.clone())
+    let option = FulfillmentService::new(runtime.db_clone())
         .reactivate_shipping_option(tenant.id, id)
         .await
         .map_err(|err| match err {

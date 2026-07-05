@@ -6,7 +6,8 @@ use crate::events::{
     flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
     flex_schema_created_event, flex_schema_deleted_event, flex_schema_updated_event,
 };
-use serde_json::Value as JsonValue;
+use serde_json::{Map, Value as JsonValue};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use rustok_core::field_schema::{
@@ -155,6 +156,122 @@ pub fn validate_update_entry_command(input: &UpdateFlexEntryCommand) -> Result<(
     validate_status(input.status.as_ref())?;
 
     Ok(())
+}
+
+/// Apply standalone entry defaults, strip unknown keys and validate the payload
+/// against a built custom-fields schema.
+pub fn normalize_and_validate_standalone_entry(
+    schema: &CustomFieldsSchema,
+    mut data: JsonValue,
+) -> Result<JsonValue, FlexError> {
+    if data.is_null() {
+        data = JsonValue::Object(Map::new());
+    }
+
+    if !data.is_object() {
+        return Err(FlexError::InvalidFieldKey(
+            "entry data must be a JSON object".to_string(),
+        ));
+    }
+
+    schema.apply_defaults(&mut data);
+    schema.strip_unknown(&mut data);
+
+    let errors = schema.validate(&data);
+    if !errors.is_empty() {
+        return Err(FlexError::ValidationFailed(errors));
+    }
+
+    Ok(data)
+}
+
+/// Split a standalone entry payload into shared and localized maps.
+pub fn split_standalone_entry_data(
+    data: &JsonValue,
+    localized_keys: &HashSet<String>,
+) -> (Map<String, JsonValue>, Map<String, JsonValue>) {
+    let mut shared = Map::new();
+    let mut localized = Map::new();
+
+    for (key, value) in object_map(Some(data)) {
+        if localized_keys.contains(&key) {
+            localized.insert(key, value);
+        } else {
+            shared.insert(key, value);
+        }
+    }
+
+    (shared, localized)
+}
+
+/// Resolve the read payload by overlaying localized values on top of shared data.
+pub fn effective_standalone_entry_data(
+    shared_source: &JsonValue,
+    localized_data: Option<&JsonValue>,
+    localized_keys: &HashSet<String>,
+) -> Map<String, JsonValue> {
+    let (mut shared_data, _) = split_standalone_entry_data(shared_source, localized_keys);
+    let resolved_localized = localized_data.and_then(|value| value.as_object().cloned());
+
+    if let Some(localized) = resolved_localized {
+        for (key, value) in localized {
+            shared_data.insert(key, value);
+        }
+    }
+
+    shared_data
+}
+
+/// Apply a PATCH-style entry update over the effective shared + localized payload.
+pub fn merge_standalone_entry_patch(
+    existing_shared: &JsonValue,
+    existing_localized: Option<&JsonValue>,
+    localized_keys: &HashSet<String>,
+    patch: JsonValue,
+) -> JsonValue {
+    let mut merged =
+        effective_standalone_entry_data(existing_shared, existing_localized, localized_keys);
+
+    for (key, value) in object_map(Some(&patch)) {
+        merged.insert(key, value);
+    }
+
+    JsonValue::Object(merged)
+}
+
+pub fn parse_standalone_fields_config(
+    fields_config: JsonValue,
+) -> Result<Vec<FieldDefinition>, FlexError> {
+    serde_json::from_value(fields_config).map_err(|error| {
+        FlexError::Database(format!("invalid flex_schemas.fields_config JSON: {error}"))
+    })
+}
+
+pub fn build_standalone_custom_fields_schema(
+    fields_config: JsonValue,
+) -> Result<CustomFieldsSchema, FlexError> {
+    Ok(CustomFieldsSchema::new(parse_standalone_fields_config(
+        fields_config,
+    )?))
+}
+
+pub fn serialize_standalone_fields_config(
+    fields_config: Vec<FieldDefinition>,
+) -> Result<JsonValue, FlexError> {
+    serde_json::to_value(fields_config).map_err(|error| {
+        FlexError::Database(format!(
+            "invalid standalone fields_config serialization: {error}"
+        ))
+    })
+}
+
+pub fn standalone_localized_field_keys(schema: &CustomFieldsSchema) -> HashSet<String> {
+    schema
+        .active_definitions()
+        .into_iter()
+        .filter(|definition| definition.is_localized)
+        .map(|definition| definition.field_key.clone())
+        .collect()
 }
 
 /// Orchestrates schema listing through standalone service.
@@ -408,6 +525,12 @@ fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexE
         }
     }
     Ok(())
+}
+
+fn object_map(value: Option<&JsonValue>) -> Map<String, JsonValue> {
+    value
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default()
 }
 
 fn validate_definition_shape(definition: &FieldDefinition) -> Result<(), FlexError> {
@@ -811,20 +934,21 @@ mod tests {
     use super::{
         create_entry, create_entry_with_event, create_schema, create_schema_with_event,
         delete_entry, delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry,
-        find_schema, list_entries, list_schemas, update_entry, update_entry_with_event,
-        update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
-        validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
-        validate_update_schema_command, CreateFlexEntryCommand, CreateFlexSchemaCommand,
-        FlexEntryView, FlexSchemaView, FlexStandaloneService, UpdateFlexEntryCommand,
-        UpdateFlexSchemaCommand,
+        find_schema, list_entries, list_schemas, merge_standalone_entry_patch,
+        normalize_and_validate_standalone_entry, split_standalone_entry_data, update_entry,
+        update_entry_with_event, update_schema_with_event, validate_create_entry_command,
+        validate_create_schema_command, validate_optional_standalone_uuid,
+        validate_standalone_uuid, validate_update_entry_command, validate_update_schema_command,
+        CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
+        FlexStandaloneService, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
     };
     use async_trait::async_trait;
 
     use rustok_core::field_schema::{
-        FieldDefinition, FieldType, FlexError, SelectOption, ValidationRule,
+        CustomFieldsSchema, FieldDefinition, FieldType, FlexError, SelectOption, ValidationRule,
     };
     use serde_json::json;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use uuid::Uuid;
@@ -842,6 +966,122 @@ mod tests {
             position: 0,
             is_active: true,
         }
+    }
+
+    fn required_definition(key: &str, default: Option<serde_json::Value>) -> FieldDefinition {
+        FieldDefinition {
+            field_key: key.to_string(),
+            field_type: FieldType::Text,
+            label: HashMap::from([("en".to_string(), "Label".to_string())]),
+            description: None,
+            is_localized: false,
+            is_required: true,
+            default_value: default,
+            validation: None,
+            position: 0,
+            is_active: true,
+        }
+    }
+
+    fn optional_definition(key: &str, default: Option<serde_json::Value>) -> FieldDefinition {
+        FieldDefinition {
+            field_key: key.to_string(),
+            field_type: FieldType::Text,
+            label: HashMap::from([("en".to_string(), "Label".to_string())]),
+            description: None,
+            is_localized: false,
+            is_required: false,
+            default_value: default,
+            validation: None,
+            position: 0,
+            is_active: true,
+        }
+    }
+
+    #[test]
+    fn normalize_and_validate_standalone_entry_applies_defaults_and_strips_unknown() {
+        let schema = CustomFieldsSchema::new(vec![
+            required_definition("name", None),
+            optional_definition("source", Some(json!("organic"))),
+        ]);
+
+        let out =
+            normalize_and_validate_standalone_entry(&schema, json!({"name": "Alice", "extra": 1}))
+                .expect("valid entry");
+
+        assert_eq!(out, json!({"name": "Alice", "source": "organic"}));
+    }
+
+    #[test]
+    fn normalize_and_validate_standalone_entry_rejects_missing_required_fields() {
+        let schema = CustomFieldsSchema::new(vec![required_definition("name", None)]);
+
+        let err = normalize_and_validate_standalone_entry(&schema, json!({}))
+            .expect_err("required field must fail");
+
+        match err {
+            FlexError::ValidationFailed(errors) => {
+                assert_eq!(errors.len(), 1);
+                assert_eq!(errors[0].field_key, "name");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn normalize_and_validate_standalone_entry_rejects_non_object_data() {
+        let schema = CustomFieldsSchema::new(vec![sample_definition("name")]);
+
+        let err = normalize_and_validate_standalone_entry(&schema, json!(42))
+            .expect_err("non-object must fail");
+
+        match err {
+            FlexError::InvalidFieldKey(msg) => {
+                assert!(msg.contains("JSON object"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn split_standalone_entry_data_moves_localized_keys_out_of_shared_payload() {
+        let localized_keys = HashSet::from([String::from("title")]);
+        let (shared, localized) = split_standalone_entry_data(
+            &json!({"slug": "landing", "title": "Привет"}),
+            &localized_keys,
+        );
+
+        assert_eq!(json!(shared), json!({"slug": "landing"}));
+        assert_eq!(json!(localized), json!({"title": "Привет"}));
+    }
+
+    #[test]
+    fn merge_standalone_entry_patch_preserves_omitted_shared_and_localized_values() {
+        let localized_keys = HashSet::from([String::from("title")]);
+        let merged = merge_standalone_entry_patch(
+            &json!({"slug": "landing", "sort_order": 10}),
+            Some(&json!({"title": "Привет"})),
+            &localized_keys,
+            json!({"sort_order": 20}),
+        );
+
+        assert_eq!(
+            merged,
+            json!({"slug": "landing", "sort_order": 20, "title": "Привет"})
+        );
+    }
+
+    #[test]
+    fn merge_standalone_entry_patch_allows_explicit_localized_override() {
+        let localized_keys = HashSet::from([String::from("title")]);
+        let merged = merge_standalone_entry_patch(
+            &json!({"slug": "landing"}),
+            Some(&json!({"title": "Привет"})),
+            &localized_keys,
+            json!({"title": "Hello"}),
+        );
+
+        assert_eq!(merged, json!({"slug": "landing", "title": "Hello"}));
     }
 
     fn select_definition(key: &str, values: &[&str]) -> FieldDefinition {

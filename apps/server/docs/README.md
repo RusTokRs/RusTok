@@ -43,7 +43,7 @@ Shared foundation / support crates:
 - Commerce surface больше не является compile-time baseline для любого server build: `controllers::commerce`, commerce-specific error mapping и commerce fragment в OpenAPI живут только при `mod-commerce`, так что reduced/headless host может собираться без ecommerce transport слоя.
 - Content REST/OpenAPI surface для `blog`, `forum` и `pages` тоже больше не считается unconditional частью host binary: соответствующие server controllers и OpenAPI fragments подключаются только при `mod-blog`, `mod-forum` и `mod-pages`, так что module-sliced build не обязан тянуть чужие content transport-зависимости.
 - Maintenance binary `migrate_legacy_richtext` принадлежит content storage migration path и собирается только при `mod-content`; headless server profiles без content module не должны линковать этот инструмент.
-- `flex` attached field-definition и standalone schemas/entries GraphQL публикуются через `/api/graphql`, а standalone REST остаётся на `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle и DTO принадлежат `flex::graphql`; roots входят в schema через `[provides.graphql]` manifest codegen, а server builder регистрирует только `FlexGraphqlRuntime` поверх concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter. REST пока остаётся server adapter.
+- `flex` attached field-definition и standalone schemas/entries GraphQL публикуются через `/api/graphql`, а standalone REST остаётся на `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle и DTO принадлежат `flex::graphql`; roots входят в schema через `[provides.graphql]` manifest codegen, а server builder регистрирует только `FlexGraphqlRuntime` поверх concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter. REST request/response DTO, command mapping и view mapping принадлежат `flex::rest`; attached field-definition row-to-core/view/command mapping, create guardrails, persisted type-name normalization и lifecycle events принадлежат `flex::registry`; server остаётся Loco/Axum/SeaORM adapter.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
 - Optional module REST/GraphQL surfaces монтируются только из owner-owned crate entrypoints,
@@ -55,7 +55,11 @@ Shared foundation / support crates:
   блокирует возврат server-owned shims.
 - Shared content canonical query и cross-module conversion mutations также приходят готовыми
   GraphQL roots из `rustok-content` и `rustok-content-orchestration`; host не владеет их resolver/DTO.
+- `rustok-content-orchestration` регистрируется host-ом как `SharedContentOrchestrationService`,
+  построенный из явных DB и `TransactionalEventBus`; conversion GraphQL resolvers читают этот handle из schema data,
+  а не через Loco `AppContext`.
 - Auth lifecycle и OAuth GraphQL query/mutation/types принадлежат `rustok-auth`; server реализует только `AuthLifecyclePort`/`OAuthAdminPort` поверх persisted lifecycle/OAuth/email services и регистрирует соответствующие runtimes в shared runtime extensions. `AuthLifecycleService` принимает только `ServerRuntimeContext` и явный `AuthConfig`, без Loco compatibility entrypoints. `ServerAuthLifecycleProvider` получает явные `ServerRuntimeContext`, `AuthConfig` и mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware и RBAC permission extractors используют узкий `ServerAuthRuntime`; полный Loco `AppContext` остаётся только в bootstrap/REST boundary adapters, которые собирают эти зависимости.
+- AI GraphQL/service/direct execution получает `rustok_ai::AiHostRuntime` как schema-owned data: host передаёт явные DB, transactional event bus, module registry, storage и Alloy runtime handles. `rustok-ai` не читает Loco `AppContext`; Leptos admin adapter пока остаётся host-boundary точкой, которая собирает этот runtime из текущего app context.
 - MCP GraphQL query/mutation/types принадлежат `rustok-mcp`; server реализует `McpManagementPort` поверх persisted `McpManagementService` и регистрирует `McpManagementRuntime`.
 - Content GraphQL dataloaders для `nodes`, `node_translations` и `bodies` живут в
   `rustok-content`; `apps/server` только регистрирует owner-owned loader types в schema builder.
@@ -64,6 +68,10 @@ Shared foundation / support crates:
 - Settings и system GraphQL resolvers получают `ServerRuntimeContext`, DB и schema-owned
   `TransactionalEventBus` через GraphQL data. Они не извлекают и не адаптируют Loco `AppContext`;
   request/connection boundary пока продолжает передавать его только для ещё не перенесённых resolvers.
+- App runtime rate-limit bootstrap и shared limiter registration используют `ServerRuntimeContext`;
+  Alloy runtime bootstrap также регистрирует `SharedAlloyRuntime` через `ServerRuntimeContext` из явного DB handle,
+  а Alloy GraphQL получает этот runtime как schema-owned data без Loco `AppContext`.
+  Loco `AppContext` внутри bootstrap остаётся только для текущих boundary adapters вроде mailer.
 - User complex fields и build progress subscription используют schema-owned `DatabaseConnection`
   напрямую и также не зависят от Loco host context.
 - Host-owned `RootQuery` также не извлекает Loco `AppContext`: DB-only read paths используют
@@ -87,7 +95,13 @@ Shared foundation / support crates:
   собирают тот же neutral runtime fixture и не создают Loco `AppContext`.
 - Auth REST handlers извлекают узкий `ServerAuthRuntime`; password reset и verification endpoints
   дополнительно получают `ServerEmailRuntime`. Controller не читает Loco config, DB или mailer напрямую.
+- Module guard и server channel contract типизированы через `ServerRuntimeContext`; Loco `AppContext`
+  не является request/channel contract для server-owned runtime paths.
 - OAuth discovery metadata также использует `ServerAuthRuntime` как единственный источник auth config.
+- OAuth REST token, authorize/consent, browser-session и revoke handlers извлекают `ServerAuthRuntime`
+  или `ServerRuntimeContext`; Loco `AppContext` больше не участвует в OAuth request state.
+- Marketplace registry/governance REST handlers извлекают `ServerRuntimeContext`; catalog projection,
+  artifact storage и remote executor policy читаются через DB/settings/shared handles neutral runtime.
 - Swagger document filtering, installer persistence reads, admin DLQ, MCP management/remote tools
   и build WebSocket извлекают `ServerRuntimeContext`; DB/shared runtime semantics не зависят от Loco state.
 - Channel runtime surface остаётся thin transport around `rustok-channel`: `/api/channels/*` уже покрывает bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints и request-level `resolution_trace` diagnostics, а сам resolution pipeline живёт в модуле. Request-level `tenant`, `channel` и `locale` middleware получают `ServerRuntimeContext`, auth context получает `ServerAuthRuntime`; Loco `AppContext` остаётся только в router/controller boundary adapters для текущего host.
@@ -177,7 +191,11 @@ Shared foundation / support crates:
   регистрацию concrete persistence adapter в `FlexGraphqlRuntime`; standalone Flex
   и attached field-definition resolver/DTO/error/RBAC/event mapping в `apps/server` не размещается;
 - Loco/Axum REST handler для standalone Flex, который использует owner-owned `flex::rest`
-  request/response DTO и view mapping; server не владеет Flex REST contract types;
+  request/response DTO, request-to-command mapping и view mapping; server не владеет Flex REST contract types;
+- SeaORM adapter для standalone Flex, который хранит persisted schema rows,
+  но fields_config parsing/schema build/serialization, localized key derivation, normalize/defaults/strip/validate, shared/localized split, read resolution и PATCH merge выполняет через owner-owned helpers из `flex::standalone`;
+- field-definition registry bootstrap, который регистрирует donor persistence adapters для `user`/`order`/`product`/`topic`,
+  но row-to-core `FieldDefinition` mapping, `FieldDefinitionView` shape mapping, command-to-adapter-input conversions и lifecycle policy/event construction делегирует owner-owned `flex::registry`;
 - bootstrap общего module-owned event runtime через `ModuleRegistry` и `EventDispatcher`;
 - health/runtime guardrails, build/release orchestration и operator control-plane endpoints;
 - installer HTTP/CLI adapters поверх `rustok-installer`, install locks и

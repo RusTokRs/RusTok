@@ -30,6 +30,7 @@
 - Expose admin shipping-profile management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `ShippingProfileService`.
 - Expose only commerce-owned checkout/context/shipping-profile DTOs and shipping-profile entities; owner DTO/entity/service contracts are imported directly from `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-region`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment`, and `rustok-fulfillment`.
 - Expose commerce-owned orchestration services such as `CheckoutService`, `StoreContextService`, `ShippingProfileService`, `PaymentOrchestrationService`, and `PostOrderOrchestrationService`.
+- Keep shared/admin product, storefront product/catalog, admin order/change, admin fulfillment, admin shipping, and admin payment HTTP handlers on narrow `CommerceHttpRuntime` state; remaining admin/storefront REST adapters are still cut over in separate Loco-exit slices.
 - Keep commerce-owned orchestration code and leftover migrations not yet moved to new modules.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Let the module-owned Leptos admin UI package keep the typed shipping-profile registry after product CRUD moved into `rustok-product/admin`, shipping-option UI moved into `rustok-fulfillment/admin`, order operations UI moved into `rustok-order/admin`, inventory visibility moved into `rustok-inventory/admin`, and pricing visibility moved into `rustok-pricing/admin`.

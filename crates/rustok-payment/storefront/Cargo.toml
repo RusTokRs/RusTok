@@ -13,6 +13,7 @@ ssr = [
     "dep:leptos_axum",
     "dep:loco-rs",
     "dep:rustok-commerce",
+    "dep:rustok-outbox",
     "dep:rustok-payment",
     "rustok-api/server",
 ]
@@ -24,6 +25,7 @@ leptos_axum = { workspace = true, optional = true }
 loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-commerce = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
 rustok-payment = { workspace = true, optional = true }
 rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }

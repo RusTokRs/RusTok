@@ -27,6 +27,10 @@ async fn storefront_fulfillment_select_shipping_option_native(
         };
 
         let app_ctx = expect_context::<AppContext>();
+        let runtime = storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
+            app_ctx.db.clone(),
+            rustok_outbox::loco::transactional_event_bus_from_context(&app_ctx),
+        );
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -55,7 +59,7 @@ async fn storefront_fulfillment_select_shipping_option_native(
             .collect::<Result<Vec<_>, ServerFnError>>()?;
 
         storefront_checkout_runtime::select_storefront_shipping_option(
-            &app_ctx,
+            &runtime,
             &tenant,
             request_context.as_ref(),
             auth,

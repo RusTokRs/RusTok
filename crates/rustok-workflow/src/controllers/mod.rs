@@ -1,10 +1,30 @@
 use axum::routing::{get, post, put};
-use loco_rs::controller::Routes;
+use loco_rs::{app::AppContext, controller::Routes};
+use sea_orm::DatabaseConnection;
 
 pub mod executions;
 pub mod steps;
 pub mod webhook;
 pub mod workflows;
+
+#[derive(Clone)]
+pub struct WorkflowHttpRuntime {
+    db: DatabaseConnection,
+}
+
+impl WorkflowHttpRuntime {
+    fn db_clone(&self) -> DatabaseConnection {
+        self.db.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppContext> for WorkflowHttpRuntime {
+    fn from_ref(input: &AppContext) -> Self {
+        Self {
+            db: input.db.clone(),
+        }
+    }
+}
 
 pub fn routes() -> Routes {
     Routes::new()

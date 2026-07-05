@@ -15,10 +15,29 @@ use crate::{
     MediaError, MediaService, UploadInput,
 };
 
-fn storage_from_ctx(ctx: &AppContext) -> Result<StorageService> {
-    ctx.shared_store
-        .get::<StorageService>()
-        .ok_or(Error::InternalServerError)
+#[derive(Clone)]
+pub struct MediaHttpRuntime {
+    db: sea_orm::DatabaseConnection,
+    storage: Option<StorageService>,
+}
+
+impl MediaHttpRuntime {
+    fn db_clone(&self) -> sea_orm::DatabaseConnection {
+        self.db.clone()
+    }
+
+    fn storage(&self) -> Result<StorageService> {
+        self.storage.clone().ok_or(Error::InternalServerError)
+    }
+}
+
+impl axum::extract::FromRef<AppContext> for MediaHttpRuntime {
+    fn from_ref(input: &AppContext) -> Self {
+        Self {
+            db: input.db.clone(),
+            storage: input.shared_store.get::<StorageService>(),
+        }
+    }
 }
 
 fn media_error(error: MediaError) -> Error {
@@ -57,13 +76,12 @@ pub struct MediaListResponse {
 
 /// Upload a media file using multipart/form-data with a `file` field.
 pub async fn upload(
-    State(ctx): State<AppContext>,
+    State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<MediaItem>)> {
-    let storage = storage_from_ctx(&ctx)?;
-    let service = MediaService::new(ctx.db.clone(), storage);
+    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
 
     while let Some(field) = multipart
         .next_field()
@@ -108,13 +126,12 @@ pub async fn upload(
 
 /// List media assets for the current tenant.
 pub async fn list(
-    State(ctx): State<AppContext>,
+    State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
     _auth: AuthContext,
     Query(params): Query<ListParams>,
 ) -> Result<Json<MediaListResponse>> {
-    let storage = storage_from_ctx(&ctx)?;
-    let service = MediaService::new(ctx.db.clone(), storage);
+    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
     let limit = params.limit.clamp(1, 100);
     let (items, total) = service
         .list(tenant.id, limit, params.offset)
@@ -126,26 +143,24 @@ pub async fn list(
 
 /// Get a single media asset by ID.
 pub async fn get_media(
-    State(ctx): State<AppContext>,
+    State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
     _auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<MediaItem>> {
-    let storage = storage_from_ctx(&ctx)?;
-    let service = MediaService::new(ctx.db.clone(), storage);
+    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
     let item = service.get(tenant.id, id).await.map_err(media_error)?;
     Ok(Json(item))
 }
 
 /// Delete a media asset.
 pub async fn delete_media(
-    State(ctx): State<AppContext>,
+    State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
     _auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let storage = storage_from_ctx(&ctx)?;
-    let service = MediaService::new(ctx.db.clone(), storage);
+    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
     service.delete(tenant.id, id).await.map_err(media_error)?;
     metrics::record_media_delete(&tenant.id.to_string());
     Ok(StatusCode::NO_CONTENT)
@@ -153,14 +168,13 @@ pub async fn delete_media(
 
 /// Upsert localized media metadata for a locale.
 pub async fn upsert_translation(
-    State(ctx): State<AppContext>,
+    State(runtime): State<MediaHttpRuntime>,
     tenant: TenantContext,
     _auth: AuthContext,
     Path((id, locale)): Path<(Uuid, String)>,
     Json(body): Json<UpsertTranslationInput>,
 ) -> Result<Json<MediaTranslationItem>> {
-    let storage = storage_from_ctx(&ctx)?;
-    let service = MediaService::new(ctx.db.clone(), storage);
+    let service = MediaService::new(runtime.db_clone(), runtime.storage()?);
     let translation = service
         .upsert_translation(tenant.id, id, UpsertTranslationInput { locale, ..body })
         .await

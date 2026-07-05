@@ -14,8 +14,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_core::field_schema::{is_valid_field_key, CustomFieldsSchema, FlexError};
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
+use rustok_events::EventEnvelope;
 
 use crate::models::topic_field_definitions::{
     ActiveModel, Column, CreateFieldDefinitionInput, Entity, Model, UpdateFieldDefinitionInput,
@@ -64,12 +64,6 @@ impl TopicFieldService {
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
-        // Guardrail: field_key format
-        if !is_valid_field_key(&input.field_key) {
-            return Err(FlexError::InvalidFieldKey(input.field_key));
-        }
-
-        // Guardrail: duplicate key
         let existing = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::FieldKey.eq(&input.field_key))
@@ -77,11 +71,6 @@ impl TopicFieldService {
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
-        if existing.is_some() {
-            return Err(FlexError::DuplicateFieldKey(input.field_key));
-        }
-
-        // Guardrail: max fields per tenant
         let count = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::IsActive.eq(true))
@@ -89,19 +78,16 @@ impl TopicFieldService {
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
-        if count >= MAX_FIELDS_PER_TENANT as u64 {
-            return Err(FlexError::TooManyFields {
-                entity_type: "topic".to_string(),
-                max: MAX_FIELDS_PER_TENANT,
-            });
-        }
+        flex::validate_field_definition_create(
+            "topic",
+            &input.field_key,
+            existing.is_some(),
+            count,
+            MAX_FIELDS_PER_TENANT,
+        )?;
 
-        let next_position = input.position.unwrap_or(count as i32);
-
-        let field_type_str = serde_json::to_value(input.field_type)
-            .ok()
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or_default();
+        let next_position = flex::field_definition_position_or_next(input.position, count);
+        let field_type_str = flex::field_definition_type_name(input.field_type);
 
         let model = ActiveModel {
             id: Set(rustok_core::generate_id()),
@@ -129,15 +115,12 @@ impl TopicFieldService {
         .await
         .map_err(|e| FlexError::Database(e.to_string()))?;
 
-        let event = EventEnvelope::new(
+        let event = flex::field_definition_created_event(
             tenant_id,
             actor_id,
-            DomainEvent::FieldDefinitionCreated {
-                tenant_id,
-                entity_type: "topic".to_string(),
-                field_key: input.field_key,
-                field_type: field_type_str,
-            },
+            "topic",
+            input.field_key,
+            field_type_str,
         );
 
         Ok((model, event))
@@ -193,15 +176,8 @@ impl TopicFieldService {
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
-        let event = EventEnvelope::new(
-            tenant_id,
-            actor_id,
-            DomainEvent::FieldDefinitionUpdated {
-                tenant_id,
-                entity_type: "topic".to_string(),
-                field_key: field_key.clone(),
-            },
-        );
+        let event =
+            flex::field_definition_updated_event(tenant_id, actor_id, "topic", field_key.clone());
 
         Ok((updated, event))
     }
@@ -230,15 +206,7 @@ impl TopicFieldService {
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
-        let event = EventEnvelope::new(
-            tenant_id,
-            actor_id,
-            DomainEvent::FieldDefinitionDeleted {
-                tenant_id,
-                entity_type: "topic".to_string(),
-                field_key,
-            },
-        );
+        let event = flex::field_definition_deleted_event(tenant_id, actor_id, "topic", field_key);
 
         Ok(event)
     }

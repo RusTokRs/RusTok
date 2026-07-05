@@ -6,8 +6,10 @@ use axum::{
 use loco_rs::{app::AppContext, controller::Routes, Error, Result};
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
-use rustok_outbox::loco::transactional_event_bus_from_context;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use sea_orm::DatabaseConnection;
 use serde::Deserialize;
+use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -27,6 +29,32 @@ pub struct ReorderBlocksInput {
     pub block_ids: Vec<Uuid>,
 }
 
+#[derive(Clone)]
+pub struct PagesHttpRuntime {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+}
+
+impl PagesHttpRuntime {
+    fn db_clone(&self) -> DatabaseConnection {
+        self.db.clone()
+    }
+
+    fn event_bus(&self) -> TransactionalEventBus {
+        self.event_bus.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppContext> for PagesHttpRuntime {
+    fn from_ref(input: &AppContext) -> Self {
+        let transport = Arc::new(OutboxTransport::new(input.db.clone()));
+        Self {
+            db: input.db.clone(),
+            event_bus: TransactionalEventBus::new(transport),
+        }
+    }
+}
+
 #[utoipa::path(
     get,
     path = "/api/pages",
@@ -40,7 +68,7 @@ pub struct ReorderBlocksInput {
     )
 )]
 pub async fn get_page(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -53,7 +81,7 @@ pub async fn get_page(
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
 
-    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     let page = service
         .get_by_slug_with_locale_fallback(
             tenant.id,
@@ -87,7 +115,7 @@ pub async fn get_page(
     )
 )]
 pub async fn create_page(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreatePageInput>,
@@ -97,7 +125,7 @@ pub async fn create_page(
         ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
     }
 
-    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     let page = service
         .create(
             tenant.id,
@@ -126,7 +154,7 @@ pub async fn create_page(
     )
 )]
 pub async fn update_page(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -137,7 +165,7 @@ pub async fn update_page(
         ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
     }
 
-    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     let page = service
         .update(
             tenant.id,
@@ -165,14 +193,14 @@ pub async fn update_page(
     )
 )]
 pub async fn delete_page(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
 
-    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
     service
         .delete(
             tenant.id,
@@ -201,7 +229,7 @@ pub async fn delete_page(
     )
 )]
 pub async fn create_block(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -209,7 +237,7 @@ pub async fn create_block(
 ) -> Result<(StatusCode, Json<BlockResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
 
-    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     let block = service
         .create(
             tenant.id,
@@ -242,7 +270,7 @@ pub async fn create_block(
     )
 )]
 pub async fn update_block(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(path): Path<(Uuid, Uuid)>,
@@ -251,7 +279,7 @@ pub async fn update_block(
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
 
     let (_, block_id) = path;
-    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     let block = service
         .update(
             tenant.id,
@@ -282,7 +310,7 @@ pub async fn update_block(
     )
 )]
 pub async fn delete_block(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(path): Path<(Uuid, Uuid)>,
@@ -290,7 +318,7 @@ pub async fn delete_block(
     ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
 
     let (_, block_id) = path;
-    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     service
         .delete(
             tenant.id,
@@ -319,7 +347,7 @@ pub async fn delete_block(
     )
 )]
 pub async fn reorder_blocks(
-    State(ctx): State<AppContext>,
+    State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -327,7 +355,7 @@ pub async fn reorder_blocks(
 ) -> Result<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
 
-    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
     service
         .reorder(
             tenant.id,

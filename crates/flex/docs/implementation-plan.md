@@ -8,10 +8,10 @@
 ## Execution checkpoint
 
 - Current phase: phase5_standalone_no_compile_verification_handoff
-- Last checkpoint: Attached field-definition и standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping и DTO перенесены в `flex::graphql`; standalone REST request/response DTO и view mapping перенесены в `flex::rest`; aggregate roots `FlexQuery` / `FlexMutation` объявлены через `[provides.graphql]` и входят в generated host composition, server регистрирует только `FlexGraphqlRuntime` с concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter, а source-level boundary guards запрещают возврат `apps/server/src/graphql/flex` и server-owned Flex REST DTO.
+- Last checkpoint: Attached field-definition и standalone GraphQL query/mutation roots, runtime handle, permission/error/event mapping и DTO перенесены в `flex::graphql`; attached field-definition row-to-core mapping, view-source, command-to-adapter-input mapping, create guardrails, persisted type-name normalization и lifecycle event construction перенесены в `flex::registry`; standalone REST request/response DTO, request-to-command mapping и view mapping перенесены в `flex::rest`; standalone fields_config parsing/schema building/serialization, localized field-key derivation, entry normalize/defaults/strip/validate, shared/localized split, read resolution и PATCH merge helpers перенесены в `flex::standalone`; aggregate roots `FlexQuery` / `FlexMutation` объявлены через `[provides.graphql]` и входят в generated host composition, server регистрирует только `FlexGraphqlRuntime` с concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter, а source-level boundary guards запрещают возврат `apps/server/src/graphql/flex`, server-owned Flex REST DTO/command mapping, server-owned attached field-definition row/view constructors/command mapping/lifecycle policy, server-local standalone validation service, server-owned standalone fields_config/key interpretation и server-owned standalone entry split/merge helpers.
 - Next step: Убрать оставшиеся Flex transport artifacts из server за пределами Loco/Axum REST handler, SeaORM/bootstrap adapter layer; после разрешения компиляций выполнить узкие Flex tests и зафиксировать evidence.
 - Open blockers: User explicitly requested no compilations for this iteration.
-- Hand-off notes for next agent: No compilation was run by explicit request. Flex GraphQL is owner-owned and consumes shared `rustok_api::AuthContext` / `TenantContext`, `rustok_core::EventBus`, and host-provided `FlexGraphqlRuntime`. Flex REST DTO ownership is now in `flex::rest`; server Flex responsibilities are now Loco/Axum REST handler extraction/routing, SeaORM persistence adapters, registry/cache/bootstrap wiring and schema composition data registration. Verify owner root composition and runtime injection with targeted Rust tests once compilation/test execution is allowed.
+- Hand-off notes for next agent: No compilation was run by explicit request. Flex GraphQL is owner-owned and consumes shared `rustok_api::AuthContext` / `TenantContext`, `rustok_core::EventBus`, and host-provided `FlexGraphqlRuntime`. Flex REST DTO/command mapping ownership is now in `flex::rest`, attached field-definition row/view/command/lifecycle policy ownership is in `flex::registry`, and standalone fields_config/schema/key-derivation/entry normalization/validation/split/merge ownership is now in `flex::standalone`; server Flex responsibilities are now Loco/Axum REST handler extraction/routing, SeaORM persistence adapters, registry/cache/bootstrap wiring and schema composition data registration. Verify owner root composition and runtime injection with targeted Rust tests once compilation/test execution is allowed.
 - Last updated at (UTC): 2026-07-02T00:00:00Z
 
 ## Область работ
@@ -30,7 +30,7 @@
 
 - UI surfaces: none.
 - FFA: `not_started` — module-owned UI для capability не заявлен.
-- FBA: `in_progress` — attached field-definition и standalone GraphQL roots/runtime/DTO принадлежат `flex::graphql`, standalone REST DTO принадлежат `flex::rest`, roots подключаются manifest codegen и зависят от host-composed `FlexGraphqlRuntime`; server остаётся adapter/composition layer для Loco/Axum REST handler, SeaORM persistence, registry/cache/bootstrap wiring и DB/runtime injection.
+- FBA: `in_progress` — attached field-definition и standalone GraphQL roots/runtime/DTO принадлежат `flex::graphql`, attached field-definition row/view/command mapping и lifecycle policy helpers принадлежат `flex::registry`, standalone REST DTO/command mapping принадлежат `flex::rest`, standalone fields_config/schema/key-derivation/entry validation/split/merge принадлежит `flex::standalone`, roots подключаются manifest codegen и зависят от host-composed `FlexGraphqlRuntime`; server остаётся adapter/composition layer для Loco/Axum REST handler, SeaORM persistence, registry/cache/bootstrap wiring и DB/runtime injection.
 - Structural shape: `no_ui_boundary`.
 
 ## Текущий статус
@@ -273,7 +273,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - Отдельным follow-up migration slice schema-level localized copy вынесен из `flex_schemas` в `flex_schema_translations`
   - Отдельным follow-up migration slice standalone localized entry payload вынесен из inline `flex_entries.data` в `flex_entry_localized_values`
 - [x] SeaORM entities *(добавлены `flex_schemas`, `flex_entries`, `flex_schema_translations` и `flex_entry_localized_values` в `apps/server/src/models/_entities` + re-export в `models/`)*
-- [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
+- [x] Validation service (использует `CustomFieldsSchema` из core) *(`parse_standalone_fields_config`, `build_standalone_custom_fields_schema`, `serialize_standalone_fields_config`, `standalone_localized_field_keys`, `normalize_and_validate_standalone_entry`, standalone shared/localized split, read resolution и PATCH merge helpers живут в `crates/flex/src/standalone.rs`; server-local `flex_standalone_validation_service.rs` удалён, SeaORM adapter делегирует owner helpers)*
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
 - [x] Multilingual storage contract для standalone mode
   - schema-level localized copy (`name`, `description`) больше не считается base-row данными
@@ -282,7 +282,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - read/write service path уже мерджит parallel localized rows обратно в effective entry payload
   - cleanup/backfill вынесен в follow-up migrations; runtime читает shared payload плюс parallel localized rows
 - [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; `crates/flex` даёт transport-agnostic envelope/orchestration helpers и owner GraphQL публикует envelopes через shared `EventBus`, REST adapter публикует их из server)*
-- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server` как Loco/Axum handler adapter, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates; request/response DTO и view mapping owner-owned в `flex::rest`)*
+- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server` как Loco/Axum handler adapter, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates; request/response DTO, command mapping и view mapping owner-owned в `flex::rest`)*
 - [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(owner-owned в `crates/flex/src/graphql`, подключаются через manifest-generated host schema, tenant-scoped и используют отдельные `flex_schemas:*` / `flex_entries:*` permission gates)*
 - [x] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
   - Typed permissions есть в `rustok-core`
@@ -297,7 +297,7 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 - [x] Guardrail: max relation depth = 1 (no recursive populate)
   - `crates/flex::validate_create_entry_command()` теперь явно запрещает `entity_type = "flex_entry"`, так что standalone `FlexEntry -> FlexEntry` цепочки режутся до adapter/service layer и одинаково работают для GraphQL и REST.
 - [x] Решить publish policy для standalone surface через ghost-module manifest
-  - Standalone REST handler остаётся server-owned adapter layer, но REST DTO contract и view mapping живут в `flex::rest`.
+  - Standalone REST handler остаётся server-owned adapter layer, но REST DTO contract, command mapping и view mapping живут в `flex::rest`.
   - `flex` публикует capability/runtime metadata через `rustok-module.toml`, `modules.toml` и `FlexModule`, не забирая ownership transport surface.
   - Acceptance path: `cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`.
 - [ ] Тесты: unit + integration

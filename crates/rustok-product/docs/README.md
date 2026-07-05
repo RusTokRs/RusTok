@@ -12,11 +12,11 @@
 
 ## Зона ответственности
 
-- GraphQL transport публикуется через `rustok-commerce`, а module-owned Leptos admin использует параллельные native `#[server]` functions как основной внутренний путь.
+- `rustok-product` владеет module-owned admin/storefront UI packages, native `#[server]` внутренними путями и product-owned GraphQL contract types; umbrella `rustok-commerce` остаётся ecommerce composition layer, но не маскирует product owner boundary.
 - storefront read-side для published catalog уже живёт в `rustok-product/storefront` и использует native Leptos server functions поверх `CatalogService`, сохраняя GraphQL storefront contract как fallback.
-- product CRUD в admin UI уже вынесен из `rustok-commerce-admin`
-  в module-owned route `product`, но transport-контракт для этих форм по-прежнему
-  приходит через umbrella `rustok-commerce` GraphQL surface;
+- product CRUD в admin UI вынесен из `rustok-commerce-admin`
+  в module-owned route `product`; native server functions являются основным внутренним путём,
+  а GraphQL поддерживается параллельно без возврата ownership в umbrella `rustok-commerce`;
 - generic GraphQL roots `product` / `storefrontProduct`, на которые пока опираются
   module-owned product UI packages, считаются catalog-authoritative surface:
   `variants.prices` в них остаётся compatibility snapshot без explicit
@@ -39,6 +39,10 @@
   `storefront/src/ui/leptos.rs` как тонкий host-context/render слой поверх
   подготовленного core-состояния;
 - Общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
+- FBA boundary опубликован как `ProductCatalogReadPort` / `product.catalog_read.v1`.
+  Registry `contracts/product-fba-registry.json`, static matrix,
+  no-compile runtime contract smoke и source-locked runtime fallback smoke держат статус
+  `boundary_ready`; `transport_verified` остаётся закрытым до live provider execution evidence.
 - canonical vocabulary и attach semantics для product tags живут в
   `rustok-taxonomy` + `product_tags`, а public contract использует first-class
   поле `tags` вместо legacy `metadata.tags`.
@@ -95,7 +99,7 @@
 ## Интеграция
 
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
-- transport, GraphQL и UI-поверхности публикуются через `rustok-commerce`, пока для домена не зафиксирован отдельный module-owned surface;
+- product-owned admin/storefront UI, native server functions, GraphQL contract types и FBA read port публикуются владельцем `rustok-product`; `rustok-commerce` только композирует ecommerce family и не возвращает себе product service/DTO ownership;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями.
 
 ## Search metadata
@@ -113,9 +117,15 @@
 
 ## Проверка
 
+- `npm.cmd run verify:product:runtime-fallback-smoke`
+- `npm.cmd run test:verify:product:runtime-fallback-smoke`
+- `npm.cmd run verify:ecommerce:fba`
+- `npm.cmd run test:verify:ecommerce:fba`
 - cargo xtask module validate product
 - cargo xtask module test product
 - targeted commerce tests для product-домена при изменении runtime wiring
+
+Cargo-проверки остаются targeted/live evidence шагом перед повышением product FBA до `transport_verified`; текущий быстрый gate для boundary evidence не требует Rust-компиляции.
 ## Связанные документы
 
 - [README crate](../README.md)

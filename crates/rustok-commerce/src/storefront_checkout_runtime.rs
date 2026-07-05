@@ -1,8 +1,33 @@
-use loco_rs::app::AppContext;
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
+use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use thiserror::Error;
 use uuid::Uuid;
+
+#[derive(Clone)]
+pub struct StorefrontCheckoutRuntime {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+}
+
+impl StorefrontCheckoutRuntime {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
+    }
+
+    pub fn db(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
+    pub fn db_clone(&self) -> DatabaseConnection {
+        self.db.clone()
+    }
+
+    pub fn event_bus(&self) -> TransactionalEventBus {
+        self.event_bus.clone()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct StorefrontPaymentCollectionCommand {
@@ -45,28 +70,28 @@ impl StorefrontCheckoutRuntimeError {
 }
 
 pub async fn read_storefront_payment_collection(
-    app_ctx: &AppContext,
+    runtime: &StorefrontCheckoutRuntime,
     tenant: &TenantContext,
     auth: OptionalAuthContext,
     cart_id: Uuid,
 ) -> Result<Option<rustok_payment::dto::PaymentCollectionResponse>, StorefrontCheckoutRuntimeError>
 {
-    let cart = rustok_cart::CartService::new(app_ctx.db.clone())
+    let cart = rustok_cart::CartService::new(runtime.db_clone())
         .get_cart(tenant.id, cart_id)
         .await
         .map_err(runtime_error)?;
     let storefront_customer_id =
-        resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
+        resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
 
-    rustok_payment::PaymentService::new(app_ctx.db.clone())
+    rustok_payment::PaymentService::new(runtime.db_clone())
         .find_reusable_collection_by_cart(tenant.id, cart.id)
         .await
         .map_err(runtime_error)
 }
 
 pub async fn read_storefront_order_refunds(
-    app_ctx: &AppContext,
+    runtime: &StorefrontCheckoutRuntime,
     tenant: &TenantContext,
     request_context: &RequestContext,
     auth: OptionalAuthContext,
@@ -75,12 +100,11 @@ pub async fn read_storefront_order_refunds(
     let auth = auth.0.ok_or_else(|| {
         StorefrontCheckoutRuntimeError::new("Authentication required to access order refunds")
     })?;
-    let customer = rustok_customer::CustomerService::new(app_ctx.db.clone())
+    let customer = rustok_customer::CustomerService::new(runtime.db_clone())
         .get_customer_by_user(tenant.id, auth.user_id)
         .await
         .map_err(runtime_error)?;
-    let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(app_ctx);
-    let order = match rustok_order::OrderService::new(app_ctx.db.clone(), event_bus)
+    let order = match rustok_order::OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_order_with_locale_fallback(
             tenant.id,
             order_id,
@@ -99,7 +123,7 @@ pub async fn read_storefront_order_refunds(
         ));
     }
 
-    rustok_payment::PaymentService::new(app_ctx.db.clone())
+    rustok_payment::PaymentService::new(runtime.db_clone())
         .list_refunds(
             tenant.id,
             rustok_payment::dto::ListRefundsInput {
@@ -115,22 +139,22 @@ pub async fn read_storefront_order_refunds(
 }
 
 pub async fn create_storefront_payment_collection(
-    app_ctx: &AppContext,
+    runtime: &StorefrontCheckoutRuntime,
     tenant: &TenantContext,
     request_context: &RequestContext,
     auth: OptionalAuthContext,
     command: StorefrontPaymentCollectionCommand,
 ) -> Result<rustok_payment::dto::PaymentCollectionResponse, StorefrontCheckoutRuntimeError> {
-    let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
+    let cart_service = rustok_cart::CartService::new(runtime.db_clone());
     let cart = cart_service
         .get_cart(tenant.id, command.cart_id)
         .await
         .map_err(runtime_error)?;
     let storefront_customer_id =
-        resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
+        resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
     let cart = reprice_storefront_cart_line_items(
-        app_ctx,
+        runtime,
         tenant.id,
         &cart_service,
         cart,
@@ -138,7 +162,7 @@ pub async fn create_storefront_payment_collection(
     )
     .await?;
 
-    let service = rustok_payment::PaymentService::new(app_ctx.db.clone());
+    let service = rustok_payment::PaymentService::new(runtime.db_clone());
     if let Some(existing) = service
         .find_reusable_collection_by_cart(tenant.id, cart.id)
         .await
@@ -148,8 +172,8 @@ pub async fn create_storefront_payment_collection(
     }
 
     let context = crate::StoreContextService::new(
-        app_ctx.db.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(app_ctx.db.clone())),
+        runtime.db_clone(),
+        std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
     )
     .resolve_context(
         tenant.id,
@@ -184,19 +208,19 @@ pub async fn create_storefront_payment_collection(
 }
 
 pub async fn select_storefront_shipping_option(
-    app_ctx: &AppContext,
+    runtime: &StorefrontCheckoutRuntime,
     tenant: &TenantContext,
     request_context: Option<&RequestContext>,
     auth: OptionalAuthContext,
     command: StorefrontShippingSelectionCommand,
 ) -> Result<(), StorefrontCheckoutRuntimeError> {
-    let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
+    let cart_service = rustok_cart::CartService::new(runtime.db_clone());
     let cart = cart_service
         .get_cart(tenant.id, command.cart_id)
         .await
         .map_err(runtime_error)?;
     let storefront_customer_id =
-        resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
+        resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth.0).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
 
     let shipping_selections = command
@@ -226,7 +250,7 @@ pub async fn select_storefront_shipping_option(
         .await
         .map_err(runtime_error)?;
     let _ = reprice_storefront_cart_line_items(
-        app_ctx,
+        runtime,
         tenant.id,
         &cart_service,
         updated_cart,
@@ -238,23 +262,23 @@ pub async fn select_storefront_shipping_option(
 }
 
 pub async fn complete_storefront_checkout(
-    app_ctx: &AppContext,
+    runtime: &StorefrontCheckoutRuntime,
     tenant: &TenantContext,
     request_context: &RequestContext,
     auth: OptionalAuthContext,
     command: StorefrontCheckoutCompletionCommand,
 ) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontCheckoutRuntimeError> {
     let auth_context = auth.0;
-    let cart_service = rustok_cart::CartService::new(app_ctx.db.clone());
+    let cart_service = rustok_cart::CartService::new(runtime.db_clone());
     let cart = cart_service
         .get_cart(tenant.id, command.cart_id)
         .await
         .map_err(runtime_error)?;
     let storefront_customer_id =
-        resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth_context.clone()).await?;
+        resolve_storefront_customer_id(runtime.db_clone(), tenant.id, auth_context.clone()).await?;
     ensure_storefront_cart_access(&cart, storefront_customer_id)?;
     let _ = reprice_storefront_cart_line_items(
-        app_ctx,
+        runtime,
         tenant.id,
         &cart_service,
         cart,
@@ -265,14 +289,13 @@ pub async fn complete_storefront_checkout(
         .map(|auth| auth.user_id)
         .unwrap_or_else(Uuid::nil);
 
-    let event_bus = rustok_outbox::loco::transactional_event_bus_from_context(app_ctx);
     crate::CheckoutService::new(
-        app_ctx.db.clone(),
-        event_bus.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(app_ctx.db.clone())),
+        runtime.db_clone(),
+        runtime.event_bus(),
+        std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
-            app_ctx.db.clone(),
-            event_bus,
+            runtime.db_clone(),
+            runtime.event_bus(),
         )),
     )
     .complete_checkout(
@@ -360,7 +383,7 @@ fn cart_context_metadata(
 }
 
 async fn reprice_storefront_cart_line_items(
-    app_ctx: &AppContext,
+    runtime: &StorefrontCheckoutRuntime,
     tenant_id: Uuid,
     cart_service: &rustok_cart::CartService,
     cart: rustok_cart::CartResponse,
@@ -370,10 +393,8 @@ async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
-    let pricing_service = rustok_pricing::PricingService::new(
-        app_ctx.db.clone(),
-        rustok_outbox::loco::transactional_event_bus_from_context(app_ctx),
-    );
+    let pricing_service =
+        rustok_pricing::PricingService::new(runtime.db_clone(), runtime.event_bus());
     let channel_id = cart
         .channel_id
         .or_else(|| request_context.and_then(|ctx| ctx.channel_id));

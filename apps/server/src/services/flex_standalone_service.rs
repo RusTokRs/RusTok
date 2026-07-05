@@ -10,11 +10,11 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder,
 };
-use serde_json::{Map, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
+use rustok_core::field_schema::FlexError;
 
 use rustok_api::{
     build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
@@ -23,7 +23,6 @@ use rustok_api::{
 use crate::models::{
     flex_entries, flex_entry_localized_values, flex_schema_translations, flex_schemas, tenants,
 };
-use crate::services::flex_standalone_validation_service::FlexStandaloneValidationService;
 
 pub struct FlexStandaloneSeaOrmService {
     db: DatabaseConnection,
@@ -67,7 +66,8 @@ impl FlexStandaloneSeaOrmService {
         localized_data: Option<&JsonValue>,
         localized_keys: &HashSet<String>,
     ) -> flex::FlexEntryView {
-        let shared_data = Self::effective_entry_data(&model.data, localized_data, localized_keys);
+        let shared_data =
+            flex::effective_standalone_entry_data(&model.data, localized_data, localized_keys);
 
         flex::FlexEntryView {
             id: model.id,
@@ -79,39 +79,6 @@ impl FlexStandaloneSeaOrmService {
             created_at: model.created_at.to_rfc3339(),
             updated_at: model.updated_at.to_rfc3339(),
         }
-    }
-
-    fn effective_entry_data(
-        shared_source: &JsonValue,
-        localized_data: Option<&JsonValue>,
-        localized_keys: &HashSet<String>,
-    ) -> Map<String, JsonValue> {
-        let (mut shared_data, _) = Self::split_entry_data(shared_source, localized_keys);
-        let resolved_localized = localized_data.and_then(|value| value.as_object().cloned());
-
-        if let Some(localized) = resolved_localized {
-            for (key, value) in localized {
-                shared_data.insert(key, value);
-            }
-        }
-
-        shared_data
-    }
-
-    fn merge_entry_patch(
-        existing_shared: &JsonValue,
-        existing_localized: Option<&JsonValue>,
-        localized_keys: &HashSet<String>,
-        patch: JsonValue,
-    ) -> JsonValue {
-        let mut merged =
-            Self::effective_entry_data(existing_shared, existing_localized, localized_keys);
-
-        for (key, value) in Self::object_map(Some(&patch)) {
-            merged.insert(key, value);
-        }
-
-        JsonValue::Object(merged)
     }
 
     async fn get_schema_or_not_found(
@@ -327,39 +294,6 @@ impl FlexStandaloneSeaOrmService {
         Ok(Some(data))
     }
 
-    fn localized_field_keys(schema: &CustomFieldsSchema) -> HashSet<String> {
-        schema
-            .active_definitions()
-            .into_iter()
-            .filter(|definition| definition.is_localized)
-            .map(|definition| definition.field_key.clone())
-            .collect()
-    }
-
-    fn split_entry_data(
-        data: &JsonValue,
-        localized_keys: &HashSet<String>,
-    ) -> (Map<String, JsonValue>, Map<String, JsonValue>) {
-        let mut shared = Map::new();
-        let mut localized = Map::new();
-
-        for (key, value) in Self::object_map(Some(data)) {
-            if localized_keys.contains(&key) {
-                localized.insert(key, value);
-            } else {
-                shared.insert(key, value);
-            }
-        }
-
-        (shared, localized)
-    }
-
-    fn object_map(value: Option<&JsonValue>) -> Map<String, JsonValue> {
-        value
-            .and_then(|value| value.as_object().cloned())
-            .unwrap_or_default()
-    }
-
     fn is_empty_object(value: &JsonValue) -> bool {
         value.as_object().is_none_or(|object| object.is_empty())
     }
@@ -369,13 +303,11 @@ impl FlexStandaloneSeaOrmService {
         schema: &flex_schemas::Model,
         data: JsonValue,
     ) -> Result<PreparedStandaloneEntryWrite, FlexError> {
-        let custom_fields_schema = FlexStandaloneValidationService::build_schema(schema)?;
-        let localized_keys = Self::localized_field_keys(&custom_fields_schema);
-        let normalized = FlexStandaloneValidationService::normalize_and_validate_entry(
-            &custom_fields_schema,
-            data,
-        )?;
-        let (shared, localized) = Self::split_entry_data(&normalized, &localized_keys);
+        let custom_fields_schema = schema.build_custom_fields_schema()?;
+        let localized_keys = flex::standalone_localized_field_keys(&custom_fields_schema);
+        let normalized =
+            flex::normalize_and_validate_standalone_entry(&custom_fields_schema, data)?;
+        let (shared, localized) = flex::split_standalone_entry_data(&normalized, &localized_keys);
 
         Ok(PreparedStandaloneEntryWrite {
             shared_data: JsonValue::Object(shared),
@@ -455,7 +387,9 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             id: Set(rustok_core::generate_id()),
             tenant_id: Set(tenant_id),
             slug: Set(input.slug),
-            fields_config: Set(serde_json::to_value(input.fields_config).unwrap_or_default()),
+            fields_config: Set(flex::serialize_standalone_fields_config(
+                input.fields_config,
+            )?),
             settings: Set(input.settings.unwrap_or_else(|| serde_json::json!({}))),
             is_active: Set(input.is_active.unwrap_or(true)),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -494,7 +428,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         let mut model: flex_schemas::ActiveModel = row.into();
 
         if let Some(fields_config) = input.fields_config {
-            model.fields_config = Set(serde_json::to_value(fields_config).unwrap_or_default());
+            model.fields_config = Set(flex::serialize_standalone_fields_config(fields_config)?);
         }
         if let Some(settings) = input.settings {
             model.settings = Set(settings);
@@ -557,7 +491,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         validate_standalone_uuid(schema_id, "schema_id")?;
         let preferred_locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self.get_schema_or_not_found(tenant_id, schema_id).await?;
-        let localized_keys = Self::localized_field_keys(&schema.build_custom_fields_schema()?);
+        let localized_keys =
+            flex::standalone_localized_field_keys(&schema.build_custom_fields_schema()?);
 
         let rows = flex_entries::Entity::find()
             .filter(flex_entries::Column::TenantId.eq(tenant_id))
@@ -595,7 +530,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         validate_standalone_uuid(entry_id, "entry_id")?;
         let preferred_locale = self.tenant_default_locale(tenant_id).await?;
         let schema = self.get_schema_or_not_found(tenant_id, schema_id).await?;
-        let localized_keys = Self::localized_field_keys(&schema.build_custom_fields_schema()?);
+        let localized_keys =
+            flex::standalone_localized_field_keys(&schema.build_custom_fields_schema()?);
         let row = flex_entries::Entity::find_by_id(entry_id)
             .filter(flex_entries::Column::TenantId.eq(tenant_id))
             .filter(flex_entries::Column::SchemaId.eq(schema_id))
@@ -688,7 +624,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
 
         let existing_row = row.clone();
         let mut model: flex_entries::ActiveModel = row.into();
-        let localized_keys = Self::localized_field_keys(&schema.build_custom_fields_schema()?);
+        let localized_keys =
+            flex::standalone_localized_field_keys(&schema.build_custom_fields_schema()?);
         let mut resolved_localized_data: Option<JsonValue> = None;
 
         if let Some(data) = input.data {
@@ -699,7 +636,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .get(&entry_id)
                 .and_then(|items| Self::select_entry_localization(items, &locale))
                 .map(|item| &item.data);
-            let merged_data = Self::merge_entry_patch(
+            let merged_data = flex::merge_standalone_entry_patch(
                 &existing_row.data,
                 existing_localized_data,
                 &localized_keys,
@@ -876,7 +813,7 @@ mod tests {
     #[test]
     fn merge_entry_patch_preserves_omitted_shared_and_localized_values() {
         let localized_keys = HashSet::from([String::from("title")]);
-        let merged = FlexStandaloneSeaOrmService::merge_entry_patch(
+        let merged = flex::merge_standalone_entry_patch(
             &json!({"slug": "landing", "sort_order": 10}),
             Some(&json!({"title": "Привет"})),
             &localized_keys,
@@ -892,7 +829,7 @@ mod tests {
     #[test]
     fn merge_entry_patch_allows_explicit_localized_override() {
         let localized_keys = HashSet::from([String::from("title")]);
-        let merged = FlexStandaloneSeaOrmService::merge_entry_patch(
+        let merged = flex::merge_standalone_entry_patch(
             &json!({"slug": "landing"}),
             Some(&json!({"title": "Привет"})),
             &localized_keys,

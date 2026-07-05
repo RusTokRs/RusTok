@@ -2,13 +2,12 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use uuid::Uuid;
 
-use super::posts::ensure_blog_permission;
+use super::{posts::ensure_blog_permission, BlogHttpRuntime};
 use crate::{CommentResponse, CommentService, ModerateCommentInput};
 
 #[utoipa::path(
@@ -28,7 +27,7 @@ use crate::{CommentResponse, CommentService, ModerateCommentInput};
     )
 )]
 pub async fn moderate_comment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -50,7 +49,7 @@ pub async fn moderate_comment(
         .unwrap_or_else(|| request_context.locale.clone());
     input.locale = Some(locale);
 
-    let service = CommentService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CommentService::new(runtime.db_clone(), runtime.event_bus());
     let comment = service
         .moderate_comment(
             tenant.id,

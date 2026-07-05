@@ -1,5 +1,4 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use loco_rs::app::AppContext;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -296,11 +295,11 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::start_chat_session(
-            app_ctx,
+            runtime,
             &operator,
             crate::StartAiChatSessionInput {
                 title: input.title,
@@ -330,11 +329,11 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::send_chat_message(
-            app_ctx,
+            runtime,
             &operator,
             session_id,
             crate::SendAiChatMessageInput { content },
@@ -355,11 +354,11 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_approval_resolve(auth)?;
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let item = crate::AiManagementService::resume_approval(
-            app_ctx,
+            runtime,
             &operator,
             approval_id,
             crate::ResumeAiApprovalInput {
@@ -393,13 +392,13 @@ impl AiMutation {
     ) -> Result<AiSendMessageResultGql> {
         let auth = require_auth_context(ctx)?;
         ensure_ai_session_run(auth)?;
-        let app_ctx = ctx.data::<AppContext>()?;
+        let runtime = ctx.data::<crate::AiHostRuntime>()?;
         let _db = ctx.data::<DatabaseConnection>()?;
         let operator = operator_context(ctx, auth).await?;
         let task_input_json = serde_json::from_str(&input.task_input_json)
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         let item = crate::AiManagementService::run_task_job(
-            app_ctx,
+            runtime,
             &operator,
             crate::RunAiTaskJobInput {
                 title: input.title,

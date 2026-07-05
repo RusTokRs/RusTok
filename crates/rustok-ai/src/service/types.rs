@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 use rustok_api::Permission;
 use rustok_core::registry::ModuleRegistry;
+use rustok_outbox::TransactionalEventBus;
+use rustok_storage::StorageService;
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -11,6 +14,67 @@ use crate::model::{
 
 #[derive(Clone)]
 pub struct SharedAiModuleRegistry(pub ModuleRegistry);
+
+#[derive(Clone)]
+pub struct AiHostRuntime {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+    module_registry: ModuleRegistry,
+    storage: Option<StorageService>,
+    alloy_runtime: Option<alloy::SharedAlloyRuntime>,
+}
+
+impl AiHostRuntime {
+    pub fn new(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        module_registry: ModuleRegistry,
+    ) -> Self {
+        Self {
+            db,
+            event_bus,
+            module_registry,
+            storage: None,
+            alloy_runtime: None,
+        }
+    }
+
+    pub fn with_storage(mut self, storage: Option<StorageService>) -> Self {
+        self.storage = storage;
+        self
+    }
+
+    pub fn with_alloy_runtime(mut self, alloy_runtime: Option<alloy::SharedAlloyRuntime>) -> Self {
+        self.alloy_runtime = alloy_runtime;
+        self
+    }
+
+    pub fn db(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
+    pub fn db_clone(&self) -> DatabaseConnection {
+        self.db.clone()
+    }
+
+    pub fn event_bus(&self) -> TransactionalEventBus {
+        self.event_bus.clone()
+    }
+
+    pub fn module_registry(&self) -> ModuleRegistry {
+        self.module_registry.clone()
+    }
+
+    pub fn storage(&self) -> Option<StorageService> {
+        self.storage.clone()
+    }
+
+    pub fn scoped_alloy_runtime(&self, tenant_id: Uuid) -> Option<alloy::ScopedAlloyRuntime> {
+        self.alloy_runtime
+            .as_ref()
+            .map(|runtime| runtime.0.scoped(tenant_id))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct AiOperatorContext {

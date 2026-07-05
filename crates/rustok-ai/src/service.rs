@@ -4,7 +4,6 @@ pub mod mcp;
 pub mod types;
 
 use chrono::Utc;
-use loco_rs::app::AppContext;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
@@ -380,11 +379,11 @@ impl AiManagementService {
     }
 
     pub async fn start_chat_session(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         input: StartAiChatSessionInput,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let task_profile = match input.task_profile_id {
             Some(task_profile_id) => {
                 let task_profile =
@@ -495,7 +494,7 @@ impl AiManagementService {
         txn.commit().await.map_err(db_err)?;
 
         if session_has_user_messages(db, operator.tenant_id, session.id).await? {
-            Self::execute_latest_turn(app_ctx, operator, session.id).await
+            Self::execute_latest_turn(runtime, operator, session.id).await
         } else {
             let detail = Self::chat_session_detail(db, operator.tenant_id, session.id)
                 .await?
@@ -530,11 +529,11 @@ impl AiManagementService {
     }
 
     pub async fn run_task_job(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         input: RunAiTaskJobInput,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let task_profile =
             require_task_profile(db, operator.tenant_id, input.task_profile_id).await?;
         if !task_profile.is_active {
@@ -622,7 +621,7 @@ impl AiManagementService {
         txn.commit().await.map_err(db_err)?;
 
         Self::execute_task_job_run(
-            app_ctx,
+            runtime,
             operator,
             session.id,
             input.task_input_json,
@@ -633,12 +632,12 @@ impl AiManagementService {
     }
 
     pub async fn send_chat_message(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         session_id: Uuid,
         input: SendAiChatMessageInput,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let session = require_session(db, operator.tenant_id, session_id).await?;
         insert_message(
             db,
@@ -656,7 +655,7 @@ impl AiManagementService {
             },
         )
         .await?;
-        Self::execute_latest_turn(app_ctx, operator, session.id).await
+        Self::execute_latest_turn(runtime, operator, session.id).await
     }
 
     pub async fn list_chat_sessions(
@@ -850,12 +849,12 @@ impl AiManagementService {
     }
 
     pub async fn resume_approval(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         approval_id: Uuid,
         input: ResumeAiApprovalInput,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let approval = ai_approval_requests::Entity::find_by_id(approval_id)
             .filter(ai_approval_requests::Column::TenantId.eq(operator.tenant_id))
             .one(db)
@@ -929,7 +928,7 @@ impl AiManagementService {
 
         let access_context = access_context_for_operator(operator);
         let tool_policy = policy_from_model(tool_profile.as_ref());
-        let adapter = InProcessMcpAdapter::new(app_ctx, access_context)?;
+        let adapter = InProcessMcpAdapter::new(runtime, access_context)?;
         let started = std::time::Instant::now();
         let tool_result = adapter
             .call_tool(&approval.tool_name, approval.tool_input.clone())
@@ -970,7 +969,7 @@ impl AiManagementService {
         run_active.update(db).await.map_err(db_err)?;
 
         Self::continue_run(
-            app_ctx,
+            runtime,
             operator,
             session.id,
             run.id,
@@ -1000,11 +999,11 @@ impl AiManagementService {
     }
 
     async fn execute_latest_turn(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         session_id: Uuid,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let session = require_session(db, operator.tenant_id, session_id).await?;
         let provider =
             require_provider_profile(db, operator.tenant_id, session.provider_profile_id).await?;
@@ -1053,7 +1052,7 @@ impl AiManagementService {
         .map_err(db_err)?;
 
         Self::continue_run(
-            app_ctx,
+            runtime,
             operator,
             session.id,
             run.id,
@@ -1069,14 +1068,14 @@ impl AiManagementService {
     }
 
     async fn execute_task_job_run(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         session_id: Uuid,
         task_input_json: serde_json::Value,
         requested_locale: Option<String>,
         resolved_locale: String,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let session = require_session(db, operator.tenant_id, session_id).await?;
         let provider =
             require_provider_profile(db, operator.tenant_id, session.provider_profile_id).await?;
@@ -1123,7 +1122,7 @@ impl AiManagementService {
         .map_err(db_err)?;
 
         Self::continue_run(
-            app_ctx,
+            runtime,
             operator,
             session.id,
             run.id,
@@ -1140,7 +1139,7 @@ impl AiManagementService {
 
     #[allow(clippy::too_many_arguments)]
     async fn continue_run(
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         session_id: Uuid,
         run_id: Uuid,
@@ -1152,7 +1151,7 @@ impl AiManagementService {
         resolved_locale: String,
         task_input_json: Option<serde_json::Value>,
     ) -> AiResult<AiSendMessageResult> {
-        let db = &app_ctx.db;
+        let db = runtime.db();
         let run_started = std::time::Instant::now();
         let provider_kind = provider_kind_from_slug(&provider_profile.provider_kind)?;
         publish_ai_run_stream_event(
@@ -1217,7 +1216,7 @@ impl AiManagementService {
                 let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind));
                 let direct_result = match handler
                     .execute(
-                        app_ctx,
+                        runtime,
                         operator,
                         DirectExecutionRequest {
                             task_slug: task_profile.slug.clone(),
@@ -1316,7 +1315,7 @@ impl AiManagementService {
 
         let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind));
         let access_context = access_context_for_operator(operator);
-        let adapter = Arc::new(InProcessMcpAdapter::new(app_ctx, access_context)?);
+        let adapter = Arc::new(InProcessMcpAdapter::new(runtime, access_context)?);
         let policy = policy_from_model(tool_profile.as_ref());
         let runtime = AiRuntime::new(provider, adapter, policy);
         let stream_buffer = Arc::new(Mutex::new(String::new()));

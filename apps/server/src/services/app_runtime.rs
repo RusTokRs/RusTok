@@ -5,7 +5,7 @@ use loco_rs::app::AppContext;
 use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
 
-use crate::auth::auth_config_from_ctx;
+use crate::auth::{auth_config_from_ctx, AuthConfig};
 use crate::common::settings::{RustokSettings, SharedRustokSettings};
 use crate::graphql::AppSchema;
 use crate::middleware;
@@ -61,13 +61,12 @@ pub async fn bootstrap_app_runtime(
     ctx: &AppContext,
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
+    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
     let cache_service = CacheService::from_url(settings.cache.redis_url.as_deref());
-    ctx.shared_store.insert(cache_service.clone());
+    runtime_ctx.shared_insert(cache_service.clone());
 
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
-    ctx.shared_store
-        .insert(SharedRustokSettings(Arc::new(settings.clone())));
-    let runtime_ctx = ServerRuntimeContext::from_loco_app_context(ctx);
+    runtime_ctx.shared_insert(SharedRustokSettings(Arc::new(settings.clone())));
 
     init_marketplace_catalog(&runtime_ctx);
 
@@ -76,7 +75,7 @@ pub async fn bootstrap_app_runtime(
             Error::BadRequest(format!("modules.toml validation failed: {error}"))
         })?
     } else {
-        PlatformCompositionService::active_manifest(&ctx.db)
+        PlatformCompositionService::active_manifest(runtime_ctx.db())
             .await
             .map_err(|error| {
                 Error::BadRequest(format!("platform composition validation failed: {error}"))
@@ -99,11 +98,12 @@ pub async fn bootstrap_app_runtime(
     };
 
     let registry = modules::build_registry();
+    let auth_config = auth_config_from_ctx(ctx)?;
     let runtime_extensions = build_shared_runtime_extensions_with_host_providers(
         &registry,
         settings,
         runtime_ctx.clone(),
-        crate::auth::auth_config_from_ctx(ctx)?,
+        auth_config.clone(),
         ctx.mailer.clone(),
     );
     runtime_ctx.shared_insert(runtime_extensions.clone());
@@ -127,9 +127,11 @@ pub async fn bootstrap_app_runtime(
                 ))
             })?;
         middleware::tenant::init_tenant_cache_infrastructure(&runtime_ctx, &cache_service).await;
-        rustok_content_orchestration::init_content_orchestration(
-            ctx,
-            transactional_event_bus_from_context(&runtime_ctx),
+        runtime_ctx.shared_insert(
+            rustok_content_orchestration::build_content_orchestration_service(
+                runtime_ctx.db_clone(),
+                transactional_event_bus_from_context(&runtime_ctx),
+            ),
         );
 
         init_storage(&runtime_ctx).await?;
@@ -141,7 +143,7 @@ pub async fn bootstrap_app_runtime(
             tracing::info!("Workflow cron scheduler disabled by runtime.background_workers config");
         }
 
-        init_alloy_runtime(ctx);
+        init_alloy_runtime(&runtime_ctx);
     }
 
     if settings.runtime.is_registry_only() {
@@ -161,7 +163,8 @@ pub async fn bootstrap_app_runtime(
     }
 
     let graphql_schema = init_graphql_schema(&runtime_ctx);
-    let rate_limits = init_rate_limit_layers(ctx, settings, &cache_service)?;
+    let rate_limits =
+        init_rate_limit_layers(&runtime_ctx, settings, &cache_service, Some(auth_config))?;
 
     Ok(AppRuntimeBootstrap {
         deployment_surfaces,
@@ -201,10 +204,17 @@ fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
     ctx.shared_insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
 
-fn init_alloy_runtime(_ctx: &AppContext) {
+fn init_alloy_runtime(ctx: &ServerRuntimeContext) {
+    #[cfg(not(feature = "mod-alloy"))]
+    let _ = ctx;
+
     #[cfg(feature = "mod-alloy")]
     {
-        alloy::init(_ctx);
+        if ctx.shared_get::<alloy::SharedAlloyRuntime>().is_none() {
+            ctx.shared_insert(alloy::SharedAlloyRuntime(alloy::build_alloy_runtime(
+                ctx.db_clone(),
+            )));
+        }
     }
 }
 
@@ -230,11 +240,11 @@ struct RateLimitLayers {
 }
 
 fn init_rate_limit_layers(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
     cache_service: &CacheService,
+    auth_config: Option<AuthConfig>,
 ) -> Result<RateLimitLayers> {
-    let auth_config = auth_config_from_ctx(ctx).ok();
     let trusted_auth_dimensions = settings.rate_limit.trusted_auth_dimensions;
 
     let api_limiter = build_namespaced_rate_limiter(
@@ -313,7 +323,7 @@ enum SharedLimiterNamespace {
 }
 
 fn build_namespaced_rate_limiter(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
     cache_service: &CacheService,
     namespace: &'static str,
@@ -339,18 +349,12 @@ fn build_namespaced_rate_limiter(
     );
 
     match shared_namespace {
-        SharedLimiterNamespace::Api => ctx
-            .shared_store
-            .insert(SharedApiRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Auth => ctx
-            .shared_store
-            .insert(SharedAuthRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Oauth => ctx
-            .shared_store
-            .insert(SharedOAuthRateLimiter(limiter.clone())),
-        SharedLimiterNamespace::Search => ctx
-            .shared_store
-            .insert(SharedSearchRateLimiter(limiter.clone())),
+        SharedLimiterNamespace::Api => ctx.shared_insert(SharedApiRateLimiter(limiter.clone())),
+        SharedLimiterNamespace::Auth => ctx.shared_insert(SharedAuthRateLimiter(limiter.clone())),
+        SharedLimiterNamespace::Oauth => ctx.shared_insert(SharedOAuthRateLimiter(limiter.clone())),
+        SharedLimiterNamespace::Search => {
+            ctx.shared_insert(SharedSearchRateLimiter(limiter.clone()))
+        }
     }
 
     if settings.rate_limit.enabled {

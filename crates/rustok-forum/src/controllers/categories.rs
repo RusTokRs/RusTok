@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_telemetry::metrics;
@@ -36,7 +36,7 @@ pub struct CategoryListParams {
     )
 )]
 pub async fn list_categories(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -56,7 +56,7 @@ pub async fn list_categories(
         .as_ref()
         .map(|pagination| pagination.per_page);
     let pagination = params.pagination.unwrap_or_default();
-    let service = CategoryService::new(ctx.db.clone());
+    let service = CategoryService::new(runtime.db_clone());
     let list_started_at = Instant::now();
     let (categories, _) = service
         .list_paginated_with_locale_fallback(
@@ -107,7 +107,7 @@ pub async fn list_categories(
     )
 )]
 pub async fn get_category(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -123,7 +123,7 @@ pub async fn get_category(
     let locale = params
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let service = CategoryService::new(ctx.db.clone());
+    let service = CategoryService::new(runtime.db_clone());
     let category = service
         .get_with_locale_fallback(
             tenant.id,
@@ -153,7 +153,7 @@ pub async fn get_category(
     )
 )]
 pub async fn create_category(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateCategoryInput>,
@@ -164,7 +164,7 @@ pub async fn create_category(
         "Permission denied: forum_categories:create required",
     )?;
 
-    let service = CategoryService::new(ctx.db.clone());
+    let service = CategoryService::new(runtime.db_clone());
     let category = service
         .create(
             tenant.id,
@@ -193,7 +193,7 @@ pub async fn create_category(
     )
 )]
 pub async fn update_category(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -205,7 +205,7 @@ pub async fn update_category(
         "Permission denied: forum_categories:update required",
     )?;
 
-    let service = CategoryService::new(ctx.db.clone());
+    let service = CategoryService::new(runtime.db_clone());
     let category = service
         .update(
             tenant.id,
@@ -234,7 +234,7 @@ pub async fn update_category(
     )
 )]
 pub async fn delete_category(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -245,7 +245,7 @@ pub async fn delete_category(
         "Permission denied: forum_categories:delete required",
     )?;
 
-    let service = CategoryService::new(ctx.db.clone());
+    let service = CategoryService::new(runtime.db_clone());
     service
         .delete(
             tenant.id,
@@ -272,7 +272,7 @@ pub async fn delete_category(
     )
 )]
 pub async fn subscribe_category(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -284,7 +284,7 @@ pub async fn subscribe_category(
         "Permission denied: forum_categories:read required",
     )?;
 
-    SubscriptionService::new(ctx.db.clone())
+    SubscriptionService::new(runtime.db_clone())
         .set_category_subscription(
             tenant.id,
             id,
@@ -296,7 +296,7 @@ pub async fn subscribe_category(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let category = CategoryService::new(ctx.db.clone())
+    let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
             tenant.id,
             rustok_core::SecurityContext::from_permission_snapshot(
@@ -324,7 +324,7 @@ pub async fn subscribe_category(
     )
 )]
 pub async fn unsubscribe_category(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -336,7 +336,7 @@ pub async fn unsubscribe_category(
         "Permission denied: forum_categories:read required",
     )?;
 
-    SubscriptionService::new(ctx.db.clone())
+    SubscriptionService::new(runtime.db_clone())
         .clear_category_subscription(
             tenant.id,
             id,
@@ -348,7 +348,7 @@ pub async fn unsubscribe_category(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let category = CategoryService::new(ctx.db.clone())
+    let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
             tenant.id,
             rustok_core::SecurityContext::from_permission_snapshot(

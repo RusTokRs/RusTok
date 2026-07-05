@@ -3,17 +3,17 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
+    super::CommerceHttpRuntime,
     ListOrderChangesParams,
 };
 use crate::{
@@ -39,7 +39,7 @@ use crate::{
     )
 )]
 pub async fn create_order_change(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -52,7 +52,7 @@ pub async fn create_order_change(
     )?;
 
     let actor_id = auth.user_id;
-    let created = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_order_change(tenant.id, actor_id, id, input)
         .await
         .map_err(super::map_order_error)?;
@@ -72,7 +72,7 @@ pub async fn create_order_change(
     )
 )]
 pub async fn list_order_changes(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListOrderChangesParams>,
@@ -84,20 +84,19 @@ pub async fn list_order_changes(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (items, total) =
-        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-            .list_order_changes(
-                tenant.id,
-                ListOrderChangesInput {
-                    page: pagination.page,
-                    per_page: pagination.limit(),
-                    order_id: params.order_id,
-                    status: params.status,
-                    change_type: params.change_type,
-                },
-            )
-            .await
-            .map_err(super::map_order_error)?;
+    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
+        .list_order_changes(
+            tenant.id,
+            ListOrderChangesInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                order_id: params.order_id,
+                status: params.status,
+                change_type: params.change_type,
+            },
+        )
+        .await
+        .map_err(super::map_order_error)?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -118,7 +117,7 @@ pub async fn list_order_changes(
     )
 )]
 pub async fn show_order_change(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -129,7 +128,7 @@ pub async fn show_order_change(
         "Permission denied: orders:read required",
     )?;
 
-    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_order_change(tenant.id, id)
         .await
         .map_err(super::map_order_error)?;
@@ -158,7 +157,7 @@ pub struct AdminApplyOrderChangeInput {
     )
 )]
 pub async fn apply_order_change(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -170,8 +169,8 @@ pub async fn apply_order_change(
         "Permission denied: orders:update required",
     )?;
 
-    let db = ctx.db.clone();
-    let event_bus = transactional_event_bus_from_context(&ctx);
+    let db = runtime.db_clone();
+    let event_bus = runtime.event_bus();
     let order_service = OrderService::new(db.clone(), event_bus.clone());
     let orchestration_service = PostOrderOrchestrationService::new(db.clone(), event_bus.clone());
 
@@ -238,7 +237,7 @@ pub async fn apply_order_change(
     )
 )]
 pub async fn cancel_order_change(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -250,7 +249,7 @@ pub async fn cancel_order_change(
         "Permission denied: orders:update required",
     )?;
 
-    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_order_change(tenant.id, id, input)
         .await
         .map_err(super::map_order_error)?;

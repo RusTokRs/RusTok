@@ -3,14 +3,14 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_telemetry::metrics;
 use std::{collections::HashMap, time::Instant};
 use uuid::Uuid;
 
+use super::BlogHttpRuntime;
 use crate::{CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput};
 
 /// List blog posts
@@ -26,7 +26,7 @@ use crate::{CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePos
     )
 )]
 pub async fn list_posts(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -41,7 +41,7 @@ pub async fn list_posts(
     query.locale = query.locale.or(Some(request_context.locale.clone()));
     let requested_limit = query.per_page.map(u64::from);
     let effective_limit = query.per_page() as u64;
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     let list_started_at = Instant::now();
     let result = service
         .list_posts_with_locale_fallback(
@@ -91,7 +91,7 @@ pub async fn list_posts(
     )
 )]
 pub async fn get_post(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -108,7 +108,7 @@ pub async fn get_post(
         .get("locale")
         .map(String::as_str)
         .unwrap_or(request_context.locale.as_str());
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     let post = service
         .get_post_with_locale_fallback(
             tenant.id,
@@ -139,7 +139,7 @@ pub async fn get_post(
     )
 )]
 pub async fn create_post(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreatePostInput>,
@@ -150,7 +150,7 @@ pub async fn create_post(
         "Permission denied: blog_posts:create required",
     )?;
 
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     let post_id = service
         .create_post(
             tenant.id,
@@ -182,7 +182,7 @@ pub async fn create_post(
     )
 )]
 pub async fn update_post(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -194,7 +194,7 @@ pub async fn update_post(
         "Permission denied: blog_posts:update required",
     )?;
 
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
         .update_post(
             tenant.id,
@@ -226,7 +226,7 @@ pub async fn update_post(
     )
 )]
 pub async fn delete_post(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -237,7 +237,7 @@ pub async fn delete_post(
         "Permission denied: blog_posts:delete required",
     )?;
 
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
         .delete_post(
             tenant.id,
@@ -268,7 +268,7 @@ pub async fn delete_post(
     )
 )]
 pub async fn publish_post(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -279,7 +279,7 @@ pub async fn publish_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
         .publish_post(
             tenant.id,
@@ -310,7 +310,7 @@ pub async fn publish_post(
     )
 )]
 pub async fn unpublish_post(
-    State(ctx): State<AppContext>,
+    State(runtime): State<BlogHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -321,7 +321,7 @@ pub async fn unpublish_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
     service
         .unpublish_post(
             tenant.id,

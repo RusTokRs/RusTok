@@ -16,9 +16,10 @@
 
 ## Зона ответственности
 
-- transport-agnostic field definition contracts и registry/orchestration helpers;
+- transport-agnostic field definition contracts, owner-owned row-to-core/view-source/command conversion mapping, lifecycle guardrails/events и registry/orchestration helpers;
 - owner-owned attached field-definition и standalone GraphQL query/mutation roots, runtime handle и input/output DTO без server dependencies;
-- owner-owned standalone REST request/response DTO и view mapping в `flex::rest`; server controller остаётся только Loco/Axum adapter;
+- owner-owned standalone REST request/response DTO, request-to-command mapping и view mapping в `flex::rest`; server controller остаётся только Loco/Axum adapter;
+- owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, entry normalize/defaults/strip/validate helper, shared/localized split, read resolution и PATCH merge helpers; server persistence adapter только делегирует Flex contract helpers и выполняет storage operations;
 - multilingual storage/runtime contract для attached и standalone Flex payload;
 - capability-only module metadata для `modules.toml` / `rustok-module.toml` / `ModuleRegistry`;
 - правила, по которым donor persistence ownership остаётся у модулей-потребителей.
@@ -27,7 +28,7 @@
 
 - `rustok-core::field_schema` поставляет базовые типы, validation rules и migration helpers;
 - `crates/flex` держит shared attached/standalone contracts и runtime metadata через `FlexModule`;
-- `apps/server` остаётся adapter/composition-слоем для SeaORM, REST handler и bootstrap; attached field-definition и standalone GraphQL roots/runtime/DTO/RBAC/error/event mapping живут в `flex::graphql`, REST request/response DTO и view mapping живут в `flex::rest`, roots подключаются через `[provides.graphql]`, а host передаёт concrete standalone service, registry/cache и DB handle через `FlexGraphqlRuntime`;
+- `apps/server` остаётся adapter/composition-слоем для SeaORM, REST handler и bootstrap; attached field-definition row-to-core/view/command mapping, create guardrails, persisted type-name normalization и lifecycle event construction живут в `flex::registry`, attached field-definition и standalone GraphQL roots/runtime/DTO/RBAC/error/event mapping живут в `flex::graphql`, REST request/response DTO, request-to-command mapping и view mapping живут в `flex::rest`, roots подключаются через `[provides.graphql]`, а host передаёт concrete standalone service, registry/cache и DB handle через `FlexGraphqlRuntime`;
 - donor write/read paths сейчас живые для `user`, `product`, `order` и `topic`.
 
 ## Проверка
@@ -52,7 +53,7 @@
 Текущая архитектура разделена на три слоя:
 
 - `rustok-core::field_schema` хранит базовые типы, валидаторы и migration helpers для attached mode;
-- `crates/flex` хранит transport-agnostic orchestration, registry, standalone contracts, attached/standalone GraphQL roots/runtime/DTO и REST contract DTO;
+- `crates/flex` хранит transport-agnostic orchestration, registry, field-definition row-to-core/view-source/command conversion mapping, attached field-definition lifecycle guardrails/events, standalone contracts, standalone fields_config/schema/key-derivation/entry validation/split/merge helpers, attached/standalone GraphQL roots/runtime/DTO и REST contract DTO/command mapping;
 - `apps/server` держит adapter/wiring слой: SeaORM, REST handler, cache/bootstrap и schema runtime registration. Owner roots входят через manifest codegen; concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle и cache adapter создаются/передаются только в composition root через `FlexGraphqlRuntime`.
 
 Attached mode считается рабочим production contract. Standalone mode уже имеет live GraphQL и REST API surfaces в `apps/server`; rollout/governance policy для этого surface теперь тоже зафиксирован, а незакрытым остаётся именно полный integration verification.
@@ -527,12 +528,18 @@ pub enum FlexError {
 - `FlexSchemaView`, `FlexEntryView`
 - `CreateFlexSchemaCommand`, `UpdateFlexSchemaCommand`
 - `CreateFlexEntryCommand`, `UpdateFlexEntryCommand`
+- `FieldDefinitionViewSource` + `FieldDefinitionView::from_source()` для owner-owned mapping из persisted field-definition rows в Flex view
+- `FieldDefinitionSource` + `field_definition_from_source()` + `impl_field_definition_source!` для owner-owned mapping из persisted field-definition rows в core `FieldDefinition`
+- `impl_field_definition_command_conversions!` для owner-owned mapping из Flex field-definition commands в adapter input structs
+- `validate_field_definition_create()`, `field_definition_position_or_next()`, `field_definition_type_name()` и `field_definition_*_event()` для owner-owned lifecycle policy attached field definitions; server persistence adapters только делают SeaORM lookup/count/write и вызывают эти helpers
 - `FlexStandaloneService`
+- `normalize_and_validate_standalone_entry`
+- `parse_standalone_fields_config`, `build_standalone_custom_fields_schema`, `serialize_standalone_fields_config` и `standalone_localized_field_keys`
 - Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command` теперь проверяют форму JSON-object для payload, нормализованные identifiers/statuses/schema names, лимит 50 fields per schema и DB-column length caps для schema slugs/names, а также entry `entity_type`/`status`.
 - Orchestration helpers: `list/find/create/update/delete` для schemas и entries
 - SeaORM adapter `FlexStandaloneSeaOrmService`
 - GraphQL queries/mutations в `crates/flex/src/graphql` для schemas и entries с shared `AuthContext` / `TenantContext` и отдельными `flex_schemas:*` / `flex_entries:*` permission gates
-- REST endpoints в `apps/server`: `/api/v1/flex/schemas*` и `/api/v1/flex/schemas/{schema_id}/entries*` с теми же tenant-scoped RBAC gates; request/response DTO и view mapping берутся из `flex::rest`
+- REST endpoints в `apps/server`: `/api/v1/flex/schemas*` и `/api/v1/flex/schemas/{schema_id}/entries*` с теми же tenant-scoped RBAC gates; request/response DTO, command mapping и view mapping берутся из `flex::rest`
 
 Для standalone surface уже действует live rollout/governance contract:
 

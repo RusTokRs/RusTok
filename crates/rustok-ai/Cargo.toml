@@ -11,7 +11,6 @@ graphql = ["server", "dep:async-graphql", "rustok-api/server"]
 server = [
   "dep:alloy",
   "dep:bytes",
-  "dep:loco-rs",
   "dep:once_cell",
   "dep:rhai",
   "dep:rustok-ai-content",
@@ -42,7 +41,6 @@ async-graphql = { workspace = true, optional = true }
 chrono.workspace = true
 alloy = { workspace = true, optional = true }
 base64.workspace = true
-loco-rs = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
 futures-util = { version = "0.3" }
 reqwest = { workspace = true, features = ["json", "stream"] }
@@ -58,7 +56,7 @@ rustok-commerce = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }
-rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
+rustok-outbox = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-storage = { workspace = true, optional = true }
 rustok-telemetry = { workspace = true, optional = true }

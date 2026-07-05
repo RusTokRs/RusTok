@@ -42,7 +42,7 @@ pub use model::{
 pub use runner::{
     ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator,
 };
-pub use runtime::{init, runtime_from_ctx, scoped_runtime, AlloyRuntime, SharedAlloyRuntime};
+pub use runtime::{build_alloy_runtime, AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime};
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 

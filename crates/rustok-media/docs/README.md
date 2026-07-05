@@ -13,6 +13,7 @@
 ## Зона ответственности
 
 - `MediaService`, media entities/DTOs и контракт обновления переводов с нормализацией locale/text на runtime boundary;
+- REST upload/list/get/delete/translation handlers на узком `MediaHttpRuntime` с явными DB/storage handles; текущий Loco `AppContext` остаётся только в route-state adapter до полного Axum cutover;
 - типизированный межмодульный image-контракт `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile`, `MediaImagePublicUrlPolicy` и `proxy_path` helper для явной политики direct-public/proxy-required/not-addressable URL;
 - FBA provider-контракт `MediaAssetReadPort` / `media.asset_read.v1` с source-locked evidence для deadline/context guards, typed `PortError` retryability и `MediaAssetSummary` kind/usage metadata;
 - GraphQL- и REST-адаптеры модуля;

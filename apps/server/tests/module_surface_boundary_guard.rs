@@ -434,6 +434,12 @@ fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
         "pub struct FlexSchemaResponse",
         "pub struct FlexEntryResponse",
         "pub struct DeleteFlexResponse",
+        "flex::CreateFlexSchemaCommand",
+        "flex::UpdateFlexSchemaCommand",
+        "flex::CreateFlexEntryCommand",
+        "flex::UpdateFlexEntryCommand",
+        "fn parse_fields_config(",
+        "DeleteFlexResponse { success: true }",
         "fn map_schema(",
         "fn map_entry(",
     ] {
@@ -456,6 +462,13 @@ fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
         "pub struct FlexSchemaResponse",
         "pub struct FlexEntryResponse",
         "pub struct DeleteFlexResponse",
+        "impl CreateFlexSchemaRequest",
+        "impl UpdateFlexSchemaRequest",
+        "impl CreateFlexEntryRequest",
+        "impl UpdateFlexEntryRequest",
+        "pub fn into_command",
+        "impl DeleteFlexResponse",
+        "pub fn success() -> Self",
         "impl From<FlexSchemaView> for FlexSchemaResponse",
         "impl From<FlexEntryView> for FlexEntryResponse",
     ] {
@@ -470,6 +483,211 @@ fn flex_rest_contract_dtos_are_owned_by_flex_crate() {
     assert!(swagger.contains("flex::rest::CreateFlexSchemaRequest"));
     assert!(swagger.contains("flex::rest::FlexSchemaResponse"));
     assert!(!swagger.contains("crate::controllers::flex::FlexSchemaResponse"));
+}
+
+#[test]
+fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
+    let repo = repo_root();
+    assert!(
+        !repo
+            .join("apps/server/src/services/flex_standalone_validation_service.rs")
+            .exists(),
+        "standalone Flex entry normalization/validation must live in crates/flex, not apps/server"
+    );
+
+    let owner_standalone = std::fs::read_to_string(repo.join("crates/flex/src/standalone.rs"))
+        .expect("owner Flex standalone source should read");
+    for owner_owned_symbol in [
+        "pub fn normalize_and_validate_standalone_entry",
+        "pub fn split_standalone_entry_data",
+        "pub fn effective_standalone_entry_data",
+        "pub fn merge_standalone_entry_patch",
+        "schema.apply_defaults(&mut data);",
+        "schema.strip_unknown(&mut data);",
+        "FlexError::ValidationFailed(errors)",
+    ] {
+        assert!(
+            owner_standalone.contains(owner_owned_symbol),
+            "missing owner-owned standalone validation contract: {owner_owned_symbol}"
+        );
+    }
+
+    let server_adapter =
+        std::fs::read_to_string(repo.join("apps/server/src/services/flex_standalone_service.rs"))
+            .expect("server Flex standalone SeaORM adapter should read");
+    assert!(server_adapter.contains("schema.build_custom_fields_schema()?"));
+    assert!(server_adapter.contains("flex::normalize_and_validate_standalone_entry"));
+    assert!(server_adapter.contains("flex::split_standalone_entry_data"));
+    assert!(server_adapter.contains("flex::effective_standalone_entry_data"));
+    assert!(server_adapter.contains("flex::merge_standalone_entry_patch"));
+    assert!(!server_adapter.contains("FlexStandaloneValidationService"));
+    for forbidden in [
+        "fn split_entry_data(",
+        "fn effective_entry_data(",
+        "fn merge_entry_patch(",
+    ] {
+        assert!(
+            !server_adapter.contains(forbidden),
+            "standalone entry JSON split/merge ownership must live in crates/flex, not apps/server: {forbidden}"
+        );
+    }
+
+    let server_schema_model =
+        std::fs::read_to_string(repo.join("apps/server/src/models/flex_schemas.rs"))
+            .expect("server Flex schema model helper should read");
+    assert!(server_schema_model.contains("flex::parse_standalone_fields_config"));
+    assert!(server_schema_model.contains("flex::build_standalone_custom_fields_schema"));
+    for forbidden in [
+        "serde_json::from_value(self.fields_config.clone())",
+        "CustomFieldsSchema::new(self.parse_field_definitions()?)",
+    ] {
+        assert!(
+            !server_schema_model.contains(forbidden),
+            "standalone schema fields_config interpretation must live in crates/flex, not apps/server: {forbidden}"
+        );
+    }
+
+    for owner_owned_symbol in [
+        "pub fn parse_standalone_fields_config",
+        "pub fn build_standalone_custom_fields_schema",
+        "pub fn serialize_standalone_fields_config",
+        "pub fn standalone_localized_field_keys",
+    ] {
+        assert!(
+            owner_standalone.contains(owner_owned_symbol),
+            "missing owner-owned standalone fields_config helper: {owner_owned_symbol}"
+        );
+    }
+    assert!(server_adapter.contains("flex::serialize_standalone_fields_config("));
+    assert!(server_adapter.contains("flex::standalone_localized_field_keys(&custom_fields_schema)"));
+    for forbidden in [
+        "fn localized_field_keys(",
+        "serde_json::to_value(input.fields_config).unwrap_or_default()",
+    ] {
+        assert!(
+            !server_adapter.contains(forbidden),
+            "standalone fields_config/key derivation ownership must live in crates/flex, not apps/server: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
+    let repo = repo_root();
+    let owner_registry = std::fs::read_to_string(repo.join("crates/flex/src/registry.rs"))
+        .expect("owner Flex registry source should read");
+    for owner_owned_symbol in [
+        "pub trait FieldDefinitionViewSource",
+        "impl FieldDefinitionView",
+        "pub fn from_source",
+        "macro_rules! impl_field_definition_command_conversions",
+        "impl From<$crate::CreateFieldDefinitionCommand>",
+        "impl From<$crate::UpdateFieldDefinitionCommand>",
+        "pub fn validate_field_definition_create",
+        "pub fn field_definition_position_or_next",
+        "pub fn field_definition_type_name",
+        "pub fn field_definition_created_event",
+        "pub fn field_definition_updated_event",
+        "pub fn field_definition_deleted_event",
+    ] {
+        assert!(
+            owner_registry.contains(owner_owned_symbol),
+            "missing owner-owned field-definition view mapping contract: {owner_owned_symbol}"
+        );
+    }
+
+    let server_bootstrap = std::fs::read_to_string(
+        repo.join("apps/server/src/services/field_definition_registry_bootstrap.rs"),
+    )
+    .expect("server field-definition registry bootstrap source should read");
+    assert!(server_bootstrap.contains("impl_field_definition_view_source!"));
+    assert!(server_bootstrap.contains("impl_field_definition_service_adapter!"));
+    assert!(server_bootstrap.contains("flex::impl_field_definition_command_conversions!"));
+    assert!(server_bootstrap.contains("FieldDefinitionView::from_source"));
+    assert!(!server_bootstrap.contains("UserFieldService::list_all"));
+    assert!(!server_bootstrap.contains("OrderFieldService::list_all"));
+    assert!(!server_bootstrap.contains("ProductFieldService::list_all"));
+    assert!(!server_bootstrap.contains("TopicFieldService::list_all"));
+    for forbidden in [
+        "fn user_model_to_view(",
+        "fn order_model_to_view(",
+        "fn product_model_to_view(",
+        "fn topic_model_to_view(",
+        "FieldDefinitionView {\n        id:",
+        "FieldDefinitionView {\r\n        id:",
+        "field_key: input.field_key",
+        "label: input.label",
+        "is_localized: input.is_localized",
+        "is_active: input.is_active",
+    ] {
+        assert!(
+            !server_bootstrap.contains(forbidden),
+            "field-definition view shape mapping must live in crates/flex, not apps/server: {forbidden}"
+        );
+    }
+
+    for service_path in [
+        "apps/server/src/services/user_field_service.rs",
+        "apps/server/src/services/order_field_service.rs",
+        "apps/server/src/services/product_field_service.rs",
+        "apps/server/src/services/topic_field_service.rs",
+    ] {
+        let service = std::fs::read_to_string(repo.join(service_path))
+            .expect("server field-definition service source should read");
+        let production = service.split("#[cfg(test)]").next().unwrap_or(&service);
+
+        for required in [
+            "flex::validate_field_definition_create",
+            "flex::field_definition_position_or_next",
+            "flex::field_definition_type_name",
+            "flex::field_definition_created_event",
+            "flex::field_definition_updated_event",
+            "flex::field_definition_deleted_event",
+        ] {
+            assert!(
+                production.contains(required),
+                "server field-definition persistence adapter should delegate owner lifecycle policy to flex: {service_path} missing {required}"
+            );
+        }
+
+        for forbidden in [
+            "is_valid_field_key",
+            "DomainEvent::FieldDefinition",
+            "EventEnvelope::new(",
+            "serde_json::to_value(input.field_type)",
+            "FlexError::TooManyFields",
+            "FlexError::DuplicateFieldKey",
+            "FlexError::InvalidFieldKey",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "field-definition lifecycle policy must live in crates/flex, not apps/server: {service_path} contains {forbidden}"
+            );
+        }
+    }
+
+    for model_path in [
+        "apps/server/src/models/user_field_definitions.rs",
+        "apps/server/src/models/order_field_definitions.rs",
+        "apps/server/src/models/product_field_definitions.rs",
+        "apps/server/src/models/topic_field_definitions.rs",
+    ] {
+        let model = std::fs::read_to_string(repo.join(model_path))
+            .expect("server field-definition model helper source should read");
+        assert!(model.contains("flex::impl_field_definition_source!(Model);"));
+        assert!(model.contains("flex::field_definition_from_source(&self)"));
+        for forbidden in [
+            "serde_json::from_value(serde_json::Value::String",
+            "let label: HashMap<String, String> = serde_json::from_value",
+            "let validation: Option<ValidationRule> =",
+            "Some(FieldDefinition {",
+        ] {
+            assert!(
+                !model.contains(forbidden),
+                "field-definition row-to-core mapping must live in crates/flex, not apps/server: {model_path} contains {forbidden}"
+            );
+        }
+    }
 }
 
 #[test]

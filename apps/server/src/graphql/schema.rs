@@ -95,11 +95,20 @@ pub fn build_schema(
     db: DatabaseConnection,
     event_bus: EventBus,
     transactional_event_bus: TransactionalEventBus,
+    ai_runtime: rustok_ai::AiHostRuntime,
     build_event_hub: Arc<BuildEventHub>,
     field_definition_cache: FieldDefinitionCache,
     runtime_extensions: Arc<ModuleRuntimeExtensions>,
     rbac_role_writer: RbacGraphqlRoleWriterHandle,
     search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
+    #[cfg(feature = "mod-alloy")] alloy_runtime: alloy::SharedAlloyRuntime,
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
     let ai_role_slug_provider = rustok_ai::AiGraphqlRoleSlugProviderHandle::new(Arc::new(
@@ -147,6 +156,7 @@ pub fn build_schema(
 
     let builder = builder
         .data(ai_role_slug_provider)
+        .data(ai_runtime)
         .data(db)
         .data(event_bus)
         .data(transactional_event_bus)
@@ -160,6 +170,17 @@ pub fn build_schema(
     } else {
         builder
     };
+
+    #[cfg(feature = "mod-alloy")]
+    let builder = builder.data(alloy_runtime);
+
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    let builder = builder.data(content_orchestration);
 
     #[cfg(feature = "mod-media")]
     let builder = builder.data(storage);

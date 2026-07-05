@@ -12,7 +12,6 @@ use async_trait::async_trait;
     feature = "mod-comments"
 ))]
 use chrono::Utc;
-use loco_rs::app::AppContext;
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -94,8 +93,8 @@ use rustok_taxonomy::{
     feature = "mod-comments"
 ))]
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, JoinType,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -142,22 +141,16 @@ pub struct SharedContentOrchestrationService(pub Arc<ContentOrchestrationService
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-pub fn init_content_orchestration(ctx: &AppContext, event_bus: TransactionalEventBus) {
-    if ctx
-        .shared_store
-        .get::<SharedContentOrchestrationService>()
-        .is_some()
-    {
-        return;
-    }
-
+pub fn build_content_orchestration_service(
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+) -> SharedContentOrchestrationService {
     let service = Arc::new(ContentOrchestrationService::new(
-        ctx.db.clone(),
+        db,
         event_bus,
         Arc::new(ServerContentOrchestrationBridge),
     ));
-    ctx.shared_store
-        .insert(SharedContentOrchestrationService(service));
+    SharedContentOrchestrationService(service)
 }
 
 #[cfg(all(
@@ -166,12 +159,10 @@ pub fn init_content_orchestration(ctx: &AppContext, event_bus: TransactionalEven
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-pub fn content_orchestration_from_context(ctx: &AppContext) -> Arc<ContentOrchestrationService> {
-    ctx.shared_store
-        .get::<SharedContentOrchestrationService>()
-        .expect("ContentOrchestrationService not initialized")
-        .0
-        .clone()
+pub fn content_orchestration_from_shared(
+    shared: &SharedContentOrchestrationService,
+) -> Arc<ContentOrchestrationService> {
+    shared.0.clone()
 }
 
 #[cfg(not(all(
@@ -180,10 +171,20 @@ pub fn content_orchestration_from_context(ctx: &AppContext) -> Arc<ContentOrches
     feature = "mod-forum",
     feature = "mod-comments"
 )))]
-pub fn init_content_orchestration(
-    _ctx: &AppContext,
+#[derive(Clone)]
+pub struct SharedContentOrchestrationService;
+
+#[cfg(not(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+)))]
+pub fn build_content_orchestration_service(
+    _db: sea_orm::DatabaseConnection,
     _event_bus: rustok_outbox::TransactionalEventBus,
-) {
+) -> SharedContentOrchestrationService {
+    SharedContentOrchestrationService
 }
 
 #[cfg(all(

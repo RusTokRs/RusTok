@@ -8,7 +8,6 @@ use alloy::ScriptRegistry;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
-use loco_rs::app::AppContext;
 use rustok_ai_content::{
     validate_blog_draft_payload, validate_moderation_decision, GeneratedBlogDraft,
     GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
@@ -21,7 +20,6 @@ use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
 use rustok_core::infer_user_role_from_permissions;
 use rustok_mcp::alloy_tools::{alloy_validate_script, AlloyMcpState, ValidateScriptRequest};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
 use rustok_product::CatalogService;
 use rustok_storage::StorageService;
@@ -36,7 +34,7 @@ use crate::model::{
     ProviderStreamEmitter, ToolTrace,
 };
 use crate::provider::ModelProvider;
-use crate::service::AiOperatorContext;
+use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_core::{SecurityContext, CONTENT_FORMAT_MARKDOWN};
 #[path = "direct_content_moderation.rs"]
@@ -88,7 +86,7 @@ pub trait DirectTaskHandler: Send + Sync {
 
     async fn execute(
         &self,
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult>;
@@ -134,7 +132,7 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
 
     async fn execute(
         &self,
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
@@ -142,7 +140,9 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         rustok_ai_alloy::validate_runtime_payload(input.runtime_payload_json.as_deref())
             .map_err(AiError::Validation)?;
-        let scoped = alloy::scoped_runtime(app_ctx, operator.tenant_id);
+        let scoped = runtime
+            .scoped_alloy_runtime(operator.tenant_id)
+            .ok_or_else(|| AiError::Runtime("Alloy runtime is not initialized".to_string()))?;
         let started = std::time::Instant::now();
 
         let (trace_name, operation_payload, summary) = match input.operation {
@@ -367,7 +367,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
 
     async fn execute(
         &self,
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
@@ -401,7 +401,7 @@ impl DirectTaskHandler for MediaImageAssetHandler {
             input.title.as_deref(),
             &provider_image.mime_type,
         );
-        let media_service = MediaService::new(app_ctx.db.clone(), storage_from_app_ctx(app_ctx)?);
+        let media_service = MediaService::new(runtime.db_clone(), storage_from_runtime(runtime)?);
         let media_item = media_service
             .upload(UploadInput {
                 tenant_id: operator.tenant_id,
@@ -510,17 +510,14 @@ impl DirectTaskHandler for ProductCopyHandler {
 
     async fn execute(
         &self,
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
         let input: AiProductCopyTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let started = std::time::Instant::now();
-        let catalog = CatalogService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(app_ctx),
-        );
+        let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
         let product = catalog
             .get_product(operator.tenant_id, input.product_id)
             .await
@@ -700,17 +697,14 @@ impl DirectTaskHandler for BlogDraftHandler {
 
     async fn execute(
         &self,
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
         let input: AiBlogDraftTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let started = std::time::Instant::now();
-        let service = PostService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(app_ctx),
-        );
+        let service = PostService::new(runtime.db_clone(), runtime.event_bus());
         let security = ai_security_context(operator);
         let source_locale = normalize_locale_hint(input.source_locale.as_deref());
         let source_lookup_locale = source_locale
@@ -1402,9 +1396,9 @@ fn normalize_tag_list(tags: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn storage_from_app_ctx(app_ctx: &AppContext) -> AiResult<StorageService> {
-    app_ctx.shared_store.get::<StorageService>().ok_or_else(|| {
-        AiError::Runtime("StorageService is not registered in AppContext".to_string())
+fn storage_from_runtime(runtime: &AiHostRuntime) -> AiResult<StorageService> {
+    runtime.storage().ok_or_else(|| {
+        AiError::Runtime("StorageService is not registered in AI runtime".to_string())
     })
 }
 

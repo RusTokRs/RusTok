@@ -6,7 +6,7 @@
 ## Execution checkpoint
 
 - Current phase: владелец GraphQL-поля media в `rustok-media`
-- Last checkpoint: GraphQL-поле `mediaUsage` и DTO `MediaUsageStats` перенесены из `apps/server::SystemQuery` в `rustok-media::graphql::MediaQuery`; сервер оставлен только точкой композиции схемы. Граница закреплена `apps/server/tests/module_surface_boundary_guard.rs` без компиляции.
+- Last checkpoint: REST upload/list/get/delete/translation handlers теперь принимают узкий `MediaHttpRuntime` с явными DB/storage handles; текущий Loco `AppContext` изолирован в route-state adapter до полного Axum cutover. GraphQL-поле `mediaUsage` и DTO `MediaUsageStats` перенесены из `apps/server::SystemQuery` в `rustok-media::graphql::MediaQuery`; сервер оставлен только точкой композиции схемы. Граница закреплена `apps/server/tests/module_surface_boundary_guard.rs` без компиляции.
 - Next step: продолжить вынос оставшихся GraphQL-артефактов модулей из сервера; для Flex нужен отдельный runtime-handle поверх `FieldDefinitionCachePort`, `FlexStandaloneService` и публикации событий до удаления `apps/server/src/graphql/flex`.
 - Open blockers: compile/test evidence отложен по явному ограничению итерации: без компиляций.
 - Hand-off notes for next agent: держать `MediaImageDescriptor` единственным image payload для cross-module SEO/runtime интеграций; admin UI должен идти через `core` + `transport`, Leptos-only код оставлять в `ui/leptos.rs`, а transport-specific код — в dedicated adapter files.

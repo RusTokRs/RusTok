@@ -9,11 +9,9 @@ use crate::direct::{
     DirectTaskHandler,
 };
 use crate::model::{AiProductAttributesTaskInput, DirectExecutionTarget, ToolTrace};
-use crate::service::AiOperatorContext;
+use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
-use loco_rs::app::AppContext;
 use rustok_ai_product::{PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_ATTRIBUTES_TOOL_NAME};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::CatalogService;
 
 pub struct ProductAttributesHandler;
@@ -26,17 +24,14 @@ impl DirectTaskHandler for ProductAttributesHandler {
 
     async fn execute(
         &self,
-        app_ctx: &AppContext,
+        runtime: &AiHostRuntime,
         operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
         let input: AiProductAttributesTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let started = std::time::Instant::now();
-        let catalog = CatalogService::new(
-            app_ctx.db.clone(),
-            transactional_event_bus_from_context(app_ctx),
-        );
+        let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
         let product = catalog
             .get_product(operator.tenant_id, input.product_id)
             .await

@@ -10,6 +10,7 @@
 - Own page storage across `pages`, `page_translations`, `page_bodies`, `page_blocks`, and `page_channel_visibility`.
 - Own menu storage across `menus`, `menu_translations`, `menu_items`, and `menu_item_translations`.
 - Own the Pages GraphQL and REST adapters exported from the module crate.
+- Keep REST page/block handlers on narrow `PagesHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 - Publish the module-owned Leptos admin and storefront root packages.
 - Keep one real module-owned Leptos vertical slice for pages list/create/edit/update/publish/delete
   in admin and slug-driven published-page rendering in storefront.

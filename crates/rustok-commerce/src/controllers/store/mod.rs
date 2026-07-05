@@ -26,7 +26,7 @@ use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -108,9 +108,30 @@ pub(crate) async fn resolve_context(
     locale: Option<String>,
     currency_code: Option<String>,
 ) -> Result<StoreContextResponse> {
+    resolve_context_for_db(
+        &ctx.db,
+        tenant_id,
+        request_context,
+        region_id,
+        country_code,
+        locale,
+        currency_code,
+    )
+    .await
+}
+
+pub(crate) async fn resolve_context_for_db(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    region_id: Option<Uuid>,
+    country_code: Option<String>,
+    locale: Option<String>,
+    currency_code: Option<String>,
+) -> Result<StoreContextResponse> {
     let service = StoreContextService::new(
-        ctx.db.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(ctx.db.clone())),
+        db.clone(),
+        std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
     );
     service
         .resolve_context(
@@ -132,8 +153,17 @@ pub(crate) async fn resolve_context_from_cart(
     request_context: &RequestContext,
     cart: &CartResponse,
 ) -> Result<StoreContextResponse> {
-    resolve_context(
-        ctx,
+    resolve_context_from_cart_for_db(&ctx.db, tenant_id, request_context, cart).await
+}
+
+pub(crate) async fn resolve_context_from_cart_for_db(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart: &CartResponse,
+) -> Result<StoreContextResponse> {
+    resolve_context_for_db(
+        db,
         tenant_id,
         request_context,
         cart.region_id,
@@ -172,11 +202,19 @@ pub(crate) async fn current_customer_id(
     tenant_id: Uuid,
     auth: Option<&rustok_api::AuthContext>,
 ) -> Result<Option<Uuid>> {
+    current_customer_id_for_db(&ctx.db, tenant_id, auth).await
+}
+
+pub(crate) async fn current_customer_id_for_db(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    auth: Option<&rustok_api::AuthContext>,
+) -> Result<Option<Uuid>> {
     let Some(auth) = auth else {
         return Ok(None);
     };
 
-    let service = CustomerService::new(ctx.db.clone());
+    let service = CustomerService::new(db.clone());
     match service.get_customer_by_user(tenant_id, auth.user_id).await {
         Ok(customer) => Ok(Some(customer.id)),
         Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
@@ -188,7 +226,14 @@ pub(crate) async fn ensure_storefront_channel_enabled(
     ctx: &AppContext,
     request_context: &RequestContext,
 ) -> Result<()> {
-    let enabled = is_module_enabled_for_request_channel(&ctx.db, request_context, MODULE_SLUG)
+    ensure_storefront_channel_enabled_for_db(&ctx.db, request_context).await
+}
+
+pub(crate) async fn ensure_storefront_channel_enabled_for_db(
+    db: &DatabaseConnection,
+    request_context: &RequestContext,
+) -> Result<()> {
+    let enabled = is_module_enabled_for_request_channel(db, request_context, MODULE_SLUG)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 

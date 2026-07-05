@@ -2,17 +2,17 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
+    super::CommerceHttpRuntime,
     AdminOrderDetailResponse, ListOrdersParams,
 };
 use crate::dto::{
@@ -31,7 +31,7 @@ use crate::dto::{
     )
 )]
 pub async fn list_orders(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -44,21 +44,20 @@ pub async fn list_orders(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (orders, total) =
-        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-            .list_orders_with_locale_fallback(
-                tenant.id,
-                rustok_order::dto::ListOrdersInput {
-                    page: pagination.page,
-                    per_page: pagination.limit(),
-                    status: params.status,
-                    customer_id: params.customer_id,
-                },
-                request_context.locale.as_str(),
-                Some(tenant.default_locale.as_str()),
-            )
-            .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?;
+    let (orders, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
+        .list_orders_with_locale_fallback(
+            tenant.id,
+            rustok_order::dto::ListOrdersInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                status: params.status,
+                customer_id: params.customer_id,
+            },
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: orders,
@@ -78,7 +77,7 @@ pub async fn list_orders(
     )
 )]
 pub async fn show_order(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: rustok_api::RequestContext,
@@ -90,7 +89,7 @@ pub async fn show_order(
         "Permission denied: orders:read required",
     )?;
 
-    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_order_with_locale_fallback(
             tenant.id,
             id,
@@ -104,11 +103,11 @@ pub async fn show_order(
             | rustok_order::error::OrderError::OrderChangeNotFound(_) => Error::NotFound,
             other => Error::BadRequest(other.to_string()),
         })?;
-    let payment_collection = PaymentService::new(ctx.db.clone())
+    let payment_collection = PaymentService::new(runtime.db_clone())
         .find_latest_collection_by_order(tenant.id, id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .find_by_order(tenant.id, id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -134,7 +133,7 @@ pub async fn show_order(
     )
 )]
 pub async fn mark_order_paid(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -146,7 +145,7 @@ pub async fn mark_order_paid(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .mark_paid(
             tenant.id,
             auth.user_id,
@@ -174,7 +173,7 @@ pub async fn mark_order_paid(
     )
 )]
 pub async fn ship_order(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -186,7 +185,7 @@ pub async fn ship_order(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .ship_order(
             tenant.id,
             auth.user_id,
@@ -214,7 +213,7 @@ pub async fn ship_order(
     )
 )]
 pub async fn deliver_order(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -226,7 +225,7 @@ pub async fn deliver_order(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .deliver_order(tenant.id, auth.user_id, id, input.delivered_signature)
         .await
         .map_err(super::map_order_error)?;
@@ -248,7 +247,7 @@ pub async fn deliver_order(
     )
 )]
 pub async fn cancel_order(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -260,7 +259,7 @@ pub async fn cancel_order(
         "Permission denied: orders:update required",
     )?;
 
-    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_order(tenant.id, auth.user_id, id, input.reason)
         .await
         .map_err(super::map_order_error)?;

@@ -1,4 +1,3 @@
-use loco_rs::app::AppContext;
 use once_cell::sync::Lazy;
 use schemars::schema_for;
 use serde::Serialize;
@@ -32,7 +31,7 @@ use crate::model::ToolDefinition;
 use crate::{AiError, AiResult};
 
 use super::helpers::{json_err, parse_uuid_str};
-use super::types::{AiOperatorContext, SharedAiModuleRegistry};
+use super::types::{AiHostRuntime, AiOperatorContext};
 
 static STAGED_SCAFFOLDS: Lazy<Arc<Mutex<HashMap<Uuid, StagedModuleScaffold>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
@@ -44,26 +43,15 @@ pub struct InProcessMcpAdapter {
 }
 
 impl InProcessMcpAdapter {
-    pub fn new(app_ctx: &AppContext, access_context: McpAccessContext) -> AiResult<Self> {
-        let registry = app_ctx
-            .shared_store
-            .get::<SharedAiModuleRegistry>()
-            .map(|shared| shared.0.clone())
-            .ok_or_else(|| AiError::Runtime("AI module registry is not initialized".to_string()))?;
-        let alloy = if app_ctx
-            .shared_store
-            .get::<alloy::SharedAlloyRuntime>()
-            .is_some()
-        {
-            let scoped = alloy::scoped_runtime(
-                app_ctx,
-                parse_uuid_str(
-                    access_context
-                        .identity
-                        .as_ref()
-                        .and_then(|identity| identity.tenant_id.as_deref()),
-                )?,
-            );
+    pub fn new(runtime: &AiHostRuntime, access_context: McpAccessContext) -> AiResult<Self> {
+        let registry = runtime.module_registry();
+        let tenant_id = parse_uuid_str(
+            access_context
+                .identity
+                .as_ref()
+                .and_then(|identity| identity.tenant_id.as_deref()),
+        )?;
+        let alloy = if let Some(scoped) = runtime.scoped_alloy_runtime(tenant_id) {
             let mut state = AlloyMcpState::new(scoped.storage, scoped.engine, scoped.orchestrator);
             state.staged_scaffolds = Arc::clone(&STAGED_SCAFFOLDS);
             Some(state)

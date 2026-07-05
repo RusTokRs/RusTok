@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
 use uuid::Uuid;
@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{CreateWorkflowStepInput, UpdateWorkflowStepInput, WorkflowService};
 
 pub async fn add_step(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -18,7 +18,7 @@ pub async fn add_step(
 ) -> Result<Json<serde_json::Value>> {
     ensure_workflow_permission(&auth)?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     let step_id = service
         .add_step(tenant.id, id, input)
         .await
@@ -27,7 +27,7 @@ pub async fn add_step(
 }
 
 pub async fn update_step(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path((id, step_id)): Path<(Uuid, Uuid)>,
@@ -35,7 +35,7 @@ pub async fn update_step(
 ) -> Result<Json<serde_json::Value>> {
     ensure_workflow_permission(&auth)?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     service
         .update_step(tenant.id, id, step_id, input)
         .await
@@ -44,14 +44,14 @@ pub async fn update_step(
 }
 
 pub async fn delete_step(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::WorkflowHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path((id, step_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
     ensure_workflow_permission(&auth)?;
 
-    let service = WorkflowService::new(ctx.db.clone());
+    let service = WorkflowService::new(runtime.db_clone());
     service
         .delete_step(tenant.id, id, step_id)
         .await

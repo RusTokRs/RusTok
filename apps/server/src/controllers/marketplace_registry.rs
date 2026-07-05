@@ -18,14 +18,12 @@ use axum::{
 const REGISTRY_ARTIFACT_MAX_BYTES: usize = 100 * 1024 * 1024;
 const LEGACY_REGISTRY_ACTOR_HEADER: &str = concat!("x-rustok-", "actor");
 const LEGACY_REGISTRY_PUBLISHER_HEADER: &str = concat!("x-rustok-", "publisher");
-use loco_rs::app::AppContext;
 use loco_rs::controller::{ErrorDetail, Routes};
 use semver::Version;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
-use crate::common::settings::SharedRustokSettings;
 use crate::error::Error;
 use crate::modules::{CatalogManifestModule, ManifestManager, ModulesManifest};
 use crate::services::marketplace_catalog::{
@@ -56,6 +54,7 @@ use crate::services::registry_governance::{
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
 use crate::services::registry_principal::RegistryAuthority;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
 
@@ -100,7 +99,7 @@ struct RegistryCatalogListParams {
     )
 )]
 async fn catalog(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     request_context: RequestContext,
     headers: HeaderMap,
     Query(params): Query<RegistryCatalogListParams>,
@@ -149,7 +148,7 @@ async fn catalog(
     )
 )]
 async fn catalog_module(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     request_context: RequestContext,
     headers: HeaderMap,
     Path(slug): Path<String>,
@@ -188,7 +187,7 @@ async fn catalog_module(
     )
 )]
 async fn publish(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishRequest>,
@@ -208,7 +207,7 @@ async fn publish(
 
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
         let authority = authority_from_auth(&headers, auth, "Registry publish operations")?;
-        let created = RegistryGovernanceService::new(ctx.db.clone())
+        let created = RegistryGovernanceService::new(ctx.db_clone())
             .create_publish_request(&request, &authority, &warnings)
             .await
             .map_err(|error| {
@@ -281,12 +280,12 @@ async fn publish(
     )
 )]
 async fn publish_status(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
 ) -> Result<Json<RegistryPublishStatusResponse>, Error> {
-    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
     let request = governance
         .get_publish_request(&request_id)
         .await
@@ -376,7 +375,7 @@ async fn publish_status(
     )
 )]
 async fn upload_publish_artifact(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -398,11 +397,10 @@ async fn upload_publish_artifact(
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry artifact upload")?;
     let storage = ctx
-        .shared_store
-        .get::<rustok_storage::StorageService>()
+        .shared_get::<rustok_storage::StorageService>()
         .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
 
-    let request = RegistryGovernanceService::new(ctx.db.clone())
+    let request = RegistryGovernanceService::new(ctx.db_clone())
         .with_storage(storage)
         .upload_publish_artifact(
             &request_id,
@@ -434,7 +432,7 @@ async fn upload_publish_artifact(
 }
 
 async fn download_publish_artifact(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -448,7 +446,7 @@ async fn download_publish_artifact(
         ));
     }
 
-    let request = RegistryGovernanceService::new(ctx.db.clone())
+    let request = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -460,8 +458,7 @@ async fn download_publish_artifact(
         .clone()
         .ok_or_else(|| Error::NotFound)?;
     let storage = ctx
-        .shared_store
-        .get::<rustok_storage::StorageService>()
+        .shared_get::<rustok_storage::StorageService>()
         .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
 
     if let Some(download_url) = storage
@@ -526,7 +523,7 @@ async fn download_publish_artifact(
     )
 )]
 async fn validate_publish_request_step(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -534,7 +531,7 @@ async fn validate_publish_request_step(
 ) -> Result<impl IntoResponse, Error> {
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    let existing = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -564,16 +561,15 @@ async fn validate_publish_request_step(
         ));
     }
 
-    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
     let validation = governance
         .validate_publish_request(&request_id, &authority)
         .await
         .map_err(map_registry_governance_error)?;
     if validation.queued {
-        let db = ctx.db.clone();
+        let db = ctx.db_clone();
         let storage = ctx
-            .shared_store
-            .get::<rustok_storage::StorageService>()
+            .shared_get::<rustok_storage::StorageService>()
             .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
         let request_id = validation.request.id.clone();
         let validation_job_id = validation.validation_job_id.clone().ok_or_else(|| {
@@ -652,7 +648,7 @@ async fn validate_publish_request_step(
     )
 )]
 async fn report_validation_stage(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -661,7 +657,7 @@ async fn report_validation_stage(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_validation_stage_report_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    let existing = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -709,7 +705,7 @@ async fn report_validation_stage(
         ));
     }
 
-    let result = RegistryGovernanceService::new(ctx.db.clone())
+    let result = RegistryGovernanceService::new(ctx.db_clone())
         .report_validation_stage(
             &request_id,
             &authority,
@@ -769,7 +765,7 @@ async fn report_validation_stage(
     )
 )]
 async fn approve_publish_request(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -778,7 +774,7 @@ async fn approve_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     validate_publish_approve_request(&request)?;
-    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let governance = RegistryGovernanceService::new(ctx.db_clone());
     let existing = governance
         .get_publish_request(&request_id)
         .await
@@ -834,7 +830,7 @@ async fn approve_publish_request(
         ));
     }
 
-    let approved = RegistryGovernanceService::new(ctx.db.clone())
+    let approved = RegistryGovernanceService::new(ctx.db_clone())
         .approve_publish_request(
             &request_id,
             &authority,
@@ -888,7 +884,7 @@ async fn approve_publish_request(
     )
 )]
 async fn reject_publish_request(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -897,7 +893,7 @@ async fn reject_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_reject_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    let existing = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -958,7 +954,7 @@ async fn reject_publish_request(
             )
         })?;
 
-    let rejected = RegistryGovernanceService::new(ctx.db.clone())
+    let rejected = RegistryGovernanceService::new(ctx.db_clone())
         .reject_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
@@ -1007,7 +1003,7 @@ async fn reject_publish_request(
     )
 )]
 async fn request_changes_publish_request(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -1016,7 +1012,7 @@ async fn request_changes_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_request_changes_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    let existing = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -1078,7 +1074,7 @@ async fn request_changes_publish_request(
             )
         })?;
 
-    let updated = RegistryGovernanceService::new(ctx.db.clone())
+    let updated = RegistryGovernanceService::new(ctx.db_clone())
         .request_changes_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
@@ -1127,7 +1123,7 @@ async fn request_changes_publish_request(
     )
 )]
 async fn hold_publish_request(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -1136,7 +1132,7 @@ async fn hold_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_hold_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    let existing = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -1196,7 +1192,7 @@ async fn hold_publish_request(
             )
         })?;
 
-    let updated = RegistryGovernanceService::new(ctx.db.clone())
+    let updated = RegistryGovernanceService::new(ctx.db_clone())
         .hold_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
@@ -1245,7 +1241,7 @@ async fn hold_publish_request(
     )
 )]
 async fn resume_publish_request(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(request_id): Path<String>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
@@ -1254,7 +1250,7 @@ async fn resume_publish_request(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let warnings = validate_publish_resume_request(&request)?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    let existing = RegistryGovernanceService::new(ctx.db_clone())
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
@@ -1316,7 +1312,7 @@ async fn resume_publish_request(
             )
         })?;
 
-    let updated = RegistryGovernanceService::new(ctx.db.clone())
+    let updated = RegistryGovernanceService::new(ctx.db_clone())
         .resume_publish_request(&request_id, &authority, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
@@ -1362,7 +1358,7 @@ async fn resume_publish_request(
     )
 )]
 async fn claim_remote_validation_stage(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerClaimRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -1371,7 +1367,7 @@ async fn claim_remote_validation_stage(
     let runner_id = validate_runner_id(&request.runner_id)?;
     validate_supported_runner_stages(&request.supported_stages)?;
     let remote_executor = require_remote_executor_access(&ctx, &headers)?;
-    let claim = RegistryGovernanceService::new(ctx.db.clone())
+    let claim = RegistryGovernanceService::new(ctx.db_clone())
         .claim_remote_validation_stage(
             &runner_id,
             &request.supported_stages,
@@ -1415,7 +1411,7 @@ async fn claim_remote_validation_stage(
     )
 )]
 async fn heartbeat_remote_validation_stage(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(claim_id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerHeartbeatRequest>,
@@ -1424,7 +1420,7 @@ async fn heartbeat_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     let remote_executor = require_remote_executor_access(&ctx, &headers)?;
-    let stage = RegistryGovernanceService::new(ctx.db.clone())
+    let stage = RegistryGovernanceService::new(ctx.db_clone())
         .heartbeat_remote_validation_stage(&claim_id, &runner_id, remote_executor.lease_ttl_ms)
         .await
         .map_err(map_registry_governance_error)?;
@@ -1466,7 +1462,7 @@ async fn heartbeat_remote_validation_stage(
     )
 )]
 async fn complete_remote_validation_stage(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(claim_id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
@@ -1475,7 +1471,7 @@ async fn complete_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     require_remote_executor_access(&ctx, &headers)?;
-    let result = RegistryGovernanceService::new(ctx.db.clone())
+    let result = RegistryGovernanceService::new(ctx.db_clone())
         .complete_remote_validation_stage(
             &claim_id,
             &runner_id,
@@ -1522,7 +1518,7 @@ async fn complete_remote_validation_stage(
     )
 )]
 async fn fail_remote_validation_stage(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     Path(claim_id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RegistryRunnerCompletionRequest>,
@@ -1531,7 +1527,7 @@ async fn fail_remote_validation_stage(
         .map_err(|error| Error::BadRequest(error.to_string()))?;
     let runner_id = validate_runner_id(&request.runner_id)?;
     require_remote_executor_access(&ctx, &headers)?;
-    let result = RegistryGovernanceService::new(ctx.db.clone())
+    let result = RegistryGovernanceService::new(ctx.db_clone())
         .fail_remote_validation_stage(
             &claim_id,
             &runner_id,
@@ -1575,7 +1571,7 @@ async fn fail_remote_validation_stage(
     )
 )]
 async fn yank(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryYankRequest>,
@@ -1609,7 +1605,7 @@ async fn yank(
             })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
         let authority = authority_from_auth(&headers, auth, "Registry yank operations")?;
-        let release = RegistryGovernanceService::new(ctx.db.clone())
+        let release = RegistryGovernanceService::new(ctx.db_clone())
             .yank_release(
                 &request.slug,
                 &request.version,
@@ -1683,7 +1679,7 @@ async fn yank(
     )
 )]
 async fn transfer_owner(
-    State(ctx): State<AppContext>,
+    State(ctx): State<ServerRuntimeContext>,
     headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryOwnerTransferRequest>,
@@ -1717,7 +1713,7 @@ async fn transfer_owner(
             })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
         let authority = authority_from_auth(&headers, auth, "Registry owner transfer operations")?;
-        let binding = RegistryGovernanceService::new(ctx.db.clone())
+        let binding = RegistryGovernanceService::new(ctx.db_clone())
             .transfer_registry_slug_owner(
                 &request.slug,
                 &crate::services::registry_principal::RegistryPrincipalRef::user(
@@ -1834,10 +1830,10 @@ pub fn read_only_routes() -> Routes {
 }
 
 async fn first_party_catalog_modules(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     request_context: &RequestContext,
 ) -> Result<Vec<CatalogManifestModule>, Error> {
-    let manifest = PlatformCompositionService::active_manifest(&ctx.db)
+    let manifest = PlatformCompositionService::active_manifest(ctx.db())
         .await
         .map_err(|error| {
             Error::Message(format!(
@@ -1852,7 +1848,7 @@ async fn first_party_catalog_modules(
         .filter(|module| module.ownership == "first_party")
         .collect::<Vec<_>>();
 
-    RegistryGovernanceService::new(ctx.db.clone())
+    RegistryGovernanceService::new(ctx.db_clone())
         .apply_catalog_projection(
             first_party_modules,
             Some(request_context.locale.as_str()),
@@ -2427,14 +2423,10 @@ fn optional_authority_from_auth(
 }
 
 fn require_remote_executor_access(
-    ctx: &AppContext,
+    ctx: &ServerRuntimeContext,
     headers: &HeaderMap,
 ) -> Result<crate::common::settings::RegistryRemoteExecutorSettings, Error> {
-    let settings = ctx
-        .shared_store
-        .get::<SharedRustokSettings>()
-        .ok_or_else(|| Error::Message("SharedRustokSettings not initialized".to_string()))?;
-    let executor = settings.0.registry.remote_executor.clone();
+    let executor = ctx.settings().registry.remote_executor.clone();
     if !executor.enabled {
         return Err(Error::NotFound);
     }

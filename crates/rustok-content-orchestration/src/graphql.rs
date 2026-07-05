@@ -6,7 +6,7 @@ use rustok_api::{
 use rustok_content::ContentError;
 use uuid::Uuid;
 
-use crate::content_orchestration_from_context;
+use crate::{content_orchestration_from_shared, SharedContentOrchestrationService};
 
 #[derive(Default)]
 pub struct ContentOrchestrationMutation;
@@ -19,8 +19,8 @@ impl ContentOrchestrationMutation {
         input: PromoteTopicToPostInput,
     ) -> Result<ContentOrchestrationPayload> {
         require_modules(ctx, &["content", "blog", "forum", "comments"]).await?;
-        let (auth, tenant, app_ctx) = request_context(ctx)?;
-        let result = content_orchestration_from_context(app_ctx)
+        let (auth, tenant, orchestration) = request_context(ctx)?;
+        let result = content_orchestration_from_shared(orchestration)
             .promote_topic_to_post(
                 tenant.id,
                 security_context(auth),
@@ -43,8 +43,8 @@ impl ContentOrchestrationMutation {
         input: DemotePostToTopicInput,
     ) -> Result<ContentOrchestrationPayload> {
         require_modules(ctx, &["content", "blog", "forum", "comments"]).await?;
-        let (auth, tenant, app_ctx) = request_context(ctx)?;
-        let result = content_orchestration_from_context(app_ctx)
+        let (auth, tenant, orchestration) = request_context(ctx)?;
+        let result = content_orchestration_from_shared(orchestration)
             .demote_post_to_topic(
                 tenant.id,
                 security_context(auth),
@@ -67,8 +67,8 @@ impl ContentOrchestrationMutation {
         input: SplitTopicInput,
     ) -> Result<ContentOrchestrationPayload> {
         require_modules(ctx, &["content", "forum"]).await?;
-        let (auth, tenant, app_ctx) = request_context(ctx)?;
-        let result = content_orchestration_from_context(app_ctx)
+        let (auth, tenant, orchestration) = request_context(ctx)?;
+        let result = content_orchestration_from_shared(orchestration)
             .split_topic(
                 tenant.id,
                 security_context(auth),
@@ -92,8 +92,8 @@ impl ContentOrchestrationMutation {
         input: MergeTopicsInput,
     ) -> Result<ContentOrchestrationPayload> {
         require_modules(ctx, &["content", "forum"]).await?;
-        let (auth, tenant, app_ctx) = request_context(ctx)?;
-        let result = content_orchestration_from_context(app_ctx)
+        let (auth, tenant, orchestration) = request_context(ctx)?;
+        let result = content_orchestration_from_shared(orchestration)
             .merge_topics(
                 tenant.id,
                 security_context(auth),
@@ -175,7 +175,7 @@ fn request_context<'a>(
 ) -> Result<(
     &'a AuthContext,
     &'a TenantContext,
-    &'a loco_rs::app::AppContext,
+    &'a SharedContentOrchestrationService,
 )> {
     let auth = ctx
         .data::<AuthContext>()
@@ -183,7 +183,7 @@ fn request_context<'a>(
     Ok((
         auth,
         ctx.data::<TenantContext>()?,
-        ctx.data::<loco_rs::app::AppContext>()?,
+        ctx.data::<SharedContentOrchestrationService>()?,
     ))
 }
 

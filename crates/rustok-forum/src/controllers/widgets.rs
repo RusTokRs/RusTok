@@ -1,5 +1,5 @@
 use axum::{extract::State, http::StatusCode, Json};
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext};
 
@@ -19,7 +19,7 @@ use crate::{
     )
 )]
 pub async fn get_widget_catalog(
-    _ctx: State<AppContext>,
+    _runtime: State<crate::controllers::ForumHttpRuntime>,
     auth: AuthContext,
 ) -> Result<Json<ForumWidgetCatalogResponse>> {
     ensure_forum_permission(
@@ -44,7 +44,7 @@ pub async fn get_widget_catalog(
     )
 )]
 pub async fn validate_widget_props(
-    _ctx: State<AppContext>,
+    _runtime: State<crate::controllers::ForumHttpRuntime>,
     auth: AuthContext,
     Json(input): Json<ValidateForumWidgetPropsInput>,
 ) -> Result<(StatusCode, Json<ForumWidgetPropsValidationResponse>)> {

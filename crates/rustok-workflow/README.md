@@ -9,6 +9,7 @@
 - Provide `WorkflowModule` metadata for the runtime registry.
 - Own workflow CRUD, execution engine, schedules, webhooks, and execution history.
 - Own workflow GraphQL and REST transport adapters for module-facing APIs.
+- Keep REST and webhook handlers on narrow `WorkflowHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 - Publish the module-owned Leptos admin root page through `crates/rustok-workflow/admin`.
 - Publish the typed `workflows:*` and `workflow_executions:*` RBAC surface.
 
@@ -33,6 +34,7 @@
 ## Entry points
 
 - `WorkflowModule`
+- `WorkflowHttpRuntime`
 - `WorkflowService`
 - `WorkflowEngine`
 - `WorkflowCronScheduler`

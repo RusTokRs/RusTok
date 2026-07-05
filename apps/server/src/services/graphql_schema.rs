@@ -19,11 +19,21 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         ctx.db_clone(),
         event_bus.clone(),
         transactional_event_bus_from_context(ctx),
+        ai_runtime_from_ctx(ctx),
         build_event_hub_from_context(ctx),
         field_definition_cache_from_context(ctx, event_bus),
         module_runtime_extensions_from_ctx(ctx),
         rbac_graphql_role_writer_from_context(ctx),
         search_graphql_rate_limiter_from_context(ctx),
+        #[cfg(feature = "mod-alloy")]
+        alloy_runtime_from_ctx(ctx),
+        #[cfg(all(
+            feature = "mod-content",
+            feature = "mod-blog",
+            feature = "mod-forum",
+            feature = "mod-comments"
+        ))]
+        content_orchestration_from_ctx(ctx),
         #[cfg(feature = "mod-media")]
         storage_from_ctx(ctx),
     ));
@@ -31,6 +41,41 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
     schema
+}
+
+fn ai_runtime_from_ctx(ctx: &ServerRuntimeContext) -> rustok_ai::AiHostRuntime {
+    let runtime = rustok_ai::AiHostRuntime::new(
+        ctx.db_clone(),
+        transactional_event_bus_from_context(ctx),
+        ctx.shared_get::<rustok_ai::SharedAiModuleRegistry>()
+            .expect("AI module registry not initialized; bootstrap_app_runtime must run first")
+            .0,
+    )
+    .with_storage(ctx.shared_get::<rustok_storage::StorageService>());
+
+    #[cfg(feature = "mod-alloy")]
+    let runtime = runtime.with_alloy_runtime(ctx.shared_get::<alloy::SharedAlloyRuntime>());
+
+    runtime
+}
+
+#[cfg(feature = "mod-alloy")]
+fn alloy_runtime_from_ctx(ctx: &ServerRuntimeContext) -> alloy::SharedAlloyRuntime {
+    ctx.shared_get::<alloy::SharedAlloyRuntime>()
+        .expect("Alloy runtime not initialized; bootstrap_app_runtime must run first")
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+fn content_orchestration_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> rustok_content_orchestration::SharedContentOrchestrationService {
+    ctx.shared_get::<rustok_content_orchestration::SharedContentOrchestrationService>()
+        .expect("ContentOrchestrationService not initialized; bootstrap_app_runtime must run first")
 }
 
 #[cfg(feature = "mod-media")]

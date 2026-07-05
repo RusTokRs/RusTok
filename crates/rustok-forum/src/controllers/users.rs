@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
 use uuid::Uuid;
@@ -21,7 +21,7 @@ use crate::{ForumUserStatsResponse, UserStatsService};
     )
 )]
 pub async fn get_user_stats(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::ForumHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(user_id): Path<Uuid>,
@@ -32,7 +32,7 @@ pub async fn get_user_stats(
         "Permission denied: forum_topics:read required",
     )?;
 
-    let stats = UserStatsService::new(ctx.db.clone())
+    let stats = UserStatsService::new(runtime.db_clone())
         .get(
             tenant.id,
             rustok_core::SecurityContext::from_permission_snapshot(

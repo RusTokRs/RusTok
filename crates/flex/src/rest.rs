@@ -2,7 +2,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{FlexEntryView, FlexSchemaView};
+use crate::{
+    parse_field_definitions_config, CreateFlexEntryCommand, CreateFlexSchemaCommand,
+    FieldDefinitionsConfigParseError, FlexEntryView, FlexSchemaView, UpdateFlexEntryCommand,
+    UpdateFlexSchemaCommand,
+};
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CreateFlexSchemaRequest {
@@ -65,6 +69,61 @@ pub struct FlexEntryResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DeleteFlexResponse {
     pub success: bool,
+}
+
+impl DeleteFlexResponse {
+    pub fn success() -> Self {
+        Self { success: true }
+    }
+}
+
+impl CreateFlexSchemaRequest {
+    pub fn into_command(self) -> Result<CreateFlexSchemaCommand, FieldDefinitionsConfigParseError> {
+        Ok(CreateFlexSchemaCommand {
+            slug: self.slug,
+            name: self.name,
+            description: self.description,
+            fields_config: parse_field_definitions_config(self.fields_config)?,
+            settings: self.settings,
+            is_active: self.is_active,
+        })
+    }
+}
+
+impl UpdateFlexSchemaRequest {
+    pub fn into_command(self) -> Result<UpdateFlexSchemaCommand, FieldDefinitionsConfigParseError> {
+        Ok(UpdateFlexSchemaCommand {
+            name: self.name,
+            description: self.description,
+            fields_config: self
+                .fields_config
+                .map(parse_field_definitions_config)
+                .transpose()?,
+            settings: self.settings,
+            is_active: self.is_active,
+        })
+    }
+}
+
+impl CreateFlexEntryRequest {
+    pub fn into_command(self, schema_id: Uuid) -> CreateFlexEntryCommand {
+        CreateFlexEntryCommand {
+            schema_id,
+            entity_type: self.entity_type,
+            entity_id: self.entity_id,
+            data: self.data,
+            status: self.status,
+        }
+    }
+}
+
+impl UpdateFlexEntryRequest {
+    pub fn into_command(self) -> UpdateFlexEntryCommand {
+        UpdateFlexEntryCommand {
+            data: self.data,
+            status: self.status,
+        }
+    }
 }
 
 impl From<FlexSchemaView> for FlexSchemaResponse {

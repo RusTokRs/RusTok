@@ -3,11 +3,10 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::locale_tags_match;
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::{
     entities::{product, product_translation},
     CatalogService,
@@ -29,7 +28,7 @@ use super::common::{ensure_permissions, PaginatedResponse, PaginationMeta, Pagin
 
 /// Shared admin product list handler.
 pub async fn list_products(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -64,7 +63,7 @@ pub async fn list_products(
     }
     if let Some(search) = &params.search {
         query = query.filter(product_translation_title_search_condition(
-            ctx.db.get_database_backend(),
+            runtime.db().get_database_backend(),
             locale,
             search,
         ));
@@ -73,7 +72,7 @@ pub async fn list_products(
     let count_started_at = Instant::now();
     let total = query
         .clone()
-        .count(&ctx.db)
+        .count(runtime.db())
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     metrics::record_read_path_query(
@@ -89,7 +88,7 @@ pub async fn list_products(
         .order_by_desc(product::Column::CreatedAt)
         .offset(pagination.offset())
         .limit(pagination.limit())
-        .all(&ctx.db)
+        .all(runtime.db())
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     metrics::record_read_path_query(
@@ -110,7 +109,7 @@ pub async fn list_products(
         let translations_started_at = Instant::now();
         let translations = product_translation::Entity::find()
             .filter(product_translation::Column::ProductId.is_in(product_ids))
-            .all(&ctx.db)
+            .all(runtime.db())
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?;
         metrics::record_read_path_query(
@@ -130,7 +129,7 @@ pub async fn list_products(
             .or_default()
             .push(translation);
     }
-    let catalog = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product_tags = catalog
         .load_product_tag_map(
             tenant.id,
@@ -204,7 +203,7 @@ fn pick_product_translation<'a>(
 
 /// Shared admin product details handler.
 pub async fn show_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     request_context: RequestContext,
@@ -216,7 +215,7 @@ pub async fn show_product(
         "Permission denied: products:read required",
     )?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product = service
         .get_product_with_locale_fallback(
             tenant.id,
@@ -232,7 +231,7 @@ pub async fn show_product(
 
 /// Shared admin product delete handler.
 pub async fn delete_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -243,7 +242,7 @@ pub async fn delete_product(
         "Permission denied: products:delete required",
     )?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     service
         .delete_product(tenant.id, auth.user_id, id)
         .await
@@ -254,7 +253,7 @@ pub async fn delete_product(
 
 /// Shared admin product publish handler.
 pub async fn publish_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -265,7 +264,7 @@ pub async fn publish_product(
         "Permission denied: products:update required",
     )?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product = service
         .publish_product(tenant.id, auth.user_id, id)
         .await
@@ -276,7 +275,7 @@ pub async fn publish_product(
 
 /// Shared admin product unpublish handler.
 pub async fn unpublish_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<crate::controllers::CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -287,7 +286,7 @@ pub async fn unpublish_product(
         "Permission denied: products:update required",
     )?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product = service
         .unpublish_product(tenant.id, auth.user_id, id)
         .await

@@ -14,13 +14,17 @@ hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
+  "dep:alloy",
   "dep:loco-rs",
   "dep:rustok-ai",
   "dep:rustok-core",
+  "dep:rustok-outbox",
+  "dep:rustok-storage",
   "dep:sea-orm",
 ]
 
 [dependencies]
+alloy = { workspace = true, optional = true }
 leptos.workspace = true
 leptos_router.workspace = true
 leptos_axum = { workspace = true, optional = true }
@@ -31,6 +35,8 @@ rustok-api = { workspace = true, default-features = false }
 leptos-ui-routing.workspace = true
 rustok-ai = { workspace = true, optional = true, features = ["server"] }
 rustok-core = { workspace = true, optional = true }
+rustok-outbox = { workspace = true, optional = true, features = ["loco-adapter"] }
+rustok-storage = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sea-orm = { workspace = true, optional = true }

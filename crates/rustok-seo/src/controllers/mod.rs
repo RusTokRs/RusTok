@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     extract::{Path, Query, State},
@@ -10,12 +10,13 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, controller::Routes};
-use rustok_api::Permission;
 use rustok_api::{
-    graphql::ErrorCode, has_any_effective_permission, AuthContext, RequestContext, TenantContext,
+    graphql::ErrorCode, has_any_effective_permission, AuthContext, Permission, RequestContext,
+    TenantContext,
 };
 use rustok_core::ModuleRuntimeExtensions;
-use rustok_outbox::loco::transactional_event_bus_from_context;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -69,6 +70,41 @@ pub struct SeoIndexTrackingQuery {
 }
 
 pub type SeoHttpResult<T> = std::result::Result<T, SeoHttpError>;
+
+#[derive(Clone)]
+pub struct SeoHttpRuntime {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+    extensions: Option<Arc<ModuleRuntimeExtensions>>,
+}
+
+impl SeoHttpRuntime {
+    fn service(&self) -> SeoHttpResult<SeoService> {
+        let extensions = self.extensions.as_ref().ok_or_else(|| {
+            map_seo_http_error(SeoError::configuration(
+                "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
+            ))
+        })?;
+
+        SeoService::from_runtime_extensions(
+            self.db.clone(),
+            self.event_bus.clone(),
+            extensions.as_ref(),
+        )
+        .map_err(map_seo_http_error)
+    }
+}
+
+impl axum::extract::FromRef<AppContext> for SeoHttpRuntime {
+    fn from_ref(input: &AppContext) -> Self {
+        let transport = Arc::new(OutboxTransport::new(input.db.clone()));
+        Self {
+            db: input.db.clone(),
+            event_bus: TransactionalEventBus::new(transport),
+            extensions: input.shared_store.get::<Arc<ModuleRuntimeExtensions>>(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct SeoHttpError {
@@ -141,12 +177,12 @@ impl IntoResponse for SeoHttpError {
 }
 
 pub async fn page_context_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     request: RequestContext,
     Query(query): Query<SeoPageContextQuery>,
 ) -> SeoHttpResult<Json<SeoPageContext>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     let context = service
         .resolve_page_context_for_channel(
             &tenant,
@@ -161,10 +197,10 @@ pub async fn page_context_json(
 }
 
 pub async fn robots_txt(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
 ) -> SeoHttpResult<Response> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     let body = service
         .render_robots(&tenant)
         .await
@@ -173,10 +209,10 @@ pub async fn robots_txt(
 }
 
 pub async fn sitemap_index(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
 ) -> SeoHttpResult<Response> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     if !service
         .load_settings(tenant.id)
         .await
@@ -213,11 +249,11 @@ pub async fn sitemap_index(
 }
 
 pub async fn sitemap_file(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     Path(name): Path<String>,
 ) -> SeoHttpResult<Response> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     let file = service
         .sitemap_file(tenant.id, name.as_str())
         .await
@@ -232,12 +268,12 @@ pub async fn sitemap_file(
 }
 
 pub async fn diagnostics_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoDiagnosticsQuery>,
 ) -> SeoHttpResult<Json<SeoDiagnosticsSummaryRecord>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
         &auth,
@@ -254,11 +290,11 @@ pub async fn diagnostics_json(
 }
 
 pub async fn sitemap_status_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
 ) -> SeoHttpResult<Json<SeoSitemapStatusRecord>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
         &auth,
@@ -274,12 +310,12 @@ pub async fn sitemap_status_json(
 }
 
 pub async fn sitemap_jobs_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoSitemapJobsQuery>,
 ) -> SeoHttpResult<Json<Vec<SeoSitemapJobRecord>>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
         &auth,
@@ -295,12 +331,12 @@ pub async fn sitemap_jobs_json(
 }
 
 pub async fn sitemap_job_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(job_id): Path<Uuid>,
 ) -> SeoHttpResult<Json<SeoSitemapJobRecord>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
         &auth,
@@ -317,12 +353,12 @@ pub async fn sitemap_job_json(
 }
 
 pub async fn bulk_jobs_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoBulkJobsQuery>,
 ) -> SeoHttpResult<Json<Vec<SeoBulkJobRecord>>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
@@ -339,12 +375,12 @@ pub async fn bulk_jobs_json(
 }
 
 pub async fn bulk_job_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(job_id): Path<Uuid>,
 ) -> SeoHttpResult<Json<SeoBulkJobRecord>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
@@ -358,12 +394,12 @@ pub async fn bulk_job_json(
 }
 
 pub async fn index_tracking_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoIndexTrackingQuery>,
 ) -> SeoHttpResult<Json<SeoIndexDeliveryStatusRecord>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
@@ -376,12 +412,12 @@ pub async fn index_tracking_json(
 }
 
 pub async fn index_repair_replay_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<SeoIndexRepairReplayInput>,
 ) -> SeoHttpResult<Json<SeoIndexRepairReplayResultRecord>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
@@ -400,14 +436,14 @@ pub async fn index_repair_replay_json(
 }
 
 pub async fn bulk_artifact_download(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path((job_id, artifact_id)): Path<(Uuid, Uuid)>,
 ) -> SeoHttpResult<HttpResponse<axum::body::Body>> {
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     let artifact = service
         .bulk_artifact(tenant.id, job_id, artifact_id)
         .await
@@ -430,24 +466,24 @@ pub async fn bulk_artifact_download(
 }
 
 pub async fn targets_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoTargetsQuery>,
 ) -> SeoHttpResult<Json<Vec<SeoTargetRegistryEntry>>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
     Ok(Json(service.target_registry_entries(query.capability)))
 }
 
 pub async fn cross_link_suggestions_json(
-    State(ctx): State<AppContext>,
+    State(runtime): State<SeoHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(query): Query<SeoCrossLinkSuggestionsQuery>,
 ) -> SeoHttpResult<Json<Vec<SeoCrossLinkSuggestionRecord>>> {
-    let service = seo_service_from_app_ctx(&ctx)?;
+    let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(
         &auth,
@@ -537,24 +573,6 @@ fn map_seo_http_error(error: SeoError) -> SeoHttpError {
             SeoHttpError::internal_error(error.to_string())
         }
     }
-}
-
-fn seo_service_from_app_ctx(ctx: &AppContext) -> SeoHttpResult<SeoService> {
-    let extensions = ctx
-        .shared_store
-        .get::<std::sync::Arc<ModuleRuntimeExtensions>>()
-        .ok_or_else(|| {
-            map_seo_http_error(SeoError::configuration(
-                "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
-            ))
-        })?;
-
-    SeoService::from_runtime_extensions(
-        ctx.db.clone(),
-        transactional_event_bus_from_context(ctx),
-        extensions.as_ref(),
-    )
-    .map_err(map_seo_http_error)
 }
 
 fn apply_diagnostics_filters(

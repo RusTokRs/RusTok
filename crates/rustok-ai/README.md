@@ -23,6 +23,8 @@ Current implementation includes:
   and the owner-owned `aiRecentRuns` query
 - owner-owned GraphQL query, mutation, subscription, and DTO surfaces under `graphql`, with
   host-specific role lookup supplied through `AiGraphqlRoleSlugProviderHandle`
+- host-neutral `AiHostRuntime` for GraphQL mutations, direct execution, and in-process MCP
+  execution; the capability crate does not consume Loco host context
 - bounded runtime observability via `AiManagementService::metrics_snapshot()` plus Prometheus
   module/span telemetry for router decisions and direct/MCP run outcomes
 - large operator/admin surfaces for both Leptos and Next.js hosts
@@ -92,6 +94,7 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
 - `ToolTrace`
 - `ApprovalRequest`, `ApprovalDecision`
 - `AiManagementService` (`server` feature)
+- `AiHostRuntime` (`server` feature)
 - `graphql::{AiQuery, AiMutation, AiSubscription}` (`graphql` feature)
 - `AiGraphqlRoleSlugProvider`, `AiGraphqlRoleSlugProviderHandle` (`graphql` feature)
 

@@ -8,6 +8,7 @@
 
 - Provide the shared media domain service and SeaORM entities for uploads and localized metadata with normalized locale/text translation inputs.
 - Own media GraphQL and REST transport adapters for module-facing APIs.
+- Keep REST upload/list/get/delete/translation handlers on narrow `MediaHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Integrate storage-backed file lifecycle with tenant-aware media records, including conservative cleanup probes and reports that never delete readable storage objects during orphan detection.
 - Expose `MediaImageDescriptor` as the typed cross-module image contract (`url/alt/size/mime` + derived helpers, delivery profile, public URL policy, and proxy path helper) for SEO and other read-side consumers.
@@ -32,6 +33,7 @@
 ## Entry points
 
 - `MediaService`
+- `MediaHttpRuntime`
 - `load_media_usage_snapshot`
 - `graphql::MediaQuery` (`mediaUsage`, media list/detail/translations)
 - `graphql::MediaMutation`

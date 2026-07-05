@@ -74,6 +74,10 @@
   empty state, and rail presentation state in the framework-agnostic storefront
   core so Leptos remains a host-context/render adapter over native + GraphQL
   transport parity.
+- Publish the owner `ProductCatalogReadPort` / `product.catalog_read.v1`
+  boundary for catalog-read consumers. The in-process `CatalogService`
+  implementation is `boundary_ready` on no-compile runtime fallback evidence;
+  `transport_verified` still requires live provider execution evidence.
 - Product module metadata for runtime registration.
 
 ## Interactions
@@ -89,11 +93,15 @@
 - Consumed by `apps/storefront` through manifest-driven module UI composition.
 - Consumed by `rustok-index` through the read-only effective-form resolver for
   highload product projections.
+- Consumed by commerce, pricing, and `rustok-ai-product` through the
+  `ProductCatalogReadPort` catalog-read contract instead of umbrella product
+  service re-exports.
 
 ## Entry points
 
 - `ProductModule`
 - `CatalogService`
+- `ProductCatalogReadPort`
 - `services::catalog_schema::resolve_effective_product_form`
 - `ProductCatalogSchemaService`
 - `admin::ProductAdmin`

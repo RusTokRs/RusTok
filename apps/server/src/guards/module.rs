@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use crate::context::TenantContextExt;
 use crate::modules::build_registry;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use loco_rs::app::AppContext;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub trait ModuleSlug {
     const SLUG: &'static str;
@@ -18,7 +18,7 @@ pub struct RequireModule<M: ModuleSlug>(PhantomData<M>);
 impl<S, M: ModuleSlug> FromRequestParts<S> for RequireModule<M>
 where
     S: Send + Sync,
-    AppContext: FromRef<S>,
+    ServerRuntimeContext: FromRef<S>,
 {
     type Rejection = (StatusCode, &'static str);
 
@@ -27,11 +27,11 @@ where
             .tenant_context()
             .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "Tenant context missing"))?
             .id;
-        let ctx = AppContext::from_ref(state);
+        let ctx = ServerRuntimeContext::from_ref(state);
 
         let registry = build_registry();
         let is_enabled =
-            EffectiveModulePolicyService::is_enabled(&ctx.db, &registry, tenant_id, M::SLUG)
+            EffectiveModulePolicyService::is_enabled(ctx.db(), &registry, tenant_id, M::SLUG)
                 .await
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 

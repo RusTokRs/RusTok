@@ -3,7 +3,6 @@ mod query;
 mod types;
 
 use async_graphql::{Context, FieldError, Result};
-use loco_rs::app::AppContext;
 use rustok_api::{graphql::GraphQLError, has_any_effective_permission, AuthContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
 
@@ -28,12 +27,12 @@ pub(crate) async fn require_admin(ctx: &Context<'_>) -> Result<AuthContext> {
 pub(crate) fn runtime_from_graphql_ctx(
     ctx: &Context<'_>,
 ) -> Result<crate::runtime::ScopedAlloyRuntime> {
-    let app_ctx = ctx
-        .data::<AppContext>()
+    let runtime = ctx
+        .data::<crate::runtime::SharedAlloyRuntime>()
         .map_err(|_| async_graphql::Error::new("Alloy runtime is unavailable"))?;
     let tenant = ctx
         .data::<TenantContext>()
         .map_err(|_| async_graphql::Error::new("Tenant context is unavailable"))?;
 
-    Ok(crate::runtime::scoped_runtime(app_ctx, tenant.id))
+    Ok(runtime.0.scoped(tenant.id))
 }

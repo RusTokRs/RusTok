@@ -9,9 +9,8 @@ use crate::direct::{
     DirectTaskHandler,
 };
 use crate::model::{AiContentModerationTaskInput, DirectExecutionTarget, ToolTrace};
-use crate::service::AiOperatorContext;
+use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
-use loco_rs::app::AppContext;
 use rustok_ai_content::{CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME};
 
 pub struct ContentModerationHandler;
@@ -24,7 +23,7 @@ impl DirectTaskHandler for ContentModerationHandler {
 
     async fn execute(
         &self,
-        _app_ctx: &AppContext,
+        _runtime: &AiHostRuntime,
         _operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {

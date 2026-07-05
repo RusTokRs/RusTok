@@ -2,7 +2,6 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use loco_rs::app::AppContext;
 use serde_json::json;
 
 use crate::direct::{
@@ -11,7 +10,7 @@ use crate::direct::{
 };
 use crate::model::{AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput};
 use crate::model::{DirectExecutionTarget, ToolTrace};
-use crate::service::AiOperatorContext;
+use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_ai_order::{
     ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME, ORDER_OPS_ASSISTANT_TASK_SLUG,
@@ -28,7 +27,7 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
     }
     async fn execute(
         &self,
-        _app_ctx: &AppContext,
+        _runtime: &AiHostRuntime,
         _operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {
@@ -82,7 +81,7 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
     }
     async fn execute(
         &self,
-        _app_ctx: &AppContext,
+        _runtime: &AiHostRuntime,
         _operator: &AiOperatorContext,
         request: DirectExecutionRequest,
     ) -> AiResult<DirectExecutionResult> {

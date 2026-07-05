@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const root = new URL('../../', import.meta.url);
+const root = process.env.PRODUCT_FBA_ROOT
+  ? pathToFileURL(`${resolve(process.env.PRODUCT_FBA_ROOT)}/`)
+  : new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const json = (path) => JSON.parse(read(path));
 const fail = (message) => {
@@ -49,6 +53,8 @@ const registry = json(registryPath);
 const smoke = json(smokePath);
 const contractSmoke = json('crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json');
 const ports = read('crates/rustok-product/src/ports.rs');
+const readme = read('crates/rustok-product/README.md');
+const docsReadme = read('crates/rustok-product/docs/README.md');
 const plan = read('crates/rustok-product/docs/implementation-plan.md');
 const central = read('docs/modules/registry.md');
 
@@ -84,6 +90,16 @@ for (const marker of [
   'PortErrorKind::NotFound',
 ]) {
   if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
+}
+
+for (const marker of [
+  '#[cfg(test)]',
+  'fn product_read_ports_require_deadline_policy()',
+  'fn product_port_tenant_scope_requires_uuid_context()',
+  'fn published_products_request_enforces_bounded_pagination()',
+  'fn commerce_errors_map_to_typed_product_port_errors()',
+]) {
+  if (!ports.includes(marker)) fail(`runtime test harness source missing ${marker}`);
 }
 
 const readBody = functionBody(ports, 'read_product_projection');
@@ -125,6 +141,24 @@ for (const consumer of registry.consumers) {
 
 if (!plan.includes('- FBA status: `boundary_ready`')) fail('local plan FBA status drift');
 if (!plan.includes(smokePath)) fail('local plan lacks runtime fallback smoke evidence');
+for (const marker of [
+  'ProductCatalogReadPort` / `product.catalog_read.v1`',
+  'boundary_ready` on no-compile runtime fallback evidence',
+  'transport_verified` still requires live provider execution evidence',
+]) {
+  if (!readme.includes(marker)) fail(`product README lacks FBA marker: ${marker}`);
+}
+for (const marker of [
+  '`ProductCatalogReadPort` / `product.catalog_read.v1`',
+  '`boundary_ready`',
+  '`transport_verified`',
+  'npm.cmd run verify:product:runtime-fallback-smoke',
+  'npm.cmd run test:verify:product:runtime-fallback-smoke',
+  'npm.cmd run verify:ecommerce:fba',
+  'npm.cmd run test:verify:ecommerce:fba',
+]) {
+  if (!docsReadme.includes(marker)) fail(`product docs README lacks FBA marker: ${marker}`);
+}
 if (!central.includes('| `product` | admin + storefront | `in_progress` | `boundary_ready`')) {
   fail('central readiness board product status drift');
 }

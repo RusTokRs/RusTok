@@ -2,11 +2,10 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
 use rustok_fulfillment::FulfillmentService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_product::{
     entities::{product, product_translation},
     CatalogService,
@@ -19,7 +18,7 @@ use super::{
     super::common::{PaginatedResponse, PaginationMeta},
     StoreContextQuery, StoreListProductsParams,
 };
-use crate::controllers::products::ProductListItem;
+use crate::controllers::{products::ProductListItem, CommerceHttpRuntime};
 use crate::{
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
     storefront_channel::{
@@ -44,12 +43,12 @@ use crate::{
     )
 )]
 pub async fn list_products(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     Query(params): Query<StoreListProductsParams>,
 ) -> Result<Json<PaginatedResponse<ProductListItem>>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
     let _requested_limit = params
         .pagination
@@ -75,7 +74,7 @@ pub async fn list_products(
     }
     if let Some(search) = &params.search {
         query = query.filter(crate::search::product_translation_title_search_condition(
-            ctx.db.get_database_backend(),
+            runtime.db().get_database_backend(),
             locale,
             search,
         ));
@@ -84,7 +83,7 @@ pub async fn list_products(
     let visible_products = query
         .order_by_desc(product::Column::PublishedAt)
         .order_by_desc(product::Column::CreatedAt)
-        .all(&ctx.db)
+        .all(runtime.db())
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?
         .into_iter()
@@ -111,7 +110,7 @@ pub async fn list_products(
     } else {
         product_translation::Entity::find()
             .filter(product_translation::Column::ProductId.is_in(product_ids))
-            .all(&ctx.db)
+            .all(runtime.db())
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?
     };
@@ -124,7 +123,7 @@ pub async fn list_products(
             .or_default()
             .push(translation);
     }
-    let catalog = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let product_tags = catalog
         .load_product_tag_map(
             tenant.id,
@@ -181,14 +180,14 @@ pub async fn list_products(
     )
 )]
 pub async fn show_product(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProductResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = CatalogService::new(runtime.db_clone(), runtime.event_bus());
     let public_channel_slug = public_channel_slug_from_request(&request_context);
     let mut product = service
         .get_product_with_locale_fallback(
@@ -211,7 +210,7 @@ pub async fn show_product(
     }
 
     apply_public_channel_inventory_to_product(
-        &ctx.db,
+        runtime.db(),
         tenant.id,
         &mut product,
         public_channel_slug.as_deref(),
@@ -232,13 +231,13 @@ pub async fn show_product(
     )
 )]
 pub async fn list_regions(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
 ) -> Result<Json<Vec<RegionResponse>>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let service = rustok_region::RegionService::new(ctx.db.clone());
+    let service = rustok_region::RegionService::new(runtime.db_clone());
     let regions = service
         .list_regions_for_tenant(
             PortContext::new(
@@ -274,36 +273,43 @@ pub async fn list_regions(
     )
 )]
 pub async fn list_shipping_options(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Query(query): Query<StoreContextQuery>,
 ) -> Result<Json<Vec<ShippingOptionResponse>>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     let (context, public_channel_slug, required_shipping_profiles) =
         if let Some(cart_id) = query.cart_id {
-            let cart_service = CartService::new(ctx.db.clone());
+            let cart_service = CartService::new(runtime.db_clone());
             let cart = cart_service
                 .get_cart(tenant.id, cart_id)
                 .await
                 .map_err(super::map_cart_error)?;
             super::ensure_store_cart_access(&cart, customer_id)?;
             let required_shipping_profiles =
-                load_cart_shipping_profile_slugs(&ctx.db, tenant.id, &cart)
+                load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                     .await
                     .map_err(|err| Error::BadRequest(err.to_string()))?;
             (
-                super::resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?,
+                super::resolve_context_from_cart_for_db(
+                    runtime.db(),
+                    tenant.id,
+                    &request_context,
+                    &cart,
+                )
+                .await?,
                 super::storefront_public_channel_slug_for_cart(&cart, &request_context),
                 required_shipping_profiles,
             )
         } else {
             (
-                super::resolve_context(
-                    &ctx,
+                super::resolve_context_for_db(
+                    runtime.db(),
                     tenant.id,
                     &request_context,
                     query.region_id,
@@ -317,7 +323,7 @@ pub async fn list_shipping_options(
             )
         };
 
-    let service = FulfillmentService::new(ctx.db.clone());
+    let service = FulfillmentService::new(runtime.db_clone());
     let mut options = service
         .list_shipping_options(
             tenant.id,

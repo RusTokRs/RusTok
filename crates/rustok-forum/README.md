@@ -22,6 +22,7 @@
 - Expose shared multilingual contract fields on forum read surfaces:
   `requested_locale`, `effective_locale`, and `available_locales`.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
+- Keep REST category/topic/reply/user/widget handlers on narrow `ForumHttpRuntime` state; the current Loco `AppContext` is isolated to the controller state adapter until the full Axum route cutover.
 - Publish the forum widget contract-freeze catalog/validation surfaces (`ForumWidgetContractService`, `/api/forum/widgets/catalog`, `/api/forum/widgets/validate`, `forumWidgetCatalog`).
 - Maintain page-builder consumer evidence for FW-2 fallback hardening and the live Wave 1 rollout packet, including static no-compile verification of fallback profiles, smoke outcomes, read-path no-5xx guarantees, numeric SLO thresholds, forum-owned observability traces, rollback decision, owner approvals, waiver-free evidence, monthly refresh/stale-rollout-block policy, non-empty required refresh sections, and machine-readable latest-refresh provenance.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.

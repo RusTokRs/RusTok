@@ -49,12 +49,12 @@ pub use runtime::AiRuntime;
 #[cfg(feature = "server")]
 pub use service::{
     AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
-    AiChatSessionSummary, AiManagementService, AiOperatorContext, AiProviderProfileRecord,
-    AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
-    CreateAiProviderProfileInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
-    ResumeAiApprovalInput, RunAiTaskJobInput, SendAiChatMessageInput, SharedAiModuleRegistry,
-    StartAiChatSessionInput, UpdateAiProviderProfileInput, UpdateAiTaskProfileInput,
-    UpdateAiToolProfileInput,
+    AiChatSessionSummary, AiHostRuntime, AiManagementService, AiOperatorContext,
+    AiProviderProfileRecord, AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord,
+    AiToolProfileRecord, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
+    CreateAiToolProfileInput, ResumeAiApprovalInput, RunAiTaskJobInput, SendAiChatMessageInput,
+    SharedAiModuleRegistry, StartAiChatSessionInput, UpdateAiProviderProfileInput,
+    UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
 };
 #[cfg(feature = "server")]
 pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};

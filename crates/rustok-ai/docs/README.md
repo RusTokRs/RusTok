@@ -45,6 +45,8 @@
 - owner-owned GraphQL query/mutation/subscription surface в `crates/rustok-ai/src/graphql` для providers,
   tool profiles, sessions, traces и approvals;
 - server-side orchestration service `AiManagementService`;
+- `AiHostRuntime` как host-neutral runtime contract: `apps/server` и Leptos SSR adapter собирают его на своей
+  границе, а `rustok-ai` не принимает Loco `AppContext` и не зависит от Loco crate;
 - `apps/server` хранит секреты, runtime settings и audit trail, а не UI.
 - Runtime observability теперь идёт в двух слоях:
   - persisted `decision_trace` и run/session metadata в control plane;

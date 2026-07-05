@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::{
     super::common::{ensure_permissions, PaginatedResponse},
+    super::CommerceHttpRuntime,
     ListFulfillmentsParams,
 };
 use crate::{
@@ -34,7 +35,7 @@ use crate::{
     )
 )]
 pub async fn list_fulfillments(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListFulfillmentsParams>,
@@ -46,7 +47,7 @@ pub async fn list_fulfillments(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (fulfillments, total) = FulfillmentService::new(ctx.db.clone())
+    let (fulfillments, total) = FulfillmentService::new(runtime.db_clone())
         .list_fulfillments(
             tenant.id,
             ListFulfillmentsInput {
@@ -79,7 +80,7 @@ pub async fn list_fulfillments(
     )
 )]
 pub async fn create_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<CreateFulfillmentInput>,
@@ -90,7 +91,7 @@ pub async fn create_fulfillment(
         "Permission denied: fulfillments:create required",
     )?;
 
-    let fulfillment = FulfillmentOrchestrationService::new(ctx.db.clone())
+    let fulfillment = FulfillmentOrchestrationService::new(runtime.db_clone())
         .create_manual_fulfillment(tenant.id, input)
         .await
         .map_err(super::map_fulfillment_orchestration_error)?;
@@ -111,7 +112,7 @@ pub async fn create_fulfillment(
     )
 )]
 pub async fn show_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -122,7 +123,7 @@ pub async fn show_fulfillment(
         "Permission denied: fulfillments:read required",
     )?;
 
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .get_fulfillment(tenant.id, id)
         .await
         .map_err(super::map_fulfillment_error)?;
@@ -144,7 +145,7 @@ pub async fn show_fulfillment(
     )
 )]
 pub async fn ship_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -156,7 +157,7 @@ pub async fn ship_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .ship_fulfillment(tenant.id, id, input)
         .await
         .map_err(super::map_fulfillment_error)?;
@@ -178,7 +179,7 @@ pub async fn ship_fulfillment(
     )
 )]
 pub async fn deliver_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -190,7 +191,7 @@ pub async fn deliver_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .deliver_fulfillment(tenant.id, id, input)
         .await
         .map_err(super::map_fulfillment_error)?;
@@ -212,7 +213,7 @@ pub async fn deliver_fulfillment(
     )
 )]
 pub async fn reopen_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -224,7 +225,7 @@ pub async fn reopen_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .reopen_fulfillment(tenant.id, id, input)
         .await
         .map_err(super::map_fulfillment_error)?;
@@ -246,7 +247,7 @@ pub async fn reopen_fulfillment(
     )
 )]
 pub async fn reship_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -258,7 +259,7 @@ pub async fn reship_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .reship_fulfillment(tenant.id, id, input)
         .await
         .map_err(super::map_fulfillment_error)?;
@@ -280,7 +281,7 @@ pub async fn reship_fulfillment(
     )
 )]
 pub async fn cancel_fulfillment(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -292,7 +293,7 @@ pub async fn cancel_fulfillment(
         "Permission denied: fulfillments:update required",
     )?;
 
-    let fulfillment = FulfillmentService::new(ctx.db.clone())
+    let fulfillment = FulfillmentService::new(runtime.db_clone())
         .cancel_fulfillment(tenant.id, id, input)
         .await
         .map_err(super::map_fulfillment_error)?;
