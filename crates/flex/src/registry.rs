@@ -228,6 +228,39 @@ pub fn field_definition_type_name(field_type: FieldType) -> String {
         .unwrap_or_default()
 }
 
+pub fn field_definition_label_json(label: &HashMap<String, String>) -> JsonValue {
+    serde_json::to_value(label).unwrap_or_default()
+}
+
+pub fn field_definition_description_json(description: &HashMap<String, String>) -> JsonValue {
+    serde_json::to_value(description).unwrap_or_default()
+}
+
+pub fn field_definition_validation_json(validation: &ValidationRule) -> JsonValue {
+    serde_json::to_value(validation).unwrap_or_default()
+}
+
+pub fn field_definition_cache_invalidation_target(event: &DomainEvent) -> Option<(Uuid, &str)> {
+    match event {
+        DomainEvent::FieldDefinitionCreated {
+            tenant_id,
+            entity_type,
+            ..
+        }
+        | DomainEvent::FieldDefinitionUpdated {
+            tenant_id,
+            entity_type,
+            ..
+        }
+        | DomainEvent::FieldDefinitionDeleted {
+            tenant_id,
+            entity_type,
+            ..
+        } => Some((*tenant_id, entity_type.as_str())),
+        _ => None,
+    }
+}
+
 pub fn field_definition_created_event(
     tenant_id: Uuid,
     actor_id: Option<Uuid>,

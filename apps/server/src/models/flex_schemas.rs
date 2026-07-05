@@ -13,3 +13,33 @@ impl Model {
         flex::build_standalone_custom_fields_schema(self.fields_config.clone())
     }
 }
+
+impl flex::StandaloneSchemaViewSource for Model {
+    fn schema_id(&self) -> uuid::Uuid {
+        self.id
+    }
+
+    fn slug(&self) -> &str {
+        &self.slug
+    }
+
+    fn fields_config_json(&self) -> serde_json::Value {
+        self.fields_config.clone()
+    }
+
+    fn settings_json(&self) -> serde_json::Value {
+        self.settings.clone()
+    }
+
+    fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    fn created_at_rfc3339(&self) -> String {
+        self.created_at.to_rfc3339()
+    }
+
+    fn updated_at_rfc3339(&self) -> String {
+        self.updated_at.to_rfc3339()
+    }
+}

@@ -3,14 +3,13 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use uuid::Uuid;
 
 use super::{
-    StoreAddCartLineItemInput, StoreCartContextPatch, StoreCartResponse, StoreCreateCartInput,
-    StoreUpdateCartInput, StoreUpdateCartLineItemInput,
+    super::CommerceHttpRuntime, StoreAddCartLineItemInput, StoreCartContextPatch,
+    StoreCartResponse, StoreCreateCartInput, StoreUpdateCartInput, StoreUpdateCartLineItemInput,
 };
 use crate::dto::CartResponse;
 use rustok_cart::CartService;
@@ -28,17 +27,18 @@ use rustok_pricing::PricingService;
     )
 )]
 pub async fn create_cart(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Json(input): Json<StoreCreateCartInput>,
 ) -> Result<(StatusCode, Json<StoreCartResponse>)> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let context = super::resolve_context(
-        &ctx,
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let context = super::resolve_context_for_db(
+        runtime.db(),
         tenant.id,
         &request_context,
         input.region_id,
@@ -58,7 +58,7 @@ pub async fn create_cart(
             )
         })?;
 
-    let service = CartService::new(ctx.db.clone());
+    let service = CartService::new(runtime.db_clone());
     let cart = service
         .create_cart_with_channel(
             tenant.id,
@@ -77,8 +77,8 @@ pub async fn create_cart(
         )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    let cart = super::enrich_storefront_cart(
-        &ctx,
+    let cart = super::enrich_storefront_cart_for_db(
+        runtime.db(),
         tenant.id,
         &request_context,
         tenant.default_locale.as_str(),
@@ -105,24 +105,25 @@ pub async fn create_cart(
     )
 )]
 pub async fn get_cart(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<CartResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(ctx.db.clone());
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let service = CartService::new(runtime.db_clone());
     let cart = service
         .get_cart(tenant.id, id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     Ok(Json(
-        super::enrich_storefront_cart(
-            &ctx,
+        super::enrich_storefront_cart_for_db(
+            runtime.db(),
             tenant.id,
             &request_context,
             tenant.default_locale.as_str(),
@@ -146,25 +147,27 @@ pub async fn get_cart(
     )
 )]
 pub async fn update_cart_context(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<StoreUpdateCartInput>,
 ) -> Result<Json<StoreCartResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let cart_service = CartService::new(ctx.db.clone());
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let cart_service = CartService::new(runtime.db_clone());
     let cart = cart_service
         .get_cart(tenant.id, id)
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
 
-    let updated = super::apply_cart_context_patch(
-        &ctx,
+    let updated = super::apply_cart_context_patch_for_db(
+        runtime.db(),
+        runtime.event_bus(),
         tenant.id,
         &request_context,
         tenant.default_locale.as_str(),
@@ -202,28 +205,29 @@ pub async fn update_cart_context(
     )
 )]
 pub async fn add_cart_line_item(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path(id): Path<Uuid>,
     Json(input): Json<StoreAddCartLineItemInput>,
 ) -> Result<Json<CartResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(ctx.db.clone());
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let service = CartService::new(runtime.db_clone());
     let existing = service
         .get_cart(tenant.id, id)
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
-    let event_bus = transactional_event_bus_from_context(&ctx);
-    let pricing_service = PricingService::new(ctx.db.clone(), event_bus.clone());
+    let event_bus = runtime.event_bus();
+    let pricing_service = PricingService::new(runtime.db_clone(), event_bus.clone());
     let pricing_context =
         super::build_store_pricing_context(&existing, &request_context, input.quantity);
     let resolved_input = super::resolve_store_line_item_input(
-        &ctx.db,
+        runtime.db(),
         tenant.id,
         &pricing_service,
         &pricing_context,
@@ -247,8 +251,8 @@ pub async fn add_cart_line_item(
         .await
         .map_err(super::map_cart_error)?;
     Ok(Json(
-        super::enrich_storefront_cart(
-            &ctx,
+        super::enrich_storefront_cart_for_db(
+            runtime.db(),
             tenant.id,
             &request_context,
             tenant.default_locale.as_str(),
@@ -275,27 +279,28 @@ pub async fn add_cart_line_item(
     )
 )]
 pub async fn update_cart_line_item(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<StoreUpdateCartLineItemInput>,
 ) -> Result<Json<CartResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(ctx.db.clone());
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let service = CartService::new(runtime.db_clone());
     let existing = service
         .get_cart(tenant.id, id)
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&existing, customer_id)?;
-    let event_bus = transactional_event_bus_from_context(&ctx);
+    let event_bus = runtime.event_bus();
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id) {
         if let Some(variant_id) = existing_line_item.variant_id {
             super::validate_store_line_item_quantity(
-                &ctx.db,
+                runtime.db(),
                 tenant.id,
                 variant_id,
                 input.quantity,
@@ -312,7 +317,7 @@ pub async fn update_cart_line_item(
         .find(|item| item.id == line_id)
         .and_then(|item| item.variant_id)
     {
-        let pricing_service = PricingService::new(ctx.db.clone(), event_bus);
+        let pricing_service = PricingService::new(runtime.db_clone(), event_bus);
         let pricing_context =
             super::build_store_pricing_context(&existing, &request_context, input.quantity);
         let resolved_price = pricing_service
@@ -346,8 +351,8 @@ pub async fn update_cart_line_item(
             .map_err(super::map_cart_error)?
     };
     Ok(Json(
-        super::enrich_storefront_cart(
-            &ctx,
+        super::enrich_storefront_cart_for_db(
+            runtime.db(),
             tenant.id,
             &request_context,
             tenant.default_locale.as_str(),
@@ -373,16 +378,17 @@ pub async fn update_cart_line_item(
     )
 )]
 pub async fn remove_cart_line_item(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path((id, line_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<CartResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let service = CartService::new(ctx.db.clone());
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let service = CartService::new(runtime.db_clone());
     let existing = service
         .get_cart(tenant.id, id)
         .await
@@ -394,8 +400,8 @@ pub async fn remove_cart_line_item(
         .await
         .map_err(super::map_cart_error)?;
     Ok(Json(
-        super::enrich_storefront_cart(
-            &ctx,
+        super::enrich_storefront_cart_for_db(
+            runtime.db(),
             tenant.id,
             &request_context,
             tenant.default_locale.as_str(),

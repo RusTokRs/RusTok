@@ -3,16 +3,18 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_order::OrderService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
 use super::{
-    super::common::{ensure_permissions, PaginatedResponse},
+    super::{
+        common::{ensure_permissions, PaginatedResponse},
+        CommerceHttpRuntime,
+    },
     AdminCompleteOrderReturnInput, ListOrderReturnsParams,
 };
 use crate::{
@@ -37,7 +39,7 @@ use crate::{
     )
 )]
 pub async fn create_order_return(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -49,7 +51,7 @@ pub async fn create_order_return(
         "Permission denied: orders:update required",
     )?;
 
-    let created = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
         .await
         .map_err(super::map_order_error)?;
@@ -71,7 +73,7 @@ pub async fn create_order_return(
     )
 )]
 pub async fn create_order_return_decision(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -94,10 +96,7 @@ pub async fn create_order_return_decision(
         )?;
     }
 
-    let service = PostOrderOrchestrationService::new(
-        ctx.db.clone(),
-        transactional_event_bus_from_context(&ctx),
-    );
+    let service = PostOrderOrchestrationService::new(runtime.db_clone(), runtime.event_bus());
     let decision = service
         .create_return_decision(tenant.id, auth.user_id, id, input)
         .await
@@ -118,7 +117,7 @@ pub async fn create_order_return_decision(
     )
 )]
 pub async fn list_order_returns(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Query(params): Query<ListOrderReturnsParams>,
@@ -130,19 +129,18 @@ pub async fn list_order_returns(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let (items, total) =
-        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-            .list_returns(
-                tenant.id,
-                ListOrderReturnsInput {
-                    page: pagination.page,
-                    per_page: pagination.limit(),
-                    order_id: params.order_id,
-                    status: params.status,
-                },
-            )
-            .await
-            .map_err(super::map_order_error)?;
+    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
+        .list_returns(
+            tenant.id,
+            ListOrderReturnsInput {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                order_id: params.order_id,
+                status: params.status,
+            },
+        )
+        .await
+        .map_err(super::map_order_error)?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -163,7 +161,7 @@ pub async fn list_order_returns(
     )
 )]
 pub async fn show_order_return(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -174,7 +172,7 @@ pub async fn show_order_return(
         "Permission denied: orders:read required",
     )?;
 
-    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_return(tenant.id, id)
         .await
         .map_err(super::map_order_error)?;
@@ -221,7 +219,7 @@ fn attach_return_order_change_context(
     )
 )]
 pub async fn complete_order_return(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -241,8 +239,9 @@ pub async fn complete_order_return(
         )?;
     }
 
-    let event_bus = transactional_event_bus_from_context(&ctx);
-    let order_service = OrderService::new(ctx.db.clone(), event_bus);
+    let db = runtime.db_clone();
+    let event_bus = runtime.event_bus();
+    let order_service = OrderService::new(db.clone(), event_bus);
     let mut complete_input = rustok_order::dto::CompleteOrderReturnInput {
         resolution_type: input.resolution_type,
         refund_id: input.refund_id,
@@ -276,7 +275,7 @@ pub async fn complete_order_return(
             .get_return(tenant.id, id)
             .await
             .map_err(super::map_order_error)?;
-        let payment_service = PaymentService::new(ctx.db.clone());
+        let payment_service = PaymentService::new(db.clone());
         let collection_id = super::resolve_return_refund_collection_id(
             &payment_service,
             tenant.id,
@@ -438,7 +437,7 @@ pub async fn complete_order_return(
     )
 )]
 pub async fn cancel_order_return(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
@@ -450,7 +449,7 @@ pub async fn cancel_order_return(
         "Permission denied: orders:update required",
     )?;
 
-    let item = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let item = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .cancel_return(tenant.id, id, input)
         .await
         .map_err(super::map_order_error)?;

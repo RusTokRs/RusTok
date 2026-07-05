@@ -52,6 +52,9 @@ const smokePath = 'crates/rustok-product/contracts/evidence/product-runtime-fall
 const registry = json(registryPath);
 const smoke = json(smokePath);
 const contractSmoke = json('crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json');
+const packageJson = json('package.json');
+const workspaceModules = read('modules.toml');
+const moduleManifest = read('crates/rustok-product/rustok-module.toml');
 const ports = read('crates/rustok-product/src/ports.rs');
 const readme = read('crates/rustok-product/README.md');
 const docsReadme = read('crates/rustok-product/docs/README.md');
@@ -70,6 +73,41 @@ if (!sameSet(smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) f
 if (!sameSet(smoke.profiles, contractSmoke.fallback_profiles)) fail('runtime fallback profiles must mirror contract smoke');
 if (registry.contract_tests.fallback_smoke.status !== 'planned_runtime_pending') {
   fail('fallback smoke must remain planned_runtime_pending until live execution evidence lands');
+}
+if (
+  !workspaceModules.includes(
+    'product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }',
+  )
+) {
+  fail('modules.toml product module metadata drift');
+}
+for (const marker of [
+  'slug = "product"',
+  'ui_classification = "dual_surface"',
+  '[fba.provider]',
+  'registry = "contracts/product-fba-registry.json"',
+  'contract_version = "product.catalog_read.v1"',
+  'context = "rustok_api::ports::PortContext"',
+  'error = "rustok_api::ports::PortError"',
+]) {
+  if (!moduleManifest.includes(marker)) fail(`product module manifest FBA marker drift: ${marker}`);
+}
+
+const scripts = packageJson.scripts ?? {};
+if (scripts['verify:product:runtime-fallback-smoke'] !== 'node scripts/verify/verify-product-runtime-fallback-smoke.mjs') {
+  fail('package.json product runtime fallback verify script drift');
+}
+if (
+  scripts['test:verify:product:runtime-fallback-smoke'] !==
+  'node scripts/verify/verify-product-runtime-fallback-smoke.test.mjs'
+) {
+  fail('package.json product runtime fallback fixture test script drift');
+}
+if (!scripts['verify:ecommerce:fba']?.includes('npm run verify:product:runtime-fallback-smoke')) {
+  fail('package.json ecommerce FBA verify aggregate lacks product runtime fallback smoke');
+}
+if (!scripts['test:verify:ecommerce:fba']?.includes('npm run test:verify:product:runtime-fallback-smoke')) {
+  fail('package.json ecommerce FBA fixture aggregate lacks product runtime fallback smoke test');
 }
 
 for (const profile of registry.contract_tests.fallback_smoke.profiles) {
@@ -163,5 +201,11 @@ if (!central.includes('| `product` | admin + storefront | `in_progress` | `bound
   fail('central readiness board product status drift');
 }
 if (!central.includes(smokePath)) fail('central readiness board lacks runtime fallback smoke evidence');
+if (central.includes('все шесть FBA status остаются `in_progress` до live provider execution')) {
+  fail('central commerce-domain FBA batch summary still claims product is in_progress');
+}
+if (!central.includes('`product` теперь `boundary_ready` на no-compile runtime fallback evidence')) {
+  fail('central commerce-domain FBA batch summary lacks product boundary_ready status');
+}
 
 console.log('[verify-product-runtime-fallback-smoke] Product no-compile runtime fallback smoke is executable and source-locked');

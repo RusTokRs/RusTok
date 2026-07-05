@@ -94,18 +94,18 @@ impl TopicFieldService {
             tenant_id: Set(tenant_id),
             field_key: Set(input.field_key.clone()),
             field_type: Set(field_type_str.clone()),
-            label: Set(serde_json::to_value(&input.label).unwrap_or_default()),
+            label: Set(flex::field_definition_label_json(&input.label)),
             description: Set(input
                 .description
                 .as_ref()
-                .map(|d| serde_json::to_value(d).unwrap_or_default())),
+                .map(flex::field_definition_description_json)),
             is_localized: Set(input.is_localized),
             is_required: Set(input.is_required),
             default_value: Set(input.default_value.clone()),
             validation: Set(input
                 .validation
                 .as_ref()
-                .map(|v| serde_json::to_value(v).unwrap_or_default())),
+                .map(flex::field_definition_validation_json)),
             position: Set(next_position),
             is_active: Set(true),
             created_at: sea_orm::ActiveValue::NotSet,
@@ -147,10 +147,10 @@ impl TopicFieldService {
         let mut model: ActiveModel = row.into();
 
         if let Some(label) = input.label {
-            model.label = Set(serde_json::to_value(label).unwrap_or_default());
+            model.label = Set(flex::field_definition_label_json(&label));
         }
         if let Some(desc) = input.description {
-            model.description = Set(Some(serde_json::to_value(desc).unwrap_or_default()));
+            model.description = Set(Some(flex::field_definition_description_json(&desc)));
         }
         if let Some(is_localized) = input.is_localized {
             model.is_localized = Set(is_localized);
@@ -162,7 +162,7 @@ impl TopicFieldService {
             model.default_value = Set(Some(dv));
         }
         if let Some(val) = input.validation {
-            model.validation = Set(Some(serde_json::to_value(val).unwrap_or_default()));
+            model.validation = Set(Some(flex::field_definition_validation_json(&val)));
         }
         if let Some(pos) = input.position {
             model.position = Set(pos);

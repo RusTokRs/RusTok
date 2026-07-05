@@ -219,6 +219,15 @@ requireContains('crates/rustok-commerce/src/controllers/admin/products.rs', 'Sta
 requireNotContains('crates/rustok-commerce/src/controllers/store/products.rs', 'AppContext', 'commerce storefront product/catalog HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-commerce/src/controllers/store/products.rs', 'rustok_outbox::loco', 'commerce storefront product/catalog HTTP handlers do not consume outbox Loco adapter');
 requireContains('crates/rustok-commerce/src/controllers/store/products.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce storefront product/catalog HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/store/orders.rs', 'AppContext', 'commerce storefront order HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/store/orders.rs', 'rustok_outbox::loco', 'commerce storefront order HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/store/orders.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce storefront order HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/store/carts.rs', 'AppContext', 'commerce storefront cart HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/store/carts.rs', 'rustok_outbox::loco', 'commerce storefront cart HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/store/carts.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce storefront cart HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/store/checkout.rs', 'AppContext', 'commerce storefront checkout HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/store/checkout.rs', 'rustok_outbox::loco', 'commerce storefront checkout HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/store/checkout.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce storefront checkout HTTP handlers consume narrow runtime state');
 requireNotContains('crates/rustok-commerce/src/controllers/admin/fulfillments.rs', 'AppContext', 'commerce admin fulfillment HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-commerce/src/controllers/admin/fulfillments.rs', 'rustok_outbox::loco', 'commerce admin fulfillment HTTP handlers do not consume outbox Loco adapter');
 requireContains('crates/rustok-commerce/src/controllers/admin/fulfillments.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin fulfillment HTTP handlers consume narrow runtime state');
@@ -234,6 +243,9 @@ requireContains('crates/rustok-commerce/src/controllers/admin/orders.rs', 'State
 requireNotContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'AppContext', 'commerce admin order-change HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'rustok_outbox::loco', 'commerce admin order-change HTTP handlers do not consume outbox Loco adapter');
 requireContains('crates/rustok-commerce/src/controllers/admin/changes.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin order-change HTTP handlers consume narrow runtime state');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/returns.rs', 'AppContext', 'commerce admin return HTTP handlers do not consume Loco AppContext');
+requireNotContains('crates/rustok-commerce/src/controllers/admin/returns.rs', 'rustok_outbox::loco', 'commerce admin return HTTP handlers do not consume outbox Loco adapter');
+requireContains('crates/rustok-commerce/src/controllers/admin/returns.rs', 'State(runtime): State<CommerceHttpRuntime>', 'commerce admin return HTTP handlers consume narrow runtime state');
 requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'AppContext', 'blog post HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-blog/src/controllers/comments.rs', 'AppContext', 'blog comment HTTP handlers do not consume Loco AppContext');
 requireNotContains('crates/rustok-blog/src/controllers/posts.rs', 'rustok_outbox::loco', 'blog post HTTP handlers do not consume outbox Loco adapter');

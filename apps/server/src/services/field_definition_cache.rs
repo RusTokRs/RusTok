@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use moka::future::Cache;
-use rustok_core::{DomainEvent, EventBus, EventConsumerRuntime};
+use rustok_core::{EventBus, EventConsumerRuntime};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -81,26 +81,13 @@ pub fn field_definition_cache_from_context(
         consumer_runtime.restarted("startup");
         loop {
             match receiver.recv().await {
-                Ok(envelope) => match envelope.event {
-                    DomainEvent::FieldDefinitionCreated {
-                        tenant_id,
-                        ref entity_type,
-                        ..
-                    }
-                    | DomainEvent::FieldDefinitionUpdated {
-                        tenant_id,
-                        ref entity_type,
-                        ..
-                    }
-                    | DomainEvent::FieldDefinitionDeleted {
-                        tenant_id,
-                        ref entity_type,
-                        ..
-                    } => {
+                Ok(envelope) => {
+                    if let Some((tenant_id, entity_type)) =
+                        flex::field_definition_cache_invalidation_target(&envelope.event)
+                    {
                         cache_for_task.invalidate(tenant_id, entity_type).await;
                     }
-                    _ => {}
-                },
+                }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     consumer_runtime.lagged(skipped);
                 }

@@ -28,15 +28,48 @@ expectContains(
   "flex attached cleanup migration to be wired into the server migrator",
 );
 expectContains(
-  "apps/server/src/services/flex_standalone_service.rs",
+  "crates/flex/src/standalone.rs",
   "let resolved_localized = localized_data.and_then(|value| value.as_object().cloned());",
-  "standalone entry view to resolve only parallel localized rows",
+  "standalone entry view to resolve only parallel localized rows in owner crate",
 );
 expectNotContains(
-  "apps/server/src/services/flex_standalone_service.rs",
+  "crates/flex/src/standalone.rs",
   "or_else(|| {\n                if legacy_localized.is_empty() {",
-  "legacy inline localized fallback branch in standalone service",
+  "legacy inline localized fallback branch in standalone owner runtime",
 );
+for (const snippet of [
+  "prepare_attached_values_create(schema, payload, locale)",
+  "prepare_attached_values_update(",
+  "resolve_attached_payload(",
+  "persist_localized_values(db, tenant_id, entity_type, entity_id, locale, values).await",
+  "delete_attached_localized_values(db, tenant_id, entity_type, entity_id).await",
+]) {
+  expectContains(
+    "apps/server/src/services/flex_attached_values.rs",
+    snippet,
+    "server attached Flex adapter delegates to owner crate",
+  );
+}
+for (const snippet of [
+  "fn prepare_write(",
+  "fn split_definitions(",
+  "fn split_existing_metadata(",
+  "fn split_patch(",
+  "fn merge_patch(",
+  "fn validate_schema(",
+  "struct PreparedAttachedValuesWrite",
+]) {
+  expectContains(
+    "crates/flex/src/attached.rs",
+    snippet,
+    "owner-owned attached Flex payload helper",
+  );
+  expectNotContains(
+    "apps/server/src/services/flex_attached_values.rs",
+    snippet,
+    "server-owned attached Flex payload helper",
+  );
+}
 expectContains(
   "crates/flex/src/attached.rs",
   "or_else(|| localized_by_locale.values().next().cloned())",

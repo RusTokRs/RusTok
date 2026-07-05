@@ -50,6 +50,32 @@ pub struct FlexEntryView {
     pub updated_at: String,
 }
 
+pub trait StandaloneSchemaViewSource {
+    fn schema_id(&self) -> Uuid;
+    fn slug(&self) -> &str;
+    fn fields_config_json(&self) -> JsonValue;
+    fn settings_json(&self) -> JsonValue;
+    fn is_active(&self) -> bool;
+    fn created_at_rfc3339(&self) -> String;
+    fn updated_at_rfc3339(&self) -> String;
+}
+
+pub trait StandaloneSchemaTranslationSource {
+    fn name(&self) -> &str;
+    fn description(&self) -> Option<&str>;
+}
+
+pub trait StandaloneEntryViewSource {
+    fn entry_id(&self) -> Uuid;
+    fn schema_id(&self) -> Uuid;
+    fn entity_type(&self) -> Option<&str>;
+    fn entity_id(&self) -> Option<Uuid>;
+    fn data_json(&self) -> &JsonValue;
+    fn status(&self) -> &str;
+    fn created_at_rfc3339(&self) -> String;
+    fn updated_at_rfc3339(&self) -> String;
+}
+
 /// Transport-agnostic command for creating a standalone schema.
 #[derive(Debug, Clone)]
 pub struct CreateFlexSchemaCommand {
@@ -272,6 +298,48 @@ pub fn standalone_localized_field_keys(schema: &CustomFieldsSchema) -> HashSet<S
         .filter(|definition| definition.is_localized)
         .map(|definition| definition.field_key.clone())
         .collect()
+}
+
+pub fn standalone_schema_view_from_source(
+    source: &impl StandaloneSchemaViewSource,
+    translation: Option<&impl StandaloneSchemaTranslationSource>,
+) -> FlexSchemaView {
+    let fields_config =
+        parse_standalone_fields_config(source.fields_config_json()).unwrap_or_default();
+
+    FlexSchemaView {
+        id: source.schema_id(),
+        slug: source.slug().to_string(),
+        name: translation
+            .map(|row| row.name().to_string())
+            .unwrap_or_else(|| source.slug().to_string()),
+        description: translation.and_then(|row| row.description().map(str::to_string)),
+        fields_config,
+        settings: source.settings_json(),
+        is_active: source.is_active(),
+        created_at: source.created_at_rfc3339(),
+        updated_at: source.updated_at_rfc3339(),
+    }
+}
+
+pub fn standalone_entry_view_from_source(
+    source: &impl StandaloneEntryViewSource,
+    localized_data: Option<&JsonValue>,
+    localized_keys: &HashSet<String>,
+) -> FlexEntryView {
+    let shared_data =
+        effective_standalone_entry_data(source.data_json(), localized_data, localized_keys);
+
+    FlexEntryView {
+        id: source.entry_id(),
+        schema_id: source.schema_id(),
+        entity_type: source.entity_type().map(str::to_string),
+        entity_id: source.entity_id(),
+        data: JsonValue::Object(shared_data),
+        status: source.status().to_string(),
+        created_at: source.created_at_rfc3339(),
+        updated_at: source.updated_at_rfc3339(),
+    }
 }
 
 /// Orchestrates schema listing through standalone service.

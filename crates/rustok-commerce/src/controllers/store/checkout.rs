@@ -3,14 +3,16 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::CartService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
-use super::{StoreCartContextPatch, StoreCompleteCartInput, StoreCreatePaymentCollectionInput};
+use super::{
+    super::CommerceHttpRuntime, StoreCartContextPatch, StoreCompleteCartInput,
+    StoreCreatePaymentCollectionInput,
+};
 use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollectionResponse};
 
 /// Create payment collection from storefront cart
@@ -27,24 +29,26 @@ use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse, PaymentCollect
     )
 )]
 pub async fn create_payment_collection(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> Result<(StatusCode, Json<PaymentCollectionResponse>)> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
-    let cart_service = CartService::new(ctx.db.clone());
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let cart_service = CartService::new(runtime.db_clone());
     let cart = cart_service
         .get_cart(tenant.id, input.cart_id)
         .await
         .map_err(super::map_cart_error)?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     super::ensure_cart_allows_payment_collection(&cart)?;
-    let cart = super::reprice_storefront_cart_line_items(
-        &ctx,
+    let cart = super::reprice_storefront_cart_line_items_for_db(
+        runtime.db(),
+        runtime.event_bus(),
         tenant.id,
         &request_context,
         &cart_service,
@@ -52,9 +56,10 @@ pub async fn create_payment_collection(
     )
     .await?;
     let context =
-        super::resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?;
+        super::resolve_context_from_cart_for_db(runtime.db(), tenant.id, &request_context, &cart)
+            .await?;
 
-    let service = PaymentService::new(ctx.db.clone());
+    let service = PaymentService::new(runtime.db_clone());
     if let Some(existing) = service
         .find_reusable_collection_by_cart(tenant.id, cart.id)
         .await
@@ -97,21 +102,22 @@ pub async fn create_payment_collection(
     )
 )]
 pub async fn complete_cart_checkout(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
     request_context: RequestContext,
     Path(cart_id): Path<Uuid>,
     Json(input): Json<StoreCompleteCartInput>,
 ) -> Result<Json<CompleteCheckoutResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let cart_service = CartService::new(ctx.db.clone());
+    let cart_service = CartService::new(runtime.db_clone());
     let mut cart = cart_service
         .get_cart(tenant.id, cart_id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    let customer_id = super::current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
+    let customer_id =
+        super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     let actor_id = super::checkout_actor_id(auth.0.as_ref());
 
@@ -121,8 +127,9 @@ pub async fn complete_cart_checkout(
         || input.country_code.is_some()
         || input.locale.is_some()
     {
-        cart = super::apply_cart_context_patch(
-            &ctx,
+        cart = super::apply_cart_context_patch_for_db(
+            runtime.db(),
+            runtime.event_bus(),
             tenant.id,
             &request_context,
             tenant.default_locale.as_str(),
@@ -144,8 +151,9 @@ pub async fn complete_cart_checkout(
         .await?
         .cart;
     }
-    let _ = super::reprice_storefront_cart_line_items(
-        &ctx,
+    let _ = super::reprice_storefront_cart_line_items_for_db(
+        runtime.db(),
+        runtime.event_bus(),
         tenant.id,
         &request_context,
         &cart_service,
@@ -153,13 +161,13 @@ pub async fn complete_cart_checkout(
     )
     .await?;
 
-    let event_bus = transactional_event_bus_from_context(&ctx);
+    let event_bus = runtime.event_bus();
     let service = crate::CheckoutService::new(
-        ctx.db.clone(),
+        runtime.db_clone(),
         event_bus.clone(),
-        std::sync::Arc::new(rustok_region::RegionService::new(ctx.db.clone())),
+        std::sync::Arc::new(rustok_region::RegionService::new(runtime.db_clone())),
         std::sync::Arc::new(rustok_inventory::InventoryService::new(
-            ctx.db.clone(),
+            runtime.db_clone(),
             event_bus,
         )),
     );

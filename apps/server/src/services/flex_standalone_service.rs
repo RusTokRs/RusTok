@@ -39,48 +39,6 @@ impl FlexStandaloneSeaOrmService {
         Self { db }
     }
 
-    fn schema_to_view(
-        model: flex_schemas::Model,
-        translation: Option<&flex_schema_translations::Model>,
-    ) -> flex::FlexSchemaView {
-        let slug_fallback = model.slug.clone();
-        let fields_config = model.parse_field_definitions().unwrap_or_default();
-
-        flex::FlexSchemaView {
-            id: model.id,
-            slug: model.slug,
-            name: translation
-                .map(|row| row.name.clone())
-                .unwrap_or(slug_fallback),
-            description: translation.and_then(|row| row.description.clone()),
-            fields_config,
-            settings: model.settings,
-            is_active: model.is_active,
-            created_at: model.created_at.to_rfc3339(),
-            updated_at: model.updated_at.to_rfc3339(),
-        }
-    }
-
-    fn entry_to_view(
-        model: flex_entries::Model,
-        localized_data: Option<&JsonValue>,
-        localized_keys: &HashSet<String>,
-    ) -> flex::FlexEntryView {
-        let shared_data =
-            flex::effective_standalone_entry_data(&model.data, localized_data, localized_keys);
-
-        flex::FlexEntryView {
-            id: model.id,
-            schema_id: model.schema_id,
-            entity_type: model.entity_type,
-            entity_id: model.entity_id,
-            data: JsonValue::Object(shared_data),
-            status: model.status,
-            created_at: model.created_at.to_rfc3339(),
-            updated_at: model.updated_at.to_rfc3339(),
-        }
-    }
-
     async fn get_schema_or_not_found(
         &self,
         tenant_id: Uuid,
@@ -342,7 +300,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 let translation = translations
                     .get(&row.id)
                     .and_then(|items| Self::select_schema_translation(items, &preferred_locale));
-                Self::schema_to_view(row, translation)
+                flex::standalone_schema_view_from_source(&row, translation)
             })
             .collect())
     }
@@ -370,7 +328,10 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .get(&row.id)
             .and_then(|items| Self::select_schema_translation(items, &preferred_locale));
 
-        Ok(Some(Self::schema_to_view(row, translation)))
+        Ok(Some(flex::standalone_schema_view_from_source(
+            &row,
+            translation,
+        )))
     }
 
     async fn create_schema(
@@ -409,7 +370,10 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             )
             .await?;
 
-        Ok(Self::schema_to_view(row, Some(&translation)))
+        Ok(flex::standalone_schema_view_from_source(
+            &row,
+            Some(&translation),
+        ))
     }
 
     async fn update_schema(
@@ -460,7 +424,10 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .and_then(|items| Self::select_schema_translation(&items, &locale).cloned())
         };
 
-        Ok(Self::schema_to_view(updated, translation.as_ref()))
+        Ok(flex::standalone_schema_view_from_source(
+            &updated,
+            translation.as_ref(),
+        ))
     }
 
     async fn delete_schema(
@@ -514,7 +481,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                     .get(&row.id)
                     .and_then(|items| Self::select_entry_localization(items, &preferred_locale))
                     .map(|item| &item.data);
-                Self::entry_to_view(row, localized_data, &localized_keys)
+                flex::standalone_entry_view_from_source(&row, localized_data, &localized_keys)
             })
             .collect())
     }
@@ -551,8 +518,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .and_then(|items| Self::select_entry_localization(items, &preferred_locale))
             .map(|item| &item.data);
 
-        Ok(Some(Self::entry_to_view(
-            row,
+        Ok(Some(flex::standalone_entry_view_from_source(
+            &row,
             localized_data,
             &localized_keys,
         )))
@@ -592,8 +559,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .upsert_entry_localization(row.id, tenant_id, &locale, prepared.localized_data)
             .await?;
 
-        Ok(Self::entry_to_view(
-            row,
+        Ok(flex::standalone_entry_view_from_source(
+            &row,
             localized_data.as_ref(),
             &prepared.localized_keys,
         ))
@@ -668,8 +635,8 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .map(|item| item.data.clone());
         }
 
-        Ok(Self::entry_to_view(
-            updated,
+        Ok(flex::standalone_entry_view_from_source(
+            &updated,
             resolved_localized_data.as_ref(),
             &localized_keys,
         ))
@@ -781,8 +748,8 @@ mod tests {
             updated_at: now,
         };
         let localized_keys = HashSet::from([String::from("title")]);
-        let view = FlexStandaloneSeaOrmService::entry_to_view(
-            row,
+        let view = flex::standalone_entry_view_from_source(
+            &row,
             Some(&json!({"title": "Привет"})),
             &localized_keys,
         );
@@ -805,7 +772,7 @@ mod tests {
             updated_at: now,
         };
         let localized_keys = HashSet::from([String::from("title")]);
-        let view = FlexStandaloneSeaOrmService::entry_to_view(row, None, &localized_keys);
+        let view = flex::standalone_entry_view_from_source(&row, None, &localized_keys);
 
         assert_eq!(view.data, json!({"slug": "landing"}));
     }

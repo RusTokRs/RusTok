@@ -29,6 +29,17 @@ function expectMatch(relativePath, pattern, description) {
   }
 }
 
+function expectNotExists(relativePath, description) {
+  if (fs.existsSync(path.join(workspaceRoot, relativePath))) {
+    failures.push(`${relativePath}: found ${description}`);
+  }
+}
+
+expectNotExists(
+  "apps/server/docs/flex-phase45-migration-guide.md",
+  "server-local Flex migration guide",
+);
+
 expectContains(
   "crates/flex/src/standalone.rs",
   "const MAX_STANDALONE_FIELDS_PER_SCHEMA: usize = 50;",
@@ -134,6 +145,19 @@ expectContains(
   "pub fn standalone_localized_field_keys",
   "owner-owned standalone localized field-key resolver",
 );
+for (const snippet of [
+  "pub trait StandaloneSchemaViewSource",
+  "pub trait StandaloneSchemaTranslationSource",
+  "pub trait StandaloneEntryViewSource",
+  "pub fn standalone_schema_view_from_source",
+  "pub fn standalone_entry_view_from_source",
+]) {
+  expectContains(
+    "crates/flex/src/standalone.rs",
+    snippet,
+    "owner-owned standalone row-to-view mapping helper",
+  );
+}
 expectContains(
   "apps/server/src/models/flex_schemas.rs",
   "flex::parse_standalone_fields_config(self.fields_config.clone())",
@@ -143,6 +167,21 @@ expectContains(
   "apps/server/src/models/flex_schemas.rs",
   "flex::build_standalone_custom_fields_schema(self.fields_config.clone())",
   "server Flex schema model delegates CustomFieldsSchema build to owner helper",
+);
+expectContains(
+  "apps/server/src/models/flex_schemas.rs",
+  "impl flex::StandaloneSchemaViewSource for Model",
+  "server Flex schema model exposes owner-owned view source contract",
+);
+expectContains(
+  "apps/server/src/models/flex_entries.rs",
+  "impl flex::StandaloneEntryViewSource for Model",
+  "server Flex entry model exposes owner-owned view source contract",
+);
+expectContains(
+  "apps/server/src/models/flex_schema_translations.rs",
+  "impl flex::StandaloneSchemaTranslationSource for Model",
+  "server Flex schema translation model exposes owner-owned view source contract",
 );
 expectNotContains(
   "apps/server/src/models/flex_schemas.rs",
@@ -171,8 +210,13 @@ expectContains(
 );
 expectContains(
   "apps/server/src/services/flex_standalone_service.rs",
-  "flex::effective_standalone_entry_data(&model.data, localized_data, localized_keys)",
-  "SeaORM adapter delegates standalone entry read payload resolution to owner helper",
+  "flex::standalone_entry_view_from_source(",
+  "SeaORM adapter delegates standalone entry view mapping to owner helper",
+);
+expectContains(
+  "apps/server/src/services/flex_standalone_service.rs",
+  "flex::standalone_schema_view_from_source(",
+  "SeaORM adapter delegates standalone schema view mapping to owner helper",
 );
 expectNotContains(
   "apps/server/src/services/flex_standalone_service.rs",
@@ -189,6 +233,18 @@ expectNotContains(
   "fn effective_entry_data(",
   "server-owned standalone entry read payload resolver",
 );
+for (const snippet of [
+  "fn schema_to_view(",
+  "fn entry_to_view(",
+  "flex::FlexSchemaView {",
+  "flex::FlexEntryView {",
+]) {
+  expectNotContains(
+    "apps/server/src/services/flex_standalone_service.rs",
+    snippet,
+    "server-owned standalone row-to-view mapping",
+  );
+}
 expectContains(
   "apps/server/src/services/flex_standalone_service.rs",
   "validate_update_schema_command(&input)?;",
@@ -306,6 +362,10 @@ for (const snippet of [
   "pub fn validate_field_definition_create",
   "pub fn field_definition_position_or_next",
   "pub fn field_definition_type_name",
+  "pub fn field_definition_label_json",
+  "pub fn field_definition_description_json",
+  "pub fn field_definition_validation_json",
+  "pub fn field_definition_cache_invalidation_target",
   "pub fn field_definition_created_event",
   "pub fn field_definition_updated_event",
   "pub fn field_definition_deleted_event",
@@ -327,6 +387,9 @@ for (const service of [
     "flex::validate_field_definition_create",
     "flex::field_definition_position_or_next",
     "flex::field_definition_type_name",
+    "flex::field_definition_label_json",
+    "flex::field_definition_description_json",
+    "flex::field_definition_validation_json",
     "flex::field_definition_created_event",
     "flex::field_definition_updated_event",
     "flex::field_definition_deleted_event",
@@ -340,6 +403,12 @@ for (const service of [
     "DomainEvent::FieldDefinition",
     "EventEnvelope::new(",
     "serde_json::to_value(input.field_type)",
+    "serde_json::to_value(&input.label)",
+    "serde_json::to_value(d)",
+    "serde_json::to_value(v)",
+    "serde_json::to_value(label)",
+    "serde_json::to_value(desc)",
+    "serde_json::to_value(val)",
     "FlexError::TooManyFields",
     "FlexError::DuplicateFieldKey",
     "FlexError::InvalidFieldKey",
@@ -347,6 +416,23 @@ for (const service of [
     if (production.includes(snippet)) {
       failures.push(`${service}: found server-owned attached field-definition lifecycle policy ${snippet}`);
     }
+  }
+}
+expectContains(
+  "apps/server/src/services/field_definition_cache.rs",
+  "flex::field_definition_cache_invalidation_target(&envelope.event)",
+  "server field-definition cache delegates event taxonomy to flex",
+);
+for (const snippet of [
+  "DomainEvent::FieldDefinitionCreated",
+  "DomainEvent::FieldDefinitionUpdated",
+  "DomainEvent::FieldDefinitionDeleted",
+]) {
+  const production = read("apps/server/src/services/field_definition_cache.rs").split("#[cfg(test)]")[0];
+  if (production.includes(snippet)) {
+    failures.push(
+      `apps/server/src/services/field_definition_cache.rs: found server-owned field-definition cache event taxonomy ${snippet}`,
+    );
   }
 }
 for (const model of [

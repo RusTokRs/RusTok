@@ -11,7 +11,7 @@ pub use products::*;
 #[cfg(test)]
 mod tests;
 
-use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use loco_rs::{controller::Routes, Error, Result};
 use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::RequestContext;
@@ -21,7 +21,6 @@ use rustok_customer::CustomerService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::check_variant_availability_for_public_channel;
 use rustok_order::OrderService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_pricing::{PriceResolutionContext, PricingService};
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
@@ -99,27 +98,6 @@ pub fn routes() -> Routes {
         .add("/customers/me", axum::routing::get(orders::get_me))
 }
 
-pub(crate) async fn resolve_context(
-    ctx: &AppContext,
-    tenant_id: Uuid,
-    request_context: &RequestContext,
-    region_id: Option<Uuid>,
-    country_code: Option<String>,
-    locale: Option<String>,
-    currency_code: Option<String>,
-) -> Result<StoreContextResponse> {
-    resolve_context_for_db(
-        &ctx.db,
-        tenant_id,
-        request_context,
-        region_id,
-        country_code,
-        locale,
-        currency_code,
-    )
-    .await
-}
-
 pub(crate) async fn resolve_context_for_db(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -147,15 +125,6 @@ pub(crate) async fn resolve_context_for_db(
         .map_err(|err| Error::BadRequest(err.to_string()))
 }
 
-pub(crate) async fn resolve_context_from_cart(
-    ctx: &AppContext,
-    tenant_id: Uuid,
-    request_context: &RequestContext,
-    cart: &CartResponse,
-) -> Result<StoreContextResponse> {
-    resolve_context_from_cart_for_db(&ctx.db, tenant_id, request_context, cart).await
-}
-
 pub(crate) async fn resolve_context_from_cart_for_db(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -174,16 +143,17 @@ pub(crate) async fn resolve_context_from_cart_for_db(
     .await
 }
 
-pub(crate) async fn ensure_customer_owns_order(
-    ctx: &AppContext,
+pub(crate) async fn ensure_customer_owns_order_for_db(
+    db: &DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
     tenant_id: Uuid,
     auth: Option<&rustok_api::AuthContext>,
     order_id: Uuid,
 ) -> Result<()> {
-    let customer_id = current_customer_id(ctx, tenant_id, auth)
+    let customer_id = current_customer_id_for_db(db, tenant_id, auth)
         .await?
         .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
-    let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(ctx))
+    let order = OrderService::new(db.clone(), event_bus)
         .get_order(tenant_id, order_id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -195,14 +165,6 @@ pub(crate) async fn ensure_customer_owns_order(
     }
 
     Ok(())
-}
-
-pub(crate) async fn current_customer_id(
-    ctx: &AppContext,
-    tenant_id: Uuid,
-    auth: Option<&rustok_api::AuthContext>,
-) -> Result<Option<Uuid>> {
-    current_customer_id_for_db(&ctx.db, tenant_id, auth).await
 }
 
 pub(crate) async fn current_customer_id_for_db(
@@ -220,13 +182,6 @@ pub(crate) async fn current_customer_id_for_db(
         Err(rustok_customer::CustomerError::CustomerByUserNotFound(_)) => Ok(None),
         Err(err) => Err(Error::BadRequest(err.to_string())),
     }
-}
-
-pub(crate) async fn ensure_storefront_channel_enabled(
-    ctx: &AppContext,
-    request_context: &RequestContext,
-) -> Result<()> {
-    ensure_storefront_channel_enabled_for_db(&ctx.db, request_context).await
 }
 
 pub(crate) async fn ensure_storefront_channel_enabled_for_db(
@@ -284,8 +239,9 @@ pub(crate) fn checkout_actor_id(auth: Option<&rustok_api::AuthContext>) -> Uuid 
     auth.map(|auth| auth.user_id).unwrap_or_else(Uuid::nil)
 }
 
-pub(crate) async fn apply_cart_context_patch(
-    ctx: &AppContext,
+pub(crate) async fn apply_cart_context_patch_for_db(
+    db: &DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
     tenant_id: Uuid,
     request_context: &RequestContext,
     tenant_default_locale: &str,
@@ -294,8 +250,8 @@ pub(crate) async fn apply_cart_context_patch(
 ) -> Result<StoreCartResponse> {
     let requested = requested_cart_context(cart, request_context, patch);
 
-    let context = resolve_context(
-        ctx,
+    let context = resolve_context_for_db(
+        db,
         tenant_id,
         request_context,
         requested.region_id,
@@ -305,8 +261,8 @@ pub(crate) async fn apply_cart_context_patch(
     )
     .await?;
 
-    validate_selected_shipping_option(
-        ctx,
+    validate_selected_shipping_option_for_db(
+        db,
         tenant_id,
         cart,
         requested.selected_shipping_option_id,
@@ -318,7 +274,7 @@ pub(crate) async fn apply_cart_context_patch(
     )
     .await?;
 
-    let cart_service = CartService::new(ctx.db.clone());
+    let cart_service = CartService::new(db.clone());
     let updated_cart = cart_service
         .update_context(
             tenant_id,
@@ -334,16 +290,17 @@ pub(crate) async fn apply_cart_context_patch(
         )
         .await
         .map_err(map_cart_error)?;
-    let updated_cart = reprice_storefront_cart_line_items(
-        ctx,
+    let updated_cart = reprice_storefront_cart_line_items_for_db(
+        db,
+        event_bus,
         tenant_id,
         request_context,
         &cart_service,
         updated_cart,
     )
     .await?;
-    let updated_cart = enrich_storefront_cart(
-        ctx,
+    let updated_cart = enrich_storefront_cart_for_db(
+        db,
         tenant_id,
         request_context,
         tenant_default_locale,
@@ -357,8 +314,9 @@ pub(crate) async fn apply_cart_context_patch(
     })
 }
 
-pub(crate) async fn reprice_storefront_cart_line_items(
-    ctx: &AppContext,
+pub(crate) async fn reprice_storefront_cart_line_items_for_db(
+    db: &DatabaseConnection,
+    event_bus: rustok_outbox::TransactionalEventBus,
     tenant_id: Uuid,
     request_context: &RequestContext,
     cart_service: &CartService,
@@ -368,8 +326,7 @@ pub(crate) async fn reprice_storefront_cart_line_items(
         return Ok(cart);
     }
 
-    let pricing_service =
-        PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(ctx));
+    let pricing_service = PricingService::new(db.clone(), event_bus);
     let mut updates = Vec::new();
     for line_item in &cart.line_items {
         let Some(variant_id) = line_item.variant_id else {
@@ -494,8 +451,8 @@ pub(crate) struct ResolvedStoreLineItemInput {
     pub(crate) pricing_adjustment: Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
 }
 
-pub(crate) async fn enrich_storefront_cart(
-    ctx: &AppContext,
+pub(crate) async fn enrich_storefront_cart_for_db(
+    db: &DatabaseConnection,
     tenant_id: Uuid,
     request_context: &RequestContext,
     tenant_default_locale: &str,
@@ -503,7 +460,7 @@ pub(crate) async fn enrich_storefront_cart(
 ) -> Result<CartResponse> {
     let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, request_context);
     enrich_cart_delivery_groups(
-        &ctx.db,
+        db,
         tenant_id,
         cart,
         public_channel_slug.as_deref(),
@@ -542,8 +499,8 @@ pub(crate) fn requested_cart_context(
     }
 }
 
-pub(crate) async fn validate_selected_shipping_option(
-    ctx: &AppContext,
+pub(crate) async fn validate_selected_shipping_option_for_db(
+    db: &DatabaseConnection,
     tenant_id: Uuid,
     cart: &CartResponse,
     selected_shipping_option_id: Option<Uuid>,
@@ -553,7 +510,7 @@ pub(crate) async fn validate_selected_shipping_option(
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> Result<()> {
-    let service = FulfillmentService::new(ctx.db.clone());
+    let service = FulfillmentService::new(db.clone());
     let selections = if let Some(shipping_selections) = shipping_selections {
         shipping_selections.to_vec()
     } else if let Some(selected_shipping_option_id) = selected_shipping_option_id {

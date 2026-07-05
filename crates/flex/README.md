@@ -11,10 +11,10 @@
 
 - `FieldDefinitionService` trait.
 - `FieldDefRegistry` runtime registry.
-- Command/view DTOs plus owner-owned row-to-core, view-source, command-to-adapter-input mapping, lifecycle guardrail, type-name, and event helpers for field-definition CRUD orchestration.
+- Command/view DTOs plus owner-owned row-to-core, view-source, command-to-adapter-input mapping, persisted JSON shape, lifecycle guardrail, type-name, event helpers, and cache invalidation event taxonomy for field-definition CRUD orchestration.
 - Owner-owned attached field-definition and standalone GraphQL query/mutation roots, runtime handle, and input/output DTOs under `flex::graphql`.
 - Owner-owned standalone REST request/response DTOs, request-to-command mappings, and view-to-response mappings under `flex::rest`; the server controller remains only the Loco/Axum adapter.
-- Owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, entry normalization/schema validation, shared/localized split, read resolution, and PATCH merge helpers; server persistence adapters only adapt SeaORM rows into storage calls.
+- Owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, row-to-view mapping, entry normalization/schema validation, shared/localized split, read resolution, and PATCH merge helpers; server persistence adapters only expose source traits and adapt SeaORM rows into storage calls.
 - `FlexModule` capability-only runtime metadata for the manifest-driven module registry.
 
 ## Multilingual status
@@ -38,7 +38,7 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 - Depends on `rustok-core` (`FlexError`, `FieldType`, `ValidationRule`).
 - Depends on `rustok-events` (`EventEnvelope`).
 - Registered in `modules.toml` as a capability-only ghost module with `flex_schemas:*` and `flex_entries:*` permissions.
-- Consumed by manifest-driven host schema composition, REST, and bootstrap wiring; GraphQL ownership, REST DTO/command-mapping ownership, field-definition row/view/command/lifecycle policy ownership, and standalone fields_config/schema/key-derivation/entry validation/split/merge ownership are in this crate, while the host supplies persistence/registry/cache adapters through `FlexGraphqlRuntime`.
+- Consumed by manifest-driven host schema composition, REST, and bootstrap wiring; GraphQL ownership, REST DTO/command-mapping ownership, field-definition row/view/command/persisted-JSON/lifecycle policy ownership, and standalone fields_config/schema/key-derivation/row-view/entry validation/split/merge ownership are in this crate, while the host supplies persistence/registry/cache adapters through `FlexGraphqlRuntime`.
 
 ## Entry points
 
@@ -52,6 +52,7 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 - `flex::graphql::{FlexSchemaObject, FlexEntryObject, CreateFlexSchemaInput, UpdateFlexSchemaInput, CreateFlexEntryInput, UpdateFlexEntryInput, DeleteFlexPayload}`
 - `flex::rest::{CreateFlexSchemaRequest, UpdateFlexSchemaRequest, CreateFlexEntryRequest, UpdateFlexEntryRequest, FlexSchemaResponse, FlexEntryResponse, DeleteFlexResponse}`
 - `flex::{parse_standalone_fields_config, build_standalone_custom_fields_schema, serialize_standalone_fields_config, standalone_localized_field_keys}`
+- `flex::{StandaloneSchemaViewSource, StandaloneSchemaTranslationSource, StandaloneEntryViewSource, standalone_schema_view_from_source, standalone_entry_view_from_source}`
 - `flex::normalize_and_validate_standalone_entry`
 
 ## Docs

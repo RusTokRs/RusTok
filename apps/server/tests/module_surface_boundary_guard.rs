@@ -201,6 +201,64 @@ fn content_graphql_entity_loaders_do_not_live_in_server() {
 }
 
 #[test]
+fn flex_attached_payload_logic_is_owned_by_flex_crate() {
+    let repo = repo_root();
+    let owner_attached = std::fs::read_to_string(repo.join("crates/flex/src/attached.rs"))
+        .expect("owner Flex attached source should read");
+    let server_adapter =
+        std::fs::read_to_string(repo.join("apps/server/src/services/flex_attached_values.rs"))
+            .expect("server Flex attached adapter should read");
+
+    for owner_owned_symbol in [
+        "pub fn prepare_attached_values_create",
+        "pub async fn prepare_attached_values_update",
+        "pub async fn resolve_attached_payload",
+        "pub async fn persist_localized_values",
+        "pub async fn delete_attached_localized_values",
+        "fn prepare_write(",
+        "fn split_definitions(",
+        "fn split_existing_metadata(",
+        "fn split_patch(",
+        "fn merge_patch(",
+        "fn validate_schema(",
+        "pub struct PreparedAttachedValuesWrite",
+    ] {
+        assert!(
+            owner_attached.contains(owner_owned_symbol),
+            "missing owner-owned attached Flex helper: {owner_owned_symbol}"
+        );
+    }
+
+    for delegated_call in [
+        "prepare_attached_values_create(schema, payload, locale)",
+        "prepare_attached_values_update(",
+        "resolve_attached_payload(",
+        "persist_localized_values(db, tenant_id, entity_type, entity_id, locale, values).await",
+        "delete_attached_localized_values(db, tenant_id, entity_type, entity_id).await",
+    ] {
+        assert!(
+            server_adapter.contains(delegated_call),
+            "server attached Flex adapter must delegate to owner helper: {delegated_call}"
+        );
+    }
+
+    for forbidden in [
+        "fn prepare_write(",
+        "fn split_definitions(",
+        "fn split_existing_metadata(",
+        "fn split_patch(",
+        "fn merge_patch(",
+        "fn validate_schema(",
+        "struct PreparedAttachedValuesWrite",
+    ] {
+        assert!(
+            !server_adapter.contains(forbidden),
+            "attached Flex payload ownership must live in crates/flex, not apps/server: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn module_entity_imports_do_not_leak_into_server_graphql() {
     let graphql_dir = repo_root().join("apps/server/src/graphql");
     let forbidden = ["rustok_media::media::", "rustok_media::media::{"];
@@ -342,6 +400,12 @@ fn server_dashboard_user_activity_logic_stays_out_of_graphql_root() {
 #[test]
 fn flex_graphql_surface_is_owned_by_flex_crate() {
     let repo = repo_root();
+    assert!(
+        !repo
+            .join("apps/server/docs/flex-phase45-migration-guide.md")
+            .exists(),
+        "Flex migration notes must live in the owner docs, not apps/server docs"
+    );
     let server_graphql_dir = repo.join("apps/server/src/graphql/flex");
     assert!(
         !server_graphql_dir.exists(),
@@ -502,6 +566,11 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
         "pub fn split_standalone_entry_data",
         "pub fn effective_standalone_entry_data",
         "pub fn merge_standalone_entry_patch",
+        "pub trait StandaloneSchemaViewSource",
+        "pub trait StandaloneSchemaTranslationSource",
+        "pub trait StandaloneEntryViewSource",
+        "pub fn standalone_schema_view_from_source",
+        "pub fn standalone_entry_view_from_source",
         "schema.apply_defaults(&mut data);",
         "schema.strip_unknown(&mut data);",
         "FlexError::ValidationFailed(errors)",
@@ -518,17 +587,22 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
     assert!(server_adapter.contains("schema.build_custom_fields_schema()?"));
     assert!(server_adapter.contains("flex::normalize_and_validate_standalone_entry"));
     assert!(server_adapter.contains("flex::split_standalone_entry_data"));
-    assert!(server_adapter.contains("flex::effective_standalone_entry_data"));
     assert!(server_adapter.contains("flex::merge_standalone_entry_patch"));
+    assert!(server_adapter.contains("flex::standalone_schema_view_from_source"));
+    assert!(server_adapter.contains("flex::standalone_entry_view_from_source"));
     assert!(!server_adapter.contains("FlexStandaloneValidationService"));
     for forbidden in [
         "fn split_entry_data(",
         "fn effective_entry_data(",
         "fn merge_entry_patch(",
+        "fn schema_to_view(",
+        "fn entry_to_view(",
+        "flex::FlexSchemaView {",
+        "flex::FlexEntryView {",
     ] {
         assert!(
             !server_adapter.contains(forbidden),
-            "standalone entry JSON split/merge ownership must live in crates/flex, not apps/server: {forbidden}"
+            "standalone entry/schema view and JSON split/merge ownership must live in crates/flex, not apps/server: {forbidden}"
         );
     }
 
@@ -537,6 +611,17 @@ fn flex_standalone_validation_contract_is_owned_by_flex_crate() {
             .expect("server Flex schema model helper should read");
     assert!(server_schema_model.contains("flex::parse_standalone_fields_config"));
     assert!(server_schema_model.contains("flex::build_standalone_custom_fields_schema"));
+    assert!(server_schema_model.contains("impl flex::StandaloneSchemaViewSource for Model"));
+    let server_entry_model =
+        std::fs::read_to_string(repo.join("apps/server/src/models/flex_entries.rs"))
+            .expect("server Flex entry model helper should read");
+    let server_translation_model =
+        std::fs::read_to_string(repo.join("apps/server/src/models/flex_schema_translations.rs"))
+            .expect("server Flex schema translation model helper should read");
+    assert!(server_entry_model.contains("impl flex::StandaloneEntryViewSource for Model"));
+    assert!(
+        server_translation_model.contains("impl flex::StandaloneSchemaTranslationSource for Model")
+    );
     for forbidden in [
         "serde_json::from_value(self.fields_config.clone())",
         "CustomFieldsSchema::new(self.parse_field_definitions()?)",
@@ -586,6 +671,10 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
         "pub fn validate_field_definition_create",
         "pub fn field_definition_position_or_next",
         "pub fn field_definition_type_name",
+        "pub fn field_definition_label_json",
+        "pub fn field_definition_description_json",
+        "pub fn field_definition_validation_json",
+        "pub fn field_definition_cache_invalidation_target",
         "pub fn field_definition_created_event",
         "pub fn field_definition_updated_event",
         "pub fn field_definition_deleted_event",
@@ -640,6 +729,9 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
             "flex::validate_field_definition_create",
             "flex::field_definition_position_or_next",
             "flex::field_definition_type_name",
+            "flex::field_definition_label_json",
+            "flex::field_definition_description_json",
+            "flex::field_definition_validation_json",
             "flex::field_definition_created_event",
             "flex::field_definition_updated_event",
             "flex::field_definition_deleted_event",
@@ -655,6 +747,12 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
             "DomainEvent::FieldDefinition",
             "EventEnvelope::new(",
             "serde_json::to_value(input.field_type)",
+            "serde_json::to_value(&input.label)",
+            "serde_json::to_value(d)",
+            "serde_json::to_value(v)",
+            "serde_json::to_value(label)",
+            "serde_json::to_value(desc)",
+            "serde_json::to_value(val)",
             "FlexError::TooManyFields",
             "FlexError::DuplicateFieldKey",
             "FlexError::InvalidFieldKey",
@@ -664,6 +762,26 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
                 "field-definition lifecycle policy must live in crates/flex, not apps/server: {service_path} contains {forbidden}"
             );
         }
+    }
+
+    let cache =
+        std::fs::read_to_string(repo.join("apps/server/src/services/field_definition_cache.rs"))
+            .expect("server field-definition cache source should read");
+    let cache_production = cache.split("#[cfg(test)]").next().unwrap_or(&cache);
+    assert!(
+        cache_production
+            .contains("flex::field_definition_cache_invalidation_target(&envelope.event)"),
+        "server field-definition cache should delegate event taxonomy to flex"
+    );
+    for forbidden in [
+        "DomainEvent::FieldDefinitionCreated",
+        "DomainEvent::FieldDefinitionUpdated",
+        "DomainEvent::FieldDefinitionDeleted",
+    ] {
+        assert!(
+            !cache_production.contains(forbidden),
+            "field-definition cache event taxonomy must live in crates/flex, not apps/server: {forbidden}"
+        );
     }
 
     for model_path in [

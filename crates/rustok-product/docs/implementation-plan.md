@@ -6,12 +6,12 @@
 ## Execution checkpoint
 
 - Current phase: product_fba_fixture_locked_no_compile
-- Last checkpoint: product FBA remains `boundary_ready` on no-compile runtime fallback evidence. `product-runtime-fallback-smoke.json` and `verify-product-runtime-fallback-smoke.mjs` now lock read policy ordering, tenant scope, locale fallback, bounded storefront pagination, fallback profiles, typed `PortError` mapping, the prepared `ports::tests` harness, README/docs FBA boundary markers and product verification command docs without Rust compilation; `verify-product-runtime-fallback-smoke.test.mjs` covers README/docs/source-marker drift and is included in `test:verify:ecommerce:fba`. Next storefront host composition remains connected through `apps/next-frontend/src/features/search` and product-owned `fetchCatalogSearchOptions`.
+- Last checkpoint: product FBA remains `boundary_ready` on no-compile runtime fallback evidence. `product-runtime-fallback-smoke.json` and `verify-product-runtime-fallback-smoke.mjs` now lock read policy ordering, tenant scope, locale fallback, bounded storefront pagination, fallback profiles, typed `PortError` mapping, the prepared `ports::tests` harness, README/docs FBA boundary markers, product verification command docs, `package.json` aggregate wiring, `modules.toml`/`rustok-module.toml` metadata sync and central commerce-domain batch summary without Rust compilation; `verify-product-runtime-fallback-smoke.test.mjs` covers README/docs/source-marker drift, package aggregate drift, module metadata drift, premature `transport_verified` status drift and stale central batch-summary drift before live evidence. Next storefront host composition remains connected through `apps/next-frontend/src/features/search` and product-owned `fetchCatalogSearchOptions`.
 - Dependency evidence: product storefront locale matching uses `rustok_api::locale_tags_match`; no-feature/hydrate profiles no longer contain `rustok-core`.
 - Next step: Собрать live provider execution evidence перед повышением product FBA до `transport_verified`.
 - Open blockers: None.
 - Hand-off notes for next agent: После каждого инкремента обновлять этот блок.
-- Last updated at (UTC): 2026-07-04T16:17:59Z
+- Last updated at (UTC): 2026-07-05T09:44:03Z
 
 
 ## FFA/FBA status
@@ -21,7 +21,7 @@
 - Structural shape: `core_transport_ui`
 - Evidence:
   - пакетный no-compile FBA gate `scripts/verify/verify-commerce-domain-fba-runtime-smoke.mjs` и fixture-regression suite проверяют `crates/rustok-product/contracts/evidence/product-runtime-contract-smoke.json`: read policy выполняется до owner `CatalogService`, затем применяется typed `PortError` mapping; fallback profiles/degraded modes сверяются с registry;
-  - no-compile runtime fallback smoke `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json` + `scripts/verify/verify-product-runtime-fallback-smoke.mjs` source-locks product catalog read fallback behavior, bounded pagination validation, locale fallback, tenant scope, typed `PortError` mapping and the prepared `crates/rustok-product/src/ports.rs` unit-test harness without Rust compilation. Fixture regression test `scripts/verify/verify-product-runtime-fallback-smoke.test.mjs` is wired into `test:verify:ecommerce:fba`. FBA status raised to `boundary_ready`; `transport_verified` still requires live provider execution evidence;
+  - no-compile runtime fallback smoke `crates/rustok-product/contracts/evidence/product-runtime-fallback-smoke.json` + `scripts/verify/verify-product-runtime-fallback-smoke.mjs` source-locks product catalog read fallback behavior, bounded pagination validation, locale fallback, tenant scope, typed `PortError` mapping, `package.json` product/aggregate script wiring, `modules.toml` / `rustok-module.toml` metadata sync, central commerce-domain batch summary and the prepared `crates/rustok-product/src/ports.rs` unit-test harness without Rust compilation. Fixture regression test `scripts/verify/verify-product-runtime-fallback-smoke.test.mjs` is wired into `test:verify:ecommerce:fba` and covers package aggregate drift, module metadata drift, premature `transport_verified` registry/local-plan drift and stale central batch-summary drift. FBA status raised to `boundary_ready`; `transport_verified` still requires live provider execution evidence;
   - module plan синхронизирован с central FFA/FBA readiness board; UI surface уже опубликован и ведётся в migration/backlog ритме;
   - FBA slice: `crates/rustok-product/src/ports.rs` declares `ProductCatalogReadPort`/`product.catalog_read.v1` for catalog read projections consumed by commerce checkout/storefront compatibility paths, pricing enrichment and `ai-product` generation context; `crates/rustok-product/contracts/product-fba-registry.json`, `contracts/evidence/product-contract-test-static-matrix.json`, `contracts/evidence/product-runtime-contract-smoke.json` and `contracts/evidence/product-runtime-fallback-smoke.json` lock provider metadata, fallback profiles and no-compile runtime fallback behavior under `npm run verify:ecommerce:fba`; status remains below `transport_verified` until live runtime execution/fallback evidence lands;
   - umbrella facade `rustok_commerce::{services::catalog, CatalogService}` is removed; commerce/server/AI consumers import `CatalogService` from `rustok-product` directly, so product owner service is no longer masked by the ecommerce umbrella;
@@ -84,7 +84,7 @@
   - FFA guardrail: `scripts/verify/verify-product-admin-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-admin-boundary.test.mjs`; it checks product admin core/transport/ui split without long Cargo compilation;
   - FFA guardrail: `scripts/verify/verify-product-storefront-boundary.mjs` added to the aggregate `verify:ffa:ui:migration` pipeline, with fixture coverage wired through `test:verify:ffa:ui:migration` via `scripts/verify/verify-product-storefront-boundary.test.mjs`; it checks product storefront core/transport/ui split plus catalog rail label and selected metadata ownership without long Cargo compilation;
   - дальнейшее повышение статуса выполняется только вместе с verification evidence и обновлением local+central docs.
-- Last verified at (UTC): 2026-07-01T00:00:00Z
+- Last verified at (UTC): 2026-07-05T09:44:03Z
 - Owner: `rustok-product` module team
 
 ## Область работ

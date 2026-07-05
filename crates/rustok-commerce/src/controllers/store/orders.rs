@@ -3,17 +3,19 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::{Error, Result};
 use rustok_api::{RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::CustomerService;
 use rustok_order::OrderService;
-use rustok_outbox::loco::transactional_event_bus_from_context;
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
 use super::{
-    super::common::{PaginatedResponse, PaginationMeta, PaginationParams},
+    super::{
+        common::{PaginatedResponse, PaginationMeta, PaginationParams},
+        CommerceHttpRuntime,
+    },
     StoreOrderChangesParams, StoreOrderRefundsParams, StoreOrderReturnsParams,
 };
 use crate::dto::{
@@ -32,14 +34,14 @@ use crate::dto::{
     )
 )]
 pub async fn get_me(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
 ) -> Result<Json<CustomerResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let service = CustomerService::new(ctx.db.clone());
+    let service = CustomerService::new(runtime.db_clone());
     let customer = service
         .get_customer_by_user(tenant.id, auth.user_id)
         .await
@@ -60,18 +62,18 @@ pub async fn get_me(
     )
 )]
 pub async fn get_order(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<OrderResponse>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, Some(&auth))
+    let customer_id = super::current_customer_id_for_db(runtime.db(), tenant.id, Some(&auth))
         .await?
         .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
-    let service = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let service = OrderService::new(runtime.db_clone(), runtime.event_bus());
     let order = service
         .get_order_with_locale_fallback(
             tenant.id,
@@ -105,18 +107,25 @@ pub async fn get_order(
     )
 )]
 pub async fn create_order_return(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Json(input): Json<CreateOrderReturnInput>,
 ) -> Result<(StatusCode, Json<OrderReturnResponse>)> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    super::ensure_customer_owns_order(&ctx, tenant.id, Some(&auth), id).await?;
+    super::ensure_customer_owns_order_for_db(
+        runtime.db(),
+        runtime.event_bus(),
+        tenant.id,
+        Some(&auth),
+        id,
+    )
+    .await?;
 
-    let created = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+    let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -141,30 +150,36 @@ pub async fn create_order_return(
     )
 )]
 pub async fn list_order_returns(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderReturnsParams>,
 ) -> Result<Json<PaginatedResponse<OrderReturnResponse>>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    super::ensure_customer_owns_order(&ctx, tenant.id, Some(&auth), id).await?;
+    super::ensure_customer_owns_order_for_db(
+        runtime.db(),
+        runtime.event_bus(),
+        tenant.id,
+        Some(&auth),
+        id,
+    )
+    .await?;
 
-    let (items, total) =
-        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-            .list_returns(
-                tenant.id,
-                ListOrderReturnsInput {
-                    page: params.pagination.page,
-                    per_page: params.pagination.per_page,
-                    order_id: Some(id),
-                    status: params.status,
-                },
-            )
-            .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?;
+    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
+        .list_returns(
+            tenant.id,
+            ListOrderReturnsInput {
+                page: params.pagination.page,
+                per_page: params.pagination.per_page,
+                order_id: Some(id),
+                status: params.status,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -189,20 +204,19 @@ pub async fn list_order_returns(
     )
 )]
 pub async fn list_order_refunds(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderRefundsParams>,
 ) -> Result<Json<PaginatedResponse<RefundResponse>>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    let customer_id = super::current_customer_id(&ctx, tenant.id, Some(&auth))
+    let customer_id = super::current_customer_id_for_db(runtime.db(), tenant.id, Some(&auth))
         .await?
         .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
-    let order_service =
-        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let order_service = OrderService::new(runtime.db_clone(), runtime.event_bus());
     let order = order_service
         .get_order(tenant.id, id)
         .await
@@ -213,7 +227,7 @@ pub async fn list_order_refunds(
         ));
     }
 
-    let payment_service = PaymentService::new(ctx.db.clone());
+    let payment_service = PaymentService::new(runtime.db_clone());
     let (items, total) = payment_service
         .list_refunds(
             tenant.id,
@@ -252,31 +266,37 @@ pub async fn list_order_refunds(
     )
 )]
 pub async fn list_order_changes(
-    State(ctx): State<AppContext>,
+    State(runtime): State<CommerceHttpRuntime>,
     tenant: TenantContext,
     request_context: RequestContext,
     auth: rustok_api::AuthContext,
     Path(id): Path<Uuid>,
     Query(params): Query<StoreOrderChangesParams>,
 ) -> Result<Json<PaginatedResponse<OrderChangeResponse>>> {
-    super::ensure_storefront_channel_enabled(&ctx, &request_context).await?;
+    super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    super::ensure_customer_owns_order(&ctx, tenant.id, Some(&auth), id).await?;
+    super::ensure_customer_owns_order_for_db(
+        runtime.db(),
+        runtime.event_bus(),
+        tenant.id,
+        Some(&auth),
+        id,
+    )
+    .await?;
 
-    let (items, total) =
-        OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-            .list_order_changes(
-                tenant.id,
-                ListOrderChangesInput {
-                    page: params.pagination.page,
-                    per_page: params.pagination.per_page,
-                    order_id: Some(id),
-                    status: params.status,
-                    change_type: params.change_type,
-                },
-            )
-            .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?;
+    let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
+        .list_order_changes(
+            tenant.id,
+            ListOrderChangesInput {
+                page: params.pagination.page,
+                per_page: params.pagination.per_page,
+                order_id: Some(id),
+                status: params.status,
+                change_type: params.change_type,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok(Json(PaginatedResponse {
         data: items,
