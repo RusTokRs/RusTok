@@ -18,7 +18,7 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-audit
@@ -32,7 +32,7 @@ jobs:
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Clean cargo-deny advisory db cache
         run: |
           rm -rf "$CARGO_HOME/advisory-dbs" || true
@@ -49,7 +49,7 @@ jobs:
     name: Outdated Dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-outdated
