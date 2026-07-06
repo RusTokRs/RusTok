@@ -6,48 +6,48 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Контракт `modules.toml` и `rustok-module.toml`
+# `modules.toml` and `rustok-module.toml` Contract
 
-Этот документ описывает два связанных слоя модульного контракта RusToK:
+This document describes two related layers of the RusToK module contract:
 
-- `modules.toml` в корне репозитория задаёт состав платформенных модулей для конкретной сборки.
-- `rustok-module.toml` внутри path-модуля задаёт publish/runtime/UI-контракт самого модуля.
+- `modules.toml` at the repository root defines the composition of platform modules for a specific build.
+- `rustok-module.toml` inside a path module defines the publish/runtime/UI contract of the module itself.
 
-`modules.toml` отвечает за composition root. `rustok-module.toml` отвечает за identity, surface wiring, UI-пакеты и publish-ready metadata.
+`modules.toml` is responsible for the composition root. `rustok-module.toml` is responsible for identity, surface wiring, UI packages and publish-ready metadata.
 
-## Где какой контракт живёт
+## Where Each Contract Lives
 
 ### `modules.toml`
 
-Корневой manifest фиксирует:
+The root manifest captures:
 
-- список платформенных модулей, попадающих в сборку;
-- источник каждого модуля: `path`, `git`, `crates-io`/`registry`;
-- coarse-grained зависимости через `depends_on`;
-- platform-level settings, включая `settings.default_enabled`.
+- List of platform modules included in the build;
+- Source of each module: `path`, `git`, `crates-io`/`registry`;
+- Coarse-grained dependencies through `depends_on`;
+- Platform-level settings, including `settings.default_enabled`.
 
-Это runtime/build-level контракт всей платформы, а не отдельного crate.
+This is a runtime/build-level contract for the entire platform, not for an individual crate.
 
 ### `rustok-module.toml`
 
-Локальный manifest path-модуля фиксирует:
+The local manifest of a path module captures:
 
 - `module.slug`, `module.name`, `module.version`, `module.description`;
 - `module.ui_classification`;
-- `[crate].entry_type` для runtime-модуля;
-- runtime-точки входа модуля;
-- admin/storefront UI wiring;
-- module-owned schema настроек;
-- marketplace/publish metadata;
-- зависимости и конфликты, относящиеся к самому модулю.
+- `[crate].entry_type` for the runtime module;
+- Runtime entry points of the module;
+- Admin/storefront UI wiring;
+- Module-owned settings schema;
+- Marketplace/publish metadata;
+- Dependencies and conflicts related to the module itself.
 
-Для path-модулей из `modules.toml` наличие `rustok-module.toml` обязательно.
+For path modules from `modules.toml`, the presence of `rustok-module.toml` is mandatory.
 
 ### `module.ui_classification`
 
-`module.ui_classification` обязателен для каждого path-модуля и должен совпадать с фактическим UI wiring.
+`module.ui_classification` is mandatory for every path module and must match the actual UI wiring.
 
-Поддерживаемые значения:
+Supported values:
 
 - `dual_surface`
 - `admin_only`
@@ -56,180 +56,180 @@ status: verified
 - `capability_only`
 - `future_ui`
 
-Практическое правило для текущего platform scope:
+Practical rule for the current platform scope:
 
-- модуль с `[provides.admin_ui]` и `[provides.storefront_ui]` должен иметь `dual_surface`;
-- модуль только с `[provides.admin_ui]` должен иметь `admin_only`;
-- модуль только с `[provides.storefront_ui]` должен иметь `storefront_only`;
-- модуль без UI может использовать `no_ui`, `capability_only` или `future_ui`, но не должен одновременно объявлять UI sub-crates.
+- A module with `[provides.admin_ui]` and `[provides.storefront_ui]` must have `dual_surface`;
+- A module with only `[provides.admin_ui]` must have `admin_only`;
+- A module with only `[provides.storefront_ui]` must have `storefront_only`;
+- A module without UI may use `no_ui`, `capability_only` or `future_ui`, but must not simultaneously declare UI sub-crates.
 
 ### `[crate].entry_type`
 
-Если crate реализует `RusToKModule`, `rustok-module.toml` обязан содержать `[crate].entry_type`, совпадающий с реальным runtime entry type из `src/lib.rs`.
+If a crate implements `RusToKModule`, `rustok-module.toml` must contain `[crate].entry_type` matching the actual runtime entry type from `src/lib.rs`.
 
-Практическое правило:
+Practical rule:
 
-- `pub struct BlogModule;` + `impl RusToKModule for BlogModule` требуют `entry_type = "BlogModule"`;
-- capability crate без `RusToKModule` может не объявлять `entry_type`.
+- `pub struct BlogModule;` + `impl RusToKModule for BlogModule` require `entry_type = "BlogModule"`;
+- A capability crate without `RusToKModule` may omit `entry_type`.
 
-### Синхронизация runtime metadata
+### Synchronization of Runtime Metadata
 
-Если crate реализует `RusToKModule`, значения `module.slug`, `module.name` и `module.description`
-в `rustok-module.toml` должны совпадать с `slug()`, `name()` и `description()` в `src/lib.rs`.
+If a crate implements `RusToKModule`, the values of `module.slug`, `module.name` and `module.description`
+in `rustok-module.toml` must match `slug()`, `name()` and `description()` in `src/lib.rs`.
 
-### `provides.graphql` и `provides.http`
+### `provides.graphql` and `provides.http`
 
-Если `rustok-module.toml` объявляет:
+If `rustok-module.toml` declares:
 
 - `[provides.graphql].query`
 - `[provides.graphql].mutation`
 - `[provides.http].routes`
 - `[provides.http].webhook_routes`
 
-то соответствующие type/function symbols должны реально существовать внутри `src/**/*.rs`
-модуля. Manifest не должен ссылаться на декоративные или уже удалённые transport surfaces.
+then the corresponding type/function symbols must actually exist inside `src/**/*.rs`
+of the module. The manifest must not reference decorative or already removed transport surfaces.
 
-## Обязательный минимум для path-модуля
+## Mandatory Minimum for a Path Module
 
-Каждый path-модуль из `modules.toml` должен иметь:
+Every path module from `modules.toml` must have:
 
 - `Cargo.toml`;
-- root `README.md` in English;
+- Root `README.md` in English;
 - `docs/README.md` in English;
 - `docs/implementation-plan.md` in English;
 - `rustok-module.toml`.
 
-Корневой `README.md` считается частью acceptance contract и должен содержать:
+The root `README.md` is considered part of the acceptance contract and must contain:
 
 - `## Purpose`
 - `## Responsibilities`
 - `## Entry points`
 - `## Interactions`
-- ссылку на локальный `docs/README.md`
+- A link to the local `docs/README.md`
 
-Локальные docs нужны даже для модулей без admin/storefront UI.
+Local docs are needed even for modules without admin/storefront UI.
 
-### Минимальный контракт документации
+### Minimum Documentation Contract
 
-Для path-модуля контракт документации считается закрытым, только если соблюдены оба слоя:
+For a path module, the documentation contract is considered closed only if both layers are satisfied:
 
-- root `README.md` in English with sections `Purpose`, `Responsibilities`, `Entry points`, `Interactions` and a link to `docs/README.md`;
-- local `docs/README.md` in English as the live runtime/module contract;
-- local `docs/implementation-plan.md` in English as the live plan for bringing the module to its target state.
+- Root `README.md` in English with sections `Purpose`, `Responsibilities`, `Entry points`, `Interactions` and a link to `docs/README.md`;
+- Local `docs/README.md` in English as the live runtime/module contract;
+- Local `docs/implementation-plan.md` in English as the live plan for bringing the module to its target state.
 
-Минимальный каркас локального `docs/README.md`:
+Minimum skeleton of local `docs/README.md`:
 
-- `## Назначение`
-- `## Зона ответственности`
-- `## Интеграция`
-- `## Проверка`
-- `## Связанные документы`
+- `## Purpose`
+- `## Responsibility Zone`
+- `## Integration`
+- `## Verification`
+- `## Related Documents`
 
-Минимальный каркас локального `docs/implementation-plan.md`:
+Minimum skeleton of local `docs/implementation-plan.md`:
 
-- `## Область работ`
-- `## Текущее состояние`
-- `## Этапы`
-- `## Проверка`
-- `## Правила обновления`
+- `## Scope`
+- `## Current State`
+- `## Milestones`
+- `## Verification`
+- `## Update Rules`
 
-Дополнительные разделы допустимы, но этот минимум должен сохраняться.
+Additional sections are allowed, but this minimum must be preserved.
 
-## Что проверяет `cargo xtask module validate`
+## What `cargo xtask module validate` Checks
 
-`cargo xtask module validate <slug>` работает только для slug из `modules.toml` и валидирует фактический scoped contract:
+`cargo xtask module validate <slug>` works only for slugs from `modules.toml` and validates the actual scoped contract:
 
-`cargo xtask module validate` без slug проходит все локальные `source = "path"` модули из `modules.toml`. Это не auto-discovery по `crates/`: новый crate становится платформенным модулем только после добавления в `[modules]`.
+`cargo xtask module validate` without slug iterates all local `source = "path"` modules from `modules.toml`. This is not auto-discovery by `crates/`: a new crate becomes a platform module only after being added to `[modules]`.
 
-- slug существует в `modules.toml`;
-- для `source = "path"` задан `path`;
-- `rustok-module.toml` существует по ожидаемому пути;
-- `module.slug` совпадает со slug из `modules.toml`;
-- `module.version` в `rustok-module.toml` совпадает с версией из `Cargo.toml`;
-- `module.ui_classification` существует, использует поддерживаемое значение и согласован с реальными UI surfaces;
-- если crate реализует `RusToKModule`, `[crate].entry_type` существует и совпадает с runtime entry type;
-- если crate реализует `RusToKModule`, `module.slug`, `module.name` и `module.description` совпадают с runtime metadata в `src/lib.rs`;
-- если модуль помечен как `required = true` в `modules.toml`, runtime-тип явно возвращает `ModuleKind::Core`; optional-модуль не объявляет `ModuleKind::Core`;
-- если crate реализует `RusToKModule`, его `permissions()` не содержит дублей, использует только существующие `Permission::*` constants или валидные пары `Resource::*/Action::*` из `rustok-core`, и покрывает минимальный runtime RBAC surface там, где этот минимум уже зафиксирован platform contract-ами;
-- для модулей, у которых event-driven behavior уже переведён в module-owned runtime path (`index`, `search`, `workflow`), `src/lib.rs` публикует listeners через `register_event_listeners(...)`, а не откатывается к скрытому host-owned wiring;
-- для `workflow` webhook ingress остаётся module-owned surface: модуль держит `controllers::webhook_routes()`, а `apps/server` только реэкспортирует его через shim; cron path не смешивается с webhook/event listener wiring;
-- boundary `index != search` остаётся жёстким runtime contract: `index` публикует indexing/read-model substrate и module-owned listeners, а `search` публикует `SearchEngineKind`, `PgSearchEngine`, `SearchIngestionHandler`, `search_documents` и search UX/diagnostics surfaces, не смешивая эти слои в одном модуле;
-- `search` удерживает operator-plane contract как часть module surface: `SearchDiagnosticsService`, `SearchAnalyticsService`, `SearchSettingsService`, `SearchDictionaryService`, documented control-plane markers в `README.md` и локальный `docs/observability-runbook.md` не считаются опциональным шумом и не должны теряться при рефакторинге;
-- если объявлены `[provides.graphql]` или `[provides.http]`, соответствующие symbols реально существуют в коде модуля;
-- если для модуля существует server shim в `apps/server/src/controllers/<slug>/`, то он экспортирует `pub routes()` и/или `pub webhook_routes()` для всех объявленных HTTP surfaces;
-- `package.license` резолвится через `Cargo.toml` или workspace inheritance;
-- `module.description` достаточно полон для publish readiness;
-- `depends_on` из `modules.toml`, `[dependencies]` в `rustok-module.toml` и `RusToKModule::dependencies()` не расходятся;
-- optional-модуль имеет feature `mod-<slug>` в `apps/server/Cargo.toml`, этот feature резолвится в реальный `ModuleRegistry` entry, а его `mod-*` зависимости совпадают с `depends_on` из `modules.toml`;
-- для `capability_only` ghost module допустим always-linked server dependency path: `mod-<slug>` может быть пустым feature-guard'ом для registry/codegen wiring, если сам crate уже подключён в `apps/server` как shared capability dependency;
-- `required = true` модуль регистрируется напрямую в `apps/server/src/modules/mod.rs`, а optional-модуль не попадает туда в обход feature/codegen wiring;
-- `settings.default_enabled` перечисляет только optional-модули; required/core-модули туда не включаются и считаются всегда активными;
-- `settings.default_enabled` образует dependency-closed optional graph: если optional-модуль включён по умолчанию, его optional-зависимости тоже присутствуют в `default_enabled`;
-- каждый slug из `settings.default_enabled` присутствует в default feature-set сервера как `mod-<slug>`;
-- root `README.md`, `docs/README.md` и `docs/implementation-plan.md` присутствуют и соответствуют минимальному формату;
-- wiring для `admin/` и `storefront/` согласован с `[provides.admin_ui]` и `[provides.storefront_ui]`;
-- если UI sub-crate объявлен в manifest, его `Cargo.toml` реально существует и версия совпадает с версией основного модуля.
-- `[provides.admin_ui]` требует не только `leptos_crate`, но и непустые `route_segment`, `nav_label` и `[provides.admin_ui.i18n]` с `default_locale`, `supported_locales`, `leptos_locales_path`.
-- `[provides.admin_ui].nav_group` и `nav_order` являются optional navigation metadata для host sidebar. Если они не заданы, `apps/admin` использует стандартные группы `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
-- `[[provides.admin_ui.child_pages]]` является canonical metadata для nested admin navigation: каждый пункт объявляет `subpath`, `title`, `nav_label` и монтируется под `/modules/:route_segment/:subpath`. Старое имя `[[provides.admin_ui.pages]]` допускается только как compatibility alias.
-- Наличие `[settings]` в `rustok-module.toml` не создаёт module-owned settings page. Host показывает contextual settings link в `/modules?module_slug=<slug>` и использует существующий tenant settings editor.
-- `[provides.storefront_ui]` требует не только `leptos_crate`, но и непустые `slot`, `route_segment`, `page_title` и `[provides.storefront_ui.i18n]` с `default_locale`, `supported_locales`, `leptos_locales_path`. Значение `slot` должно быть одним из platform-known slots: `home_after_hero`, `home_after_catalog`, `home_before_footer`, `checkout_shipping_handoff`, `checkout_payment_handoff`, `checkout_result_handoff`.
-- если UI sub-crate объявлен в manifest, соответствующий host (`apps/admin` или `apps/storefront`) реально подключает его как dependency и прокидывает обязательные host feature links (`/hydrate`, `/ssr`) там, где sub-crate их экспортирует.
-- host dependency на UI sub-crate указывает на канонический путь модуля (`crates/<module>/admin` или `crates/<module>/storefront`), а не на произвольный совместимый crate с тем же именем.
-- если модуль публикует `admin_ui` или `storefront_ui`, host-композиция включает UI-поверхности его прямых модульных зависимостей для того же surface, когда эти зависимости тоже публикуют такой UI.
-- `apps/admin` и `apps/storefront` не содержат orphaned first-party UI dependencies: path-зависимость на `crates/*/admin` или `crates/*/storefront` допустима только если соответствующий `rustok-module.toml` действительно объявляет этот crate как `admin_ui` или `storefront_ui`.
-- `apps/admin` и `apps/storefront` не содержат orphaned host feature entries: `hydrate`/`ssr` не ссылаются на `crate/feature` для first-party module UI crate, если этот crate больше не объявлен в module manifest или уже не подключён как dependency host-а.
-- central navigation не отстаёт от manifest-wiring: `docs/modules/_index.md` содержит docs/plan links модуля, а `docs/modules/UI_PACKAGES_INDEX.md` перечисляет объявленные admin/storefront UI-поверхности.
+- Slug exists in `modules.toml`;
+- For `source = "path"`, `path` is specified;
+- `rustok-module.toml` exists at the expected path;
+- `module.slug` matches the slug from `modules.toml`;
+- `module.version` in `rustok-module.toml` matches the version from `Cargo.toml`;
+- `module.ui_classification` exists, uses a supported value and is consistent with actual UI surfaces;
+- If a crate implements `RusToKModule`, `[crate].entry_type` exists and matches the runtime entry type;
+- If a crate implements `RusToKModule`, `module.slug`, `module.name` and `module.description` match the runtime metadata in `src/lib.rs`;
+- If a module is marked as `required = true` in `modules.toml`, the runtime type explicitly returns `ModuleKind::Core`; an optional module does not declare `ModuleKind::Core`;
+- If a crate implements `RusToKModule`, its `permissions()` contains no duplicates, uses only existing `Permission::*` constants or valid `Resource::*/Action::*` pairs from `rustok-core`, and covers the minimum runtime RBAC surface where this minimum is already fixed by platform contracts;
+- For modules whose event-driven behavior has already been moved to a module-owned runtime path (`index`, `search`, `workflow`), `src/lib.rs` publishes listeners through `register_event_listeners(...)`, rather than falling back to hidden host-owned wiring;
+- For `workflow`, webhook ingress remains a module-owned surface: the module holds `controllers::webhook_routes()`, and `apps/server` only re-exports it through a shim; the cron path is not mixed with webhook/event listener wiring;
+- The `index != search` boundary remains a hard runtime contract: `index` publishes indexing/read-model substrate and module-owned listeners, while `search` publishes `SearchEngineKind`, `PgSearchEngine`, `SearchIngestionHandler`, `search_documents` and search UX/diagnostics surfaces, not mixing these layers in one module;
+- `search` holds the operator-plane contract as part of the module surface: `SearchDiagnosticsService`, `SearchAnalyticsService`, `SearchSettingsService`, `SearchDictionaryService`, documented control-plane markers in `README.md` and local `docs/observability-runbook.md` are not considered optional noise and must not be lost during refactoring;
+- If `[provides.graphql]` or `[provides.http]` are declared, the corresponding symbols actually exist in the module code;
+- If a server shim exists for a module in `apps/server/src/controllers/<slug>/`, it exports `pub routes()` and/or `pub webhook_routes()` for all declared HTTP surfaces;
+- `package.license` resolves through `Cargo.toml` or workspace inheritance;
+- `module.description` is sufficient for publish readiness;
+- `depends_on` from `modules.toml`, `[dependencies]` in `rustok-module.toml` and `RusToKModule::dependencies()` do not diverge;
+- An optional module has a `mod-<slug>` feature in `apps/server/Cargo.toml`, this feature resolves to a real `ModuleRegistry` entry, and its `mod-*` dependencies match `depends_on` from `modules.toml`;
+- For a `capability_only` ghost module, an always-linked server dependency path is acceptable: `mod-<slug>` may be an empty feature-guard for registry/codegen wiring if the crate itself is already connected to `apps/server` as a shared capability dependency;
+- A `required = true` module is registered directly in `apps/server/src/modules/mod.rs`, and an optional module does not bypass feature/codegen wiring;
+- `settings.default_enabled` lists only optional modules; required/core modules are not included there and are considered always active;
+- `settings.default_enabled` forms a dependency-closed optional graph: if an optional module is enabled by default, its optional dependencies are also present in `default_enabled`;
+- Each slug from `settings.default_enabled` is present in the default feature-set of the server as `mod-<slug>`;
+- Root `README.md`, `docs/README.md` and `docs/implementation-plan.md` are present and match the minimum format;
+- Wiring for `admin/` and `storefront/` is consistent with `[provides.admin_ui]` and `[provides.storefront_ui]`;
+- If a UI sub-crate is declared in the manifest, its `Cargo.toml` actually exists and the version matches the main module version.
+- `[provides.admin_ui]` requires not only `leptos_crate`, but also non-empty `route_segment`, `nav_label` and `[provides.admin_ui.i18n]` with `default_locale`, `supported_locales`, `leptos_locales_path`.
+- `[provides.admin_ui].nav_group` and `nav_order` are optional navigation metadata for the host sidebar. If not specified, `apps/admin` uses standard groups `Content`, `Commerce`, `Runtime`, `Governance`, `Automation`, `Other`.
+- `[[provides.admin_ui.child_pages]]` is canonical metadata for nested admin navigation: each item declares `subpath`, `title`, `nav_label` and is mounted under `/modules/:route_segment/:subpath`. The old name `[[provides.admin_ui.pages]]` is allowed only as a compatibility alias.
+- The presence of `[settings]` in `rustok-module.toml` does not create a module-owned settings page. The host shows a contextual settings link at `/modules?module_slug=<slug>` and uses the existing tenant settings editor.
+- `[provides.storefront_ui]` requires not only `leptos_crate`, but also non-empty `slot`, `route_segment`, `page_title` and `[provides.storefront_ui.i18n]` with `default_locale`, `supported_locales`, `leptos_locales_path`. The `slot` value must be one of the platform-known slots: `home_after_hero`, `home_after_catalog`, `home_before_footer`, `checkout_shipping_handoff`, `checkout_payment_handoff`, `checkout_result_handoff`.
+- If a UI sub-crate is declared in the manifest, the corresponding host (`apps/admin` or `apps/storefront`) actually connects it as a dependency and forwards mandatory host feature links (`/hydrate`, `/ssr`) where the sub-crate exports them.
+- The host dependency on a UI sub-crate points to the canonical module path (`crates/<module>/admin` or `crates/<module>/storefront`), not to an arbitrary compatible crate with the same name.
+- If a module publishes `admin_ui` or `storefront_ui`, the host composition includes UI surfaces of its direct module dependencies for the same surface when those dependencies also publish such UI.
+- `apps/admin` and `apps/storefront` do not contain orphaned first-party UI dependencies: a path dependency on `crates/*/admin` or `crates/*/storefront` is allowed only if the corresponding `rustok-module.toml` actually declares this crate as `admin_ui` or `storefront_ui`.
+- `apps/admin` and `apps/storefront` do not contain orphaned host feature entries: `hydrate`/`ssr` do not reference `crate/feature` for a first-party module UI crate if that crate is no longer declared in the module manifest or is no longer connected as a host dependency.
+- Central navigation does not lag behind manifest wiring: `docs/modules/_index.md` contains docs/plan links of the module, and `docs/modules/UI_PACKAGES_INDEX.md` lists declared admin/storefront UI surfaces.
 
-Если slug отсутствует в `modules.toml`, `xtask` возвращает `Unknown module slug`.
+If a slug is missing from `modules.toml`, `xtask` returns `Unknown module slug`.
 
-## Что проверяет `cargo xtask validate-manifest`
+## What `cargo xtask validate-manifest` Checks
 
-`cargo xtask validate-manifest` проверяет центральный composition contract:
+`cargo xtask validate-manifest` checks the central composition contract:
 
-- `modules.toml` парсится и использует поддерживаемую schema version;
-- `default_enabled` ссылается только на реально объявленные модули;
-- `depends_on` не содержит отсутствующих slug;
-- `source`-спецификация валидна для каждого модуля;
-- `apps/server` держит module-owned event runtime path: общий `module_event_dispatcher`, без legacy `index/search` dispatchers и без ручного wiring `WorkflowTriggerHandler` в host runtime;
-- все path-модули действительно содержат `rustok-module.toml`.
+- `modules.toml` parses and uses a supported schema version;
+- `default_enabled` references only actually declared modules;
+- `does not contain missing slugs;
+- `source` specification is valid for each module;
+- `apps/server` holds the module-owned event runtime path: shared `module_event_dispatcher`, no legacy `index/search` dispatchers and no manual `WorkflowTriggerHandler` wiring in host runtime;
+- All path modules actually contain `rustok-module.toml`.
 
-Этот шаг не заменяет `cargo xtask module validate <slug>`, а дополняет его.
+This step does not replace `cargo xtask module validate <slug>`, but complements it.
 
-Описание самого workspace-инструмента, его зон ответственности и operator entrypoints живёт в [`xtask/README.md`](../../xtask/README.md).
+Description of the workspace tool itself, its responsibilities and operator entrypoints lives in [`xtask/README.md`](../../xtask/README.md).
 
-## Оценка build-time manifest compiler
+## Build-time Manifest Compiler Assessment
 
-Текущий production baseline оставляет `modules.toml`, `rustok-module.toml`, `cargo xtask validate-manifest` и scoped
-`cargo xtask module validate <slug>` каноническим manifest validation path. Отдельный build-time manifest compiler пока
-не вводится как release blocker.
+The current production baseline leaves `modules.toml`, `rustok-module.toml`, `cargo xtask validate-manifest` and scoped
+`cargo xtask module validate <slug>` as the canonical manifest validation path. A separate build-time manifest compiler is not yet
+introduced as a release blocker.
 
-Причины:
+Reasons:
 
-- runtime composition уже имеет два уровня проверки: общий composition contract и scoped module contract;
-- production runtime хранит immutable manifest snapshot/hash в `platform_state`, поэтому активный состав модулей не зависит
-  от ad-hoc auto-discovery по workspace;
-- compiler до выделения shared foundation boundary усилит coupling между `apps/server`, `xtask` и registry/bootstrap
-  validation, потому что начнёт генерировать host wiring до стабилизации ownership boundary;
-- текущие guardrails требуют явного wiring optional-модулей через `mod-<slug>` features и registry entry, что лучше
-  соответствует контролируемому rollout-у.
+- Runtime composition already has two validation levels: general composition contract and scoped module contract;
+- Production runtime stores immutable manifest snapshot/hash in `platform_state`, so the active module composition does not depend
+  on ad-hoc auto-discovery by workspace;
+- A compiler before extracting a shared foundation boundary will strengthen coupling between `apps/server`, `xtask` and registry/bootstrap
+  validation, because it will start generating host wiring before ownership boundary stabilization;
+- Current guardrails require explicit optional module wiring through `mod-<slug>` features and registry entry, which better
+  corresponds to a controlled rollout.
 
-Рекомендуемый порядок, если coupling между `apps/server` и registry/bootstrap validation снова станет блокером:
+Recommended order if coupling between `apps/server` and registry/bootstrap validation becomes a blocker again:
 
-1. Сначала выделить shared foundation contract для чтения и нормализации `modules.toml`/`rustok-module.toml`.
-2. Перенести туда общие DTO, canonical hash и pure validation rules без зависимости от server runtime.
-3. Оставить `apps/server` владельцем runtime wiring, а `xtask` — владельцем preflight/CI validation.
-4. Только после этого рассматривать build-time compiler как thin generator поверх foundation package.
+1. First extract a shared foundation contract for reading and normalizing `modules.toml`/`rustok-module.toml`.
+2. Move shared DTOs, canonical hash and pure validation rules there without dependency on server runtime.
+3. Leave `apps/server` as the owner of runtime wiring, and `xtask` as the owner of preflight/CI validation.
+4. Only after that consider a build-time compiler as a thin generator over the foundation package.
 
-Первый шаг выполнен частично: `rustok-api::module_registry_contract` теперь владеет framework-independent
-сравнением manifest snapshot и runtime registry snapshot. Проверки отсутствующего runtime entry,
-`required`/`core` mismatch и dependency mismatch больше не реализуются внутри `apps/server`;
-composition root только преобразует свои runtime DTO в shared contract. Загрузка файлов,
-package-manifest overlay и фактический `ModuleRegistry` wiring остаются в `apps/server`.
+The first step is partially done: `rustok-api::module_registry_contract` now owns framework-independent
+comparison of manifest snapshot and runtime registry snapshot. Checks for missing runtime entry,
+`required`/`core` mismatch and dependency mismatch are no longer implemented inside `apps/server`;
+the composition root only transforms its runtime DTOs into the shared contract. File loading,
+package-manifest overlay and actual `ModuleRegistry` wiring remain in `apps/server`.
 
-До такого выделения build-time compiler считается отложенной оптимизацией, а не обязательным production gate.
+Until such extraction, a build-time compiler is considered a deferred optimization, not a mandatory production gate.
 
-## Минимальный пример `modules.toml`
+## Minimal `modules.toml` Example
 
 ```toml
 schema = 2
@@ -243,7 +243,7 @@ content = { crate = "rustok-content", source = "path", path = "crates/rustok-con
 default_enabled = ["content", "blog"]
 ```
 
-## Минимальный пример `rustok-module.toml`
+## Minimal `rustok-module.toml` Example
 
 ```toml
 [module]
@@ -294,83 +294,83 @@ tags = ["blog", "editorial"]
 description = "Blog module with admin and storefront surfaces."
 ```
 
-## Инварианты для UI sub-crates
+## UI Sub-crate Invariants
 
-- Наличие `admin/Cargo.toml` без `[provides.admin_ui].leptos_crate` считается ошибкой wiring.
-- Наличие `storefront/Cargo.toml` без `[provides.storefront_ui].leptos_crate` считается ошибкой wiring.
-- Объявление `[provides.admin_ui].leptos_crate` без реального `admin/Cargo.toml` считается ошибкой.
-- Объявление `[provides.storefront_ui].leptos_crate` без реального `storefront/Cargo.toml` считается ошибкой.
-- Версии UI sub-crates должны совпадать с версией основного модуля.
+- The presence of `admin/Cargo.toml` without `[provides.admin_ui].leptos_crate` is considered a wiring error.
+- The presence of `storefront/Cargo.toml` without `[provides.storefront_ui].leptos_crate` is considered a wiring error.
+- Declaring `[provides.admin_ui].leptos_crate` without an actual `admin/Cargo.toml` is considered an error.
+- Declaring `[provides.storefront_ui].leptos_crate` without an actual `storefront/Cargo.toml` is considered an error.
+- Versions of UI sub-crates must match the version of the main module.
 
-Само наличие подпапки `admin/` или `storefront/` не считается доказательством интеграции. Канонический источник правды здесь — manifest wiring.
+The mere presence of an `admin/` or `storefront/` subfolder is not considered proof of integration. The canonical source of truth here is manifest wiring.
 
-## Support и capability crates
+## Support and Capability Crates
 
-Не каждый crate из workspace является платформенным модулем.
+Not every crate in the workspace is a platform module.
 
-- Platform modules живут в `modules.toml` и проходят scoped validation через `cargo xtask module validate <slug>`.
-- Foundation/shared/support/capability crates могут иметь локальные docs и собственные контракты, но не обязаны иметь slug в `modules.toml`.
-- Если capability crate нужен formal runtime/module contract, его можно завести в `modules.toml` как `capability_only` ghost module. Текущие живые примеры такого паттерна: `alloy` и `flex`.
+- Platform modules live in `modules.toml` and pass scoped validation through `cargo xtask module validate <slug>`.
+- Foundation/shared/support/capability crates may have local docs and their own contracts, but are not required to have a slug in `modules.toml`.
+- If a capability crate needs a formal runtime/module contract, it can be registered in `modules.toml` as a `capability_only` ghost module. Current live examples of this pattern: `alloy` and `flex`.
 
-Для таких crates всё равно действует documentation minimum:
+For such crates, the documentation minimum still applies:
 
-- корневой `README.md`;
-- при необходимости `docs/README.md`;
-- при необходимости `docs/implementation-plan.md`.
+- Root `README.md`;
+- `docs/README.md` if needed;
+- `docs/implementation-plan.md` if needed.
 
 If a support/capability crate already publishes local docs, it is recommended to follow the same structural standard as platform modules: English root `README.md`, English `docs/README.md`, English `docs/implementation-plan.md`.
 
-Но они не проходят `module validate`, пока не становятся платформенным модулем.
+But they do not pass `module validate` until they become a platform module.
 
-## Как добавить новый платформенный модуль
+## How to Add a New Platform Module
 
-`xtask` узнаёт о новом платформенном модуле только из `modules.toml`. Наличие crate в `crates/` само по себе не делает его модулем.
+`xtask` learns about a new platform module only from `modules.toml`. The presence of a crate in `crates/` alone does not make it a module.
 
-Минимальный порядок добавления:
+Minimum order of addition:
 
-1. Создать crate, обычно `crates/rustok-<slug>/`, и убедиться, что он входит в Cargo workspace.
-2. Добавить обязательные локальные документы: корневой `README.md`, `docs/README.md`, `docs/implementation-plan.md`.
-3. Добавить `rustok-module.toml` с корректными `module.slug`, `module.version`, `module.ui_classification`, metadata зависимостей и `[crate].entry_type`, если crate реализует `RusToKModule`.
-4. Добавить slug в `[modules]` внутри `modules.toml`; `required = true` использовать только для core-модулей, остальные модули оставлять optional.
-5. Синхронизировать зависимости в трёх местах: `modules.toml.depends_on`, `[dependencies]` в `rustok-module.toml`, `RusToKModule::dependencies()`.
-6. Для optional runtime-модуля добавить `mod-<slug>` feature и server wiring в `apps/server/Cargo.toml`.
-   Для обычного optional-модуля это означает `dep:<crate>`, а для `capability_only` ghost module допустим пустой feature-guard, если crate уже always-linked как shared capability dependency сервера.
-7. Для required runtime-модуля добавить прямую регистрацию в `apps/server/src/modules/mod.rs`.
-8. Для module-owned UI объявлять `[provides.admin_ui]` и/или `[provides.storefront_ui]` только вместе с реальным UI sub-crate и host wiring.
-9. Обновить навигацию: `docs/modules/_index.md`, `docs/modules/registry.md`, а для UI-модулей также `docs/modules/UI_PACKAGES_INDEX.md`.
-10. Прогнать локальный preflight: `cargo xtask validate-manifest`, `cargo xtask module validate <slug>`, `cargo xtask module test <slug>`.
+1. Create a crate, typically `crates/rustok-<slug>/`, and ensure it is part of the Cargo workspace.
+2. Add mandatory local documents: root `README.md`, `docs/README.md`, `docs/implementation-plan.md`.
+3. Add `rustok-module.toml` with correct `module.slug`, `module.version`, `module.ui_classification`, dependency metadata and `[crate].entry_type` if the crate implements `RusToKModule`.
+4. Add the slug to `[modules]` inside `modules.toml`; use `required = true` only for core modules, leave all other modules as optional.
+5. Synchronize dependencies in three places: `modules.toml.depends_on`, `[dependencies]` in `rustok-module.toml`, `RusToKModule::dependencies()`.
+6. For an optional runtime module, add a `mod-<slug>` feature and server wiring in `apps/server/Cargo.toml`.
+   For a regular optional module this means `dep:<crate>`, and for a `capability_only` ghost module an empty feature-guard is acceptable if the crate is already always-linked as a shared server capability dependency.
+7. For a required runtime module, add direct registration in `apps/server/src/modules/mod.rs`.
+8. For module-owned UI, declare `[provides.admin_ui]` and/or `[provides.storefront_ui]` only together with an actual UI sub-crate and host wiring.
+9. Update navigation: `docs/modules/_index.md`, `docs/modules/registry.md`, and for UI modules also `docs/modules/UI_PACKAGES_INDEX.md`.
+10. Run local preflight: `cargo xtask validate-manifest`, `cargo xtask module validate <slug>`, `cargo xtask module test <slug>`.
 
-Шаблон файлов и минимальных разделов живёт в [шаблоне документации модуля](../templates/module_contract.md).
+The file template and minimum sections live in the [module documentation template](../templates/module_contract.md).
 
-## Рекомендуемый локальный preflight
+## Recommended Local Preflight
 
-Для path-модуля перед публикацией или серьёзной доработкой используйте:
+For a path module before publication or significant development, use:
 
 ```powershell
 cargo xtask module validate blog
 cargo xtask module test blog
 ```
 
-Если меняется весь composition contract платформы, добавляйте:
+If the entire platform composition contract changes, add:
 
 ```powershell
 cargo xtask validate-manifest
 ```
 
-## Связанные документы
+## Related Documents
 
-- [Как писать модуль в RusToK](./module-authoring.md)
-- [Реестр модулей и приложений](./registry.md)
-- [Реестр crate-ов модульной платформы](./crates-registry.md)
-- [Индекс локальной документации по модулям](./_index.md)
-- [Шаблон документации модуля](../templates/module_contract.md)
-- [Главный README по верификации](../verification/README.md)
+- [How to Write a Module in RusToK](./module-authoring.md)
+- [Module and Application Registry](./registry.md)
+- [Module Platform Crate Registry](./crates-registry.md)
+- [Module Documentation Index](./_index.md)
+- [Module Documentation Template](../templates/module_contract.md)
+- [Main Verification README](../verification/README.md)
 
-> Статус документа: актуальный. При изменении правил `xtask`, acceptance-контракта для модулей или состава платформенных модулей обновляйте этот файл вместе с `docs/index.md`.
+> Document status: current. When changing `xtask` rules, the acceptance contract for modules or the platform module composition, update this file together with `docs/index.md`.
 
-## Runtime snapshot и manifest hash
+## Runtime Snapshot and Manifest Hash
 
-`modules.toml` остаётся декларативным bootstrap/dev manifest-ом, но production runtime читает активный состав из
-`platform_state`. При install/uninstall/upgrade control plane сохраняет полный manifest JSON snapshot и SHA-256 hash
-этого snapshot-а. Hash считается по canonical JSON всего manifest-а, а не только по списку модулей, поэтому изменения
-`settings`, build profile, source pins и dependency metadata меняют immutable artifact identity.
+`modules.toml` remains a declarative bootstrap/dev manifest, but production runtime reads the active composition from
+`platform_state`. During install/uninstall/upgrade, the control plane stores the full manifest JSON snapshot and SHA-256 hash
+of this snapshot. The hash is computed from the canonical JSON of the entire manifest, not just the module list, so changes
+to `settings`, build profile, source pins and dependency metadata change the immutable artifact identity.

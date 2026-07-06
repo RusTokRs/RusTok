@@ -6,35 +6,35 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Индекс документации по модулям
+# Module Documentation Index
 
-Платформенный план консолидации runtime registry, composition, tenant lifecycle,
-governance и admin transport: [консолидация управления модулями](./module-control-plane-consolidation-plan.md).
+Platform plan for runtime registry consolidation, composition, tenant lifecycle,
+governance and admin transport: [module control-plane consolidation plan](./module-control-plane-consolidation-plan.md).
 
-Локальная документация модулей живёт внутри самих crate-ов в
-`crates/<name>/docs/README.md`. Этот документ даёт только центральную навигацию по
-локальным docs модулей и support/capability crate-ов и не дублирует локальные контракты.
+Module local documentation lives inside the crates themselves at
+`crates/<name>/docs/README.md`. This document provides only central navigation to
+module and support/capability crate local docs and does not duplicate local contracts.
 
-## Правило навигации
+## Navigation Rule
 
-- модульная документация не дублируется в `docs/modules/`;
-- ссылки ниже ведут прямо в `crates/<name>/docs/`;
-- для платформенных модулей обязательный минимум: `README.md`, `docs/README.md`,
+- Module documentation is not duplicated in `docs/modules/`;
+- Links below lead directly to `crates/<name>/docs/`;
+- For platform modules, the mandatory minimum is: `README.md`, `docs/README.md`,
   `docs/implementation-plan.md`.
 
-## Контракт документации
+## Documentation Contract
 
-- root `README.md` of the component remains the public contract in English and describes
+- Root `README.md` of the component remains the public contract in English and describes
   `Purpose`, `Responsibilities`, `Entry points` and `Interactions`;
-- local `docs/README.md` in English remains the live runtime/module contract;
-- local `docs/implementation-plan.md` in English remains the live plan for bringing
+- Local `docs/README.md` in English remains the live runtime/module contract;
+- Local `docs/implementation-plan.md` in English remains the live plan for bringing
   the component to its target state;
-- этот индекс нужен только для навигации и должен отправлять читателя в локальные docs,
-  а не пересказывать их содержание.
+- This index is only for navigation and should direct the reader to local docs,
+  not retell their contents.
 
-## Core и foundation-слой
+## Core and Foundation Layer
 
-| Компонент | Документация | План реализации |
+| Component | Documentation | Implementation Plan |
 |---|---|---|
 | `rustok-core` | [docs](../../crates/rustok-core/docs/README.md) | [plan](../../crates/rustok-core/docs/implementation-plan.md) |
 | `rustok-events` | [docs](../../crates/rustok-events/docs/README.md) | [plan](../../crates/rustok-events/docs/implementation-plan.md) |
@@ -66,9 +66,9 @@ governance и admin transport: [консолидация управления м
 | `rustok-seo-render` | [docs](../../crates/rustok-seo/render/docs/README.md) | [plan](../../crates/rustok-seo/render/docs/implementation-plan.md) |
 | `rustok-seo-admin-support` | [docs](../../crates/rustok-seo-admin-support/docs/README.md) | [plan](../../crates/rustok-seo-admin-support/docs/implementation-plan.md) |
 
-## Доменные модули
+## Domain Modules
 
-| Компонент | Документация | План реализации |
+| Component | Documentation | Implementation Plan |
 |---|---|---|
 | `rustok-content` | [docs](../../crates/rustok-content/docs/README.md) | [plan](../../crates/rustok-content/docs/implementation-plan.md) |
 | `rustok-cart` | [docs](../../crates/rustok-cart/docs/README.md) | [plan](../../crates/rustok-cart/docs/implementation-plan.md) |
@@ -93,9 +93,9 @@ governance и admin transport: [консолидация управления м
 | `rustok-media` | [docs](../../crates/rustok-media/docs/README.md) | [plan](../../crates/rustok-media/docs/implementation-plan.md) |
 | `rustok-workflow` | [docs](../../crates/rustok-workflow/docs/README.md) | [plan](../../crates/rustok-workflow/docs/implementation-plan.md) |
 
-## UI-пакеты модулей
+## Module UI Packages
 
-### Core/admin-поверхности
+### Core/Admin Surfaces
 
 - `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
 - `rustok-index` admin UI: [README](../../crates/rustok-index/admin/README.md)
@@ -103,7 +103,7 @@ governance и admin transport: [консолидация управления м
 - `rustok-tenant` admin UI: [README](../../crates/rustok-tenant/admin/README.md)
 - `rustok-rbac` admin UI: [README](../../crates/rustok-rbac/admin/README.md)
 
-### Optional/admin-поверхности
+### Optional/Admin Surfaces
 
 - `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
 - `rustok-fulfillment` admin UI: [README](../../crates/rustok-fulfillment/admin/README.md)
@@ -121,7 +121,7 @@ governance и admin transport: [консолидация управления м
 - `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
 - `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
 
-### Optional/storefront-поверхности
+### Optional/Storefront Surfaces
 
 - `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
 - `rustok-cart` storefront UI: [README](../../crates/rustok-cart/storefront/README.md)
@@ -136,54 +136,54 @@ governance и admin transport: [консолидация управления м
 - `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
 - `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
 
-### Capability/admin-поверхности
+### Capability/Admin Surfaces
 
 - `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
 - `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`
 
-## Примечания
+## Notes
 
-- `rustok-content` остаётся shared helper/orchestration boundary и не публикует
-  отдельный operator-facing UI.
-- `rustok-seo` классифицирован как `admin_only`: storefront runtime живёт в host-приложениях
-  (`apps/storefront`, `apps/next-frontend`) через shared SEO contract и не оформлен как отдельный module-owned storefront package.
-- Entity-specific SEO UI при этом не централизуется в `rustok-seo-admin`: canonical ownership идёт через
-  `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin` и будущие
-  content-модули, а `rustok-seo-admin` остаётся cross-cutting infrastructure/control-plane surface.
-- Для Rust-host последняя миля этого contract теперь вынесена в `rustok-seo-render`, а не дублируется в `apps/storefront`.
-- Для owner-side admin SEO reuse теперь есть отдельный support crate `rustok-seo-admin-support`.
-- UI split ecommerce family уже начат: `rustok-product` публикует собственный
-  admin package, `rustok-fulfillment` уже забрал shipping-option UI, `rustok-order`
-  уже забрал order UI, `rustok-inventory` уже забрал inventory visibility UI,
-  `rustok-pricing` уже забрал pricing visibility UI, `rustok-customer` уже
-  забрал customer operations UI, `rustok-region` уже забрал region CRUD UI, а
-  `rustok-commerce-admin` оставлен под shipping-profile registry и aggregate cart-promotion operator surface;
-  storefront-side split тоже продвинут: `rustok-region`, `rustok-product`, `rustok-pricing` и `rustok-cart` уже публикуют собственные
-  storefront packages, а `rustok-commerce-storefront` сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection и без catalog/pricing ownership;
-  остальные commerce storefront flows ещё предстоит вынести из umbrella route там, где ownership boundary уже устойчива.
-- `rustok-mcp` и `rustok-ai` считаются capability/support
-  layers и индексируются здесь для навигации, даже если не входят в taxonomy
-  `Core/Optional`; при этом `rustok-ai` уже публикует крупные operator/admin
-  UI-поверхности для Leptos и Next.js host-ов.
-- `flex` тоже остаётся capability-layer по своей роли, но теперь формализован в
-  `modules.toml` как `capability_only` ghost module; donor persistence ownership
-  при этом всё равно остаётся у модулей-потребителей.
-- при изменении runtime-контракта или ownership сначала обновляются локальные docs
-  компонента, затем этот индекс и остальные central registry docs.
+- `rustok-content` remains a shared helper/orchestration boundary and does not publish
+  a separate operator-facing UI.
+- `rustok-seo` is classified as `admin_only`: storefront runtime lives in host applications
+  (`apps/storefront`, `apps/next-frontend`) through shared SEO contract and is not structured as a separate module-owned storefront package.
+- Entity-specific SEO UI is not centralized in `rustok-seo-admin`: canonical ownership goes through
+  `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin` and future
+  content modules, while `rustok-seo-admin` remains a cross-cutting infrastructure/control-plane surface.
+- For Rust-host, the last mile of this contract is now extracted to `rustok-seo-render`, not duplicated in `apps/storefront`.
+- For owner-side admin SEO reuse, there is now a separate support crate `rustok-seo-admin-support`.
+- UI split ecommerce family has already started: `rustok-product` publishes its own
+  admin package, `rustok-fulfillment` has already taken shipping-option UI, `rustok-order`
+  has already taken order UI, `rustok-inventory` has already taken inventory visibility UI,
+  `rustok-pricing` has already taken pricing visibility UI, `rustok-customer` has already
+  taken customer operations UI, `rustok-region` has already taken region CRUD UI, and
+  `rustok-commerce-admin` is left for shipping-profile registry and aggregate cart-promotion operator surface;
+  storefront-side split is also advanced: `rustok-region`, `rustok-product`, `rustok-pricing` and `rustok-cart` already publish their own
+  storefront packages, while `rustok-commerce-storefront` is compressed to aggregate checkout workspace with seller-aware delivery-group shipping selection and no catalog/pricing ownership;
+  remaining commerce storefront flows still need to be extracted from the umbrella route where ownership boundary is already stable.
+- `rustok-mcp` and `rustok-ai` are considered capability/support
+  layers and are indexed here for navigation, even if they do not belong to the `Core/Optional` taxonomy;
+  at the same time, `rustok-ai` already publishes large operator/admin
+  UI surfaces for Leptos and Next.js hosts.
+- `flex` also remains a capability layer by its role, but is now formalized in
+  `modules.toml` as a `capability_only` ghost module; donor persistence ownership
+  still remains with consumer modules.
+- When changing runtime contract or ownership, first update local component docs,
+  then this index and other central registry docs.
 
-## Связанные документы
+## Related Documents
 
-- [Обзор модульной платформы](./overview.md)
-- [Реестр модулей и приложений](./registry.md)
-- [Реестр crate-ов модульной платформы](./crates-registry.md)
-- [Контракт `rustok-module.toml`](./manifest.md)
-- [Шаблон документации модуля](../templates/module_contract.md)
-### Next.js admin showcase
+- [Module Platform Overview](./overview.md)
+- [Module and Application Registry](./registry.md)
+- [Module Platform Crate Registry](./crates-registry.md)
+- [`rustok-module.toml` Contract](./manifest.md)
+- [Module Documentation Template](../templates/module_contract.md)
+### Next.js Admin Showcase
 
 - `rustok-blog`: `apps/next-admin/packages/blog/`
 - `rustok-search`: `apps/next-admin/packages/search/`
 
-## Примечание по `module-system`
+## Note on `module-system`
 
-- Финальный repo-side статус `Registry V1/V2`, authenticated governance contract, `registry_only` и thin runner path фиксируется в соответствующих ADR внутри `DECISIONS/` и в живых platform docs.
-- Audit UI-классификации path-модулей (`dual-surface` / `admin-only` / `storefront-only` / `no-ui`) тоже ведётся там; этот индекс остаётся только навигацией по локальным docs.
+- Final repo-side status of `Registry V1/V2`, authenticated governance contract, `registry_only` and thin runner path is fixed in the corresponding ADRs within `DECISIONS/` and in live platform docs.
+- Audit of path module UI classification (`dual-surface` / `admin-only` / `storefront-only` / `no-ui`) is also maintained there; this index remains only navigation to local docs.

@@ -6,54 +6,54 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Быстрый старт по UI-пакетам модулей
+# UI Packages Quick Start
 
-Этот быстрый старт нужен для создания или дооформления module-owned UI-поверхности без
-старого шума вокруг установки и деплоя. Канонический путь начинается с локальных docs
-модуля и manifest wiring, а не с host-specific хаков.
+This quick start is for creating or finalizing a module-owned UI surface without
+the old noise around installation and deployment. The canonical path starts with local module docs
+and manifest wiring, not with host-specific hacks.
 
-## Что должно получиться
+## What Should Be the Result
 
-У модуля с UI к концу этого прохода должны быть:
+A module with UI at the end of this pass should have:
 
-- root `README.md` in English;
+- Root `README.md` in English;
 - `docs/README.md` in English;
 - `docs/implementation-plan.md` in English;
-- `rustok-module.toml` с корректным `[provides.admin_ui]` и/или
+- `rustok-module.toml` with correct `[provides.admin_ui]` and/or
   `[provides.storefront_ui]`;
-- `admin/` и/или `storefront/` sub-crate, если UI реально поставляется;
-- проходящий `cargo xtask module validate <slug>`.
+- `admin/` and/or `storefront/` sub-crate if UI is actually provided;
+- Passing `cargo xtask module validate <slug>`.
 
-## Шаг 1. Оформите контракт документации
+## Step 1. Set Up the Documentation Contract
 
-Перед UI wiring модуль должен получить минимальный docs-standard:
+Before UI wiring, the module must obtain the minimum docs standard:
 
-- root `README.md` с `Purpose`, `Responsibilities`, `Entry points`,
-  `Interactions` и ссылкой на `docs/README.md`;
-- локальный `docs/README.md` с разделами `Назначение`, `Зона ответственности`,
-  `Интеграция`, `Проверка`, `Связанные документы`;
-- локальный `docs/implementation-plan.md` с минимумом `Фокус` и `Улучшения`.
+- Root `README.md` with `Purpose`, `Responsibilities`, `Entry points`,
+  `Interactions` and a link to `docs/README.md`;
+- Local `docs/README.md` with sections `Purpose`, `Responsibility Zone`,
+  `Integration`, `Verification`, `Related Documents`;
+- Local `docs/implementation-plan.md` with at least `Focus` and `Improvements`.
 
-Если модуль уже существует, сначала обновляется локальная документация, потом
-добавляется или меняется UI wiring.
+If the module already exists, first update local documentation, then
+add or change UI wiring.
 
-## Шаг 2. Определите ownership UI
+## Step 2. Define UI Ownership
 
-До создания UI-пакета зафиксируйте:
+Before creating a UI package, capture:
 
-- это module-owned admin-поверхность, storefront-поверхность или оба варианта;
-- какой host будет монтировать пакет: `apps/admin`, `apps/storefront`,
-  `apps/next-admin` или `apps/next-frontend`;
-- нужен ли только Leptos UI, или также Next.js host integration;
-- есть ли package-owned locale bundles, которые нужно объявить через manifest.
+- Whether this is a module-owned admin surface, storefront surface or both;
+- Which host will mount the package: `apps/admin`, `apps/storefront`,
+  `apps/next-admin` or `apps/next-frontend`;
+- Whether only Leptos UI is needed, or also Next.js host integration;
+- Whether there are package-owned locale bundles that need to be declared through the manifest.
 
-Host application не должен становиться владельцем этой UI-функциональности.
+The host application must not become the owner of this UI functionality.
 
-## Шаг 3. Добавьте manifest wiring
+## Step 3. Add Manifest Wiring
 
-В `rustok-module.toml` укажите только реально существующие UI surfaces.
+In `rustok-module.toml`, specify only actually existing UI surfaces.
 
-Пример для admin UI:
+Example for admin UI:
 
 ```toml
 [provides.admin_ui]
@@ -62,7 +62,7 @@ route_segment = "blog"
 nav_label = "Blog"
 ```
 
-Пример для storefront UI:
+Example for storefront UI:
 
 ```toml
 [provides.storefront_ui]
@@ -72,58 +72,56 @@ page_title = "Blog"
 slot = "home_after_catalog"
 ```
 
-Если UI sub-crate объявлен в manifest, `admin/Cargo.toml` или
-`storefront/Cargo.toml` должен реально существовать и совпадать по версии с
-основным модулем.
+If a UI sub-crate is declared in the manifest, `admin/Cargo.toml` or
+`storefront/Cargo.toml` must actually exist and match the version of the main module.
 
-## Шаг 4. Реализуйте UI surface
+## Step 4. Implement the UI Surface
 
-Для Leptos module-owned UI действует такой baseline:
+For Leptos module-owned UI, the following baseline applies:
 
-- product runtime для Leptos hosts считается SSR-first: internal data layer по умолчанию строится на `#[server]` functions в `ssr`/`hydrate` профилях;
-- GraphQL не удаляется и остаётся параллельным transport-контрактом;
-- CSR/WASM standalone остаётся обязательным debug/compatibility профилем для UI package, поэтому package должен иметь GraphQL/REST fallback и не требовать `/api/fn/*` в `csr`;
-- locale берётся из host/runtime-контракта, а не из локальных cookie/header/query
+- Product runtime for Leptos hosts is considered SSR-first: the internal data layer is built on `#[server]` functions in `ssr`/`hydrate` profiles by default;
+- GraphQL is not removed and remains a parallel transport contract;
+- CSR/WASM standalone remains a mandatory debug/compatibility profile for the UI package, so the package must have a GraphQL/REST fallback and must not require `/api/fn/*` in `csr`;
+- Locale comes from the host/runtime contract, not from local cookie/header/query
   fallback chains;
-- UI package не тащит в себя ownership доменной логики, который должен жить в
-  самом модуле.
-- Для admin-пакетов selection state считается URL-owned: используйте только typed
-  `snake_case` query keys вроде `product_id`, `cart_id`, `order_id`, не читайте legacy `id`/camelCase aliases, не делайте
-  auto-select-first source of truth и очищайте stale detail/form state при failed open.
-- Для Leptos storefront-пакетов query/state plumbing тоже должно идти через общий reusable слой:
-  читайте route query через `leptos-ui-routing`, не вводите package-local helper поверх
-  `UiRouteContext.query_value(...)` и не расходите storefront contract с host-level route semantics.
+- The UI package does not pull in ownership of domain logic that should live in
+  the module itself.
+- For admin packages, selection state is considered URL-owned: use only typed
+  `snake_case` query keys like `product_id`, `cart_id`, `order_id`; do not read legacy `id`/camelCase aliases; do not make
+  auto-select-first the source of truth and clean up stale detail/form state on failed open.
+- For Leptos storefront packages, query/state plumbing should also go through a shared reusable layer:
+  read route query through `leptos-ui-routing`, do not invent a package-local helper over
+  `UiRouteContext.query_value(...)` and do not diverge the storefront contract from host-level route semantics.
 
-Почему такой split: module-owned UI package должен жить в двух режимах одновременно. В product monolith host монтирует его через SSR/hydrate и предпочитает `#[server]`, а для standalone debug/headless parity тот же package обязан иметь GraphQL/REST fallback и не зависеть от `/api/fn/*` в CSR.
+Why this split: a module-owned UI package must live in two modes simultaneously. In a product monolith, the host mounts it through SSR/hydrate and prefers `#[server]`, while for standalone debug/headless parity the same package must have a GraphQL/REST fallback and not depend on `/api/fn/*` in CSR.
 
-Для Next.js host integration:
+For Next.js host integration:
 
-- модуль публикует package-owned UI surface или host-specific integration layer;
-- сам доменный контракт остаётся у module crate и server/API-слоя;
-- host only mounts, routes and composes.
+- The module publishes a package-owned UI surface or host-specific integration layer;
+- The domain contract itself remains with the module crate and server/API layer;
+- The host only mounts, routes and composes.
 
-## Шаг 5. Обновите локальные docs
+## Step 5. Update Local Docs
 
-После появления UI wiring синхронно обновите:
+After UI wiring appears, synchronously update:
 
-- `README.md` модуля;
-- `docs/README.md` модуля;
-- `docs/implementation-plan.md`, если UI слой меняет roadmap;
-- при необходимости `admin/README.md` или `storefront/README.md`.
+- Module `README.md`;
+- Module `docs/README.md`;
+- `docs/implementation-plan.md` if the UI layer changes the roadmap;
+- If needed, `admin/README.md` or `storefront/README.md`.
 
-Central docs в `docs/modules/*` обновляются только после того, как актуальны
-локальные docs модуля.
+Central docs in `docs/modules/*` are updated only after local module docs are current.
 
-## Шаг 6. Проверьте модуль точечно
+## Step 6. Verify the Module Pointwise
 
-Минимальный локальный прогон:
+Minimum local run:
 
 ```powershell
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
 ```
 
-Если затронут host/UI layer, дополнительно обычно нужны:
+If the host/UI layer is affected, the following are additionally usually needed:
 
 ```powershell
 npm run verify:i18n:ui
@@ -131,28 +129,28 @@ npm run verify:i18n:contract
 npm.cmd run verify:storefront:routes
 ```
 
-На Windows architecture guard запускается через:
+On Windows, the architecture guard runs via:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 ```
 
-## Что не делать
+## What Not to Do
 
-- не описывать UI-пакет только в `apps/*`;
-- не оставлять `admin/` или `storefront/` без manifest wiring;
-- не вводить отдельный i18n-контракт на уровне UI package;
-- не inventить package-local route-selection contract поверх host schema;
-- не описывать standalone CSR/Trunk как production default для Leptos hosts;
-- не считать старые инструкции по установке и деплою canonical source of truth;
-- не заменять GraphQL на `#[server]` и не заменять `#[server]` на GraphQL там,
-  где нужен параллельный transport-контракт.
+- Do not describe a UI package only in `apps/*`;
+- Do not leave `admin/` or `storefront/` without manifest wiring;
+- Do not introduce a separate i18n contract at the UI package level;
+- Do not invent a package-local route-selection contract over the host schema;
+- Do not describe standalone CSR/Trunk as a production default for Leptos hosts;
+- Do not consider old installation and deployment instructions as canonical source of truth;
+- Do not replace GraphQL with `#[server]` or replace `#[server]` with GraphQL where
+  a parallel transport contract is needed.
 
-## Куда идти дальше
+## Where to Go Next
 
-- [Индекс UI-пакетов модулей](./UI_PACKAGES_INDEX.md)
-- [Контракт `rustok-module.toml`](./manifest.md)
-- [Шаблон документации модуля](../templates/module_contract.md)
-- [GraphQL и Leptos server functions](../UI/graphql-architecture.md)
+- [Module UI Packages Index](./UI_PACKAGES_INDEX.md)
+- [`rustok-module.toml` Contract](./manifest.md)
+- [Module Documentation Template](../templates/module_contract.md)
+- [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI README](../UI/README.md)
