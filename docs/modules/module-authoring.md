@@ -122,8 +122,8 @@ fallback на устаревший внутренний port или дублир
 
 - запись в `modules.toml`;
 - `rustok-module.toml` с корректными `module.slug`, `module.version`, `module.description`, `module.ui_classification`;
-- root `README.md` на английском;
-- local `docs/README.md` и `docs/implementation-plan.md` на русском.
+- root `README.md` in English;
+- local `docs/README.md` and `docs/implementation-plan.md` in English.
 - для нового module/support crate обязательно добавить строку в [реестр implementation plans](./implementation-plans-registry.md) (`Global board`) по формату реестра: минимум `Plan ID`, `Module/Crate`, `Plan doc` и `Status`.
 
 Канон:

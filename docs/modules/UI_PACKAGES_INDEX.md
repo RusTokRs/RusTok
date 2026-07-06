@@ -26,9 +26,9 @@ status: verified
 
 Для платформенного модуля UI-поверхность считается корректно оформленной, если есть:
 
-- root `README.md` модуля на английском;
-- локальный `docs/README.md` на русском;
-- локальный `docs/implementation-plan.md` на русском;
+- root `README.md` of the module in English;
+- local `docs/README.md` in English;
+- local `docs/implementation-plan.md` in English;
 - `rustok-module.toml` с корректным `[provides.admin_ui]` и/или
   `[provides.storefront_ui]`, если модуль реально поставляет UI;
 - `admin/Cargo.toml` и/или `storefront/Cargo.toml`, если такой UI объявлен в

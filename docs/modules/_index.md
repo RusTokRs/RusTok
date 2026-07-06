@@ -24,11 +24,11 @@ governance и admin transport: [консолидация управления м
 
 ## Контракт документации
 
-- root `README.md` у компонента остаётся публичным контрактом на английском и описывает
-  `Purpose`, `Responsibilities`, `Entry points` и `Interactions`;
-- локальный `docs/README.md` на русском остаётся живым runtime/module-контрактом;
-- локальный `docs/implementation-plan.md` на русском остаётся живым планом доведения
-  компонента до целевого состояния;
+- root `README.md` of the component remains the public contract in English and describes
+  `Purpose`, `Responsibilities`, `Entry points` and `Interactions`;
+- local `docs/README.md` in English remains the live runtime/module contract;
+- local `docs/implementation-plan.md` in English remains the live plan for bringing
+  the component to its target state;
 - этот индекс нужен только для навигации и должен отправлять читателя в локальные docs,
   а не пересказывать их содержание.
 

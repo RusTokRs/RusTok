@@ -6,123 +6,123 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Архитектурные принципы
+# Architecture Principles
 
-> Статус: guidance по текущему состоянию
+> Status: guidance on the current state
 
-Это короткий набор правил, по которым удерживается архитектура RusToK.
+This is a short set of rules that hold the RusToK architecture together.
 
-## 1. RusToK — modular monolith
+## 1. RusToK is a Modular Monolith
 
-RusToK строится как modular monolith, а не как набор независимых сервисов.
+RusToK is built as a modular monolith, not as a set of independent services.
 
-Следствия:
+Consequences:
 
-- composition root находится в `apps/server`
-- платформенные модули живут в одном runtime
-- границы между модулями проходят по контрактам, а не по процессам
+- The composition root is in `apps/server`
+- Platform modules live in a single runtime
+- Boundaries between modules are defined by contracts, not by processes
 
-## 2. Для платформенных модулей есть только `Core` и `Optional`
+## 2. Platform Modules Have Only `Core` and `Optional`
 
-Platform module определяется через `modules.toml` и может относиться только к:
+A platform module is defined through `modules.toml` and can belong only to:
 
 - `Core`
 - `Optional`
 
-`Core` modules всегда участвуют в runtime.  
-`Optional` modules участвуют в build/runtime composition и могут управляться на
-tenant level.
+`Core` modules always participate in the runtime.
+`Optional` modules participate in build/runtime composition and can be managed at
+the tenant level.
 
-Support/capability crate-ы не образуют третью taxonomy платформенных модулей.
+Support/capability crates do not form a third taxonomy of platform modules.
 
-## 3. Role, taxonomy и crate-packaging нельзя смешивать
+## 3. Role, Taxonomy and Crate-packaging Must Not Be Mixed
 
-Нужно различать три оси:
+Three axes must be distinguished:
 
-- архитектурная роль: module / shared library / capability crate / host
-- runtime taxonomy: `Core` / `Optional`
-- техническая упаковка: `crate`
+- Architectural role: module / shared library / capability crate / host
+- Runtime taxonomy: `Core` / `Optional`
+- Technical packaging: `crate`
 
-Из этого следует:
+It follows that:
 
 - `crate != platform module`
-- `ModuleRegistry != архитектурная taxonomy`
-- bootstrap wiring != ownership доменной логики
+- `ModuleRegistry != architectural taxonomy`
+- Bootstrap wiring != domain logic ownership
 
-## 4. Источник истины для platform composition — `modules.toml`
+## 4. Source of Truth for Platform Composition is `modules.toml`
 
-Состав платформенных модулей, dependency graph и composition-контракт определяются
-через `modules.toml`.
+The composition of platform modules, dependency graph and composition contract are defined
+through `modules.toml`.
 
-Для path-модуля это должно быть согласовано с:
+For a path module, this must be aligned with:
 
 - `rustok-module.toml`
-- runtime registration
-- локальные docs
-- verification-flow через `xtask`
+- Runtime registration
+- Local docs
+- Verification flow through `xtask`
 
-## 5. Источник истины для документации живёт в компоненте
+## 5. Source of Truth for Documentation Lives in the Component
 
-Для каждого first-party компонента:
+For every first-party component:
 
-- root `README.md` на английском фиксирует публичный контракт
-- `docs/README.md` на русском фиксирует живой runtime/app/module-контракт
-- `docs/implementation-plan.md` на русском фиксирует живой план развития
+- Root `README.md` in English captures the public contract
+- `docs/README.md` in English captures the live runtime/app/module contract
+- `docs/implementation-plan.md` in English captures the live development plan
 
-Central docs в `docs/` дают карту и навигацию, но не должны подменять локальные
-docs компонента.
+Central docs in `docs/` provide the map and navigation, but must not replace
+local component docs.
 
-## 6. Server — host, а не свалка доменной логики
+## 6. Server is a Host, Not a Domain Logic Dump
 
-`apps/server` владеет:
+`apps/server` owns:
 
-- transport layer
-- runtime wiring
-- auth/session integration
+- Transport layer
+- Runtime wiring
+- Auth/session integration
 - RBAC enforcement path
-- operational endpoints
+- Operational endpoints
 
-`apps/server` не должен становиться местом для накопления module-owned domain
-логики, если у этой логики уже есть owning crate.
+`apps/server` must not become a place for accumulating module-owned domain
+logic if that logic already has an owning crate.
 
-## 7. Write-side correctness важнее convenience
+## 7. Write-side Correctness Over Convenience
 
-Write-side операции должны быть:
+Write-side operations must be:
 
-- транзакционными
-- tenant-safe
+- Transactional
+- Tenant-safe
 - RBAC-aware
-- согласованными с event-контрактом
+- Consistent with the event contract
 
-Межмодульные события публикуются через transactional path там, где нужна
-атомарность write + event persistence.
+Cross-module events are published through a transactional path where
+atomicity of write + event persistence is needed.
 
-## 8. Read-side отделён от write-side
+## 8. Read-side is Separated from Write-side
 
-RusToK удерживает разделение:
+RusToK maintains separation:
 
-- write-side для доменных изменений
-- read-side для projections, индексов и быстрых query paths
+- Write-side for domain changes
+- Read-side for projections, indexes and fast query paths
 
-Это позволяет:
+This allows:
 
-- не тащить тяжёлые join-paths в storefront/read flows
-- строить downstream consumers независимо
-- развивать индексацию и projections отдельно от write-side моделей
+- Not dragging heavy join-paths into storefront/read flows
+- Building downstream consumers independently
+- Evolving indexing and projections separately from write-side models
 
-## 9. UI остаётся module-owned
+## 9. UI Remains Module-owned
 
-Если модуль поставляет UI:
+If a module provides UI:
 
-- Leptos surfaces публикуются через `admin/` и `storefront/` sub-crates
-- host applications только монтируют surfaces через manifest-driven wiring
-- internal Leptos data layer по умолчанию использует `#[server]` functions
-- GraphQL остаётся параллельным transport-контрактом
-- locale выбирается host/runtime layer, а не package-local fallback chain
+- Leptos surfaces are published through `admin/` and `storefront/` sub-crates
+- Host applications only mount surfaces through manifest-driven wiring
+- Internal Leptos data layer uses `#[server]` functions by default
+- GraphQL remains a parallel transport contract
+- Locale is selected by the host/runtime layer, not by a package-local fallback chain
 
-## 10. Capability crate-ы не подменяют module taxonomy
+## 10. Capability Crates Do Not Replace Module Taxonomy
 
-Capability/support crate-ы вроде:
+Capability/support crates like:
 
 - `alloy`
 - `rustok-mcp`
@@ -130,39 +130,39 @@ Capability/support crate-ы вроде:
 - `rustok-telemetry`
 - `flex`
 
-не должны описываться как обычные tenant-toggled платформенные модули, если они не
-объявлены как платформенные модули в `modules.toml`.
+must not be described as regular tenant-toggled platform modules if they are not
+declared as platform modules in `modules.toml`.
 
-И обратное тоже верно: если компонент объявлен как платформенный модуль, он обязан
-жить в taxonomy `Core/Optional`.
+And the reverse is also true: if a component is declared as a platform module, it must
+live in the `Core/Optional` taxonomy.
 
-## 11. Документация должна отражать код
+## 11. Documentation Must Reflect Code
 
-Если код и docs расходятся, приоритет у текущего кода, а документация должна
-быть синхронно обновлена.
+If code and docs diverge, the current code takes priority, and the documentation must
+be updated synchronously.
 
-Особенно это касается:
+This especially applies to:
 
-- module taxonomy
-- event flow
+- Module taxonomy
+- Event flow
 - API surface
-- host wiring
-- tenant и RBAC boundaries
+- Host wiring
+- Tenant and RBAC boundaries
 
-## 12. Boundary-change требует синхронного обновления
+## 12. Boundary Changes Require Synchronous Updates
 
-При изменении архитектурных границ нужно обновлять одновременно:
+When changing architectural boundaries, the following must be updated simultaneously:
 
-1. локальные docs затронутого компонента
-2. central docs в `docs/`
+1. Local docs of the affected component
+2. Central docs in `docs/`
 3. `docs/index.md`
-4. docs верификации, если меняется verification-контракт
-5. ADR, если изменение нетривиально
+4. Verification docs if the verification contract changes
+5. ADR if the change is non-trivial
 
-## Связанные документы
+## Related Documents
 
-- [Обзор архитектуры платформы](./overview.md)
-- [Архитектура модулей](./modules.md)
-- [Диаграммы платформы](./diagram.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Контракт `rustok-module.toml`](../modules/manifest.md)
+- [Platform Architecture Overview](./overview.md)
+- [Module Architecture](./modules.md)
+- [Platform Diagrams](./diagram.md)
+- [Module Platform Overview](../modules/overview.md)
+- [`rustok-module.toml` Contract](../modules/manifest.md)

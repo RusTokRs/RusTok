@@ -13,11 +13,10 @@ status: verified
 Этот раздел фиксирует обязательный governance baseline для изменений кода и
 документации (DOC-10), чтобы снизить drift между runtime-контрактами и docs.
 
-- **Язык документации:**
-  - центральные документы в `docs/` ведутся на русском;
-  - `README.md`, `AGENTS.md`, `CONTRIBUTING.md` и публичные контрактные файлы
-    ведутся на английском;
-  - один файл = один язык, смешение языков в одном файле не допускается.
+- **Documentation language:**
+  - all documentation is written in English;
+  - `README.ru.md` is the only file allowed in Russian (localized translation of the main README);
+  - one file = one language, mixed language within a single file is not allowed.
 - **Именование:**
   - query-keys и URL state в module-owned admin UI должны использовать typed
     `snake_case` ключи;

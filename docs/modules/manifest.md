@@ -94,9 +94,9 @@ status: verified
 Каждый path-модуль из `modules.toml` должен иметь:
 
 - `Cargo.toml`;
-- корневой `README.md` на английском;
-- `docs/README.md` на русском;
-- `docs/implementation-plan.md` на русском;
+- root `README.md` in English;
+- `docs/README.md` in English;
+- `docs/implementation-plan.md` in English;
 - `rustok-module.toml`.
 
 Корневой `README.md` считается частью acceptance contract и должен содержать:
@@ -113,9 +113,9 @@ status: verified
 
 Для path-модуля контракт документации считается закрытым, только если соблюдены оба слоя:
 
-- корневой `README.md` на английском с разделами `Purpose`, `Responsibilities`, `Entry points`, `Interactions` и ссылкой на `docs/README.md`;
-- локальный `docs/README.md` на русском как живой runtime/module contract;
-- локальный `docs/implementation-plan.md` на русском как живой план доведения модуля до целевого состояния.
+- root `README.md` in English with sections `Purpose`, `Responsibilities`, `Entry points`, `Interactions` and a link to `docs/README.md`;
+- local `docs/README.md` in English as the live runtime/module contract;
+- local `docs/implementation-plan.md` in English as the live plan for bringing the module to its target state.
 
 Минимальный каркас локального `docs/README.md`:
 
@@ -318,7 +318,7 @@ description = "Blog module with admin and storefront surfaces."
 - при необходимости `docs/README.md`;
 - при необходимости `docs/implementation-plan.md`.
 
-Если support/capability crate уже публикует локальные docs, для него рекомендуется тот же структурный стандарт, что и для платформенных модулей: английский root `README.md`, русский `docs/README.md`, русский `docs/implementation-plan.md`.
+If a support/capability crate already publishes local docs, it is recommended to follow the same structural standard as platform modules: English root `README.md`, English `docs/README.md`, English `docs/implementation-plan.md`.
 
 Но они не проходят `module validate`, пока не становятся платформенным модулем.
 

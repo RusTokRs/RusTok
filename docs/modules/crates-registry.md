@@ -27,9 +27,9 @@ status: verified
 
 Источником истины для живого контракта crate-уровня остаётся локальная документация самого компонента:
 
-- root `README.md` на английском;
-- `docs/README.md` на русском;
-- `docs/implementation-plan.md` на русском, если crate ведёт локальный план развития.
+- root `README.md` in English;
+- `docs/README.md` in English;
+- `docs/implementation-plan.md` in English if the crate maintains a local development plan.
 
 Этот реестр нужен как сводный слой: он фиксирует владение, публичные точки входа и запреты, но не заменяет локальные docs.
 

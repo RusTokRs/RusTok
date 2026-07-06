@@ -6,48 +6,47 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Обзор архитектуры платформы
+# Platform Architecture Overview
 
-RusToK развивается как modular monolith с явным composition root в
-`apps/server`, platform modules, host applications и отдельным слоем
+RusToK evolves as a modular monolith with an explicit composition root in
+`apps/server`, platform modules, host applications and a separate layer of
 shared/support/capability crates.
 
-Этот документ даёт верхнеуровневую карту архитектуры. Детальные правила для
-module contract, registry и local docs вынесены в `docs/modules/*`.
+This document provides a top-level architecture map. Detailed rules for
+module contract, registry and local docs are in `docs/modules/*`.
 
-## Основные слои
+## Main Layers
 
-### 1. Хост-приложения
+### 1. Host Applications
 
-- `apps/server` — основной runtime host, HTTP/GraphQL entry point и composition root
+- `apps/server` — main runtime host, HTTP/GraphQL entry point and composition root
 - `apps/admin` — Leptos admin host
 - `apps/storefront` — Leptos storefront host
 - `apps/next-admin` — Next.js admin host
 - `apps/next-frontend` — Next.js storefront host
-- `rustok_mobile/apps/rustok_admin_mobile` — Flutter admin mobile host (поэтапный rollout)
 
-Хост-приложения собирают runtime, монтируют module-owned surfaces и не должны
-забирать ownership доменной логики модуля.
+Host applications assemble the runtime, mount module-owned surfaces and must not
+take ownership of module domain logic.
 
-### 2. Платформенные модули
+### 2. Platform Modules
 
-Platform module определяется через `modules.toml` и относится только к одной из
-двух runtime-категорий:
+A platform module is defined through `modules.toml` and belongs to only one of
+two runtime categories:
 
 - `Core`
 - `Optional`
 
-Платформенные модули публикуют собственные runtime-контракты, transport-surfaces,
-RBAC ownership и локальную документацию. Для path-модулей обязательны:
+Platform modules publish their own runtime contracts, transport surfaces,
+RBAC ownership and local documentation. For path modules, the following are required:
 
 - `rustok-module.toml`
 - root `README.md`
 - `docs/README.md`
 - `docs/implementation-plan.md`
 
-### 3. Shared / support crate-ы
+### 3. Shared / Support Crates
 
-Shared crates дают foundation contracts и reusable infrastructure:
+Shared crates provide foundation contracts and reusable infrastructure:
 
 - `rustok-core`
 - `rustok-api`
@@ -56,12 +55,12 @@ Shared crates дают foundation contracts и reusable infrastructure:
 - `rustok-test-utils`
 - `rustok-commerce-foundation`
 
-Они могут быть критичны для runtime, но сами по себе не становятся platform
-modules без slug в `modules.toml`.
+They may be critical for runtime, but they do not become platform
+modules on their own without a slug in `modules.toml`.
 
-### 4. Capability crate-ы
+### 4. Capability Crates
 
-Capability crate-ы дают отдельные runtime-capabilities и интеграционные слои:
+Capability crates provide separate runtime capabilities and integration layers:
 
 - `rustok-mcp`
 - `rustok-ai`
@@ -71,21 +70,21 @@ Capability crate-ы дают отдельные runtime-capabilities и инте
 - `rustok-iggy`
 - `rustok-iggy-connector`
 
-Они участвуют в composition, но не считаются tenant-toggled `Core/Optional`
+They participate in composition, but are not considered tenant-toggled `Core/Optional`
 modules.
 
-## Runtime-композиция
+## Runtime Composition
 
-Верхний runtime contract собирается так:
+The top-level runtime contract is assembled as follows:
 
-1. `modules.toml` определяет platform composition и dependency graph.
-2. `apps/server/src/modules/mod.rs` строит runtime registry.
-3. `apps/server/src/modules/manifest.rs` валидирует manifest/runtime contract.
-4. `apps/server` и другие hosts монтируют surfaces через manifest-driven wiring.
-5. shared/capability crates подключаются как support layers, а не как отдельная
+1. `modules.toml` defines platform composition and dependency graph.
+2. `apps/server/src/modules/mod.rs` builds the runtime registry.
+3. `apps/server/src/modules/manifest.rs` validates the manifest/runtime contract.
+4. `apps/server` and other hosts mount surfaces through manifest-driven wiring.
+5. Shared/capability crates are connected as support layers, not as a separate
    module taxonomy.
 
-## Источники истины
+## Sources of Truth
 
 ### Runtime
 
@@ -94,62 +93,62 @@ modules.
 - `apps/server/src/modules/manifest.rs`
 - `crates/rustok-core/src/module.rs`
 
-### Документация
+### Documentation
 
-- root `README.md` на английском фиксирует публичный contract компонента
-- `docs/README.md` на русском фиксирует живой runtime/app/module contract
-- `docs/implementation-plan.md` на русском фиксирует живой план развития
-- central docs в `docs/` связывают карту платформы и не должны дублировать
-  локальные docs построчно
+- Root `README.md` in English captures the public contract of the component
+- `docs/README.md` in English captures the live runtime/app/module contract
+- `docs/implementation-plan.md` in English captures the live development plan
+- Central docs in `docs/` link the platform map and must not duplicate
+  local docs line by line
 
-## UI и transport-политика
+## UI and Transport Policy
 
-- module-owned UI остаётся у самого модуля
-- Leptos surfaces публикуются через `admin/` и `storefront/` sub-crates
-- internal Leptos data layer по умолчанию использует `#[server]` functions
-- GraphQL остаётся параллельным transport contract
-- host applications только монтируют surfaces и routes
-- locale выбирается host/runtime layer и передаётся в UI package как effective locale
+- Module-owned UI stays with the module itself
+- Leptos surfaces are published through `admin/` and `storefront/` sub-crates
+- Internal Leptos data layer uses `#[server]` functions by default
+- GraphQL remains a parallel transport contract
+- Host applications only mount surfaces and routes
+- Locale is selected by the host/runtime layer and passed to UI packages as effective locale
 
-## Поток событий и read-model
+## Event Flow and Read Model
 
-Базовая write/read схема платформы:
+The basic write/read scheme of the platform:
 
-1. request приходит в host/runtime layer
-2. tenant/auth/RBAC policy применяется до вызова доменной логики
-3. модуль выполняет write-side операцию
-4. межмодульные события публикуются через transactional outbox
-5. read-side и индексация обновляются через event-driven flow
-6. UI и API читают согласованные read models и transport surfaces
+1. Request arrives at the host/runtime layer.
+2. Tenant/auth/RBAC policy is applied before calling domain logic.
+3. The module performs a write-side operation.
+4. Cross-module events are published through a transactional outbox.
+5. Read-side and indexing are updated through an event-driven flow.
+6. UI and APIs read consistent read models and transport surfaces.
 
-`rustok-outbox` при этом считается `Core` platform module, а не просто support crate.
+`rustok-outbox` is considered a `Core` platform module, not just a support crate.
 
-## Tenant lifecycle
+## Tenant Lifecycle
 
-Tenant-level enable/disable относится только к `Optional` modules и работает
-поверх уже собранной platform composition.
+Tenant-level enable/disable applies only to `Optional` modules and works
+on top of the already assembled platform composition.
 
-Это не должно:
+It must not:
 
-- выключать `Core` modules
-- превращать capability crate в platform module
-- обходить dependency graph из `modules.toml`
+- Disable `Core` modules
+- Turn capability crates into platform modules
+- Bypass the dependency graph from `modules.toml`
 
-## Критерии готовности для архитектурных изменений
+## Readiness Criteria for Architecture Changes
 
-Изменение считается доведённым, если:
+A change is considered complete if:
 
-1. runtime contract отражён в коде и manifest wiring;
-2. локальные docs затронутых компонентов обновлены;
-3. central docs в `docs/modules/*`, `docs/architecture/*` и `docs/index.md`
-   синхронизированы;
-4. при необходимости решение зафиксировано в ADR.
+1. The runtime contract is reflected in code and manifest wiring;
+2. Local docs of affected components are updated;
+3. Central docs in `docs/modules/*`, `docs/architecture/*` and `docs/index.md`
+   are synchronized;
+4. If necessary, the decision is captured in an ADR.
 
-## Связанные документы
+## Related Documents
 
-- [Архитектура модулей](./modules.md)
-- [Диаграмма платформы](./diagram.md)
-- [Принципы архитектуры](./principles.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Реестр модулей и приложений](../modules/registry.md)
-- [Контракт `rustok-module.toml`](../modules/manifest.md)
+- [Module Architecture](./modules.md)
+- [Platform Diagram](./diagram.md)
+- [Architecture Principles](./principles.md)
+- [Module Platform Overview](../modules/overview.md)
+- [Module and Application Registry](../modules/registry.md)
+- [`rustok-module.toml` Contract](../modules/manifest.md)

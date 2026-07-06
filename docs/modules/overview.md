@@ -6,47 +6,47 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Обзор модульной платформы
+# Module Platform Overview
 
-Этот документ фиксирует актуальную модульную модель RusToK без смешения
-архитектурных ролей и технической упаковки.
+This document captures the current modular model of RusToK without mixing
+architectural roles and technical packaging.
 
-Central docs в `docs/modules/` описывают карту платформы, taxonomy и правила
-композиции, но не заменяют локальные docs самих компонентов.
+Central docs in `docs/modules/` describe the platform map, taxonomy and composition
+rules, but do not replace the local docs of the components themselves.
 
-## Базовая модель
+## Base Model
 
-Для платформенных модулей существует только две категории:
+For platform modules, there are only two categories:
 
 - `Core`
 - `Optional`
 
-Источник истины по составу и зависимостям платформенных модулей: `modules.toml`.
+The source of truth for platform module composition and dependencies is `modules.toml`.
 
-При этом важно различать:
+It is important to distinguish:
 
-- платформенный модуль — crate, который объявлен в `modules.toml` и входит в runtime-taxonomy `Core` или `Optional`;
-- support/library crate — shared dependency или инфраструктурный слой, который живёт в `crates/`, но не является платформенным модулем;
-- capability crate — отдельный runtime capability-layer, который может подключаться к платформе, но не обязан входить в `Core/Optional` taxonomy.
+- Platform module — a crate declared in `modules.toml` that belongs to the `Core` or `Optional` runtime taxonomy;
+- Support/library crate — a shared dependency or infrastructure layer that lives in `crates/` but is not a platform module;
+- Capability crate — a separate runtime capability layer that can be connected to the platform, but is not required to belong to the `Core/Optional` taxonomy.
 
-## Источники истины по документации
+## Documentation Sources of Truth
 
-- корневой `README.md` компонента на английском фиксирует публичный контракт:
+- Root `README.md` of the component in English captures the public contract:
   `Purpose`, `Responsibilities`, `Entry points`, `Interactions`;
-- локальный `docs/README.md` на русском фиксирует живой runtime/module/app-контракт;
-- локальный `docs/implementation-plan.md` на русском фиксирует живой план развития;
-- central docs в `docs/modules/` связывают эту картину вместе и не должны
-  дублировать локальные документы построчно.
+- Local `docs/README.md` in English captures the live runtime/module/app contract;
+- Local `docs/implementation-plan.md` in English captures the live development plan;
+- Central docs in `docs/modules/` tie this picture together and must not
+  duplicate local documents line by line.
 
-## Где смотреть в коде
+## Where to Look in the Code
 
-- состав платформенных модулей: `modules.toml`
-- runtime registry: `apps/server/src/modules/mod.rs`
-- manifest-wiring: `apps/server/src/modules/manifest.rs`
-- базовые модульные контракты: `crates/rustok-core/src/module.rs`
-- taxonomy `Core` / `Optional`: `crates/rustok-core/src/registry.rs`
+- Platform module composition: `modules.toml`
+- Runtime registry: `apps/server/src/modules/mod.rs`
+- Manifest wiring: `apps/server/src/modules/manifest.rs`
+- Base module contracts: `crates/rustok-core/src/module.rs`
+- `Core` / `Optional` taxonomy: `crates/rustok-core/src/registry.rs`
 
-## Platform modules
+## Platform Modules
 
 ### Core
 
@@ -87,11 +87,11 @@ Central docs в `docs/modules/` описывают карту платформы
 | `workflow` | `rustok-workflow` | — |
 | `alloy` | `alloy` | — |
 
-## Что лежит рядом с модулями
+## What Lives Next to Modules
 
-Не каждый crate в `crates/` является платформенным модулем.
+Not every crate in `crates/` is a platform module.
 
-### Shared libraries
+### Shared Libraries
 
 - `rustok-core`
 - `rustok-api`
@@ -100,7 +100,7 @@ Central docs в `docs/modules/` описывают карту платформы
 - `rustok-test-utils`
 - `rustok-commerce-foundation`
 
-### Infrastructure / capability crates
+### Infrastructure / Capability Crates
 
 - `rustok-iggy`
 - `rustok-iggy-connector`
@@ -110,46 +110,45 @@ Central docs в `docs/modules/` описывают карту платформы
   `apps/next-admin/packages/rustok-ai`
 - `flex`
 
-Именно поэтому нельзя автоматически отождествлять «любой crate в `crates/`» с
-платформенный модуль.
+This is why "any crate in `crates/`" cannot be automatically equated with a platform module.
 
-При изменении ownership, runtime-контракта или boundaries компонента сначала
-обновляются локальные docs этого компонента, затем `overview.md`, `registry.md`,
-`_index.md` и остальные central registry docs.
+When changing ownership, runtime contract or component boundaries, first
+update local docs of that component, then `overview.md`, `registry.md`,
+`_index.md` and other central registry docs.
 
-## UI composition policy
+## UI Composition Policy
 
-Если модуль поставляет UI, этот UI должен оставаться module-owned:
+If a module provides UI, that UI must remain module-owned:
 
-- Leptos UI-поверхности публикуются через sub-crates `admin/` и `storefront/`;
-- Next.js UI-поверхности публикуются через пакеты в `apps/next-admin/packages/*` и
+- Leptos UI surfaces are published through `admin/` and `storefront/` sub-crates;
+- Next.js UI surfaces are published through packages in `apps/next-admin/packages/*` and
   `apps/next-frontend/packages/*`;
-- host-приложения монтируют эти UI-поверхности через manifest-driven wiring, а не
-  через жёстко пришитые module-specific branches.
+- Host applications mount these UI surfaces through manifest-driven wiring, not
+  through hard-coded module-specific branches.
 
-## Alloy и capability crates
+## Alloy and Capability Crates
 
-`rustok-ai`, `rustok-mcp` и `flex` не входят в taxonomy `Core/Optional`
-как обычные платформенные модули.
+`rustok-ai`, `rustok-mcp` and `flex` do not belong to the `Core/Optional` taxonomy
+as regular platform modules.
 
-Это означает:
+This means:
 
-- они могут быть частью runtime-composition;
-- они могут иметь собственные docs, UI и capability-поверхность;
-- `rustok-ai` при этом остаётся capability crate, но уже публикует крупные
-  operator/admin UI-поверхности и для Leptos host, и для Next.js host;
-- но их роль описывается как support/capability-слой, а не как tenant-toggled
+- They may be part of runtime composition;
+- They may have their own docs, UI and capability surface;
+- `rustok-ai` remains a capability crate, but already publishes large
+  operator/admin UI surfaces for both Leptos host and Next.js host;
+- But their role is described as a support/capability layer, not as a tenant-toggled
   module category.
 
-`alloy` здесь отдельный случай: он остаётся capability-oriented по смыслу, но
-при этом объявлен в `modules.toml` и участвует в `ModuleRegistry` как обычный
-optional модуль.
+`alloy` is a separate case here: it remains capability-oriented in meaning, but
+is declared in `modules.toml` and participates in `ModuleRegistry` as a regular
+optional module.
 
-## Связанные документы
+## Related Documents
 
-- [Реестр модулей и приложений](./registry.md)
-- [Индекс документации по модулям](./_index.md)
-- [Реестр crate-ов модульной платформы](./crates-registry.md)
-- [Контракт `rustok-module.toml`](./manifest.md)
-- [Спец-план rich-text и визуального page builder](./tiptap-page-builder-implementation-plan.md)
-- [Архитектура модулей](../architecture/modules.md)
+- [Module and Application Registry](./registry.md)
+- [Module Documentation Index](./_index.md)
+- [Module Platform Crate Registry](./crates-registry.md)
+- [`rustok-module.toml` Contract](./manifest.md)
+- [Rich-text and Visual Page Builder Special Plan](./tiptap-page-builder-implementation-plan.md)
+- [Module Architecture](../architecture/modules.md)

@@ -6,191 +6,190 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# RusTok: карта документации
+# RusTok: Documentation Map
 
-Этот файл является канонической точкой входа в документацию репозитория.
-С него нужно начинать работу по правилам [AGENTS.md](../AGENTS.md).
+This file is the canonical entry point for the repository documentation.
+Start here when following the rules in [AGENTS.md](../AGENTS.md).
 
-Документация в `docs/` описывает платформу целиком.
-Локальные документы приложений и crate-ов лежат в `apps/*/docs/`,
-`crates/*/docs/` и `README.md` рядом с кодом.
+Documentation in `docs/` describes the platform as a whole.
+Local documents for applications and crates live in `apps/*/docs/`,
+`crates/*/docs/` and `README.md` next to the code.
 
-## Как пользоваться картой
+## How to Use the Map
 
-1. Откройте обзор платформы и нужный архитектурный раздел.
-2. Для модулей используйте `docs/modules/*` и `docs/modules/registry.md`.
-3. Для UI используйте `docs/UI/*` и локальные docs приложений.
-4. Для проверок и quality-gates используйте `docs/verification/*`
-   и `docs/guides/*`.
-5. Для архитектурных решений используйте `DECISIONS/*`.
+1. Open the platform overview and the relevant architecture section.
+2. For modules, use `docs/modules/*` and `docs/modules/registry.md`.
+3. For UI, use `docs/UI/*` and local app docs.
+4. For verification and quality gates, use `docs/verification/*`
+   and `docs/guides/*`.
+5. For architecture decisions, use `DECISIONS/*`.
 
-## Обязательные стартовые документы
+## Required Starting Documents
 
-- [Обзор платформы](./architecture/overview.md)
-- [Архитектурные принципы](./architecture/principles.md)
-- [API и surface-контракты](./architecture/api.md)
-- [Маршрутизация](./architecture/routing.md)
-- [Модульная архитектура](./architecture/modules.md)
-- [Карта модулей и владельцев](./modules/registry.md)
+- [Platform Overview](./architecture/overview.md)
+- [Architecture Principles](./architecture/principles.md)
+- [API and Surface Contracts](./architecture/api.md)
+- [Routing](./architecture/routing.md)
+- [Module Architecture](./architecture/modules.md)
+- [Module and Owner Map](./modules/registry.md)
 
-## Модульная система
+## Module System
 
-- [Обзор модульной платформы](./modules/overview.md)
-- [Как писать модуль в RusToK](./modules/module-authoring.md)
-- [Контракт `rustok-module.toml`](./modules/manifest.md)
-- [Реестр модулей и приложений](./modules/registry.md)
-- [FFA/FBA readiness board и boundary evidence (внутри реестра модулей)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
-- [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
-- [Runtime-контракт `rustok-page-builder`](../crates/rustok-page-builder/docs/README.md)
-- [Machine-readable FBA registry page-builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
-- [Machine-readable Page Builder Wave evidence template](../crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
-- [Machine-readable Page Builder control-plane dry-run contract](../crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
-- [Machine-readable Page Builder Flutter Wave hand-off contract](../crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json)
-- [Synthetic pages Wave 0 dry-run evidence packet](../crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
-- [Индекс документации по модулям](./modules/_index.md)
-- [Документация auth-модуля и owner-owned auth/OAuth GraphQL boundary](../crates/rustok-auth/docs/README.md)
-- [Документация MCP и owner-owned management GraphQL](../crates/rustok-mcp/docs/README.md)
-- [Документация AI capability и owner-owned GraphQL](../crates/rustok-ai/docs/README.md)
-- [Документация content и owner-owned dashboard analytics](../crates/rustok-content/docs/README.md)
-- [Документация media и owner-owned GraphQL](../crates/rustok-media/docs/README.md)
-- [Документация order и owner-owned dashboard analytics](../crates/rustok-order/docs/README.md)
-- [Документация Flex и manifest-composed owner-owned GraphQL](../crates/flex/docs/README.md)
-- [Реестр implementation plans](./modules/implementation-plans-registry.md)
-- [План консолидации управления модулями](./modules/module-control-plane-consolidation-plan.md)
-- [Шаблон документации модуля](./templates/module_contract.md)
-- [Индекс UI-пакетов модулей](./modules/UI_PACKAGES_INDEX.md)
-- [Быстрый старт по UI-пакетам](./modules/UI_PACKAGES_QUICKSTART.md)
-- [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
-- AI support adapter plans для `rustok-ai-media` и `rustok-ai-alloy` доступны через [индекс документации по модулям](./modules/_index.md).
+- [Module Platform Overview](./modules/overview.md)
+- [How to Write a Module in RusToK](./modules/module-authoring.md)
+- [`rustok-module.toml` Contract](./modules/manifest.md)
+- [Module and Application Registry](./modules/registry.md)
+- [FFA/FBA Readiness Board and Boundary Evidence (inside module registry)](./modules/registry.md#ffafba-readiness-board-module-owned-ui)
+- [Module Platform Crate Registry](./modules/crates-registry.md)
+- [`rustok-page-builder` Runtime Contract](../crates/rustok-page-builder/docs/README.md)
+- [Machine-readable FBA Registry Page Builder](../crates/rustok-page-builder/contracts/page-builder-fba-registry.json)
+- [Machine-readable Page Builder Wave Evidence Template](../crates/rustok-page-builder/contracts/page-builder-wave-evidence-template.json)
+- [Machine-readable Page Builder Control-plane Dry-run Contract](../crates/rustok-page-builder/contracts/page-builder-control-plane-dry-run.json)
+- [Machine-readable Page Builder Flutter Wave Hand-off Contract](../crates/rustok-page-builder/contracts/page-builder-flutter-wave-handoff.json)
+- [Synthetic Pages Wave 0 Dry-run Evidence Packet](../crates/rustok-page-builder/contracts/evidence/pages-wave0-dry-run-evidence.json)
+- [Module Documentation Index](./modules/_index.md)
+- [Auth Module and Owner-owned Auth/OAuth GraphQL Boundary Documentation](../crates/rustok-auth/docs/README.md)
+- [MCP and Owner-owned Management GraphQL Documentation](../crates/rustok-mcp/docs/README.md)
+- [AI Capability and Owner-owned GraphQL Documentation](../crates/rustok-ai/docs/README.md)
+- [Content and Owner-owned Dashboard Analytics Documentation](../crates/rustok-content/docs/README.md)
+- [Media and Owner-owned GraphQL Documentation](../crates/rustok-media/docs/README.md)
+- [Order and Owner-owned Dashboard Analytics Documentation](../crates/rustok-order/docs/README.md)
+- [Flex and Manifest-composed Owner-owned GraphQL Documentation](../crates/flex/docs/README.md)
+- [Implementation Plans Registry](./modules/implementation-plans-registry.md)
+- [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
+- [Module Documentation Template](./templates/module_contract.md)
+- [Module UI Packages Index](./modules/UI_PACKAGES_INDEX.md)
+- [UI Packages Quick Start](./modules/UI_PACKAGES_QUICKSTART.md)
+- [Rich-text and Visual Page Builder Special Plan](./modules/tiptap-page-builder-implementation-plan.md)
+- AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
-## UI и клиентские поверхности
+## UI and Client Surfaces
 
-- [Обзор UI](./UI/README.md)
-- [GraphQL и Leptos server functions](./UI/graphql-architecture.md) — включая native/GraphQL parity для owner-owned storefront payment collection/refund reads
-- [Контракт storefront и checkout slots](./UI/storefront.md)
-- [Flutter mobile host витрины](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
-- [Flutter mobile package catalog/cart](../rustok_mobile/packages/rustok_catalog_mobile/README.md)
-- [Быстрый старт для Admin ↔ Server](./UI/admin-server-connection-quickstart.md)
-- [SEO runtime/control-plane contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
-- [SEO operations runbook](../crates/rustok-seo/docs/operations-runbook.md)
-- [Каталог Rust UI-компонентов](./UI/rust-ui-component-catalog.md)
-- [Трек rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
-- [Архитектура i18n](./architecture/i18n.md)
+- [UI Overview](./UI/README.md)
+- [GraphQL and Leptos Server Functions](./UI/graphql-architecture.md) — including native/GraphQL parity for owner-owned storefront payment collection/refund reads
+- [Storefront and Checkout Slots Contract](./UI/storefront.md)
+- [Flutter Mobile Storefront Host](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
+- [Flutter Mobile Package Catalog/Cart](../rustok_mobile/packages/rustok_catalog_mobile/README.md)
+- [Admin ↔ Server Quick Start](./UI/admin-server-connection-quickstart.md)
+- [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
+- [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
+- [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
+- [Rich-text and Visual Page Builder Track](./modules/tiptap-page-builder-implementation-plan.md)
+- [i18n Architecture](./architecture/i18n.md)
 
-## Архитектура и foundation
+## Architecture and Foundation
 
-- [Диаграмма платформы](./architecture/diagram.md)
-- [База данных](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
-- [ADR гибридного установщика](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
-- [План ухода от Loco RS к чистому Axum и своим CLI](./architecture/loco-exit-plan.md)
-- [ADR границы Axum runtime и ops CLI](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md) — чистый Axum server binary без maintenance CLI code, отдельный `rustok-ops`, module-local `cli/` adapters и generated registries для distribution-aware builds
-- [ADR lifecycle hook phases/retry contract](../DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) — `validated/running/committed/failed`, explicit `pre/post` hooks и retryable post-hook failures без частичного rollback
-- [ADR владения shared API contracts](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission и locale contracts в `rustok-api`, односторонний граф `rustok-core -> rustok-api` и owner-owned Loco adapter в `rustok-outbox`
-- [Каналы](./architecture/channels.md)
+- [Platform Diagram](./architecture/diagram.md)
+- [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
+- [Hybrid Installer ADR](../DECISIONS/2026-04-26-hybrid-installer-architecture.md) — installer-core/CLI/web wizard layering, PostgreSQL production policy, explicit separation of build composition, schema composition and tenant enablement
+- [Loco RS Exit Plan to Pure Axum and Custom CLI](./architecture/loco-exit-plan.md)
+- [ADR: Axum Runtime and Ops CLI Boundary](../DECISIONS/2026-07-02-axum-runtime-and-ops-cli-boundary.md) — pure Axum server binary without maintenance CLI code, separate `rustok-ops`, module-local `cli/` adapters and generated registries for distribution-aware builds
+- [ADR: Lifecycle Hook Phases/Retry Contract](../DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md) — `validated/running/committed/failed`, explicit `pre/post` hooks and retryable post-hook failures without partial rollback
+- [ADR: Shared API Contract Ownership](../DECISIONS/2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) — `Port*`, permission and locale contracts in `rustok-api`, one-way graph `rustok-core -> rustok-api` and owner-owned Loco adapter in `rustok-outbox`
+- [Channels](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
-- [Контракт event flow](./architecture/event-flow-contract.md)
-- [Matryoshka / модель композиции](./architecture/matryoshka.md)
-- [Базовая производительность](./architecture/performance-baseline.md)
+- [Event Flow Contract](./architecture/event-flow-contract.md)
+- [Matryoshka / Composition Model](./architecture/matryoshka.md)
+- [Performance Baseline](./architecture/performance-baseline.md)
 
-## Примеры и smoke-сценарии
+## Examples and Smoke Scenarios
 
-- [Каталог исполняемых примеров](./examples/README.md)
+- [Executable Examples Catalog](./examples/README.md)
 
-## Руководства и стандарты
+## Guides and Standards
 
-- [Быстрый старт](./guides/quickstart.md)
-- [Тестирование](./guides/testing.md)
-- [Быстрый старт по observability](./guides/observability-quickstart.md)
-- [Runtime guardrails](./guides/runtime-guardrails.md)
-- [Alloy runtime hardening contract](../crates/alloy/contracts/alloy-runtime-contract.json)
-- [ADR: control-plane lifecycle and migration ordering contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
-- [Валидация входных данных](./guides/input-validation.md)
-- [Обработка ошибок](./guides/error-handling.md)
-- [Аудит безопасности](./guides/security-audit.md)
-- [Логирование](./standards/logging.md)
-- [Ошибки](./standards/errors.md)
-- [Безопасность](./standards/security.md)
-- [Правила кодирования](./standards/coding.md)
-- [Стандарт RT JSON v1](./standards/rt-json-v1.md)
+- [Quick Start](./guides/quickstart.md)
+- [Testing](./guides/testing.md)
+- [Observability Quick Start](./guides/observability-quickstart.md)
+- [Runtime Guardrails](./guides/runtime-guardrails.md)
+- [Alloy Runtime Hardening Contract](../crates/alloy/contracts/alloy-runtime-contract.json)
+- [ADR: Control-plane Lifecycle and Migration Ordering Contracts](../DECISIONS/2026-05-18-control-plane-lifecycle-and-migration-contracts.md)
+- [Input Validation](./guides/input-validation.md)
+- [Error Handling](./guides/error-handling.md)
+- [Security Audit](./guides/security-audit.md)
+- [Logging](./standards/logging.md)
+- [Errors](./standards/errors.md)
+- [Security](./standards/security.md)
+- [Coding Standards](./standards/coding.md)
+- [RT JSON v1 Standard](./standards/rt-json-v1.md)
 
-## Проверка платформы
+## Platform Verification
 
-- [Инструмент workspace CLI `xtask`](../xtask/README.md)
-- [Операционная документация Athanor](./operations/README.md)
-- [Главный README по верификации](./verification/README.md)
-- [Cross-platform экспорт OpenAPI/GraphQL reference artifacts](../scripts/verify/export-reference-artifacts.mjs)
-- [Проверка OpenAPI/GraphQL reference artifacts](../scripts/verify/verify-reference-artifacts.mjs)
-- [Проверка Flex multilingual contract](../scripts/verify/verify-flex-multilingual-contract.mjs)
-- [Проверка Flex standalone contract guardrails](../scripts/verify/verify-flex-standalone-contract.mjs)
-- [Сводный план верификации](./verification/PLATFORM_VERIFICATION_PLAN.md)
-- [Верификация foundation-слоя](./verification/platform-foundation-verification-plan.md)
-- [Верификация API-поверхностей](./verification/platform-api-surfaces-verification-plan.md)
-- [Верификация frontend-поверхностей](./verification/platform-frontend-surfaces-verification-plan.md)
-- [Верификация целостности ядра](./verification/platform-core-integrity-verification-plan.md)
-- [Верификация качества и эксплуатации](./verification/platform-quality-operations-verification-plan.md)
+- [Workspace CLI Tool `xtask`](../xtask/README.md)
+- [Athanor Operations Documentation](./operations/README.md)
+- [Main Verification README](./verification/README.md)
+- [Cross-platform OpenAPI/GraphQL Reference Artifacts Export](../scripts/verify/export-reference-artifacts.mjs)
+- [OpenAPI/GraphQL Reference Artifacts Verification](../scripts/verify/verify-reference-artifacts.mjs)
+- [Flex Multilingual Contract Verification](../scripts/verify/verify-flex-multilingual-contract.mjs)
+- [Flex Standalone Contract Guardrails Verification](../scripts/verify/verify-flex-standalone-contract.mjs)
+- [Consolidated Verification Plan](./verification/PLATFORM_VERIFICATION_PLAN.md)
+- [Foundation Layer Verification](./verification/platform-foundation-verification-plan.md)
+- [API Surfaces Verification](./verification/platform-api-surfaces-verification-plan.md)
+- [Frontend Surfaces Verification](./verification/platform-frontend-surfaces-verification-plan.md)
+- [Core Integrity Verification](./verification/platform-core-integrity-verification-plan.md)
+- [Quality and Operations Verification](./verification/platform-quality-operations-verification-plan.md)
 
-## AI, исследования и шаблоны
+## AI, Research and Templates
 
-- [Контекст для AI](./AI_CONTEXT.md)
-- [Шаблон AI-сессии](./ai/SESSION_TEMPLATE.md)
-- [Известные pitfalls](./ai/KNOWN_PITFALLS.md)
-- [Индекс MCP reference](./references/mcp/README.md)
-- [Сравнение архитектуры RusTok и Medusa](./research/medusa-vs-rustok-architecture.md)
-- [Fluid Frontend Architecture для RusTok](./research/fluid-frontend-architecture.md)
-- [Fluid Backend Architecture для RusTok](./research/fluid-backend-architecture.md)
-- [Архитектура Flutter-приложения для RusTok](./research/flutter.md)
-- [FFA для Flutter: статья о платформенной mobile-архитектуре](./research/flutter-ffa-architecture-article.md)
-- [Единый план реализации Fluid Backend Architecture](./research/fluid-backend-architecture-unified-plan.md)
-- [План FFA-рефакторинга UI и подготовки к Dioxus](./research/dioxus-ffa-ui-migration-plan.md)
-- [Карта связности пилотов FFA/Dioxus (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
-- [Checklist parity для FFA UI migration](./verification/ffa-ui-parity-checklist.md)
-- [Исследования и ADR-черновики](./research/ADR-xxxx-grpc-adoption.md)
+- [AI Context](./AI_CONTEXT.md)
+- [AI Session Template](./ai/SESSION_TEMPLATE.md)
+- [Known Pitfalls](./ai/KNOWN_PITFALLS.md)
+- [MCP Reference Index](./references/mcp/README.md)
+- [RusTok vs Medusa Architecture Comparison](./research/medusa-vs-rustok-architecture.md)
+- [Fluid Frontend Architecture for RusTok](./research/fluid-frontend-architecture.md)
+- [Fluid Backend Architecture for RusTok](./research/fluid-backend-architecture.md)
+- [Flutter Application Architecture for RusTok](./research/flutter.md)
+- [FFA for Flutter: Platform Mobile Architecture Article](./research/flutter-ffa-architecture-article.md)
+- [Unified Fluid Backend Architecture Implementation Plan](./research/fluid-backend-architecture-unified-plan.md)
+- [FFA UI Refactoring Plan and Dioxus Preparation](./research/dioxus-ffa-ui-migration-plan.md)
+- [FFA/Dioxus Pilot Connectivity Map (Phase A)](./research/dioxus-ffa-pilot-connectivity-map.md)
+- [FFA UI Migration Parity Checklist](./verification/ffa-ui-parity-checklist.md)
+- [Research and ADR Drafts](./research/ADR-xxxx-grpc-adoption.md)
 
-## Документация приложений
+## Application Documentation
 
-- [Документация Server](../apps/server/docs/README.md)
-- [Server runbook: retry/compensation lifecycle hook failures](../apps/server/docs/module-lifecycle-retry-compensation-runbook.md)
-- [Документация Admin](../apps/admin/docs/README.md)
-- [Документация Storefront](../apps/storefront/docs/README.md)
-- [Документация Next Admin](../apps/next-admin/docs/README.md)
-- [Документация Next Frontend](../apps/next-frontend/docs/README.md)
-- [Документация Flutter Admin Mobile](../rustok_mobile/apps/rustok_admin_mobile/README.md)
-- [Документация Flutter Frontend Mobile](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
+- [Server Documentation](../apps/server/docs/README.md)
+- [Server Runbook: Retry/Compensation Lifecycle Hook Failures](../apps/server/docs/module-lifecycle-retry-compensation-runbook.md)
+- [Admin Documentation](../apps/admin/docs/README.md)
+- [Storefront Documentation](../apps/storefront/docs/README.md)
+- [Next Admin Documentation](../apps/next-admin/docs/README.md)
+- [Next Frontend Documentation](../apps/next-frontend/docs/README.md)
+- [Flutter Admin Mobile Documentation](../rustok_mobile/apps/rustok_admin_mobile/README.md)
+- [Flutter Frontend Mobile Documentation](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 
-## Документация crate-ов
+## Crate Documentation
 
-- Для platform modules: `crates/rustok-*` согласно
-  [реестру модулей и приложений](./modules/registry.md).
-- Для foundation/shared libraries см. `crates/rustok-*`
-  и соответствующие `README.md`.
-- Для infrastructure/capability crates см. `crates/*`
-  и `docs/modules/crates-registry.md`.
-- Для UI-библиотек используйте `crates/leptos-*`, `crates/leptos-ui`.
-- У каждого crate должен быть актуальный `README.md`,
-  а при необходимости и `docs/`.
+- For platform modules: `crates/rustok-*` per the
+  [module and application registry](./modules/registry.md).
+- For foundation/shared libraries see `crates/rustok-*`
+  and the corresponding `README.md`.
+- For infrastructure/capability crates see `crates/*`
+  and `docs/modules/crates-registry.md`.
+- For UI libraries use `crates/leptos-*`, `crates/leptos-ui`.
+- Every crate must have an up-to-date `README.md`,
+  and `docs/` if needed.
 
-## Правила поддержки актуальности
+## Keeping Documentation Up to Date
 
-- Центральные документы в `docs/` ведутся на русском языке.
-- `README.md`, `AGENTS.md`, `CONTRIBUTING.md`
-  и публичные контрактные документы ведутся на английском.
-- Один файл — один язык.
-- Не создавайте новый документ, если подходящий уже существует:
-  расширяйте текущий.
-- При изменении архитектуры, API, tenancy, routing, observability
-  или модульной системы обновляйте и локальные docs компонента,
-  и центральные документы в `docs/`.
-- Любая новая схема проходит i18n-аудит;
-  локализованные display-поля живут в `*_translations`.
-- Read-side locale matching использует shared normalization
+- All documentation is written in English.
+- `README.ru.md` is the only file allowed in Russian (localized translation of the main README).
+- One file — one language.
+- Do not create a new document if a suitable one already exists:
+  extend the current one.
+- When changing architecture, API, tenancy, routing, observability
+  or the module system, update both local component docs
+  and central documents in `docs/`.
+- Any new schema undergoes an i18n audit;
+  localized display fields live in `*_translations`.
+- Read-side locale matching uses shared normalization
   (`requested -> tenant default -> first available`).
-- Module-owned admin UI хранит selection state в URL
-  с typed `snake_case` query keys.
+- Module-owned admin UI stores selection state in URL
+  with typed `snake_case` query keys.
 
 ## Architecture Decisions
 
-- [Индекс ADR](../DECISIONS/README.md)
+- [ADR Index](../DECISIONS/README.md)
 
-- [Security: RUSTSEC-2026-0045 remediation note](./security/aws-lc-rustsec-2026-0045.md)
-- [Security: RUSTSEC-2026-0098 / 0099 / 0104 remediation note](./security/rustls-webpki-rustsec-2026-0099-0104.md)
-- [Security: RUSTSEC-2023-0071 remediation note](./security/rsa-rustsec-2023-0071.md)
+- [Security: RUSTSEC-2026-0045 Remediation Note](./security/aws-lc-rustsec-2026-0045.md)
+- [Security: RUSTSEC-2026-0098 / 0099 / 0104 Remediation Note](./security/rustls-webpki-rustsec-2026-0099-0104.md)
+- [Security: RUSTSEC-2023-0071 Remediation Note](./security/rsa-rustsec-2023-0071.md)

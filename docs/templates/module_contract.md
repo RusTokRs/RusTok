@@ -83,7 +83,7 @@ One short paragraph explaining what this crate owns.
 
 ## 3. Локальный `docs/README.md`
 
-Локальный docs README пишется на русском и описывает живой модульный контракт.
+Local docs README is written in English and describes the live module contract.
 
 Минимальный каркас:
 
@@ -226,7 +226,7 @@ cargo xtask validate-manifest
 
 ## 7. Что не делать
 
-- не писать root `README.md` на русском;
+- do not write root `README.md` in Russian;
 - не хранить единственную документацию модуля только в `docs/modules/`;
 - не добавлять path-модуль в `modules.toml` без `rustok-module.toml`;
 - не считать подпапки `admin/` и `storefront/` доказательством интеграции без manifest wiring;

@@ -98,7 +98,7 @@ status: verified
 ### 4.2 Local docs
 
 - [ ] Изменённые `apps/*` и `crates/*` синхронизируют root `README.md`, `docs/README.md` и `docs/implementation-plan.md`.
-- [ ] Public contracts в `README.md` остаются на английском, central docs в `docs/` остаются на русском.
+- [ ] Public contracts in `README.md` remain in English, central docs in `docs/` are now also in English.
 - [ ] Документация описывает реальный source of truth, а не временные workaround-ы.
 
 ### 4.3 Release-readiness

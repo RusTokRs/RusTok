@@ -24,8 +24,8 @@ Detailed module ownership and responsibilities are captured in [`docs/modules/re
 
 ### Language
 
-- Central platform documentation (`docs/`) is written in **Russian** (the team's primary language).
-- Public-facing contracts, `AGENTS.md`, `CONTRIBUTING.md`, and crate `README.md` files are in **English**.
+- All documentation is written in **English**.
+- `README.ru.md` is the only file allowed in **Russian** (localized translation of the main README).
 - Mixed language within a single document is not allowed — choose one language per file.
 
 ### Placement

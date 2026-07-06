@@ -16,9 +16,9 @@ status: verified
 
 У модуля с UI к концу этого прохода должны быть:
 
-- root `README.md` на английском;
-- `docs/README.md` на русском;
-- `docs/implementation-plan.md` на русском;
+- root `README.md` in English;
+- `docs/README.md` in English;
+- `docs/implementation-plan.md` in English;
 - `rustok-module.toml` с корректным `[provides.admin_ui]` и/или
   `[provides.storefront_ui]`;
 - `admin/` и/или `storefront/` sub-crate, если UI реально поставляется;
