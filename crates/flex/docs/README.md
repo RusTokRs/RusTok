@@ -195,7 +195,7 @@ pub struct ValidationRule {
 
 pub struct SelectOption {
     pub value: String,
-    pub label: HashMap<String, String>, // {"en": "Active", "ru": "Активен"}
+    pub label: HashMap<String, String>, // {"en": "Active", "ru": "Active_RU"}
 }
 ```
 
@@ -205,7 +205,7 @@ pub struct SelectOption {
 pub struct FieldDefinition {
     pub field_key: String,                              // snake_case, unique per tenant+entity scope
     pub field_type: FieldType,
-    pub label: HashMap<String, String>,                 // {"en": "Phone", "ru": "Телефон"}
+    pub label: HashMap<String, String>,                 // {"en": "Phone", "ru": "Phone_RU"}
     pub description: Option<HashMap<String, String>>,
     pub is_localized: bool,
     pub is_required: bool,

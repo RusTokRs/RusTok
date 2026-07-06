@@ -1,24 +1,24 @@
-﻿# Периодический план верификации ядра RusToK
+﻿# RusToK Core Periodic Verification Plan
 
-**Дата создания:** 2026-03-12
-**Частота проверки:** при каждом существенном PR / по расписанию
+**Creation date:** 2026-03-12
+**Verification frequency:** with each significant PR / on schedule
 
-> Этот документ — чеклист для периодической проверки ядра платформы.
-> Цель: убедиться, что ядро сохраняет целостность архитектуры, AI-агенты
-> не внедрили дублирующий самопис, и все контракты работают корректно.
+> This document is a checklist for periodic verification of the platform core.
+> Goal: ensure that the core maintains architectural integrity, AI agents
+> have not introduced duplicate custom code, and all contracts work correctly.
 
 ---
 
-## 1. Core Agnosticism — ядро не знает о доменных модулях
+## 1. Core Agnosticism — core doesn't know about domain modules
 
 > [!CAUTION]
-> Самая частая ошибка агентов — добавить domain-specific код прямо в server.
+> The most common agent error is adding domain-specific code directly to server.
 
-### 1.1 Hard-coded imports в ядре
+### 1.1 Hard-coded imports in core
 
 ```bash
-# В apps/server/src/ НЕ ДОЛЖНО быть прямых use из доменных модулей
-# (кроме ModuleRegistry / trait imports)
+# In apps/server/src/ there SHOULD NOT be direct use from domain modules
+# (except ModuleRegistry / trait imports)
 grep -rn "use rustok_content" apps/server/src/ --include="*.rs"
 grep -rn "use rustok_commerce" apps/server/src/ --include="*.rs"
 grep -rn "use rustok_blog" apps/server/src/ --include="*.rs"
@@ -26,231 +26,231 @@ grep -rn "use rustok_forum" apps/server/src/ --include="*.rs"
 grep -rn "use rustok_pages" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет результатов, кроме:
-- `graphql/schema.rs` — KNOWN ISSUE до Фазы 4 (dynamic registration).
-- `graphql/{blog,commerce,forum,pages}/` — допустимо ТОЛЬКО если модуль-scope GraphQL.
-- `app.rs` — регистрация модулей через `ModuleRegistry::register()`.
+**Expected result:** No results, except:
+- `graphql/schema.rs` — KNOWN ISSUE until Phase 4 (dynamic registration).
+- `graphql/{blog,commerce,forum,pages}/` — acceptable ONLY if module-scope GraphQL.
+- `app.rs` — module registration via `ModuleRegistry::register()`.
 
-### 1.2 `schema.rs` — проверка на domain coupling
+### 1.2 `schema.rs` — check for domain coupling
 
 ```bash
 grep -n "Query\|Mutation" apps/server/src/graphql/schema.rs
 ```
 
-**Ожидаемый результат (текущий/known):** product `ContentQuery`/`ContentMutation` уже выведены из runtime; в schema остаются только доменные query/mutation root'ы.
+**Expected result (current/known):** product `ContentQuery`/`ContentMutation` already extracted from runtime; only domain query/mutation roots remain in schema.
 
-### 1.3 `rustok-core` — не содержит domain logic
+### 1.3 `rustok-core` — does not contain domain logic
 
 ```bash
-# core НЕ ДОЛЖЕН знать о конкретных модулях
+# core SHOULD NOT know about specific modules
 grep -rn "content\|commerce\|blog\|forum\|pages" crates/rustok-core/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет совпадений (допустимы имена в doc comments / module examples).
+**Expected result:** No matches (names in doc comments / module examples are acceptable).
 
 ---
 
-## 2. Кеширование — собственная реализация, не Loco Cache
+## 2. Caching — custom implementation, not Loco Cache
 
-### 2.1 Никто не добавил `loco_rs::cache`
+### 2.1 Nobody added `loco_rs::cache`
 
 ```bash
 grep -rn "loco_rs::cache\|loco_rs::prelude::cache\|CacheDriver" apps/server/src/ crates/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет совпадений. Используется ТОЛЬКО `rustok_core::CacheBackend`.
+**Expected result:** No matches. ONLY `rustok_core::CacheBackend` is used.
 
-### 2.2 CacheBackend trait не изменён без ADR
+### 2.2 CacheBackend trait not changed without ADR
 
-Проверить файл `crates/rustok-core/src/context.rs` — trait `CacheBackend` должен содержать:
+Check file `crates/rustok-core/src/context.rs` — trait `CacheBackend` must contain:
 - `health()`, `get()`, `set()`, `set_with_ttl()`, `invalidate()`, `stats()`
 
-### 2.3 FallbackCacheBackend жив
+### 2.3 FallbackCacheBackend is alive
 
 ```bash
 grep -rn "FallbackCacheBackend" crates/rustok-core/src/cache.rs
 ```
 
-**Ожидаемый результат:** Struct + impl блок существуют.
+**Expected result:** Struct + impl block exist.
 
-### 2.4 Circuit breaker на Redis backend
+### 2.4 Circuit breaker on Redis backend
 
 ```bash
 grep -rn "CircuitBreaker" crates/rustok-core/src/cache.rs
 ```
 
-**Ожидаемый результат:** Используется в `RedisCacheBackend`.
+**Expected result:** Used in `RedisCacheBackend`.
 
-### 2.5 Anti-stampede coalescing работает
+### 2.5 Anti-stampede coalescing works
 
 ```bash
 grep -rn "in_flight\|get_or_load_with_coalescing" apps/server/src/middleware/tenant.rs
 ```
 
-**Ожидаемый результат:** Оба присутствуют в `TenantCacheInfrastructure`.
+**Expected result:** Both present in `TenantCacheInfrastructure`.
 
 ---
 
-## 3. Event Bus — Outbox, не Loco Queue
+## 3. Event Bus — Outbox, not Loco Queue
 
-### 3.1 Никто не добавил Loco Queue для событий
+### 3.1 Nobody added Loco Queue for events
 
 ```bash
 grep -rn "loco_rs::bgworker\|loco_rs::queue\|QueueProvider" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет совпадений (кроме Hooks::connect_workers signature).
+**Expected result:** No matches (except Hooks::connect_workers signature).
 
-### 3.2 Outbox relay жив и настроен
+### 3.2 Outbox relay is alive and configured
 
 ```bash
 grep -rn "spawn_outbox_relay_worker\|OutboxRelay" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Вызывается в `app.rs` / `connect_workers`.
+**Expected result:** Called in `app.rs` / `connect_workers`.
 
-### 3.3 EventTransport trait не изменён
+### 3.3 EventTransport trait not changed
 
-Файл `crates/rustok-core/src/events.rs` — trait `EventTransport`.
+File `crates/rustok-core/src/events.rs` — trait `EventTransport`.
 
-### 3.4 Transactional event bus работает через outbox
+### 3.4 Transactional event bus works via outbox
 
 ```bash
 grep -rn "TransactionalEventBus" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Используется в GraphQL schema и сервисных слоях.
+**Expected result:** Used in GraphQL schema and service layers.
 
 ---
 
 ## 4. Email — provider-based server infra
 
-### 4.1 Email service существует
+### 4.1 Email service exists
 
 ```bash
 ls apps/server/src/services/email.rs
 ```
 
-### 4.2 Provider switch и Loco Mailer adapter подключены централизованно
+### 4.2 Provider switch and Loco Mailer adapter connected centrally
 
 ```bash
 grep -rn "EmailProvider\|loco_rs::mailer\|LocoMailerAdapter\|email.provider" apps/server/src/services/email.rs apps/server/src/common/settings.rs
 ```
 
-**Ожидаемый результат:** Почтовый runtime остаётся server-infra responsibility и поддерживает `smtp|loco|none`; при `provider=loco` используется `ctx.mailer`, при `provider=smtp` остаётся compatibility path через SMTP.
+**Expected result:** Email runtime remains server-infra responsibility and supports `smtp|loco|none`; when `provider=loco` uses `ctx.mailer`, when `provider=smtp` remains compatibility path via SMTP.
 
-### 4.3 Шаблоны не захардкожены в send-path
+### 4.3 Templates not hardcoded in send-path
 
 ```bash
 grep -rn "include_str!\|mailers/auth/password_reset" apps/server/src/services/email.rs
 ```
 
-**Ожидаемый результат:** Auth email рендерится через файловые шаблоны (`mailers/...`) и единый server email service, а не через inline HTML literals в бизнес-логике.
+**Expected result:** Auth email is rendered via file templates (`mailers/...`) and unified server email service, not via inline HTML literals in business logic.
 
 ---
 
 ## 5. Settings — YAML vs DB
 
-### 5.1 `RustokSettings` и DB overrides существуют одновременно
+### 5.1 `RustokSettings` and DB overrides exist simultaneously
 
 ```bash
 grep -rn "SettingsService\|platform_settings" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** typed settings живут в `settings.rustok.*`, а `SettingsService`/`platform_settings` обеспечивают per-tenant DB overrides и validation layer.
+**Expected result:** typed settings live in `settings.rustok.*`, and `SettingsService`/`platform_settings` provide per-tenant DB overrides and validation layer.
 
-### 5.2 YAML не дублирует DB
+### 5.2 YAML does not duplicate DB
 
-Проверить `config/development.yaml` — должен содержать только bootstrap defaults.
+Check `config/development.yaml` — should contain only bootstrap defaults.
 
-### 5.3 Module settings не должны притворяться универсально реализованными
+### 5.3 Module settings should not pretend to be universally implemented
 
 ```bash
-# GraphQL query tenantModules должен возвращать settings != {}
+# GraphQL query tenantModules should return settings != {}
 curl -s http://localhost:5150/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ tenantModules { moduleslug settings } }"}' | jq '.data.tenantModules[] | select(.settings == "{}")'
 ```
 
-**Ожидаемый результат:** Для модулей, где settings UI/contract уже заявлены как активные, не должно быть бессмысленного пустого `{}`. Если модульные settings ещё не formalized, это должно быть явно отражено в их docs, а не маскироваться под завершённый runtime.
+**Expected result:** For modules where settings UI/contract are already declared as active, there should be no meaningless empty `{}`. If module settings are not yet formalized, this should be clearly reflected in their docs, not masked as completed runtime.
 
 ---
 
-## 6. i18n — текущий request locale contract
+## 6. i18n — current request locale contract
 
-### 6.1 Locale resolution живёт в request context и middleware
+### 6.1 Locale resolution lives in request context and middleware
 
 ```bash
 grep -rn "RequestContext\|Accept-Language\|rustok-admin-locale\|extract_requested_locale\|resolve_locale" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Каноническая цепочка locale resolution (`query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`) собрана в request context, а middleware/GraphQL используют тот же effective locale.
+**Expected result:** The canonical locale resolution chain (`query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`) is assembled in request context, and middleware/GraphQL use the same effective locale.
 
-### 6.2 API ошибки локализованы
+### 6.2 API errors are localized
 
 ```bash
-# Проверить что FieldError сообщения не hardcoded
+# Check that FieldError messages are not hardcoded
 grep -rn "FieldError::new(\"" apps/server/src/graphql/ --include="*.rs" | head -20
 ```
 
-**Ожидаемый результат:** Новые transport-ошибки не должны зашивать пользовательские строки напрямую, если для них уже существует i18n path/translation key.
+**Expected result:** New transport errors should not hardcode user strings directly if there is already an i18n path/translation key for them.
 
-### 6.3 Module-owned translation bundles фиксируются через manifest-level contract
+### 6.3 Module-owned translation bundles are established via manifest-level contract
 
 ```bash
 grep -rn "leptos_locales_path\|next_messages_path\|supported_locales\|default_locale" crates/rustok-*/rustok-module.toml
 ```
 
-**Ожидаемый результат:** Если модуль заявляет `[provides.*_ui.i18n]`, manifest должен описывать `supported_locales`, `default_locale` и bundle paths. `ManifestManager` валидирует existence/shape этого контракта, а docs не должны снова описывать слой как неопределённый trait/WIP.
+**Expected result:** If a module declares `[provides.*_ui.i18n]`, the manifest must describe `supported_locales`, `default_locale` and bundle paths. `ManifestManager` validates the existence/shape of this contract, and docs should not describe the layer again as an undefined trait/WIP.
 
-### 6.4 UI locale bundles parity проверяется машинно
+### 6.4 UI locale bundles parity is verified mechanically
 
 ```bash
 npm run verify:i18n:ui
 ```
 
-**Ожидаемый результат:** `locales/*.json` и `messages/*.json` в host apps и module-owned UI packages проходят проверку на parity ключей. Manifest-level existence contract и parity contract должны жить вместе: первый ловится `ManifestManager`, второй — verifier-скриптом.
+**Expected result:** `locales/*.json` and `messages/*.json` in host apps and module-owned UI packages pass key parity check. Manifest-level existence contract and parity contract should live together: the first is caught by `ManifestManager`, the second by verifier script.
 
-### 6.5 Password reset email использует effective locale независимо от transport/provider
+### 6.5 Password reset email uses effective locale regardless of transport/provider
 
 ```bash
 grep -rn "email_service_from_ctx\|request_context.locale\|locale_from_ctx" apps/server/src/controllers apps/server/src/graphql apps/server/src/services/email.rs --include="*.rs"
 ```
 
-**Ожидаемый результат:** GraphQL и REST password-reset paths прокидывают effective locale в `email_service_from_ctx(...)`, а `smtp` и `loco` providers рендерят один и тот же localized built-in template path вместо hardcoded English-only SMTP body.
+**Expected result:** GraphQL and REST password-reset paths pass effective locale to `email_service_from_ctx(...)`, and `smtp` and `loco` providers render the same localized built-in template path instead of hardcoded English-only SMTP body.
 
 ---
 
-## 7. RBAC — единый tenant policy runtime
+## 7. RBAC — unified tenant policy runtime
 
-### 7.1 Server использует модульный `rustok-rbac` runtime
+### 7.1 Server uses modular `rustok-rbac` runtime
 
 ```bash
 grep -rn "RbacService::has_permission\|RbacService::has_any_permission" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Проверки проходят через `RbacService`/общие `rustok-rbac` helpers, а не через локальный policy engine в `apps/server`.
+**Expected result:** Checks go through `RbacService`/common `rustok-rbac` helpers, not through local policy engine in `apps/server`.
 
-Проверить, что server wiring не вернул локальную authorization semantics:
+Check that server wiring has not returned local authorization semantics:
 
 ```bash
 grep -rn "RuntimePermissionResolver\|authorize_permission\|authorize_any_permission\|authorize_all_permissions" apps/server/src/services/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** `apps/server` использует resolver/adapters из `rustok-rbac`, а decision path опирается на модульный tenant policy runtime.
+**Expected result:** `apps/server` uses resolver/adapters from `rustok-rbac`, and decision path relies on modular tenant policy runtime.
 
-### 7.2 Нет legacy rollout branches и дублирующих auth middleware
+### 7.2 No legacy rollout branches and duplicate auth middleware
 
 ```bash
 grep -rn "fn check_permission\|fn verify_role\|relation_only\|policy_shadow\|mismatch\|RUSTOK_RBAC_AUTHZ_MODE" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет adhoc проверок мимо `RbacService` и нет возврата к старым rollout/shadow веткам в live server runtime.
+**Expected result:** No adhoc checks bypassing `RbacService` and no return to old rollout/shadow branches in live server runtime.
 
 ---
 
-## 8. Tenant Resolution — инфраструктура
+## 8. Tenant Resolution — infrastructure
 
-### 8.1 Tenant middleware работает
+### 8.1 Tenant middleware works
 
 ```bash
 grep -rn "TenantCacheInfrastructure\|init_tenant_cache_infrastructure" apps/server/src/ --include="*.rs"
@@ -262,7 +262,7 @@ grep -rn "TenantCacheInfrastructure\|init_tenant_cache_infrastructure" apps/serv
 grep -rn "TENANT_INVALIDATION_CHANNEL\|spawn_invalidation_listener" apps/server/src/ --include="*.rs"
 ```
 
-### 8.3 Negative cache существует
+### 8.3 Negative cache exists
 
 ```bash
 grep -rn "negative_cache\|set_negative\|check_negative" apps/server/src/middleware/tenant.rs
@@ -270,54 +270,54 @@ grep -rn "negative_cache\|set_negative\|check_negative" apps/server/src/middlewa
 
 ---
 
-## 9. Loco Integration — правильное использование Framework
+## 9. Loco Integration — proper Framework usage
 
-### 9.1 Все маршруты через Hooks::routes / after_routes
+### 9.1 All routes via Hooks::routes / after_routes
 
 ```bash
-# Не должно быть standalone Router::new() без интеграции в Loco
+# There should be no standalone Router::new() without Loco integration
 grep -rn "axum::Router::new()" apps/server/src/ --include="*.rs" | grep -v "test"
 ```
 
-**Ожидаемый результат:** Нет (или только в модульных sub-routers, подключённых через Loco).
+**Expected result:** None (or only in modular sub-routers connected via Loco).
 
-### 9.2 AppContext через State, не глобальные переменные
+### 9.2 AppContext via State, not global variables
 
 ```bash
 grep -rn "lazy_static\|static.*OnceCell\|static.*Mutex" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет runtime state мимо `AppContext.shared_store`.
+**Expected result:** No runtime state bypassing `AppContext.shared_store`.
 
-### 9.3 Ошибки через loco_rs::Result
+### 9.3 Errors via loco_rs::Result
 
 ```bash
-# Handlers должны возвращать loco Result, не axum IntoResponse напрямую
+# Handlers should return loco Result, not axum IntoResponse directly
 grep -rn "impl IntoResponse" apps/server/src/controllers/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет custom IntoResponse в controllers.
+**Expected result:** No custom IntoResponse in controllers.
 
 ---
 
-## 10. Модульная система — целостность
+## 10. Module system — integrity
 
-### 10.1 ModuleRegistry содержит все зарегистрированные модули
+### 10.1 ModuleRegistry contains all registered modules
 
 ```bash
 grep -rn "ModuleRegistry::new()\|\.register(" apps/server/src/modules/ apps/server/src/services/module_lifecycle.rs
 ```
 
-### 10.2 Module lifecycle hooks вызываются
+### 10.2 Module lifecycle hooks are called
 
 ```bash
 grep -rn "on_enable\|on_disable" apps/server/src/services/module_lifecycle.rs
 ```
 
-### 10.3 `modules.toml` манифест валиден
+### 10.3 `modules.toml` manifest is valid
 
 ```bash
-# Проверить что все модули из modules.toml имеют соответствующие crate
+# Check that all modules from modules.toml have corresponding crates
 cat modules.toml
 ```
 
@@ -325,49 +325,49 @@ cat modules.toml
 
 ## 11. Storage — shared `rustok-storage` / `rustok-media` contract
 
-> `rustok-storage` = shared storage backend/service layer. `rustok-media` = core domain module поверх storage. Server только инициализирует общий runtime и прокидывает его в consumers.
+> `rustok-storage` = shared storage backend/service layer. `rustok-media` = core domain module on top of storage. Server only initializes shared runtime and passes it to consumers.
 
-### 11.1 Shared storage service инициализируется в app runtime
+### 11.1 Shared storage service initialized in app runtime
 
 ```bash
 grep -rn "StorageService\|init_storage" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** `StorageService` создаётся один раз в runtime bootstrap и используется как shared dependency, а не как adhoc storage client по месту вызова.
+**Expected result:** `StorageService` is created once in runtime bootstrap and used as shared dependency, not as adhoc storage client at call site.
 
-### 11.2 Контроллеры не тащат storage backend напрямую
+### 11.2 Controllers don't pull storage backend directly
 
 ```bash
-# Прямой backend wiring в controllers — антипаттерн
+# Direct backend wiring in controllers is an anti-pattern
 grep -rn "loco_rs::storage\|StorageService::from_config" apps/server/src/controllers/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Backend wiring остаётся в runtime/bootstrap слое; controllers/graphql/services используют уже готовый shared storage contract.
+**Expected result:** Backend wiring remains in runtime/bootstrap layer; controllers/graphql/services use already-prepared shared storage contract.
 
-### 11.3 Файлы организованы по дате и tenant
+### 11.3 Files organized by date and tenant
 
 ```bash
-# Проверить что storage используется вместе с media/runtime cleanup flows
+# Check that storage is used together with media/runtime cleanup flows
 grep -rn "media_cleanup\|storage_path\|MediaService" apps/server/src/ crates/rustok-media/src/ --include="*.rs"
 ```
 
-### 11.4 media_assets таблица существует
+### 11.4 media_assets table exists
 
 ```bash
 grep -rn "media_assets" apps/server/src/models/ migration/ --include="*.rs"
 ```
 
-### 11.5 Нет ad-hoc upload мимо StorageAdapter
+### 11.5 No ad-hoc upload bypassing StorageAdapter
 
 ```bash
 grep -rn "multipart\|tokio::fs::write\|std::fs::write" apps/server/src/controllers/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет — все через `StorageAdapter`.
+**Expected result:** None — all via `StorageAdapter`.
 
 ---
 
-## 12. Observability — telemetry и health
+## 12. Observability — telemetry and health
 
 ### 12.1 Telemetry initializer
 
@@ -375,7 +375,7 @@ grep -rn "multipart\|tokio::fs::write\|std::fs::write" apps/server/src/controlle
 ls apps/server/src/initializers/telemetry.rs
 ```
 
-### 12.2 Health endpoint работает
+### 12.2 Health endpoint works
 
 ```bash
 curl -s http://localhost:5150/api/_health | jq .
@@ -389,28 +389,28 @@ curl -s http://localhost:5150/api/_metrics | head -20
 
 ---
 
-## 13. Антипаттерны — что НЕ должно появиться
+## 13. Anti-patterns — what SHOULD NOT appear
 
-| Антипаттерн | Как обнаружить | Серьёзность |
+| Anti-pattern | How to detect | Severity |
 |---|---|---|
-| Loco Cache вместо CacheBackend | `grep "loco_rs::cache"` | 🔴 Критичная |
-| Loco Queue вместо Outbox | `grep "loco_rs::bgworker" \| grep "QueueProvider"` | 🔴 Критичная |
-| Domain imports в core crate | `grep "content\|commerce" crates/rustok-core/` | 🔴 Критичная |
-| Static globals мимо AppContext | `grep "lazy_static\|OnceCell"` | 🟡 Высокая |
-| Inline SQL вместо SeaORM | `grep "raw_sql\|execute_unprepared"` в новом коде | 🟡 Высокая |
-| Новый HTTP client вместо Loco fetch | `grep "reqwest::Client::new()"` в ядре | 🟢 Средняя |
-| Custom auth middleware мимо RbacService | Ручной `fn check_role` | 🟡 Высокая |
-| Hard-coded tenant ID в бизнес-логике | `grep "00000000-0000-0000-0000"` в не-config файлах | 🟡 Высокая |
+| Loco Cache instead of CacheBackend | `grep "loco_rs::cache"` | 🔴 Critical |
+| Loco Queue instead of Outbox | `grep "loco_rs::bgworker" \| grep "QueueProvider"` | 🔴 Critical |
+| Domain imports in core crate | `grep "content\|commerce" crates/rustok-core/` | 🔴 Critical |
+| Static globals bypassing AppContext | `grep "lazy_static\|OnceCell"` | 🟡 High |
+| Inline SQL instead of SeaORM | `grep "raw_sql\|execute_unprepared"` in new code | 🟡 High |
+| New HTTP client instead of Loco fetch | `grep "reqwest::Client::new()"` in core | 🟢 Medium |
+| Custom auth middleware bypassing RbacService | Manual `fn check_role` | 🟡 High |
+| Hard-coded tenant ID in business logic | `grep "00000000-0000-0000-0000"` in non-config files | 🟡 High |
 
 ---
 
-## Как проводить верификацию
+## How to conduct verification
 
-1. **Автоматическая:** Добавить проверки из §§1–11 в CI как lint step (grep-based). Fail on match.
-2. **Ручная (периодическая):** Пройти чеклист вручную раз в спринт / при крупном PR.
-3. **Agent pre-commit:** AI-агенты обязаны сверяться с этим документом перед любым изменением в `apps/server/` или `crates/rustok-core/`.
+1. **Automated:** Add checks from §§1–11 to CI as lint step (grep-based). Fail on match.
+2. **Manual (periodic):** Go through checklist manually once per sprint / on major PR.
+3. **Agent pre-commit:** AI agents must check against this document before any changes in `apps/server/` or `crates/rustok-core/`.
 
-> **Правило для агентов:** Если вы собираетесь добавить новую зависимость, middleware, или
-> инфраструктурный сервис в `apps/server/` — **сначала** проверьте по этому документу,
-> не дублирует ли это уже существующее решение.
+> **Rule for agents:** If you are going to add a new dependency, middleware, or
+> infrastructure service to `apps/server/` — **first** check this document
+> to see if it duplicates an already existing solution.
 

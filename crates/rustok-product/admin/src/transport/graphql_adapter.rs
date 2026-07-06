@@ -1,4 +1,4 @@
-#[cfg(target_arch = "wasm32")]
+﻿#[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
@@ -400,7 +400,7 @@ where
     .await
 }
 
-pub async fn fetch_bootstrap(
+pub(super) async fn fetch_bootstrap(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<ProductAdminBootstrap, ApiError> {
@@ -413,7 +413,7 @@ pub async fn fetch_bootstrap(
     })
 }
 
-pub async fn fetch_products(
+pub(super) async fn fetch_products(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -443,7 +443,7 @@ pub async fn fetch_products(
     Ok(response.products)
 }
 
-pub async fn fetch_product(
+pub(super) async fn fetch_product(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -463,7 +463,7 @@ pub async fn fetch_product(
     Ok(response.product)
 }
 
-pub async fn fetch_product_pricing(
+pub(super) async fn fetch_product_pricing(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -489,7 +489,7 @@ pub async fn fetch_product_pricing(
     Ok(response.product_pricing)
 }
 
-pub async fn fetch_shipping_profiles(
+pub(super) async fn fetch_shipping_profiles(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -514,7 +514,7 @@ pub async fn fetch_shipping_profiles(
     Ok(response.shipping_profiles)
 }
 
-pub async fn fetch_product_attributes(
+pub(super) async fn fetch_product_attributes(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -533,7 +533,7 @@ pub async fn fetch_product_attributes(
     Ok(response.product_attributes)
 }
 
-pub async fn fetch_catalog_categories(
+pub(super) async fn fetch_catalog_categories(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -552,7 +552,7 @@ pub async fn fetch_catalog_categories(
     Ok(response.catalog_categories)
 }
 
-pub async fn fetch_attribute_schemas(
+pub(super) async fn fetch_attribute_schemas(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -571,7 +571,7 @@ pub async fn fetch_attribute_schemas(
     Ok(response.product_attribute_schemas)
 }
 
-pub async fn fetch_effective_product_form(
+pub(super) async fn fetch_effective_product_form(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -596,7 +596,7 @@ pub async fn fetch_effective_product_form(
     Ok(response.product_effective_form)
 }
 
-pub async fn fetch_product_attribute_values(
+pub(super) async fn fetch_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -616,7 +616,7 @@ pub async fn fetch_product_attribute_values(
     Ok(response.product_attribute_values)
 }
 
-pub async fn create_product(
+pub(super) async fn create_product(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -639,7 +639,7 @@ pub async fn create_product(
     Ok(response.create_product)
 }
 
-pub async fn create_product_attribute(
+pub(super) async fn create_product_attribute(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -664,7 +664,7 @@ pub async fn create_product_attribute(
     Ok(response.create_product_attribute.unwrap_or(false))
 }
 
-pub async fn create_product_attribute_option(
+pub(super) async fn create_product_attribute_option(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -689,7 +689,7 @@ pub async fn create_product_attribute_option(
     Ok(response.create_product_attribute_option.unwrap_or(false))
 }
 
-pub async fn create_catalog_category(
+pub(super) async fn create_catalog_category(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -714,7 +714,7 @@ pub async fn create_catalog_category(
     Ok(response.create_catalog_category.unwrap_or(false))
 }
 
-pub async fn create_attribute_schema(
+pub(super) async fn create_attribute_schema(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -739,7 +739,7 @@ pub async fn create_attribute_schema(
     Ok(response.create_product_attribute_schema.unwrap_or(false))
 }
 
-pub async fn create_product_attribute_schema_group(
+pub(super) async fn create_product_attribute_schema_group(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -766,7 +766,7 @@ pub async fn create_product_attribute_schema_group(
         .unwrap_or(false))
 }
 
-pub async fn create_category_attribute_group(
+pub(super) async fn create_category_attribute_group(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -793,7 +793,7 @@ pub async fn create_category_attribute_group(
         .unwrap_or(false))
 }
 
-pub async fn set_category_schema_mode(
+pub(super) async fn set_category_schema_mode(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -814,7 +814,7 @@ pub async fn set_category_schema_mode(
     Ok(response.set_catalog_category_schema_mode.unwrap_or(false))
 }
 
-pub async fn bind_schema_attribute(
+pub(super) async fn bind_schema_attribute(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -837,7 +837,7 @@ pub async fn bind_schema_attribute(
         .unwrap_or(false))
 }
 
-pub async fn bind_category_attribute(
+pub(super) async fn bind_category_attribute(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -858,7 +858,7 @@ pub async fn bind_category_attribute(
     Ok(response.bind_catalog_category_attribute.unwrap_or(false))
 }
 
-pub async fn save_product_attribute_values(
+pub(super) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -888,7 +888,7 @@ pub async fn save_product_attribute_values(
     Ok(response.save_product_attribute_values)
 }
 
-pub async fn clear_detached_product_attribute_values(
+pub(super) async fn clear_detached_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -915,7 +915,7 @@ pub async fn clear_detached_product_attribute_values(
     Ok(response.clear_detached_product_attribute_values)
 }
 
-pub async fn update_product(
+pub(super) async fn update_product(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -948,7 +948,7 @@ pub async fn update_product(
     Ok(response.update_product)
 }
 
-pub async fn change_product_status(
+pub(super) async fn change_product_status(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -981,7 +981,7 @@ pub async fn change_product_status(
     Ok(response.update_product)
 }
 
-pub async fn delete_product(
+pub(super) async fn delete_product(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
@@ -1057,3 +1057,4 @@ fn optional_text(value: &str) -> Option<String> {
         Some(trimmed.to_string())
     }
 }
+

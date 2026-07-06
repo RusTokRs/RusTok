@@ -52,18 +52,24 @@ Do not create a new document if a suitable one already exists — extend the exi
 Rules mandatory for all automated agents operating in this repository:
 
 1. Always start by reading [`docs/index.md`](docs/index.md).
-2. For new modules or major module refactors, read [`docs/modules/module-authoring.md`](docs/modules/module-authoring.md) before changing code.
-3. Do not create a new document when an existing one is suitable — extend it instead.
-4. Documentation must reflect the actual state of the code.
-5. Never bypass or disable pre-commit/pre-push hooks. Fix the root cause of failures.
-6. Do not edit CI/CD workflow files unless explicitly requested.
-7. Do not modify other branches — only work on the assigned task branch.
-8. For Leptos apps and module-owned Leptos UI packages, use native `#[server]` functions as the default internal data layer and keep GraphQL in parallel. Do not remove or replace GraphQL when adding server functions.
-9. Do not invent package-local i18n contracts. Server locale selection is canonical; module-owned UI packages must consume the host-provided effective locale (`UiRouteContext.locale` for Leptos, host/runtime locale providers for Next) instead of introducing their own query/header/cookie fallback chains.
-10. For modules with UI and/or transport boundary changes, keep FFA/FBA documentation in sync: update the module-local `docs/implementation-plan.md` FFA/FBA status block and the central registry entry in `docs/modules/registry.md` within the same change.
-11. If a module's UI is planned but not implemented yet, keep a `not_started` FFA/FBA status block in the module plan and a matching `not_started` row in the central readiness board; when UI first appears, update both local and central statuses in the same PR with initial verification evidence.
-12. Module-owned UI packages may expose only their owning module or capability surface. Do not place MCP, Alloy, commerce, catalog, AI, or other module/operator screens inside an unrelated module UI package. Cross-module workflows must be composed by the host from separate owner-owned entrypoints, not merged into another module. If a UI needs another module's data, consume that module's public transport contract only and document the dependency in the owner module plan.
-13. When adding UI for a module or capability, keep the required surfaces in parity: Next/admin where applicable and the Leptos FFA version with native `#[server]` functions plus parallel GraphQL. Do not ship a Next-only operator surface when the module's admin UI contract requires Leptos FFA parity.
-14. Treat RusToK as an initial implementation, not as a legacy migration project. Implement the target architecture directly: replace old internal ports, adapters, facades, entry points, and call sites atomically, then delete the superseded code. Do not add compatibility wrappers, dual old/new execution paths, deprecated aliases, fallback-to-legacy behavior, or "temporary" legacy ports unless the user explicitly requires a staged external migration. Any approved temporary bridge must have a named removal owner and deadline in the module plan. Required current platform contracts, such as parallel GraphQL support, are not legacy compatibility paths.
-
-15. All code, documentation, commit messages, and communication must be written in **English only**. The sole exception is `README.ru.md` (localized Russian translation of the main README).
+2. **Before modifying any frontend code, read the `AI_AGENT_RULES.md` file in that frontend's root directory** (`apps/admin/AI_AGENT_RULES.md`, `apps/storefront/AI_AGENT_RULES.md`, `apps/next-admin/AI_AGENT_RULES.md`, `apps/next-frontend/AI_AGENT_RULES.md`). These files contain critical rules about internal libraries, FFA structure, i18n, and forbidden patterns.
+3. For new modules or major module refactors, read [`docs/modules/module-authoring.md`](docs/modules/module-authoring.md) before changing code.
+4. Do not create a new document when an existing one is suitable — extend it instead.
+5. Documentation must reflect the actual state of the code.
+6. Never bypass or disable pre-commit/pre-push hooks. Fix the root cause of failures.
+7. Do not edit CI/CD workflow files unless explicitly requested.
+8. Do not modify other branches — only work on the assigned task branch.
+9. For Leptos apps and module-owned Leptos UI packages, use native `#[server]` functions as the default internal data layer and keep GraphQL in parallel. Do not remove or replace GraphQL when adding server functions.
+10. Do not invent package-local i18n contracts. Server locale selection is canonical; module-owned UI packages must consume the host-provided effective locale (`UiRouteContext.locale` for Leptos, host/runtime locale providers for Next) instead of introducing their own query/header/cookie fallback chains.
+11. For modules with UI and/or transport boundary changes, keep FFA/FBA documentation in sync: update the module-local `docs/implementation-plan.md` FFA/FBA status block and the central registry entry in `docs/modules/registry.md` within the same change.
+12. If a module's UI is planned but not implemented yet, keep a `not_started` FFA/FBA status block in the module plan and a matching `not_started` row in the central readiness board; when UI first appears, update both local and central statuses in the same PR with initial verification evidence.
+13. Module-owned UI packages may expose only their owning module or capability surface. Do not place MCP, Alloy, commerce, catalog, AI, or other module/operator screens inside an unrelated module UI package. Cross-module workflows must be composed by the host from separate owner-owned entrypoints, not merged into another module. If a UI needs another module's data, consume that module's public transport contract only and document the dependency in the owner module plan.
+14. When adding UI for a module or capability, keep the required surfaces in parity: Next/admin where applicable and the Leptos FFA version with native `#[server]` functions plus parallel GraphQL. Do not ship a Next-only operator surface when the module's admin UI contract requires Leptos FFA parity.
+15. Treat RusToK as an initial implementation, not as a legacy migration project. Implement the target architecture directly: replace old internal ports, adapters, facades, entry points, and call sites atomically, then delete the superseded code. Do not add compatibility wrappers, dual old/new execution paths, deprecated aliases, fallback-to-legacy behavior, or "temporary" legacy ports unless the user explicitly requires a staged external migration. Any approved temporary bridge must have a named removal owner and deadline in the module plan. Required current platform contracts, such as parallel GraphQL support, are not legacy compatibility paths.
+16. All code, documentation, commit messages, and communication must be written in **English only**. The sole exception is `README.ru.md` (localized Russian translation of the main README).
+17. **DO NOT duplicate code across modules.** If a pattern appears in 2+ modules or 2+ hosts, extract it into a shared library:
+    - UI primitives → `crates/leptos-ui/`
+    - Routing/query helpers → `crates/leptos-ui-routing/`
+    - Framework-agnostic contracts → `crates/rustok-api/`
+    - Domain-specific cross-module UI → `crates/rustok-<capability>-<surface>-support/`
+    - Before writing reusable code, check existing libraries in `crates/leptos-*` and `crates/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.

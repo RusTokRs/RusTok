@@ -31,7 +31,7 @@ The minimum baseline includes:
 
 Current task implementation:
 
-- [db_baseline.rs](/C:/проекты/RusTok/apps/server/src/tasks/db_baseline.rs)
+- [db_baseline.rs](../../apps/server/src/tasks/db_baseline.rs)
 
 For the search hot path, a live PostgreSQL gate is additionally used:
 `crates/rustok-search/tests/postgres_query_plan.rs`. It creates 100,000

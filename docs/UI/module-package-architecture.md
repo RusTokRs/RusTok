@@ -1,0 +1,194 @@
+---
+id: doc://docs/UI/module-package-architecture.md
+kind: project_overview
+language: markdown
+status: active
+---
+
+# Module UI Package Architecture
+
+Read this document when **designing a new UI package** or **changing the structure** of an
+existing one. It explains *why* the architecture is the way it is.
+
+For the concrete file layout and code rules, see
+[Module UI Package Implementation](./module-package-implementation.md).
+For verification commands, see [Module UI Package Verification](./module-package-verification.md).
+
+---
+
+## What Is FFA
+
+**FFA — Fluid Frontend Architecture** is the RusTok-specific model that allows the same UI
+code to run as an embedded monolith (SSR/hydrate inside `apps/server`) and as a standalone
+headless client (Trunk/CSR, Next.js, mobile) without rewriting the UI layer.
+
+Full definition: [`docs/research/fluid-frontend-architecture.md`](../research/fluid-frontend-architecture.md)
+
+The core claim: **deployment topology changes the transport and packaging, but never the
+components, routes, or state logic.** If switching from monolith to headless requires
+rewriting UI, the package is not FFA-compliant.
+
+---
+
+## The Three-Layer Split
+
+Every module-owned Leptos UI package is decomposed into three layers:
+
+```
+core              — framework-agnostic domain logic
+transport/        — transport adapters (native server functions + GraphQL)
+ui/leptos         — thin Leptos render/bind adapter
+```
+
+### Why three layers?
+
+**`core` is framework-agnostic** so that when the platform moves from Leptos to Dioxus,
+only `ui/leptos.rs` needs to be replaced with `ui/dioxus.rs`. View-models, state transitions,
+validation, and display policy are reused unchanged across frameworks and across transport
+profiles.
+
+**`transport/` hides adapter selection** so that `ui/leptos.rs` calls
+`transport::fetch_something()` without knowing whether the current runtime is SSR/hydrate
+(uses native `#[server]`) or CSR/headless (uses GraphQL). The UI layer is transport-blind.
+
+**`ui/leptos.rs` contains only binding code** — `#[component]`, `view!`, signals, resources,
+effects. It has no business logic, no request construction, no CSS class policy. This keeps
+the Leptos-specific surface as small as possible, which is what makes framework migration
+incremental.
+
+---
+
+## Dual-Path Transport Model
+
+The RusTok transport contract is always dual-path. Full spec:
+[`docs/UI/graphql-architecture.md`](./graphql-architecture.md)
+
+```
+ui/leptos.rs
+  └─► transport::fetch_x()          (facade, transport-blind)
+        ├─ SSR/hydrate profile:      native_server_adapter  →  ServiceLayer  →  DB
+        └─ CSR/headless profile:     graphql_adapter        →  /api/graphql
+```
+
+Both paths must work. Neither cancels the other.
+
+| Situation | Rule |
+|---|---|
+| Adding a `#[server]` path | GraphQL path stays; both coexist |
+| SSR monolith deployment | `native_server_adapter` is preferred |
+| CSR/Trunk debug | `graphql_adapter` is used; `/api/fn/*` must not be required |
+| Next.js or mobile host | GraphQL/REST only; `#[server]` is never involved |
+
+The reason for both paths: in monolith deployment `apps/admin` and `apps/storefront` run
+same-origin with `apps/server`, so native server functions provide a short internal Rust
+path. But headless clients (Next.js, mobile, external integrations) always use GraphQL/REST
+and must not depend on Leptos runtime.
+
+---
+
+## Dioxus-Readiness
+
+The three-layer structure is designed so that a Dioxus migration never touches `core` or
+`transport/`. Only `ui/leptos.rs` is replaced.
+
+Rules that keep a package Dioxus-ready:
+
+1. `core.rs` / `core/` must contain **zero `leptos::*` imports**. CI enforces this.
+2. `transport/mod.rs` public API uses only domain types from `model.rs`, never Leptos types.
+3. `ui/leptos.rs` contains only Leptos binding — no business logic, no request building.
+
+When Dioxus is introduced, a new `ui/dioxus.rs` is added alongside `ui/leptos.rs`. The
+Leptos adapter is not deleted — both coexist until the host migration is complete.
+
+### FFA Evolution: Framework-Agnostic GraphQL Client
+
+Currently, `transport/graphql_adapter.rs` uses `leptos-graphql` (Leptos-specific wrapper).
+**During Dioxus migration**, a framework-agnostic GraphQL client will be introduced:
+
+- `transport/graphql_adapter.rs` will switch from `leptos-graphql` to the new client
+- The facade in `transport/mod.rs` stays unchanged — UI adapters don't notice the change
+- Both Leptos and Dioxus UI adapters will use the same GraphQL adapter underneath
+- This is the **essence of FFA**: transport is a replaceable infrastructure detail
+
+**Current state (Leptos-only):**
+```
+ui/leptos.rs → transport/mod.rs → graphql_adapter (leptos-graphql) → /api/graphql
+```
+
+**Future state (Leptos + Dioxus):**
+```
+ui/leptos.rs   → transport/mod.rs → graphql_adapter (framework-agnostic) → /api/graphql
+ui/dioxus.rs   → transport/mod.rs → graphql_adapter (framework-agnostic) → /api/graphql
+```
+
+Migration plan: [`docs/research/dioxus-ffa-ui-migration-plan.md`](../research/dioxus-ffa-ui-migration-plan.md)
+
+---
+
+## Host vs Module Ownership
+
+### Host apps (`apps/admin`, `apps/storefront`) are composition roots
+
+They are responsible for:
+- shell, routing, navigation, RBAC guards
+- mounting module-owned packages via generated registry (`build.rs`)
+- providing `UiRouteContext`, locale context, auth/session, tenant scope
+
+They are **not** responsible for:
+- module-specific CRUD or business workflows
+- domain logic that belongs to a module
+- knowing about module-internal transport or core
+
+**Current state:** Host apps still use `leptos_i18n` for their shell/navigation i18n.
+**Future FFA migration:** When hosts adopt the `core/transport/ui` split, they will also migrate from `leptos_i18n` to the framework-agnostic `rustok_api` pattern (or a dedicated `rustok-ui-i18n` crate if extended features are needed). This ensures hosts can support both Leptos and Dioxus UI adapters.
+
+If module business UI ends up inside `apps/admin/src/` (outside of
+`src/widgets/app_shell/` or `src/shared/`), that is an ownership violation.
+
+### Module UI packages own their domain surface
+
+A module-owned UI package lives in `crates/rustok-<module>/admin/` or
+`crates/rustok-<module>/storefront/`. The host mounts it through manifest-driven wiring
+(`rustok-module.toml`) and passes context — it never pulls internal logic out of the package.
+
+A UI package must not place another module's logic inside itself. If it needs data from
+another module, it consumes that module's public transport contract only.
+
+Host-level FFA slices (navigation policy, header route/link policy) are enforced by
+`npm run verify:frontend:host-ffa-contract`.
+
+---
+
+## What Counts as a Correctly Structured UI Package
+
+A module UI package is considered correctly structured when:
+
+- `core.rs` / `core/` has no `leptos::*` imports
+- `transport/mod.rs` is the only facade consumed by `ui/leptos.rs`
+- `ui/leptos.rs` calls only `transport::*` functions, never raw adapter internals
+- Both `native_server_adapter` and `graphql_adapter` exist (or a single GraphQL adapter with
+  an explicit parity plan in the implementation doc)
+- Effective locale comes from `UiRouteContext.locale` passed by the host — no package-local
+  fallback chain
+- Selection state uses typed `snake_case` URL query keys via `leptos-ui-routing`
+- `rustok-module.toml` declares the UI surface with correct `leptos_crate` and
+  `route_segment`
+- The README links to this document and to the implementation guide
+
+The structural shape taxonomy used in
+[`docs/modules/registry.md`](../modules/registry.md):
+`none` → `docs_boundary` → `core_only` → `core_transport` → `core_transport_ui`
+
+---
+
+## Related Documents
+
+| Document | When to read |
+|---|---|
+| [Implementation Guide](./module-package-implementation.md) | Writing or changing code |
+| [Verification Guide](./module-package-verification.md) | Checking nothing is broken |
+| [FFA Definition](../research/fluid-frontend-architecture.md) | Understanding the full model |
+| [Dioxus Migration Plan](../research/dioxus-ffa-ui-migration-plan.md) | Planning Dioxus work |
+| [Transport Contract](./graphql-architecture.md) | Transport dual-path rules |
+| [ADR: SSR-first + headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md) | Governing decision |
+| [Module UI Quickstart](../modules/UI_PACKAGES_QUICKSTART.md) | Creating a new module UI |

@@ -6,57 +6,57 @@ entities:
 
 # Health endpoints (`apps/server`)
 
-Документ описывает поведение health endpoints в `apps/server/src/controllers/health.rs`.
+This document describes the behavior of health endpoints in `apps/server/src/controllers/health.rs`.
 
 ## Endpoints
 
-- `GET /health` — базовый статус процесса и версия приложения.
+- `GET /health` — basic process status and application version.
 - `GET /health/live` — liveness probe.
-- `GET /health/ready` — readiness probe с агрегированным статусом зависимостей и модулей.
+- `GET /health/ready` — readiness probe with aggregated status of dependencies and modules.
 - `GET /health/runtime` — operator-facing snapshot runtime guardrails.
-- `GET /health/modules` — health только по зарегистрированным модулям.
+- `GET /health/modules` — health only for registered modules.
 
-Если `apps/server` запущен в `settings.rustok.runtime.host_mode = "registry_only"`, health/observability surface
-работает как read-only catalog host, а не как full monolith.
+If `apps/server` is running in `settings.rustok.runtime.host_mode = "registry_only"`, the health/observability surface
+works as a read-only catalog host, not as a full monolith.
 
-Важно: `host_mode` не заменяет deployment profile. `DeploymentProfile` продолжает описывать build/deploy
-surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-api`), а
-`settings.rustok.runtime.host_mode` описывает только runtime-exposed API surface (`full` или
+Important: `host_mode` does not replace deployment profile. `DeploymentProfile` continues to describe build/deploy
+surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-api`), while
+`settings.rustok.runtime.host_mode` describes only the runtime-exposed API surface (`full` or
 `registry_only`).
 
-Отдельный инвариант compile-time profile: `embed-admin` и `embed-storefront` управляют не только routes,
-но и самим linkage соответствующих UI host-ов; аналогично `mod-commerce`, `mod-blog`, `mod-forum`
-и `mod-pages` управляют включением своих REST/OpenAPI transport fragments, а content-only maintenance
-binary `migrate_legacy_richtext` требует `mod-content`. Reduced/headless server build не обязан
-тянуть ecommerce или content surfaces, которые ему не нужны.
+A separate compile-time profile invariant: `embed-admin` and `embed-storefront` control not only routes,
+but also the linkage of the corresponding UI hosts; similarly `mod-commerce`, `mod-blog`, `mod-forum`
+and `mod-pages` control the inclusion of their REST/OpenAPI transport fragments, while the content-only maintenance
+binary `migrate_legacy_richtext` requires `mod-content`. A reduced/headless server build is not obligated
+to pull ecommerce or content surfaces it doesn't need.
 
-## Readiness модель
+## Readiness model
 
-`/health/ready` возвращает:
+`/health/ready` returns:
 
 - `status`: `ok | degraded | unhealthy`
-- `checks`: инфраструктурные проверки
-- `modules`: health модулей из `ModuleRegistry`
-- `degraded_reasons`: список причин деградации
+- `checks`: infrastructure checks
+- `modules`: module health from `ModuleRegistry`
+- `degraded_reasons`: list of degradation causes
 
 ### Dependency checks
 
-- `database` — критичная проверка доступности БД;
-- `database_schema` — критичная проверка обязательных таблиц runtime schema:
-  `tenants`, `users`, `sys_events` при `rustok.events.transport = "outbox"` и
-  `search_documents` при `rustok.features.search_indexing = true`;
-- `cache_backend` — базовая проверка tenant cache path;
-- `tenant_cache_invalidation` — не-критичная проверка Redis pubsub listener для cross-instance invalidation;
-- `event_transport` — критичная проверка инициализации event transport;
-- `search_backend` — не-критичная проверка search connectivity;
-- `email_backend` — не-критичная конфигурационная проверка email transport: `smtp` должен быть включён,
-  `loco` должен иметь инициализированный `ctx.mailer`, `none` явно отражается как degraded.
-- `outbox_pending_lag` — не-критичная проверка возраста самого старого pending event, включается для
+- `database` — critical check for DB availability;
+- `database_schema` — critical check for mandatory runtime schema tables:
+  `tenants`, `users`, `sys_events` when `rustok.events.transport = "outbox"` and
+  `search_documents` when `rustok.features.search_indexing = true`;
+- `cache_backend` — basic check of tenant cache path;
+- `tenant_cache_invalidation` — non-critical check of Redis pubsub listener for cross-instance invalidation;
+- `event_transport` — critical check of event transport initialization;
+- `search_backend` — non-critical check of search connectivity;
+- `email_backend` — non-critical configuration check of email transport: `smtp` must be enabled,
+  `loco` must have initialized `ctx.mailer`, `none` is explicitly reflected as degraded.
+- `outbox_pending_lag` — non-critical check of the age of the oldest pending event, enabled for
   `rustok.events.transport = "outbox"`;
-- `search_index_lag` — не-критичная проверка максимального lag между `search_documents.updated_at`
-  и `search_documents.indexed_at`.
+- `search_index_lag` — non-critical check of maximum lag between `search_documents.updated_at`
+  and `search_documents.indexed_at`.
 
-Пороги lag задаются в `settings.rustok.readiness`:
+Lag thresholds are set in `settings.rustok.readiness`:
 
 ```yaml
 readiness:
@@ -64,65 +64,65 @@ readiness:
   search_max_lag_seconds: 300
 ```
 
-Превышение порога переводит `/health/ready` в `degraded`, но не в `unhealthy`: lag требует operator action,
-но сам по себе не означает, что процесс должен быть снят из service discovery как hard failure.
+Exceeding the threshold moves `/health/ready` to `degraded`, but not to `unhealthy`: lag requires operator action,
+but by itself does not mean the process should be removed from service discovery as hard failure.
 
 ### Runtime worker checks
 
-В full runtime `/health/ready` дополнительно сверяет обязательные фоновые workers с фактическими
-handles в `AppContext.shared_store`.
+In full runtime `/health/ready` additionally verifies mandatory background workers with actual
+handles in `AppContext.shared_store`.
 
-Проверки публикуются в `checks` с `kind = "worker"`:
+Checks are published in `checks` with `kind = "worker"`:
 
-- `worker:outbox_relay` — критичный worker, если `rustok.events.transport = "outbox"` и runtime
-  построил relay config;
-- `worker:build_executor` — критичный worker, если `rustok.build.enabled = true`;
-- `worker:remote_executor_reaper` — критичный worker, если `rustok.registry.remote_executor.enabled = true`;
-- `worker:seo_bulk` — критичный worker, если включён SEO bulk worker и сборка содержит `mod-seo`.
+- `worker:outbox_relay` — critical worker if `rustok.events.transport = "outbox"` and runtime
+  built relay config;
+- `worker:build_executor` — critical worker if `rustok.build.enabled = true`;
+- `worker:remote_executor_reaper` — critical worker if `rustok.registry.remote_executor.enabled = true`;
+- `worker:seo_bulk` — critical worker if SEO bulk worker is enabled and build contains `mod-seo`.
 
-Если worker отключён настройками, check остаётся `ok` и `non_critical` с reason
-`worker disabled by runtime settings`. Если обязательный worker не зарегистрирован в `shared_store`
-или его task уже завершился, check становится `critical` + `unhealthy`. Это не даёт считать full
-runtime ready до запуска обязательного relay/worker lifecycle.
+If a worker is disabled by settings, check remains `ok` and `non_critical` with reason
+`worker disabled by runtime settings`. If a mandatory worker is not registered in `shared_store`
+or its task has already finished, check becomes `critical` + `unhealthy`. This prevents considering full
+runtime ready until mandatory relay/worker lifecycle is started.
 
 ### Registry-only mode
 
-В `settings.rustok.runtime.host_mode = "registry_only"` readiness выравнивается под реально поднятый surface:
+In `settings.rustok.runtime.host_mode = "registry_only"` readiness aligns with actually started surface:
 
-- остаются только `database`, `cache_backend` и marker-check `host_mode`;
-- не проверяются `tenant_cache_invalidation`, `event_transport`, `search_backend`, rate-limit runtime и module runtime;
-- `modules` в readiness не используются как hard gate и возвращают operator marker вместо попытки валидировать полный module runtime.
+- only `database`, `cache_backend` and marker-check `host_mode` remain;
+- `tenant_cache_invalidation`, `event_transport`, `search_backend`, rate-limit runtime and module runtime are not checked;
+- `modules` in readiness are not used as hard gate and return operator marker instead of attempting to validate full module runtime.
 
-### Module health и context-bound зависимости
+### Module health and context-bound dependencies
 
-`RusToKModule::health()` не получает `AppContext`, поэтому модуль не может сам проверить host-owned runtime зависимости: БД-схему, SMTP/Loco mailer, outbox relay worker, backlog/DLQ, search connector или indexing lag. Для таких модулей module-level health не должен возвращать безусловный `Healthy`.
+`RusToKModule::health()` does not receive `AppContext`, so the module cannot itself check host-owned runtime dependencies: DB schema, SMTP/Loco mailer, outbox relay worker, backlog/DLQ, search connector or indexing lag. For such modules, module-level health should not return unconditional `Healthy`.
 
-Конкретные проверки выполняются в `/health/ready`:
+Specific checks are performed in `/health/ready`:
 
-- `email_backend` проверяет effective email transport;
-- `event_transport`, `worker:outbox_relay` и `outbox_pending_lag` проверяют outbox runtime;
-- `search_backend` и `search_index_lag` проверяют search runtime.
+- `email_backend` checks effective email transport;
+- `event_transport`, `worker:outbox_relay` and `outbox_pending_lag` check outbox runtime;
+- `search_backend` and `search_index_lag` check search runtime.
 
-Поэтому context-bound модули вроде `rustok-email`, `rustok-outbox` и `rustok-search` возвращают `Degraded` на уровне module health как operator marker, а итоговое решение о готовности принимает readiness aggregation по runtime checks.
+Therefore, context-bound modules like `rustok-email`, `rustok-outbox` and `rustok-search` return `Degraded` at module health level as operator marker, and the final readiness decision is made by readiness aggregation based on runtime checks.
 
 ## Aggregation
 
-- если есть `critical` проверка со статусом `unhealthy`, общий статус `unhealthy`;
-- если critical `unhealthy` нет, но есть не-`ok` проверки, общий статус `degraded`;
-- если все проверки `ok`, общий статус `ok`.
+- if there is a `critical` check with status `unhealthy`, overall status is `unhealthy`;
+- if there is no critical `unhealthy`, but there are non-`ok` checks, overall status is `degraded`;
+- if all checks are `ok`, overall status is `ok`.
 
 ## Runtime guardrails
 
-`/health/runtime` возвращает rollout-aware snapshot для операторов:
+`/health/runtime` returns a rollout-aware snapshot for operators:
 
-- `status` и `observed_status` для effective/raw severity;
+- `status` and `observed_status` for effective/raw severity;
 - `rollout` (`observe|enforce`);
 - `host_mode` (`full|registry_only`);
-- `runtime_dependencies_enabled` — поднят ли полный runtime dependency layer;
-- `reasons` с человекочитаемыми причинами деградации;
+- `runtime_dependencies_enabled` — whether full runtime dependency layer is up;
+- `reasons` with human-readable degradation causes;
 - `rate_limits`, `event_bus`, `event_transport`, `remote_executor`.
 
-Prometheus surface теперь также публикует:
+Prometheus surface now also publishes:
 
 - `rustok_runtime_guardrail_runtime_dependencies_enabled`
 - `rustok_runtime_guardrail_host_mode{mode="full|registry_only"}`
@@ -138,12 +138,12 @@ Worker/readiness metrics:
   `-1 = missing`, `0 = disabled`, `1 = running`, `2 = stopped`.
 - `rustok_runtime_worker_lifecycle_state{worker,state}`:
   `starting = 1`, `ready = 2`, `degraded = 3`, `stopping = 4`, `failed = 5`.
-- `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — количество restart-циклов relay supervisor
-  после неожиданного завершения внутреннего worker task.
+- `rustok_runtime_worker_restarts_total{worker="outbox_relay"}` — number of restart cycles for relay supervisor
+  after unexpected termination of internal worker task.
 
-Worker lifecycle transitions логируются структурированно через `worker` и `instance_id`: старт handle,
-старт relay loop, shutdown signal, panic/restart и unexpected exit. Auth/email paths логируют только статус
-доставки и recipient/error; reset, verification, invite и refresh token values не включаются в logs/metrics.
+Worker lifecycle transitions are logged structurally through `worker` and `instance_id`: handle start,
+relay loop start, shutdown signal, panic/restart and unexpected exit. Auth/email paths log only delivery status
+and recipient/error; reset, verification, invite and refresh token values are not included in logs/metrics.
 
 Email backend metrics:
 
@@ -169,20 +169,20 @@ Outbox relay metrics:
 
 Search metrics:
 
-- `rustok_search_queries_total{surface,engine,status}` — search throughput и error rate по `status`;
-- `rustok_search_query_duration_seconds{surface,engine}` — latency histogram для search query path;
+- `rustok_search_queries_total{surface,engine,status}` — search throughput and error rate by `status`;
+- `rustok_search_query_duration_seconds{surface,engine}` — latency histogram for search query path;
 - `rustok_search_slow_queries_total{surface,engine}`;
 - `rustok_search_indexing_operations_total{operation,entity,status}`;
 - `rustok_search_indexing_duration_seconds{operation,entity}`;
 - `rustok_search_max_lag_seconds`;
 - `rustok_search_lagging_tenants_total`.
 
-Подробный контракт snapshot и его Prometheus-представление описаны в [runtime-guardrails.md](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md).
+The detailed snapshot contract and its Prometheus representation are described in [runtime-guardrails.md](../../docs/guides/runtime-guardrails.md).
 
-## Локальный runbook для `registry_only`
+## Local runbook for `registry_only`
 
-Если нужно локально поднять read-only catalog host из того же бинарника `apps/server`, канонический
-минимум сейчас такой:
+If you need to locally run a read-only catalog host from the same `apps/server` binary, the canonical
+minimum is currently:
 
 ```bash
 RUSTOK_RUNTIME_HOST_MODE=registry_only cargo run -p rustok-server
@@ -193,7 +193,7 @@ $env:RUSTOK_RUNTIME_HOST_MODE="registry_only"
 cargo run -p rustok-server
 ```
 
-Минимальный smoke после старта:
+Minimum smoke after start:
 
 ```bash
 curl -i http://127.0.0.1:5150/health/ready
@@ -204,62 +204,62 @@ curl -i http://127.0.0.1:5150/v1/catalog/blog
 curl -i http://127.0.0.1:5150/api/openapi.json
 ```
 
-Ожидаемое поведение:
+Expected behavior:
 
-- `GET /health/ready` и `GET /health/modules` возвращают `200`, несмотря на reduced surface;
-- `GET /health/runtime` явно возвращает `host_mode="registry_only"` и `runtime_dependencies_enabled=false`;
-- `GET /v1/catalog` возвращает read-only catalog contract с `ETag`, `Cache-Control` и `X-Total-Count`;
-- `GET /v1/catalog/{slug}` остаётся доступным как canonical detail contract для внешнего discovery;
-- `GET /api/openapi.json` рекламирует только registry/health/metrics/swagger surface;
-- `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` и `POST /v2/catalog/yank` не должны быть доступны и в норме дают `404`;
-- `GET /api/graphql`, `GET /api/auth/me`, `GET /admin` не должны быть доступны и в норме дают `404`.
+- `GET /health/ready` and `GET /health/modules` return `200`, despite reduced surface;
+- `GET /health/runtime` explicitly returns `host_mode="registry_only"` and `runtime_dependencies_enabled=false`;
+- `GET /v1/catalog` returns read-only catalog contract with `ETag`, `Cache-Control` and `X-Total-Count`;
+- `GET /v1/catalog/{slug}` remains available as canonical detail contract for external discovery;
+- `GET /api/openapi.json` advertises only registry/health/metrics/swagger surface;
+- `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` and `POST /v2/catalog/yank` should not be available and normally give `404`;
+- `GET /api/graphql`, `GET /api/auth/me`, `GET /admin` should not be available and normally give `404`.
 
-Для автоматизированной локальной проверки тот же runtime contract покрыт в
-`scripts/verify/verify-deployment-profiles.sh` и `scripts/verify/verify-deployment-profiles.ps1`.
-Если нужно прогнать тот же smoke уже против внешнего dedicated host, эти же скрипты теперь
-понимают `RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` и optional
+For automated local checking, the same runtime contract is covered in
+`scripts/verify/verify-deployment-profiles.sh` and `scripts/verify/verify-deployment-profiles.ps1`.
+If you need to run the same smoke against an external dedicated host, these same scripts now
+understand `RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` and optional
 `RUSTOK_REGISTRY_EVIDENCE_DIR`.
 
-Если проверяется именно reduced build matrix, полезно отдельно подтвердить compile-time срез:
+If checking the reduced build matrix specifically, it's useful to separately confirm the compile-time slice:
 
-- `cargo check -p rustok-server --no-default-features` для самого узкого headless compile-time binary;
-- `cargo check -p rustok-server --no-default-features --features redis-cache` для headless binary с Redis-backed runtime integrations;
-- при server-side SEO/catalog/runtime изменениях дополнительно один module-sliced profile вроде
-  `cargo check -p rustok-server --no-default-features --features mod-commerce` или targeted
-  no-commerce content host, если конкретный deployment не должен тянуть чужой transport surface.
+- `cargo check -p rustok-server --no-default-features` for the narrowest headless compile-time binary;
+- `cargo check -p rustok-server --no-default-features --features redis-cache` for headless binary with Redis-backed runtime integrations;
+- with server-side SEO/catalog/runtime changes, additionally one module-sliced profile like
+  `cargo check -p rustok-server --no-default-features --features mod-commerce` or targeted
+  no-commerce content host, if the specific deployment should not pull foreign transport surface.
 
-## Production rollout для `modules.rustok.dev`
+## Production rollout for `modules.rustok.dev`
 
-Для внешнего dedicated catalog host канонический deployment contract сейчас такой:
+For the external dedicated catalog host, the canonical deployment contract is currently:
 
-- build profile: `headless-api` (`--no-default-features`; добавлять `redis-cache` только если deployment реально использует Redis-backed runtime integrations);
+- build profile: `headless-api` (`--no-default-features`; add `redis-cache` only if deployment actually uses Redis-backed runtime integrations);
 - runtime host mode: `RUSTOK_RUNTIME_HOST_MODE=registry_only`;
-- process role: отдельный read-only host для V1 catalog, а не урезанный monolith;
-- write-path V2 на этот host не маршрутизируется и не должен быть доступен после rollout.
+- process role: separate read-only host for V1 catalog, not a reduced monolith;
+- V2 write-path is not routed to this host and should not be available after rollout.
 
-Для этого dedicated host `mod-commerce` не является обязательным compile-time dependency, если каталог
-не публикует ecommerce REST/OpenAPI surface.
+For this dedicated host, `mod-commerce` is not a mandatory compile-time dependency if the catalog
+does not publish ecommerce REST/OpenAPI surface.
 
-Минимальный production checklist перед переключением трафика:
+Minimum production checklist before switching traffic:
 
-1. Убедиться, что deployment собран тем же `apps/server` бинарником, но без embedded admin/storefront surface.
-2. Убедиться, что runtime env явно задаёт `RUSTOK_RUNTIME_HOST_MODE=registry_only`.
-3. Проверить `/health/ready` и `/health/runtime` на целевом instance.
-4. Проверить `GET /v1/catalog?limit=1` и `GET /v1/catalog/{slug}` на целевом instance.
-5. Проверить `ETag`, `Cache-Control` и `X-Total-Count` на `GET /v1/catalog?limit=1`.
-6. Проверить `GET /api/openapi.json` и убедиться, что в spec нет `/v2/catalog/*`, `/api/graphql`, `/api/auth/*`.
-7. Проверить negative smoke: `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank`, `GET /api/graphql`, `GET /admin` должны давать `404`.
+1. Ensure deployment is built with the same `apps/server` binary, but without embedded admin/storefront surface.
+2. Ensure runtime env explicitly sets `RUSTOK_RUNTIME_HOST_MODE=registry_only`.
+3. Check `/health/ready` and `/health/runtime` on target instance.
+4. Check `GET /v1/catalog?limit=1` and `GET /v1/catalog/{slug}` on target instance.
+5. Check `ETag`, `Cache-Control` and `X-Total-Count` on `GET /v1/catalog?limit=1`.
+6. Check `GET /api/openapi.json` and ensure the spec has no `/v2/catalog/*`, `/api/graphql`, `/api/auth/*`.
+7. Check negative smoke: `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank`, `GET /api/graphql`, `GET /admin` should give `404`.
 
-Provider-agnostic edge/runtime invariants для этого host:
+Provider-agnostic edge/runtime invariants for this host:
 
-- edge/CDN/reverse proxy не должны переписывать path prefix и query string для `/v1/catalog*`, `/health/*`, `/metrics`, `/api/openapi.*`;
-- edge не должен вырезать `ETag`, `Cache-Control`, `If-None-Match` и `X-Total-Count`, потому что это часть live V1 contract;
-- edge не должен подменять API-ответы собственными HTML error pages для `404` на write/admin paths;
-- `GET /v1/catalog*` можно кэшировать только с уважением к origin headers; `/health/*` и `/api/openapi.*` не должны превращаться в долгоживущий CDN cache;
-- TLS termination/HSTS и redirect policy должны быть настроены на edge, но без path rewrites и без downgrade на `http`;
-- WAF/rate-limit layer не должен инжектить auth headers и не должен превращать expected `404` на write-path в provider-specific `401/403`, иначе теряется внешний reduced-surface contract.
+- edge/CDN/reverse proxy must not rewrite path prefix and query string for `/v1/catalog*`, `/health/*`, `/metrics`, `/api/openapi.*`;
+- edge must not remove `ETag`, `Cache-Control`, `If-None-Match` and `X-Total-Count`, because this is part of live V1 contract;
+- edge must not replace API responses with its own HTML error pages for `404` on write/admin paths;
+- `GET /v1/catalog*` can be cached only with respect to origin headers; `/health/*` and `/api/openapi.*` should not become long-lived CDN cache;
+- TLS termination/HSTS and redirect policy should be configured on edge, but without path rewrites and without downgrade to `http`;
+- WAF/rate-limit layer must not inject auth headers and must not turn expected `404` on write-path into provider-specific `401/403`, otherwise external reduced-surface contract is lost.
 
-Канонический automated smoke для уже развёрнутого host:
+Canonical automated smoke for already deployed host:
 
 ```bash
 export RUSTOK_REGISTRY_BASE_URL="https://modules.rustok.dev"
@@ -275,70 +275,70 @@ $env:RUSTOK_REGISTRY_EVIDENCE_DIR="C:\tmp\modules-rustok-dev-smoke"
 ./scripts/verify/verify-deployment-profiles.ps1
 ```
 
-Этот external smoke не заменяет локальную build/profile matrix, а дополняет её:
+This external smoke does not replace the local build/profile matrix, but complements it:
 
-- проверяет `/health/ready` и `/health/runtime` уже на публичном host;
-- проверяет `/health/modules` как live marker для зарегистрированного `ModuleRegistry` даже на reduced host;
-- проверяет `GET /v1/catalog?limit=1` и `GET /v1/catalog/{slug}` на live instance;
-- проверяет `ETag`, `Cache-Control` и `X-Total-Count`;
-- проверяет reduced OpenAPI (`/api/openapi.json` и `/api/openapi.yaml`) на отсутствие write/API/UI surface;
-- проверяет, что `POST /v2/catalog/*`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank` и `GET /admin` реально дают `404`.
+- checks `/health/ready` and `/health/runtime` already on public host;
+- checks `/health/modules` as live marker for registered `ModuleRegistry` even on reduced host;
+- checks `GET /v1/catalog?limit=1` and `GET /v1/catalog/{slug}` on live instance;
+- checks `ETag`, `Cache-Control` and `X-Total-Count`;
+- checks reduced OpenAPI (`/api/openapi.json` and `/api/openapi.yaml`) for absence of write/API/UI surface;
+- checks that `POST /v2/catalog/*`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank` and `GET /admin` actually give `404`.
 
-Минимальный evidence package после rollout:
+Minimum evidence package after rollout:
 
-- сохранить stdout/stderr external smoke из `scripts/verify/verify-deployment-profiles.sh` или `.ps1`;
-- сохранить ответ `/health/runtime` как rollout snapshot для этого release;
-- сохранить snapshot `GET /api/openapi.json` как доказательство reduced surface;
-- зафиксировать artifact identifier / build SHA / image tag и timestamp smoke-проверки;
-- если перед host стоит CDN/WAF, отдельно отметить effective cache/TLS policy и отсутствие path rewrites для catalog endpoints.
+- save stdout/stderr external smoke from `scripts/verify/verify-deployment-profiles.sh` or `.ps1`;
+- save `/health/runtime` response as rollout snapshot for this release;
+- save snapshot `GET /api/openapi.json` as proof of reduced surface;
+- record artifact identifier / build SHA / image tag and smoke check timestamp;
+- if CDN/WAF is in front of host, separately note effective cache/TLS policy and absence of path rewrites for catalog endpoints.
 
-Если задан `RUSTOK_REGISTRY_EVIDENCE_DIR`, verify-скрипт автоматически сохраняет туда как минимум:
+If `RUSTOK_REGISTRY_EVIDENCE_DIR` is set, verify script automatically saves there at least:
 
-- `runtime-headers.txt` и `runtime-body.json`;
-- `catalog-headers.txt` и `catalog-body.json`;
-- `openapi-headers.txt` и `openapi-body.json`;
-- `openapi-yaml-headers.txt` и `openapi-yaml-body.yaml`;
-- `registry-smoke-metadata.txt` с `base_url`, `smoke_slug` и UTC timestamp.
+- `runtime-headers.txt` and `runtime-body.json`;
+- `catalog-headers.txt` and `catalog-body.json`;
+- `openapi-headers.txt` and `openapi-body.json`;
+- `openapi-yaml-headers.txt` and `openapi-yaml-body.yaml`;
+- `registry-smoke-metadata.txt` with `base_url`, `smoke_slug` and UTC timestamp.
 
-Минимальный acceptance после rollout:
+Minimum acceptance after rollout:
 
-- `/health/ready` возвращает `200`;
-- `/health/runtime` возвращает `host_mode="registry_only"` и `runtime_dependencies_enabled=false`;
-- `GET /v1/catalog` отвечает как cache-friendly V1 contract;
-- `GET /v1/catalog/{slug}` отвечает как canonical detail contract;
-- reduced OpenAPI не рекламирует write/API/UI surface;
-- V2 write-path и monolith shell реально недоступны снаружи.
+- `/health/ready` returns `200`;
+- `/health/runtime` returns `host_mode="registry_only"` and `runtime_dependencies_enabled=false`;
+- `GET /v1/catalog` responds as cache-friendly V1 contract;
+- `GET /v1/catalog/{slug}` responds as canonical detail contract;
+- reduced OpenAPI does not advertise write/API/UI surface;
+- V2 write-path and monolith shell are actually unavailable from outside.
 
-Rollback для этого host остаётся обычным rollback deployment-артефакта или переключением трафика на предыдущий release. Важный инвариант: не переводить `modules.rustok.dev` в `full` runtime как временную меру, потому что это ломает контракт dedicated read-only catalog host.
-Отдельно для rollback/incident path: если smoke падает именно на reduced surface, сначала откатить deployment или traffic switch, а не чинить проблему временным включением full-host routes.
+Rollback for this host remains normal rollback of deployment artifact or traffic switch to previous release. Important invariant: do not switch `modules.rustok.dev` to `full` runtime as temporary measure, because this breaks dedicated read-only catalog host contract.
+Separately for rollback/incident path: if smoke fails specifically on reduced surface, first rollback deployment or traffic switch, not fix problem with temporary full-host routes enablement.
 
-## Production rollback и incident ownership
+## Production rollback and incident ownership
 
-Для full runtime rollback не должен менять семантику event delivery, auth или search/index path. Базовый порядок:
+For full runtime, rollback should not change event delivery, auth or search/index path semantics. Basic order:
 
-1. Зафиксировать failing artifact identifier, image tag/build SHA, конфигурационный snapshot и причину rollback.
-2. Переключить трафик на предыдущий проверенный release или откатить deployment-артефакт без изменения runtime contracts.
-3. Не включать `registry_only` или `full` runtime как скрытый workaround, если это меняет публичный surface текущего host.
-4. Проверить `/health/ready`, `/health/runtime` и `/metrics` после переключения.
-5. Проверить outbox backlog/DLQ, auth login/token flows и search lag перед повторным включением трафика.
-6. Зафиксировать post-rollback evidence: timestamp, artifact id, health snapshot, ключевые метрики backlog/lag/error-rate и список follow-up задач.
+1. Record failing artifact identifier, image tag/build SHA, configuration snapshot and rollback reason.
+2. Switch traffic to previous verified release or rollback deployment artifact without changing runtime contracts.
+3. Do not enable `registry_only` or `full` runtime as hidden workaround if it changes the public surface of current host.
+4. Check `/health/ready`, `/health/runtime` and `/metrics` after switch.
+5. Check outbox backlog/DLQ, auth login/token flows and search lag before re-enabling traffic.
+6. Record post-rollback evidence: timestamp, artifact id, health snapshot, key metrics backlog/lag/error-rate and list of follow-up tasks.
 
-Incident response ownership фиксируется на уровне командной ответственности, без привязки к конкретным людям:
+Incident response ownership is established at team responsibility level, without binding to specific people:
 
-| Область | Primary owner | Обязательный escalation path |
+| Area | Primary owner | Mandatory escalation path |
 |---|---|---|
 | Outbox/event delivery | Platform foundation on-call | `crates/rustok-outbox` owner + server runtime owner |
 | Auth/JWT/RBAC | Platform security/auth on-call | `crates/rustok-auth` owner + server API owner |
 | Search/index projection | Search module on-call | `crates/rustok-search` owner + platform database/runtime owner |
 
-Если инцидент затрагивает несколько областей, координатором становится Platform foundation on-call, потому что он владеет composition root и runtime readiness gates.
+If incident affects multiple areas, Platform foundation on-call becomes coordinator, because it owns composition root and runtime readiness gates.
 
-## Надёжность проверок
+## Check reliability
 
-Для readiness-проверок используются:
+For readiness checks, the following are used:
 
-- timeout на выполнение проверки;
+- timeout on check execution;
 - in-process circuit breaker;
-- fail-fast поведение при открытом circuit.
+- fail-fast behavior on open circuit.
 
-Это предотвращает зависание `/health/ready` на проблемной зависимости.
+This prevents `/health/ready` from hanging on problematic dependency.

@@ -160,7 +160,7 @@ Scripts in the `OnCommit` phase have outbound HTTP access. This is how RusTok co
 
 - **Payment processors** — confirm charges, handle refunds, record receipts
 - **CRM systems** — push deal updates to Salesforce, HubSpot, or any REST-based CRM
-- **Accounting software** — export transactions to 1С, QuickBooks, or any API-accessible ledger
+- **Accounting software** — export transactions to 1C, QuickBooks, or any API-accessible ledger
 - **Warehouse and logistics** — confirm shipments, update inventory in partner systems
 - **Communication channels** — send Slack messages, trigger SMS via Twilio, post to any webhook receiver
 - **Data pipelines** — stream events to ClickHouse, BigQuery, or any analytics warehouse endpoint

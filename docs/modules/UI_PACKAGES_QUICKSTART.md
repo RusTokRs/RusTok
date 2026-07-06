@@ -154,3 +154,7 @@ powershell -ExecutionPolicy Bypass -File scripts/verify/verify-architecture.ps1
 - [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [UI README](../UI/README.md)
+- **Module UI Package Guides** (read when implementing Step 4 above):
+  - [Architecture Guide](../UI/module-package-architecture.md) — FFA, `core/transport/ui` split, dual-path model, Dioxus-readiness
+  - [Implementation Guide](../UI/module-package-implementation.md) — file structure, internal crates, i18n, URL-selection, manifest wiring, forbidden patterns
+  - [Verification Guide](../UI/module-package-verification.md) — all verification commands, what each checks, common errors

@@ -6,22 +6,22 @@ last_verified_snapshot: snap_jsonl_00000021
 source_language: markdown
 status: verified
 ---
-# Шаблон документации модуля
+# Module Documentation Template
 
-Этот шаблон нужен для новых platform modules, а также для support/capability crates, которые хотят соответствовать текущему documentation contract RusToK.
+This template is needed for new platform modules, as well as for support/capability crates that want to comply with the current RusToK documentation contract.
 
-Нормативный путь для module-level documentation такой:
+The normative path for module-level documentation is as follows:
 
-- корневой `README.md` рядом с кодом;
-- локальный `docs/README.md`;
-- локальный `docs/implementation-plan.md`;
-- при необходимости `rustok-module.toml`.
+- root `README.md` next to the code;
+- local `docs/README.md`;
+- local `docs/implementation-plan.md`;
+- `rustok-module.toml` when necessary.
 
-Не создавайте отдельный central doc для каждого модуля в `docs/modules/`. Central docs должны ссылаться на локальную документацию, а не дублировать её.
+Do not create a separate central doc for each module in `docs/modules/`. Central docs should reference local documentation, not duplicate it.
 
-## 1. Минимальный набор файлов
+## 1. Minimum file set
 
-Для нового path-модуля ожидается следующий набор:
+For a new path-module, the following set is expected:
 
 ```text
 crates/rustok-<slug>/
@@ -33,11 +33,11 @@ crates/rustok-<slug>/
     implementation-plan.md
 ```
 
-Для support/capability crate `rustok-module.toml` не обязателен, если crate не входит в `modules.toml`.
+For support/capability crate, `rustok-module.toml` is not mandatory if the crate is not included in `modules.toml`.
 
-## 2. Корневой `README.md`
+## 2. Root `README.md`
 
-Корневой README должен быть на английском и содержать этот каркас:
+The root README must be in English and contain this framework:
 
 ```md
 # rustok-<slug>
@@ -70,112 +70,112 @@ One short paragraph explaining what this crate owns.
 - [Platform docs index](../../docs/index.md)
 ```
 
-Правила:
+Rules:
 
-- один файл — один язык;
-- `README.md` не заменяет локальные docs;
-- `Docs` section обязателен;
-- названия разделов должны совпадать с contract-формой:
+- one file — one language;
+- `README.md` does not replace local docs;
+- `Docs` section is mandatory;
+- section names must match the contract form:
   - `## Purpose`
   - `## Responsibilities`
   - `## Entry points`
   - `## Interactions`
 
-## 3. Локальный `docs/README.md`
+## 3. Local `docs/README.md`
 
 Local docs README is written in English and describes the live module contract.
 
-Минимальный каркас:
+Minimum framework:
 
 ```md
-# <Название модуля>
+# <Module name>
 
-## Назначение
+## Purpose
 
-Кратко: что модуль делает и почему он существует.
+Briefly: what the module does and why it exists.
 
-## Зона ответственности
+## Responsibility scope
 
-- Чем модуль владеет
-- Чем модуль сознательно не владеет
+- What the module owns
+- What the module consciously does not own
 
-## Интеграция
+## Integration
 
-- GraphQL / REST / фоновые задачи / UI-поверхности
-- host wiring и runtime boundaries
-- зависимости на другие модули и crate-ы
-- особенно важные кросс-модульные контракты
+- GraphQL / REST / background tasks / UI surfaces
+- host wiring and runtime boundaries
+- dependencies on other modules and crates
+- especially important cross-module contracts
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate <slug>`
 - `cargo xtask module test <slug>`
-- другие точечные команды при необходимости
+- other targeted commands when needed
 
-## Связанные документы
+## Related documents
 
 - `implementation-plan.md`
 - central docs
-- соседние host/module docs
+- neighboring host/module docs
 ```
 
-Допустимы дополнительные разделы, если они реально нужны модулю:
+Additional sections are allowed if they are really needed for the module:
 
-- `## Настройки и конфигурация`
-- `## Health и observability`
-- `## Ограничения`
+- `## Settings and configuration`
+- `## Health and observability`
+- `## Limitations`
 - `## UI contract`
 
-Но минимальные разделы выше должны оставаться на месте.
+But the minimum sections above should remain in place.
 
-## 4. Локальный `docs/implementation-plan.md`
+## 4. Local `docs/implementation-plan.md`
 
-Этот файл фиксирует живой план доведения модуля до целевого состояния, а не подробную историю работ.
+This file captures the live plan to bring the module to the target state, not a detailed work history.
 
-Минимальный каркас:
+Minimum framework:
 
 ```md
-# План развития <модуля>
+# <Module> Development Plan
 
-## Область работ
+## Scope of work
 
-Коротко: на чём сосредоточен текущий план.
+Briefly: what the current plan is focused on.
 
-## Текущее состояние
+## Current state
 
-Коротко: что уже стабилизировано и какие инварианты модуль уже держит.
+Briefly: what is already stabilized and what invariants the module already maintains.
 
-## Этапы
+## Stages
 
-### 1. Ближайший срез
+### 1. Nearest slice
 
 - ...
 
-## Проверка
+## Verification
 
 - `cargo xtask module validate <slug>`
 - `cargo xtask module test <slug>`
 
-## Правила обновления
+## Update rules
 
-1. При изменении runtime/module contract сначала обновлять этот файл.
-2. При изменении public surface синхронизировать `README.md` и `docs/README.md`.
-3. При изменении manifest metadata синхронизировать `rustok-module.toml`.
+1. When changing runtime/module contract, update this file first.
+2. When changing public surface, synchronize `README.md` and `docs/README.md`.
+3. When changing manifest metadata, synchronize `rustok-module.toml`.
 ```
 
-Допустимы дополнительные разделы:
+Additional sections are allowed:
 
-- `## Риски и открытые вопросы`
-- `## Приоритеты`
-- `## Критерии готовности`
+- `## Risks and open questions`
+- `## Priorities`
+- `## Readiness criteria`
 
-Но `## Область работ`, `## Текущее состояние`, `## Этапы`, `## Проверка` и `## Правила обновления` должны присутствовать как минимальный стандарт.
+But `## Scope of work`, `## Current state`, `## Stages`, `## Verification` and `## Update rules` must be present as a minimum standard.
 
 ## 5. `rustok-module.toml`
 
-Для path-модуля из `modules.toml` локальный manifest обязателен.
+For a path-module from `modules.toml`, a local manifest is mandatory.
 
-Минимальный каркас:
+Minimum framework:
 
 ```toml
 [module]
@@ -191,12 +191,12 @@ ui_classification = "dual_surface"
 entry_type = "<PascalSlug>Module"
 ```
 
-Для core-модуля, который добавляется в `modules.toml` с `required = true`, используется `trust_level = "core"`.
+For a core module that is added to `modules.toml` with `required = true`, use `trust_level = "core"`.
 
-Если crate реализует `RusToKModule`, `entry_type` обязателен и должен совпадать с реальным runtime entry type в `src/lib.rs`.
-Если crate не реализует `RusToKModule` и используется как capability-only слой, `entry_type` можно не указывать.
+If the crate implements `RusToKModule`, `entry_type` is mandatory and must match the actual runtime entry type in `src/lib.rs`.
+If the crate does not implement `RusToKModule` and is used as a capability-only layer, `entry_type` can be omitted.
 
-Дальше по необходимости добавляются:
+Then add as needed:
 
 - `[provides.graphql]`
 - `[provides.http]`
@@ -205,36 +205,36 @@ entry_type = "<PascalSlug>Module"
 - `[settings]`
 - `[marketplace]`
 
-Подробный contract-слой описан в [docs/modules/manifest.md](../modules/manifest.md).
+The detailed contract layer is described in [docs/modules/manifest.md](../modules/manifest.md).
 
-## 6. Обязательная локальная проверка
+## 6. Mandatory local verification
 
-Для нового или существенно изменённого platform module:
+For a new or significantly changed platform module:
 
 ```powershell
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
 ```
 
-Если меняется состав `modules.toml`, добавляется:
+If the composition of `modules.toml` changes, add:
 
 ```powershell
 cargo xtask validate-manifest
 ```
 
-Минимальный Windows verification path описан в [docs/verification/README.md](../verification/README.md).
+The minimum Windows verification path is described in [docs/verification/README.md](../verification/README.md).
 
-## 7. Что не делать
+## 7. What not to do
 
 - do not write root `README.md` in Russian;
-- не хранить единственную документацию модуля только в `docs/modules/`;
-- не добавлять path-модуль в `modules.toml` без `rustok-module.toml`;
-- не считать подпапки `admin/` и `storefront/` доказательством интеграции без manifest wiring;
-- не превращать local docs в исторический changelog, если нужен живой contract.
+- do not store the module's only documentation in `docs/modules/`;
+- do not add a path-module to `modules.toml` without `rustok-module.toml`;
+- do not consider `admin/` and `storefront/` subfolders proof of integration without manifest wiring;
+- do not turn local docs into a historical changelog if you need a live contract.
 
-## 8. Связанные документы
+## 8. Related documents
 
-- [Карта документации](../index.md)
-- [Обзор модульной платформы](../modules/overview.md)
-- [Контракт manifest-слоя](../modules/manifest.md)
-- [Индекс локальной документации по модулям](../modules/_index.md)
+- [Documentation map](../index.md)
+- [Modular platform overview](../modules/overview.md)
+- [Manifest layer contract](../modules/manifest.md)
+- [Index of local module documentation](../modules/_index.md)

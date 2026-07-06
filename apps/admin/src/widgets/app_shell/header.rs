@@ -110,6 +110,7 @@ async fn admin_global_search_native(
         let search_query = rustok_search::SearchQuery {
             tenant_id: Some(tenant.id),
             locale: None,
+            channel_id: None,
             original_query: transform.original_query,
             query: transform.effective_query,
             ranking_profile,
@@ -120,6 +121,10 @@ async fn admin_global_search_native(
             entity_types: Vec::new(),
             source_modules: Vec::new(),
             statuses: Vec::new(),
+            category_ids: Vec::new(),
+            attribute_filters: Vec::new(),
+            sort_attribute_code: None,
+            sort_desc: false,
         };
         let engine = rustok_search::PgSearchEngine::new(app_ctx.db.clone());
         let started_at = Instant::now();

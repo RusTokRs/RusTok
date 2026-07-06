@@ -1,223 +1,223 @@
-# План полной интеграции Loco RS + Core с управлением из админки
+# Complete Loco RS + Core Integration Plan with Admin Management
 
-> Status: deprecated historical context. Active roadmap: [План ухода от Loco RS](../../../docs/architecture/loco-exit-plan.md).
+> Status: deprecated historical context. Active roadmap: [Loco RS Exit Plan](../../../docs/architecture/loco-exit-plan.md).
 
-**Дата:** 2026-03-12
-**Актуализировано:** 2026-04-05
-**Статус:** Частично реализован; документ отражает текущее состояние и остаточный scope
+**Date:** 2026-03-12
+**Updated:** 2026-04-05
+**Status:** Partially implemented; document reflects current state and residual scope
 
-## 1. Контекст и цель
+## 1. Context and goal
 
-RusToK использует Loco RS как server/runtime framework, а платформенные capability layers строит через `apps/server` и core/library crates.
+RusToK uses Loco RS as server/runtime framework, and builds platform capability layers through `apps/server` and core/library crates.
 
-Цель этого документа теперь не в том, чтобы заново спланировать уже сделанные шаги, а в том, чтобы честно разделить:
+The goal of this document now is not to re-plan already completed steps, but to honestly separate:
 
-1. что уже интегрировано и стало частью live contract;
-2. что реализовано частично;
-3. что остаётся future scope.
+1. what is already integrated and became part of live contract;
+2. what is partially implemented;
+3. what remains future scope.
 
 > [!IMPORTANT]
-> Архитектурный инвариант сохраняется: `apps/server` остаётся composition/integration layer и не становится владельцем доменной логики модулей.
+> Architectural invariant is preserved: `apps/server` remains composition/integration layer and does not become owner of domain logic for modules.
 
 ---
 
-## 2. Текущее состояние
+## 2. Current state
 
-### 2.1 Что уже зафиксировано в live runtime
+### 2.1 What is already established in live runtime
 
-| Capability | Текущее состояние |
+| Capability | Current state |
 |---|---|
-| Application hooks / `Hooks` | Используются как основной runtime surface |
-| Typed settings + YAML bootstrap | Работают |
-| `platform_settings` + `SettingsService` | Реализованы |
-| GraphQL settings API | Реализован (`platformSettings`, `allPlatformSettings`, `updatePlatformSettings`) |
-| Auth lifecycle | Централизован через `AuthLifecycleService` |
-| RBAC runtime | Живой path = `rustok-rbac` + tenant policy runtime |
+| Application hooks / `Hooks` | Used as main runtime surface |
+| Typed settings + YAML bootstrap | Working |
+| `platform_settings` + `SettingsService` | Implemented |
+| GraphQL settings API | Implemented (`platformSettings`, `allPlatformSettings`, `updatePlatformSettings`) |
+| Auth lifecycle | Centralized via `AuthLifecycleService` |
+| RBAC runtime | Live path = `rustok-rbac` + tenant policy runtime |
 | Mailer | Provider-based server service: `smtp | loco | none` |
-| Storage | Shared runtime через `rustok-storage`; media domain через `rustok-media` |
-| Event/outbox runtime | Реализован и остаётся source of truth |
-| GraphQL module composition | Compile-time feature gating уже используется |
-| Workflow runtime | Интегрирован в server |
+| Storage | Shared runtime via `rustok-storage`; media domain via `rustok-media` |
+| Event/outbox runtime | Implemented and remains source of truth |
+| GraphQL module composition | Compile-time feature gating already used |
+| Workflow runtime | Integrated in server |
 
-### 2.2 Что больше нельзя описывать как “не внедрено”
+### 2.2 What can no longer be described as "not implemented"
 
-- Loco Mailer уже участвует в live runtime через `EmailProvider::Loco`.
-- Единый storage layer уже существует через `rustok-storage` и runtime bootstrap.
-- `platform_settings` и schema version уже есть.
-- GraphQL auth parity по ключевым операциям уже сильно продвинута: `logout`, `me`, `sessions`, revoke flows, invite acceptance.
-- `schema.rs` уже не держит безусловные hard-coded доменные импорты: используется `#[cfg(feature = "mod-*")]`.
+- Loco Mailer already participates in live runtime via `EmailProvider::Loco`.
+- Unified storage layer already exists via `rustok-storage` and runtime bootstrap.
+- `platform_settings` and schema version already exist.
+- GraphQL auth parity for key operations already significantly advanced: `logout`, `me`, `sessions`, revoke flows, invite acceptance.
+- `schema.rs` no longer holds unconditional hard-coded domain imports: uses `#[cfg(feature = "mod-*")]`.
 
-### 2.3 Что остаётся неполным
+### 2.3 What remains incomplete
 
-- admin UI покрывает не все platform settings / system observability сценарии;
-- волна package-owned UI migration на native i18n contract закрыта; открытым остаётся только дальнейшее outbound locale propagation вне уже покрытых UI/built-in-auth-email путей;
-- compile-time feature gating уже есть, но полностью runtime-dynamic schema registration как отдельная цель больше не является приоритетным current path;
-- advanced scheduler/channels/graceful shutdown остаются отдельным future scope.
+- admin UI does not cover all platform settings / system observability scenarios;
+- package-owned UI migration wave to native i18n contract is closed; only further outbound locale propagation outside already covered UI/built-in-auth-email paths remains open;
+- compile-time feature gating already exists, but fully runtime-dynamic schema registration as separate goal is no longer prioritized current path;
+- advanced scheduler/channels/graceful shutdown remain separate future scope.
 
 ---
 
-## 3. Статус по фазам
+## 3. Status by phases
 
-### Фаза 0 — i18n по умолчанию
+### Phase 0 — i18n by default
 
-**Статус:** Live contract для server/runtime закрыт; residual scope вынесен в future work.
+**Status:** Live contract for server/runtime closed; residual scope moved to future work.
 
-Уже есть:
+Already exists:
 
-- request locale resolution chain в server runtime;
-- `RequestContext.locale` как effective locale;
-- locale fallback на read paths и GraphQL.
-- locale-prefixed storefront routing (`/{locale}` и `/{locale}/modules/{route_segment}`) с backward-compatible fallback на legacy `?lang=`.
-- built-in auth outbound email locale propagation: password reset для REST/GraphQL и email verification для REST; `smtp` и `loco` теперь используют один и тот же localized auth template path.
+- request locale resolution chain in server runtime;
+- `RequestContext.locale` as effective locale;
+- locale fallback on read paths and GraphQL.
+- locale-prefixed storefront routing (`/{locale}` and `/{locale}/modules/{route_segment}`) with backward-compatible fallback to legacy `?lang=`.
+- built-in auth outbound email locale propagation: password reset for REST/GraphQL and email verification for REST; `smtp` and `loco` now use same localized auth template path.
 
 Residual future scope:
 
-- более полный outbound locale propagation за пределами built-in auth email flows;
-- расширение locale coverage для остальных outbound template flows и future work по новым локалям/форматерам.
+- more complete outbound locale propagation beyond built-in auth email flows;
+- expanded locale coverage for remaining outbound template flows and future work on new locales/formatters.
 
-### Фаза 1 — Settings API
+### Phase 1 — Settings API
 
-**Статус:** Backend реализован, UI частично.
+**Status:** Backend implemented, UI partial.
 
-Уже есть:
+Already exists:
 
 - `platform_settings`;
 - `schema_version`;
 - `SettingsService`;
 - built-in validators;
-- категории включая `rate_limit`, `email`, `events`, `oauth`;
+- categories including `rate_limit`, `email`, `events`, `oauth`;
 - GraphQL settings API;
-- `PlatformSettingsChanged` через outbox path.
+- `PlatformSettingsChanged` via outbox path.
 
-Осталось:
+Remains:
 
-- более полный admin UX для platform settings в primary admin surfaces;
-- выравнивание module settings UX там, где он ещё не оформлен.
+- more complete admin UX for platform settings in primary admin surfaces;
+- alignment of module settings UX where it is not yet formalized.
 
-### Фаза 1.5 — API parity
+### Phase 1.5 — API parity
 
-**Статус:** По ключевым auth сценариям в основном закрыта.
+**Status:** Mostly closed for key auth scenarios.
 
-Подтверждено в коде:
+Confirmed in code:
 
 - GraphQL: `logout`, `me`, `sessions`, `revoke_session`, `revoke_all_sessions`, `accept_invite`;
-- REST: session management и auth lifecycle coverage;
-- backend flows сведены к общему application service.
+- REST: session management and auth lifecycle coverage;
+- backend flows consolidated to common application service.
 
-Остаточный scope по этой фазе больше не является главным блокером архитектурной целостности.
+Residual scope for this phase is no longer main blocker for architectural integrity.
 
-### Фаза 2 — Mailer
+### Phase 2 — Mailer
 
-**Статус:** Основная интеграция реализована.
+**Status:** Core integration implemented.
 
-Уже есть:
+Already exists:
 
 - provider-based email runtime;
 - `EmailProvider::{Smtp,Loco,None}`;
 - `LocoMailerAdapter`;
 - template-based built-in auth emails.
 
-Осталось:
+Remains:
 
-- если потребуется, более общий модульный email template contract;
-- дальнейшее выравнивание observability и locale propagation для outbound mail.
+- if needed, more general modular email template contract;
+- further alignment of observability and locale propagation for outbound mail.
 
-### Фаза 3 — Storage + Media
+### Phase 3 — Storage + Media
 
-**Статус:** Основной architecture shift реализован.
+**Status:** Core architecture shift implemented.
 
-Уже есть:
+Already exists:
 
-- `rustok-storage` как shared storage contract;
+- `rustok-storage` as shared storage contract;
 - runtime bootstrap `StorageService`;
-- `rustok-media` как core media module;
-- media cleanup task и storage usage в server runtime.
+- `rustok-media` as core media module;
+- media cleanup task and storage usage in server runtime.
 
-Осталось:
+Remains:
 
-- дальнейшее развитие media/admin UX;
-- возможное расширение background lifecycle around storage GC/policies.
+- further development of media/admin UX;
+- possible expansion of background lifecycle around storage GC/policies.
 
-### Фаза 4 — Module settings + GraphQL composition
+### Phase 4 — Module settings + GraphQL composition
 
-**Статус:** Частично реализована.
+**Status:** Partially implemented.
 
-Уже есть:
+Already exists:
 
-- compile-time feature flags в `schema.rs`;
-- runtime guards и module toggle model;
-- `tenant_modules.settings` как persisted module setting payload.
+- compile-time feature flags in `schema.rs`;
+- runtime guards and module toggle model;
+- `tenant_modules.settings` as persisted module setting payload.
 
-Осталось:
+Remains:
 
-- если нужно, дальнейшее развитие module settings schema/UI contracts;
-- не runtime-dynamic GraphQL “любой ценой”, а согласованное развитие текущего feature-gated пути.
+- if needed, further development of module settings schema/UI contracts;
+- not runtime-dynamic GraphQL "at any cost", but consistent development of current feature-gated path.
 
-### Фаза 5 — Observability dashboard
+### Phase 5 — Observability dashboard
 
-**Статус:** Частично реализована.
+**Status:** Partially implemented.
 
-Уже есть:
+Already exists:
 
 - `systemHealth` GraphQL surface;
 - DLQ REST/admin flows;
 - metrics and health endpoints;
-- build/module UI pieces в admin.
+- build/module UI pieces in admin.
 
-Осталось:
+Remains:
 
-- более цельный admin observability dashboard;
-- pagination/UX вокруг additional system stats;
-- consolidated alerting UX, если это останется в scope.
+- more cohesive admin observability dashboard;
+- pagination/UX around additional system stats;
+- consolidated alerting UX, if it remains in scope.
 
-### Фаза 6 — Advanced runtime features
+### Phase 6 — Advanced runtime features
 
-**Статус:** Future scope.
+**Status:** Future scope.
 
-Сюда по-прежнему относятся:
+Still includes:
 
 - channels/websocket scenarios;
 - more formal scheduler governance;
 - graceful shutdown protocol hardening;
-- дополнительные advanced runtime contracts beyond current baseline.
+- additional advanced runtime contracts beyond current baseline.
 
 ---
 
-## 4. Что уже не является активным планом
+## 4. What is no longer an active plan
 
-Следующие пункты больше не должны трактоваться как открытые migration цели:
+The following items should no longer be treated as open migration goals:
 
-- “перейти на Loco Mailer” как будто mailer integration ещё отсутствует;
-- “ввести storage layer” как будто shared storage ещё не существует;
-- “добавить platform settings table” как будто DB/config split ещё не оформлен;
-- “убрать hard-coded imports из `schema.rs`” как будто feature-gated composition ещё не внедрена;
-- “включить отдельный RBAC runtime” как будто server всё ещё держит отдельный самописный живой engine.
+- "migrate to Loco Mailer" as if mailer integration is still absent;
+- "introduce storage layer" as if shared storage does not yet exist;
+- "add platform settings table" as if DB/config split is not yet formalized;
+- "remove hard-coded imports from `schema.rs`" as if feature-gated composition is not yet implemented;
+- "enable separate RBAC runtime" as if server still holds separate custom live engine.
 
 ---
 
-## 5. Остаточный roadmap
+## 5. Residual roadmap
 
-Реальный остаточный scope на текущий момент:
+Real residual scope at current moment:
 
-1. Доводка platform/admin UX для settings, media и observability.
-2. Дальнейшая i18n formalization beyond current request locale chain.
+1. Completion of platform/admin UX for settings, media and observability.
+2. Further i18n formalization beyond current request locale chain.
 3. Advanced runtime features: channels, scheduler governance, graceful shutdown.
-4. Дополнительная cleanup/consistency работа вокруг module settings contracts и operator dashboards.
+4. Additional cleanup/consistency work around module settings contracts and operator dashboards.
 
 ---
 
-## 6. Definition of Done для остаточного scope
+## 6. Definition of Done for residual scope
 
-Оставшийся план можно считать закрытым, когда:
+Remaining plan can be considered closed when:
 
-- platform settings и system surfaces имеют согласованный admin UX;
-- live docs не описывают уже закрытые migration steps как pending;
-- i18n/runtime/platform contracts выровнены между server code и docs;
-- future items сведены к отдельным roadmap/ADR, а не маскируются под незавершённую базовую интеграцию.
+- platform settings and system surfaces have consistent admin UX;
+- live docs do not describe already closed migration steps as pending;
+- i18n/runtime/platform contracts are aligned between server code and docs;
+- future items are consolidated to separate roadmap/ADR, not masked as incomplete basic integration.
 
 ---
 
-## Связанные документы
+## Related documents
 
 - [LOCO_FEATURE_SUPPORT.md](./LOCO_FEATURE_SUPPORT.md)
 - [README.md](./README.md)

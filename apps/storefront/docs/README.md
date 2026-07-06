@@ -1,5 +1,20 @@
 # Leptos Storefront Documentation
 
+> **MANDATORY FOR AI AGENTS — Read these guides BEFORE any code changes:**
+>
+> **Module UI Package Guides (for `crates/rustok-*/storefront` packages):**
+> - [Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture), `core/transport/ui` split, dual-path model
+> - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — **internal libraries** (`leptos-ui`, `leptos-ui-routing`, `leptos-graphql`, etc.), **i18n rules**, file structure, forbidden patterns
+> - [Verification Guide](../../../docs/UI/module-package-verification.md) — verification commands, common errors
+>
+> **FSD Architecture:** This host follows **Feature-Sliced Design** layers: `app`, `widgets`, `features`, `shared`. Module storefront UI must NOT be placed in `apps/storefront/src/` — it belongs in owner module packages.
+>
+> **IMPORTANT RULES:**
+> - **DO NOT write custom UI components** — check [Rust UI Component Catalog](../../../docs/UI/rust-ui-component-catalog.md) first
+> - **DO NOT invent custom i18n** — use `rustok_api::build_ui_message_catalog` pattern (see Implementation Guide)
+> - **DO NOT remove GraphQL** when adding `#[server]` — both must coexist
+> - **DO NOT write Leptos code in `core.rs`** — CI will reject it
+
 Local documentation for `apps/storefront` as the Leptos SSR-host storefront application.
 
 ## Purpose

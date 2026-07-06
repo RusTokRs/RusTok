@@ -67,6 +67,10 @@ integration. The canonical source of truth here is only manifest wiring.
 - [GraphQL and Leptos Server Functions](../UI/graphql-architecture.md)
 - [Storefront Contract](../UI/storefront.md)
 - [Admin ↔ Server Quick Start](../UI/admin-server-connection-quickstart.md)
+- **Module UI Package Guides** (read when working on `admin/` or `storefront/` sub-crates):
+  - [Architecture Guide](../UI/module-package-architecture.md) — FFA, `core/transport/ui` split, Dioxus-readiness
+  - [Implementation Guide](../UI/module-package-implementation.md) — file structure, internal crates, i18n, forbidden patterns
+  - [Verification Guide](../UI/module-package-verification.md) — verification commands, common errors
 
 ### Local Application Docs
 

@@ -91,6 +91,16 @@ Current host-level FFA slices are enforced by the fast gate
 - [Rust UI Component Catalog](./rust-ui-component-catalog.md)
 - [Rich-text and Visual Page Builder Track](../modules/tiptap-page-builder-implementation-plan.md)
 
+### Module UI Package Guides
+
+These three documents cover everything needed to work on a Leptos module UI package
+(`crates/rustok-*/admin` or `crates/rustok-*/storefront`). Read the one relevant to
+your current task — you do not need to read all three at once.
+
+- [Architecture Guide](./module-package-architecture.md) — FFA principles, `core/transport/ui` split rationale, dual-path model, Dioxus-readiness, host vs module ownership. Read when designing or restructuring a package.
+- [Implementation Guide](./module-package-implementation.md) — concrete file structure, internal crates catalogue (`leptos-ui`, `leptos-ui-routing`, `leptos-graphql`, etc.), i18n rules, URL-selection rules, manifest wiring, forbidden patterns with code examples. Read when writing code.
+- [Verification Guide](./module-package-verification.md) — all verification commands, what each checks, execution order, common errors and fixes. Read when validating changes.
+
 ## Application Documentation
 
 - [Leptos Admin](../../apps/admin/docs/README.md)

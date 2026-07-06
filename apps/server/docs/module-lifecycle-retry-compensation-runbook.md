@@ -1,29 +1,29 @@
 # Runbook: retry/compensation for module lifecycle post-hook failures
 
-Документ фиксирует операционный контракт для ситуации, когда `ModuleLifecycleService` уже закоммитил tenant state (`enabled=true/false`), но post-hook (`post_enable`/`post_disable`) завершился ошибкой. Это **не rollback-сценарий**: состояние модуля считается committed, а ошибка обслуживается как retry/compensation поток через `module_operations`.
+This document establishes the operational contract for the situation when `ModuleLifecycleService` has already committed tenant state (`enabled=true/false`), but post-hook (`post_enable`/`post_disable`) ended with an error. This is **not a rollback scenario**: module state is considered committed, and the error is handled as retry/compensation flow through `module_operations`.
 
-## Когда применять
+## When to apply
 
-Используйте этот runbook, если в telemetry/логах или в admin lifecycle surface видите:
+Use this runbook if in telemetry/logs or admin lifecycle surface you see:
 
 - `module_operations.status = failed`;
-- `error` содержит маркер `post-hook`;
-- tenant state уже соответствует requested transition.
+- `error` contains `post-hook` marker;
+- tenant state already corresponds to requested transition.
 
-Pre-hook ошибки (до commit) сюда не относятся: для них committed state не меняется и нужен обычный повтор toggle после исправления причины.
+Pre-hook errors (before commit) are not covered here: for them committed state does not change and normal toggle retry after fixing the cause is needed.
 
-## Инварианты
+## Invariants
 
-1. **Committed state не откатывается автоматически.**
-2. **`module_operations` остаётся источником истины для audit trail** (включая `correlation_id`, `requested_by`, `requested_enabled`).
-3. **Retry выполняется через canonical lifecycle service**, предпочтительно через `ModuleLifecycleService::retry_failed_post_hook_operation(...)`, чтобы повторить только post-hook для уже committed target-state и создать новый journal attempt.
-4. **Compensation выполняется отдельной осознанной операцией** через `ModuleLifecycleService::compensate_failed_operation(...)` или эквивалентный canonical toggle в обратную сторону, а не скрытым rollback внутри failed post-hook path.
+1. **Committed state is not rolled back automatically.**
+2. **`module_operations` remains the source of truth for audit trail** (including `correlation_id`, `requested_by`, `requested_enabled`).
+3. **Retry is performed via canonical lifecycle service**, preferably via `ModuleLifecycleService::retry_failed_post_hook_operation(...)`, to repeat only post-hook for already committed target-state and create new journal attempt.
+4. **Compensation is performed by separate conscious operation** via `ModuleLifecycleService::compensate_failed_operation(...)` or equivalent canonical toggle in reverse direction, not by hidden rollback inside failed post-hook path.
 
-## Базовая диагностика
+## Basic diagnostics
 
-### 1) Найти проблемные операции
+### 1) Find problematic operations
 
-Пример SQL для tenant + module:
+Example SQL for tenant + module:
 
 ```sql
 SELECT id,
@@ -42,9 +42,9 @@ WHERE tenant_id = '<TENANT_UUID>'
 ORDER BY created_at DESC;
 ```
 
-Проверка: у latest failed-записи должен быть non-null `correlation_id`, а текущий `tenant_modules.enabled` — уже в requested состоянии.
+Check: latest failed record should have non-null `correlation_id`, and current `tenant_modules.enabled` should already be in requested state.
 
-### 2) Проверить фактическое tenant state
+### 2) Check actual tenant state
 
 ```sql
 SELECT tenant_id, module_slug, enabled, updated_at
@@ -53,46 +53,46 @@ WHERE tenant_id = '<TENANT_UUID>'
   AND module_slug = '<MODULE_SLUG>';
 ```
 
-Если state не соответствует ожиданию, это не штатный post-hook issue и требует отдельного incident triage.
+If state does not match expectation, this is not a standard post-hook issue and requires separate incident triage.
 
-### 3) Коррелировать с application logs/traces
+### 3) Correlate with application logs/traces
 
-Ищите `correlation_id` из `module_operations` в structured logs и tracing span-ах для подтверждения root cause post-hook ошибки (network timeout, downstream 5xx, transient auth/policy glitch и т.д.).
+Look for `correlation_id` from `module_operations` in structured logs and tracing spans to confirm root cause of post-hook error (network timeout, downstream 5xx, transient auth/policy glitch, etc.).
 
-## Retry flow (предпочтительный)
+## Retry flow (preferred)
 
-Используйте, если причина transient и hook idempotent.
+Use if cause is transient and hook is idempotent.
 
-1. Убедитесь, что root-cause устранён.
-2. Получите `ModuleOperationRecoveryPlan` через GraphQL query `moduleOperationRecoveryPlan(operationId: ...)`, список failed candidates через `failedModuleOperationRecoveryPlans(moduleSlug: ..., limit: ...)` или напрямую через `ModuleLifecycleService::module_operation_recovery_plan(...)` / `failed_module_operation_recovery_plans(...)`.
-3. Если `recommended_action = retry_post_hook`, вызовите GraphQL mutation `retryFailedModuleOperationPostHook(operationId: ...)` или `ModuleLifecycleService::retry_failed_post_hook_operation(...)` для failed operation id. Сервис проверит, что текущий effective state всё ещё совпадает с `requested_enabled`, и не будет заново выполнять pre-hook или commit tenant state.
-4. Проверьте, что GraphQL mutation вернула recovery plan новой operation-записи со статусом `committed` (или `failed`, если post-hook проблема повторилась) и новым `correlation_id`.
+1. Ensure root-cause is fixed.
+2. Get `ModuleOperationRecoveryPlan` via GraphQL query `moduleOperationRecoveryPlan(operationId: ...)`, list of failed candidates via `failedModuleOperationRecoveryPlans(moduleSlug: ..., limit: ...)` or directly via `ModuleLifecycleService::module_operation_recovery_plan(...)` / `failed_module_operation_recovery_plans(...)`.
+3. If `recommended_action = retry_post_hook`, call GraphQL mutation `retryFailedModuleOperationPostHook(operationId: ...)` or `ModuleLifecycleService::retry_failed_post_hook_operation(...)` for failed operation id. Service will check that current effective state still matches `requested_enabled`, and will not re-execute pre-hook or commit tenant state again.
+4. Verify that GraphQL mutation returned recovery plan of new operation record with status `committed` (or `failed` if post-hook problem repeated) and new `correlation_id`.
 
-Ожидаемый результат: success retry **не должен** создавать duplicate side effects, а журнал должен показать новый attempt с новым `correlation_id` и тем же target-state.
+Expected result: successful retry **should not** create duplicate side effects, and journal should show new attempt with new `correlation_id` and same target-state.
 
-## Compensation flow (когда retry невозможен)
+## Compensation flow (when retry is impossible)
 
-Используйте, если:
+Use if:
 
-- post-hook side effect частично выполнился и требует целенаправленной компенсации;
-- бизнес-решение требует вернуть модуль в предыдущее состояние.
+- post-hook side effect partially executed and requires targeted compensation;
+- business decision requires returning module to previous state.
 
-Шаги:
+Steps:
 
-1. Зафиксировать решение в incident ticket/change log.
-2. Получить recovery plan и проверить `previous_effective_enabled`.
-3. Выполнить GraphQL mutation `compensateFailedModuleOperation(operationId: ...)` или `ModuleLifecycleService::compensate_failed_operation(...)`; сервис создаст новую lifecycle operation через canonical toggle к `previous_effective_enabled`.
-4. Убедиться, что зависимые модули/policy-инварианты не нарушены перед compensating toggle.
-5. Проверить новый `module_operations` trail (failed/success) и текущее состояние `tenant_modules`.
+1. Record decision in incident ticket/change log.
+2. Get recovery plan and check `previous_effective_enabled`.
+3. Execute GraphQL mutation `compensateFailedModuleOperation(operationId: ...)` or `ModuleLifecycleService::compensate_failed_operation(...)`; service will create new lifecycle operation via canonical toggle to `previous_effective_enabled`.
+4. Ensure dependent modules/policy-invariants are not violated before compensating toggle.
+5. Check new `module_operations` trail (failed/success) and current `tenant_modules` state.
 
-## Минимальный post-incident checklist
+## Minimum post-incident checklist
 
-- [ ] Для каждого failed post-hook случая зафиксирован `correlation_id` и root cause.
-- [ ] Retry или compensation выполнены через canonical lifecycle entrypoint (`retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` GraphQL mutations или service-level `retry_failed_post_hook_operation`/`compensate_failed_operation`, не через bypass/SQL).
-- [ ] В журнале есть финальная operation-запись, объясняющая конечное состояние.
-- [ ] Если сбой системный/повторяющийся, создана задача на модуль-владельца с ссылкой на failed operations.
+- [ ] For each failed post-hook case, `correlation_id` and root cause are recorded.
+- [ ] Retry or compensation performed via canonical lifecycle entrypoint (`retryFailedModuleOperationPostHook` / `compensateFailedModuleOperation` GraphQL mutations or service-level `retry_failed_post_hook_operation`/`compensate_failed_operation`, not via bypass/SQL).
+- [ ] Journal contains final operation record explaining final state.
+- [ ] If failure is systemic/recurring, task created for module owner with reference to failed operations.
 
-## Связанные контракты
+## Related contracts
 
 - `apps/server/src/services/module_lifecycle.rs`
 - `apps/server/src/models/_entities/module_operations.rs`

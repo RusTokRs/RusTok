@@ -1,5 +1,10 @@
 # rustok-pricing-storefront
 
+> **For contributors and AI agents — read before modifying this package:**
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
+
 ## Purpose
 
 `rustok-pricing-storefront` provides the module-owned Leptos storefront route for

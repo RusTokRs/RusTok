@@ -1,5 +1,10 @@
 # rustok-pages-admin
 
+> **For contributors and AI agents — read before modifying this package:**
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
+
 ## Purpose
 
 `rustok-pages-admin` publishes the Leptos admin root page for the `rustok-pages` module.

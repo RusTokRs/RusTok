@@ -1,5 +1,21 @@
 # Next Admin Documentation
 
+> **MANDATORY FOR AI AGENTS — Read these guides BEFORE any code changes:**
+>
+> **FSD Architecture:** This app follows **Feature-Sliced Design** (FSD) layers: `app`, `shared`, `entities`, `features`, `widgets`.
+>
+> **Module Ownership:** Module business UI must NOT be placed in `apps/next-admin/src/`. It belongs in `apps/next-admin/packages/*` or `@rustok/*-admin` packages.
+>
+> **IMPORTANT RULES:**
+> - **DO NOT write custom components** — check existing components in `src/shared/ui` and `packages/*` first
+> - **DO NOT invent custom i18n** — use host-provided `x-rustok-effective-locale` and `next-intl`
+> - **DO NOT duplicate transport/auth** — use shared contracts in `src/shared/api` and `src/shared/lib`
+> - **DO NOT create starter-only routes** — `billing`, `exclusive`, `workspaces` must return `notFound()`
+>
+> **Related Guides for Rust Module UI Packages:**
+> - [FFA Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture) for Rust module packages
+> - [Implementation Guide](../../../docs/UI/module-package-implementation.md) — internal libraries, i18n, file structure for Rust packages
+
 Local documentation for `apps/next-admin`.
 
 ## Purpose

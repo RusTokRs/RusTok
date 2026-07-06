@@ -1,5 +1,10 @@
 # rustok-ai-product-admin
 
+> **For contributors and AI agents — read before modifying this package:**
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
+
 Module-owned admin surface for `rustok-ai-product`.
 
 ## FFA boundary

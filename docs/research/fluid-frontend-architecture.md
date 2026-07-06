@@ -358,6 +358,24 @@ For FFA, useful features are:
 The RusTok stack around Leptos, Axum and async-graphql allows building a frontend where execution
 topology is an implementation detail, not an architectural constraint.
 
+### i18n and FFA
+
+For i18n to be FFA-compatible, it must be **framework-agnostic**:
+- ❌ `leptos_i18n` — Leptos-specific, uses reactive context and `t!(i18n, key)` macro
+- ✅ `rustok_api` pattern — simple framework-agnostic helpers (`build_ui_message_catalog`, `resolve_ui_message_or_fallback`)
+
+**Current state:**
+- Module-owned UI packages already use `rustok_api` pattern
+- Host apps (`apps/admin`, `apps/storefront`) still use `leptos_i18n` (temporary)
+
+**Future evolution:**
+When hosts migrate to FFA structure, they'll also need framework-agnostic i18n. Options:
+1. Use existing `rustok_api` pattern (minimal, sufficient for current needs)
+2. Extract into dedicated `rustok-ui-i18n` crate with extended features (pluralization, ICU MessageFormat)
+3. Adopt/contribute to a community framework-agnostic Rust i18n library if one emerges
+
+The key principle: i18n must work in `core/` layer without framework imports, so both Leptos and Dioxus UI adapters can use it.
+
 ## FFA Compatibility Criteria
 
 A surface can be considered FFA-ready if the following conditions are met:

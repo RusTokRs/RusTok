@@ -251,7 +251,7 @@ What to check:
 
 ## Related Files
 
-- [health.rs](/C:/проекты/RusTok/apps/server/src/controllers/health.rs)
-- [metrics.rs](/C:/проекты/RusTok/apps/server/src/controllers/metrics.rs)
-- [runtime_guardrails.rs](/C:/проекты/RusTok/apps/server/src/services/runtime_guardrails.rs)
-- [rate-limiting.md](/C:/проекты/RusTok/docs/guides/rate-limiting.md)
+- [health.rs](../../apps/server/src/controllers/health.rs)
+- [metrics.rs](../../apps/server/src/controllers/metrics.rs)
+- [runtime_guardrails.rs](../../apps/server/src/services/runtime_guardrails.rs)
+- [rate-limiting.md](./rate-limiting.md)

@@ -1,26 +1,26 @@
-# Event transport в `apps/server`
+# Event transport in `apps/server`
 
-## Что это
+## What is this
 
-`apps/server` публикует доменные события через общий `EventBus`, а далее пересылает их в настроенный
+`apps/server` publishes domain events through a shared `EventBus`, and then forwards them to the configured
 `EventTransport`.
 
-Схема:
+Flow:
 
-1. Сервисы модулей (`rustok-content`, `rustok-commerce`, `rustok-forum` и т.д.) публикуют событие в `EventBus`.
-2. В `apps/server` поднимается фоновый forwarder, который читает события из общего `EventBus`.
-3. Forwarder отправляет их в выбранный транспорт (`memory | outbox | iggy`).
-4. В `outbox` режиме дополнительно запускается relay worker, который выгружает события из outbox.
+1. Module services (`rustok-content`, `rustok-commerce`, `rustok-forum`, etc.) publish events to `EventBus`.
+2. In `apps/server`, a background forwarder starts up that reads events from the shared `EventBus`.
+3. The forwarder sends them to the selected transport (`memory | outbox | iggy`).
+4. In `outbox` mode, a relay worker is additionally started that unloads events from the outbox.
 
-## Конфигурация
+## Configuration
 
-Настройка находится в `settings.rustok.events`:
+Configuration is located in `settings.rustok.events`:
 
 - `transport`: `memory | outbox | iggy`
-- `relay_interval_ms`: интервал для outbox relay worker
-- `iggy`: вложенная конфигурация `IggyConfig`
+- `relay_interval_ms`: interval for the outbox relay worker
+- `iggy`: nested `IggyConfig` configuration
 
-Пример:
+Example:
 
 ```yaml
 settings:
@@ -30,37 +30,37 @@ settings:
       relay_interval_ms: 1000
 ```
 
-Можно переопределить через переменную окружения:
+Can be overridden via environment variable:
 
 ```bash
 RUSTOK_EVENT_TRANSPORT=memory
 ```
 
-Если указано некорректное значение, сервер падает на старте с ошибкой:
+If an invalid value is specified, the server fails on startup with an error:
 
 `Invalid RUSTOK_EVENT_TRANSPORT='...' Expected one of: memory, outbox, iggy`
 
-## Где в коде
+## Where in the code
 
 - settings: `apps/server/src/common/settings.rs`
-- фабрика транспорта: `apps/server/src/services/event_transport_factory.rs`
-- общий event bus и forwarder: `apps/server/src/services/event_bus.rs`
+- transport factory: `apps/server/src/services/event_transport_factory.rs`
+- shared event bus and forwarder: `apps/server/src/services/event_bus.rs`
 - module-owned listener bootstrap: `apps/server/src/services/module_event_dispatcher.rs`
-- подключение в runtime: `apps/server/src/services/app_runtime.rs`
+- runtime connection: `apps/server/src/services/app_runtime.rs`
 
 ## Module-owned listeners
 
-`apps/server` больше не держит отдельные host-owned dispatchers для `index`,
-`search` и `workflow`. Event handlers этих модулей публикуются самими модулями
-через `RusToKModule::register_event_listeners(...)`, затем собираются из
-`ModuleRegistry` и регистрируются в одном общем `EventDispatcher`.
+`apps/server` no longer maintains separate host-owned dispatchers for `index`,
+`search` and `workflow`. Event handlers for these modules are published by the modules
+themselves via `RusToKModule::register_event_listeners(...)`, then collected from
+`ModuleRegistry` and registered in a single shared `EventDispatcher`.
 
-В этот путь не входят cron/background jobs. Например,
-`WorkflowCronScheduler` остаётся отдельным runtime path и не считается
-`event_listener`.
+This path does not include cron/background jobs. For example,
+`WorkflowCronScheduler` remains a separate runtime path and is not considered
+an `event_listener`.
 
-## Ограничения текущей реализации
+## Current implementation limitations
 
-- В `outbox` режиме relay сейчас отправляет из outbox в `MemoryTransport` (локальная цель по умолчанию).
-  Для production-streaming сценариев нужно настроить целевой transport (например Iggy) для relay chain.
-- Если transport не инициализирован, `EventBus` продолжает работать in-memory (с warning в логах).
+- In `outbox` mode, relay currently sends from outbox to `MemoryTransport` (local target by default).
+  For production-streaming scenarios, you need to configure a target transport (e.g. Iggy) for the relay chain.
+- If transport is not initialized, `EventBus` continues to work in-memory (with warning in logs).

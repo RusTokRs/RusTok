@@ -1,5 +1,10 @@
 # rustok-seo-admin-support
 
+> **For contributors and AI agents — read before modifying this package:**
+> [Architecture](../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../docs/UI/module-package-verification.md)
+
 ## Purpose
 
 `rustok-seo-admin-support` provides reusable admin-side SEO widgets and transport helpers for module-owned entity editors.

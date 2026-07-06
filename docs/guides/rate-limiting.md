@@ -105,7 +105,7 @@ Recommended rollout:
 
 Repository preset:
 
-- [`production.redis.example.yaml`](/C:/проекты/RusTok/apps/server/config/production.redis.example.yaml)
+- [production.redis.example.yaml](../../apps/server/config/production.redis.example.yaml)
 
 Startup validation:
 
@@ -145,8 +145,8 @@ cargo check -p rustok-server --bin rustok-server
 
 ## Related Docs
 
-- [`runtime-guardrails.md`](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md)
-- [`principles.md`](/C:/Users/user/Documents/New%20project/RusTok/docs/architecture/principles.md)
+- [runtime-guardrails.md](./runtime-guardrails.md)
+- [principles.md](../architecture/principles.md)
 
 ## Trusted proxy contract
 

@@ -1,5 +1,21 @@
 # Next Frontend Documentation
 
+> **MANDATORY FOR AI AGENTS — Read these guides BEFORE any code changes:**
+>
+> **FSD Architecture:** This app follows **Feature-Sliced Design** (FSD) orientation: `src/app`, `src/modules`, `src/shared`, `src/components`.
+>
+> **Module Ownership:** Module storefront UI must NOT be placed inside host-owned routes. Use proper module composition through `src/modules` and `src/shared`.
+>
+> **IMPORTANT RULES:**
+> - **DO NOT duplicate transport/auth** — use shared contracts in `src/shared/lib` and `packages/*`
+> - **DO NOT invent custom i18n** — use middleware locale and `next-intl`
+> - **DO NOT write custom SEO runtime** — use `SeoPageContext` from backend + Next Metadata API adapter
+> - **DO NOT hardcode `/en|/ru` in middleware** — get supported locales from message loaders
+>
+> **Related Guides for Rust Module UI Packages:**
+> - [FFA Architecture Guide](../../../docs/UI/module-package-architecture.md) — explains **FFA** (Fluid Frontend Architecture) for Rust module packages
+> - [Storefront Contract](../../../docs/UI/storefront.md) — transport/auth/i18n parity requirements
+
 Local documentation for `apps/next-frontend`.
 
 ## Purpose
@@ -72,10 +88,10 @@ FFA classification: `apps/next-frontend` is an `FFA-compatible composition host`
 
 ## SEO runtime parity evidence
 
-- Быстрый fixture baseline для D7 живёт в `contracts/seo/runtime-parity-fixtures.json` и покрывает четыре fallback сценария SEO runtime: `module_disabled`, `not_found`, `permission_denied`, `transport_failure`.
-- В этом же fixture закреплена route ownership matrix для owner modules `rustok-pages`, `rustok-product`, `rustok-blog`, `rustok-forum`: каждая строка связывает Next route pattern, Rust storefront route и canonical `targetKind`.
-- Минимальный non-home smoke baseline сейчас фиксирует два owner route: `/modules/product?slug=demo-product` и `/modules/blog?slug=release-notes`; эти маршруты проверяют metadata adapter assertions для canonical, robots, social metadata и JSON-LD blocks.
-- Allowlist допустимых long-tail differences ограничен host-level деталями: `metadataBase`, request-local CSP nonce и whitespace-only JSON-LD serialization differences; semantic payload equality остаётся обязательной.
-- Лёгкая проверка без компиляции запускается командой `npm run verify:seo-runtime-fixtures` из `apps/next-frontend`; она дополнительно проверяет существование docs rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template и ключевые static symbols для Next SEO adapter, Rust renderer, Next Admin transport и Leptos storefront SEO runtime wiring.
-- Live closeout artifact set теперь явно должен включать backend GraphQL/REST parity sample, before/after outbox/index counters, Next runtime robots/sitemap/metadata sample, Leptos `SeoPageContext` smoke, media descriptor fallback smoke и owner sign-off notes; для каждого файла fixture хранит отдельный must-capture checklist и blockers, а пока live files не приложены, D8/D9 остаются pending.
-- D8/D9 closeout guardrails дополнительно source-lock-ят runbook-to-artifact crosswalk, CI attachment metadata/redaction checklist, defect triage severity matrix и owner sign-off state machine, чтобы live evidence packet нельзя было продвинуть из static seed сразу в signed без runtime artifacts и owner review; template-файлы для required artifacts лежат в `contracts/seo/live-evidence/templates/` и проверяются тем же compile-free verifier-ом.
+- The quick fixture baseline for D7 lives in `contracts/seo/runtime-parity-fixtures.json` and covers four SEO runtime fallback scenarios: `module_disabled`, `not_found`, `permission_denied`, `transport_failure`.
+- The same fixture establishes the route ownership matrix for owner modules `rustok-pages`, `rustok-product`, `rustok-blog`, `rustok-forum`: each row links Next route pattern, Rust storefront route and canonical `targetKind`.
+- The minimal non-home smoke baseline currently captures two owner routes: `/modules/product?slug=demo-product` and `/modules/blog?slug=release-notes`; these routes verify metadata adapter assertions for canonical, robots, social metadata and JSON-LD blocks.
+- The allowlist of acceptable long-tail differences is limited to host-level details: `metadataBase`, request-local CSP nonce and whitespace-only JSON-LD serialization differences; semantic payload equality remains mandatory.
+- The lightweight verification without compilation runs via `npm run verify:seo-runtime-fixtures` from `apps/next-frontend`; it additionally checks the existence of docs rows, targeted unit coverage inventory, integration matrix plan, live artifact manifest template and key static symbols for Next SEO adapter, Rust renderer, Next Admin transport and Leptos storefront SEO runtime wiring.
+- Live closeout artifact set must now explicitly include backend GraphQL/REST parity sample, before/after outbox/index counters, Next runtime robots/sitemap/metadata sample, Leptos `SeoPageContext` smoke, media descriptor fallback smoke and owner sign-off notes; for each file the fixture stores a separate must-capture checklist and blockers, and until live files are attached, D8/D9 remain pending.
+- D8/D9 closeout guardrails additionally source-lock the runbook-to-artifact crosswalk, CI attachment metadata/redaction checklist, defect triage severity matrix and owner sign-off state machine, so that the live evidence packet cannot be promoted from static seed directly to signed without runtime artifacts and owner review; template files for required artifacts are located in `contracts/seo/live-evidence/templates/` and are verified by the same compile-free verifier.

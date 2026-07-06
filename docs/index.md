@@ -76,6 +76,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
 - [Rich-text and Visual Page Builder Track](./modules/tiptap-page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)
+- **Module UI Package Guides** (read the relevant one when working on `crates/rustok-*/admin` or `crates/rustok-*/storefront`):
+  - [Architecture Guide](./UI/module-package-architecture.md) — FFA, `core/transport/ui` split, dual-path model, Dioxus-readiness
+  - [Implementation Guide](./UI/module-package-implementation.md) — file structure, internal crates, i18n, URL-selection, manifest wiring, forbidden patterns
+  - [Verification Guide](./UI/module-package-verification.md) — all verification commands, what each checks, common errors
 
 ## Architecture and Foundation
 

@@ -1,7 +1,7 @@
 # Loco.rs changes log (project-local)
 
-Используйте этот файл как короткий журнал изменений server-паттернов,
-чтобы разработчики и AI-агенты быстрее находили актуальные решения.
+Use this file as short log of server-patterns changes,
+so developers and AI-agents can quickly find current solutions.
 
 ## Format
 

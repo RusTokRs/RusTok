@@ -23,10 +23,10 @@
 
 ## Runtime pattern
 
-1. Host строит единый `ModuleRuntimeExtensions`.
-2. Owner modules в `register_runtime_extensions(...)` регистрируют свои SEO providers.
-3. `rustok-seo` достаёт общий `Arc<SeoTargetRegistry>` из runtime context и использует его во всех entrypoints.
-4. Добавление нового SEO-capable backend-модуля больше не требует hardcoded ветки в `rustok-seo`.
+1. Host builds unified `ModuleRuntimeExtensions`.
+2. Owner modules in `register_runtime_extensions(...)` register their SEO providers.
+3. `rustok-seo` retrieves shared `Arc<SeoTargetRegistry>` from runtime context and uses it in all entrypoints.
+4. Adding new SEO-capable backend-module no longer requires hardcoded branch in `rustok-seo`.
 
 ## Fields for SEO templates
 

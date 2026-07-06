@@ -1,5 +1,10 @@
 # rustok-cart-storefront
 
+> **For contributors and AI agents — read before modifying this package:**
+> [Architecture](../../../../docs/UI/module-package-architecture.md) |
+> [Implementation](../../../../docs/UI/module-package-implementation.md) |
+> [Verification](../../../../docs/UI/module-package-verification.md)
+
 Leptos storefront UI package for the `rustok-cart` module.
 
 ## Responsibilities

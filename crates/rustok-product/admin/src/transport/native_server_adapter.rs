@@ -34,7 +34,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-pub async fn fetch_product_attributes(
+pub(super) async fn fetch_product_attributes(
     tenant_id: String,
     locale: String,
 ) -> Result<ProductAttributeList, ApiError> {
@@ -43,7 +43,7 @@ pub async fn fetch_product_attributes(
         .map_err(Into::into)
 }
 
-pub async fn fetch_catalog_categories(
+pub(super) async fn fetch_catalog_categories(
     tenant_id: String,
     locale: String,
 ) -> Result<CatalogCategoryList, ApiError> {
@@ -52,7 +52,7 @@ pub async fn fetch_catalog_categories(
         .map_err(Into::into)
 }
 
-pub async fn fetch_catalog_search_options(
+pub(super) async fn fetch_catalog_search_options(
     locale: String,
 ) -> Result<ProductCatalogSearchOptions, ApiError> {
     product_admin_catalog_search_options_native(locale)
@@ -60,7 +60,7 @@ pub async fn fetch_catalog_search_options(
         .map_err(Into::into)
 }
 
-pub async fn fetch_attribute_schemas(
+pub(super) async fn fetch_attribute_schemas(
     tenant_id: String,
     locale: String,
 ) -> Result<ProductAttributeSchemaList, ApiError> {
@@ -69,7 +69,7 @@ pub async fn fetch_attribute_schemas(
         .map_err(Into::into)
 }
 
-pub async fn fetch_effective_product_form(
+pub(super) async fn fetch_effective_product_form(
     tenant_id: String,
     product_id: Option<String>,
     category_id: Option<String>,
@@ -80,7 +80,7 @@ pub async fn fetch_effective_product_form(
         .map_err(Into::into)
 }
 
-pub async fn fetch_product_attribute_values(
+pub(super) async fn fetch_product_attribute_values(
     tenant_id: String,
     product_id: String,
     locale: String,
@@ -90,7 +90,7 @@ pub async fn fetch_product_attribute_values(
         .map_err(Into::into)
 }
 
-pub async fn create_product_attribute(
+pub(super) async fn create_product_attribute(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeDraft,
@@ -100,7 +100,7 @@ pub async fn create_product_attribute(
         .map_err(Into::into)
 }
 
-pub async fn create_product_attribute_option(
+pub(super) async fn create_product_attribute_option(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeOptionDraft,
@@ -110,7 +110,7 @@ pub async fn create_product_attribute_option(
         .map_err(Into::into)
 }
 
-pub async fn create_catalog_category(
+pub(super) async fn create_catalog_category(
     tenant_id: String,
     locale: String,
     draft: CatalogCategoryDraft,
@@ -120,7 +120,7 @@ pub async fn create_catalog_category(
         .map_err(Into::into)
 }
 
-pub async fn create_attribute_schema(
+pub(super) async fn create_attribute_schema(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeSchemaDraft,
@@ -130,7 +130,7 @@ pub async fn create_attribute_schema(
         .map_err(Into::into)
 }
 
-pub async fn set_category_schema_mode(
+pub(super) async fn set_category_schema_mode(
     tenant_id: String,
     draft: SetCategorySchemaModeDraft,
 ) -> Result<bool, ApiError> {
@@ -139,7 +139,7 @@ pub async fn set_category_schema_mode(
         .map_err(Into::into)
 }
 
-pub async fn bind_schema_attribute(
+pub(super) async fn bind_schema_attribute(
     tenant_id: String,
     draft: BindSchemaAttributeDraft,
 ) -> Result<bool, ApiError> {
@@ -148,7 +148,7 @@ pub async fn bind_schema_attribute(
         .map_err(Into::into)
 }
 
-pub async fn create_product_attribute_schema_group(
+pub(super) async fn create_product_attribute_schema_group(
     tenant_id: String,
     locale: String,
     draft: ProductAttributeSchemaGroupDraft,
@@ -158,7 +158,7 @@ pub async fn create_product_attribute_schema_group(
         .map_err(|err| ApiError::ServerFn(err.to_string()))
 }
 
-pub async fn create_category_attribute_group(
+pub(super) async fn create_category_attribute_group(
     tenant_id: String,
     locale: String,
     draft: CategoryAttributeGroupDraft,
@@ -168,7 +168,7 @@ pub async fn create_category_attribute_group(
         .map_err(|err| ApiError::ServerFn(err.to_string()))
 }
 
-pub async fn bind_category_attribute(
+pub(super) async fn bind_category_attribute(
     tenant_id: String,
     draft: BindCategoryAttributeDraft,
 ) -> Result<bool, ApiError> {
@@ -177,7 +177,7 @@ pub async fn bind_category_attribute(
         .map_err(Into::into)
 }
 
-pub async fn save_product_attribute_values(
+pub(super) async fn save_product_attribute_values(
     tenant_id: String,
     product_id: String,
     locale: String,
@@ -188,7 +188,7 @@ pub async fn save_product_attribute_values(
         .map_err(Into::into)
 }
 
-pub async fn clear_detached_product_attribute_values(
+pub(super) async fn clear_detached_product_attribute_values(
     tenant_id: String,
     product_id: String,
     locale: String,

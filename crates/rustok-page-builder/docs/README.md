@@ -21,13 +21,13 @@ This anchors FBA-first delivery and contract compatibility across host implement
 
 ## Entry points
 
-- `src/lib.rs` — runtime metadata и permission surface;
-- `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` и typed error catalog (`validation/sanitize/runtime/feature-disabled`) для contract package без привязки к transport adapters;
-- `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, `ReferencePageBuilderService` для compile-free provider baseline, feature-flag guard и server-side handler seam с RBAC permission checks;
-- `src/transport.rs` — canonical transport bridge для GraphQL, Leptos `#[server]` и future mobile adapters поверх `AuthorizedPageBuilderHandlers::handle`;
-- `src/adapters.rs` — endpoint adapter seam с framework-neutral GraphQL/Leptos payload wrappers и handler-функциями `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, которые делегируют только в canonical dispatch helpers;
-- `src/health.rs` — типизированные provider health states, degradation reasons, `ProviderHealthEvidence` и evaluator pilot SLO thresholds для release-gate evidence;
-- `rustok-module.toml` — декларация slug/entry type/ui-classification;
+- `src/lib.rs` — runtime metadata and permission surface;
+- `src/dto.rs` — transport-neutral DTO, `PageBuilderContractMetadata::BASELINE` and typed error catalog (`validation/sanitize/runtime/feature-disabled`) for contract package without binding to transport adapters;
+- `src/service.rs` — transport-neutral `PageBuilderCapabilityService`, `ReferencePageBuilderService` for compile-free provider baseline, feature-flag guard and server-side handler seam with RBAC permission checks;
+- `src/transport.rs` — canonical transport bridge for GraphQL, Leptos `#[server]` and future mobile adapters on top of `AuthorizedPageBuilderHandlers::handle`;
+- `src/adapters.rs` — endpoint adapter seam with framework-neutral GraphQL/Leptos payload wrappers and handler functions `handle_page_builder_graphql_endpoint` / `handle_page_builder_leptos_server_function_endpoint`, which delegate only to canonical dispatch helpers;
+- `src/health.rs` — typed provider health states, degradation reasons, `ProviderHealthEvidence` and evaluator pilot SLO thresholds for release-gate evidence;
+- `rustok-module.toml` — declaration of slug/entry type/ui-classification;
 - `contracts/page-builder-fba-registry.json` — machine-readable registry provider/consumer versions, minimum supported consumer version and fallback profile names for anti-drift gates.
 - `contracts/page-builder-flutter-wave-handoff.json` — machine-readable Flutter Wave hand-off contract for device/runtime evidence without duplicating FBA registry thresholds or control-plane toggle semantics in mobile.
 - `contracts/page-builder-adapter-seams.json` — machine-readable persistence/rendering adapter-seam contract for `PageBuilderProjectStore`, `PageBuilderRenderingAdapter` and `AdapterBackedPageBuilderService`, preserving `PageBuilderCapabilityService`, `AuthorizedPageBuilderHandlers::handle`, GraphQL/Leptos endpoint wrappers and canonical DTO/envelope names.
